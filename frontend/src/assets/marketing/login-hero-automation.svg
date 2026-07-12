@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  <title id="title">Ejecucion QA en Community Edition</title>
+  <desc id="desc">Mockup de una pantalla de ejecucion QA con casos, estados, evidencias y resultados.</desc>
+  <rect width="720" height="520" rx="28" fill="#f8fafc"/>
+  <rect x="44" y="42" width="632" height="436" rx="26" fill="#ffffff" stroke="#dbe3ef"/>
+
+  <rect x="72" y="72" width="576" height="58" rx="18" fill="#0f172a"/>
+  <text x="102" y="107" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Ejecucion QA</text>
+  <rect x="492" y="86" width="118" height="30" rx="15" fill="#1d4ed8"/>
+  <text x="517" y="106" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Nueva corrida</text>
+
+  <rect x="72" y="156" width="398" height="280" rx="20" fill="#ffffff" stroke="#dbe3ef"/>
+  <text x="100" y="192" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Casos asignados</text>
+
+  <g font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">
+    <rect x="100" y="216" width="342" height="34" rx="10" fill="#f8fafc"/>
+    <text x="120" y="238" fill="#64748b">Caso</text>
+    <text x="298" y="238" fill="#64748b">Modo</text>
+    <text x="370" y="238" fill="#64748b">Estado</text>
+
+    <rect x="100" y="264" width="342" height="42" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="120" y="290" fill="#0f172a">Login valido</text>
+    <rect x="292" y="275" width="54" height="20" rx="10" fill="#e0f2fe"/>
+    <text x="306" y="290" fill="#0369a1">Auto</text>
+    <rect x="366" y="275" width="56" height="20" rx="10" fill="#dcfce7"/>
+    <text x="382" y="290" fill="#15803d">Paso</text>
+
+    <rect x="100" y="318" width="342" height="42" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="120" y="344" fill="#0f172a">Adjuntar evidencia</text>
+    <rect x="292" y="329" width="54" height="20" rx="10" fill="#eef2ff"/>
+    <text x="305" y="344" fill="#4338ca">Manual</text>
+    <rect x="366" y="329" width="70" height="20" rx="10" fill="#fef3c7"/>
+    <text x="382" y="344" fill="#92400e">En curso</text>
+
+    <rect x="100" y="372" width="342" height="42" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="120" y="398" fill="#0f172a">Reporte de build</text>
+    <rect x="292" y="383" width="54" height="20" rx="10" fill="#e0f2fe"/>
+    <text x="306" y="398" fill="#0369a1">Auto</text>
+    <rect x="366" y="383" width="62" height="20" rx="10" fill="#fee2e2"/>
+    <text x="382" y="398" fill="#b91c1c">Fallo</text>
+  </g>
+
+  <rect x="496" y="156" width="152" height="280" rx="20" fill="#f8fafc" stroke="#dbe3ef"/>
+  <text x="520" y="192" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Resumen</text>
+  <rect x="520" y="218" width="104" height="48" rx="14" fill="#dbeafe"/>
+  <text x="540" y="239" fill="#1d4ed8" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Cobertura</text>
+  <text x="540" y="258" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">67%</text>
+
+  <rect x="520" y="286" width="104" height="48" rx="14" fill="#dcfce7"/>
+  <text x="540" y="307" fill="#15803d" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Pasados</text>
+  <text x="540" y="326" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">18</text>
+
+  <rect x="520" y="354" width="104" height="48" rx="14" fill="#fee2e2"/>
+  <text x="540" y="375" fill="#b91c1c" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Fallados</text>
+  <text x="540" y="394" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">3</text>
+</svg>

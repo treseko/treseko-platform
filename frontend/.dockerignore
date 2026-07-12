@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+!.env.production.example
+node_modules
+dist
+build
+coverage
+logs
+*.log
+*.jsonl
+__pycache__
+*.pyc

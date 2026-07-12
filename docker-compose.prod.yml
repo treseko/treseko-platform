@@ -1,0 +1,167 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-treseko}
+      POSTGRES_PASSWORD_FILE: /run/secrets/treseko_db_password
+      POSTGRES_DB: ${DB_NAME:-treseko}
+    secrets:
+      - treseko_db_password
+    volumes:
+      - treseko_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-treseko} -d ${DB_NAME:-treseko}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - treseko_redis_data:/data
+
+  migrator:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["migrate-only"]
+    environment:
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/treseko_database_url
+      SECRET_KEY_FILE: /run/secrets/treseko_secret_key
+      AUTO_BACKUP_ENABLED: ${AUTO_BACKUP_ENABLED:-true}
+      DB_BACKUP_DIR: /data/backups
+      UPDATES_DIR: /data/updates
+      MAX_BACKUPS: ${MAX_BACKUPS:-3}
+      CHECK_PENDING_UPDATE: ${CHECK_PENDING_UPDATE:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - treseko_update_data:/data/updates
+      - treseko_backend_backups:/data/backups
+      - treseko_backend_static:/app/app/static
+      - treseko_frontend_html:/usr/share/nginx/html
+      - treseko_engine_runtime:/engine
+      - treseko_worker_runtime:/worker
+    secrets:
+      - treseko_database_url
+      - treseko_secret_key
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/treseko_database_url
+      SECRET_KEY_FILE: /run/secrets/treseko_secret_key
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENGINE_URL: http://engine:3010
+      REDIS_URL: redis://redis:6379/0
+      UPDATES_DIR: /data/updates
+      BACKUPS_DIR: /data/backups
+      DB_BACKUP_DIR: /data/backups
+      MAX_BACKUPS: ${MAX_BACKUPS:-3}
+      CHECK_PENDING_UPDATE: ${CHECK_PENDING_UPDATE:-true}
+      AUTO_BACKUP_ENABLED: ${AUTO_BACKUP_ENABLED:-true}
+      TRESEKO_DEPLOY_MODE: docker
+      TRESEKO_UPDATE_SERVER_URL: ${TRESEKO_UPDATE_SERVER_URL:-https://updates.treseko.com}
+      TRESEKO_COMMUNITY_UPDATE_CHANNEL: ${TRESEKO_COMMUNITY_UPDATE_CHANNEL:-community-stable}
+      TRESEKO_ENABLE_SELF_UPDATE_APPLY: ${TRESEKO_ENABLE_SELF_UPDATE_APPLY:-false}
+      TRESEKO_UPDATE_DB_HISTORY_ENABLED: ${TRESEKO_UPDATE_DB_HISTORY_ENABLED:-true}
+      TRESEKO_UPDATE_STEP_TIMEOUT_SECONDS: ${TRESEKO_UPDATE_STEP_TIMEOUT_SECONDS:-300}
+      TRESEKO_FRONTEND_DIR: /usr/share/nginx/html
+      TRESEKO_ENGINE_DIR: /engine
+      TRESEKO_WORKER_DIR: /worker
+    volumes:
+      - treseko_backend_static:/app/app/static
+      - treseko_update_data:/data/updates
+      - treseko_backend_backups:/data/backups
+      - treseko_frontend_html:/usr/share/nginx/html
+      - treseko_engine_runtime:/engine
+      - treseko_worker_runtime:/worker
+    secrets:
+      - treseko_database_url
+      - treseko_secret_key
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  engine:
+    build:
+      context: engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ENGINE_PORT: 3010
+      BACKEND_WS_URL: ws://backend:8000/ws/engine-sync
+      AI_API_ENDPOINT: ${AI_API_ENDPOINT:-}
+      AI_MODEL: ${AI_MODEL:-}
+      QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
+    volumes:
+      - treseko_engine_runtime:/engine
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  automation-worker:
+    build:
+      context: automation-worker
+      dockerfile: Dockerfile
+    profiles: ["automation"]
+    restart: unless-stopped
+    environment:
+      QA_API_BASE: http://backend:8000
+      QA_RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      QA_ORGANIZACION_ID: ${QA_ORGANIZACION_ID:-}
+      QA_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
+    volumes:
+      - treseko_worker_runtime:/worker
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${TRESEKO_HTTP_PORT:-8080}:80"
+    volumes:
+      - treseko_frontend_html:/usr/share/nginx/html
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  treseko_postgres_data:
+  treseko_redis_data:
+  treseko_backend_static:
+  treseko_update_data:
+  treseko_backend_backups:
+  treseko_frontend_html:
+  treseko_engine_runtime:
+  treseko_worker_runtime:
+
+secrets:
+  treseko_db_password:
+    file: ${TRESEKO_DB_PASSWORD_FILE:?TRESEKO_DB_PASSWORD_FILE es obligatorio}
+  treseko_database_url:
+    file: ${TRESEKO_DATABASE_URL_FILE:?TRESEKO_DATABASE_URL_FILE es obligatorio}
+  treseko_secret_key:
+    file: ${TRESEKO_SECRET_KEY_FILE:?TRESEKO_SECRET_KEY_FILE es obligatorio}

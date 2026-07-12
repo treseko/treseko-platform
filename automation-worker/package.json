@@ -1,0 +1,18 @@
+{
+  "name": "treseko-automation-worker",
+  "private": true,
+  "version": "0.9.0-rc.1",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node -e \"if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD) { console.log('Skipping Playwright browser install'); process.exit(0) } process.exit(1)\" || playwright install chromium",
+    "start": "node src/worker.mjs",
+    "once": "node src/worker.mjs --once",
+    "install:browsers": "playwright install chromium && cypress install"
+  },
+  "dependencies": {
+    "cypress": "^13.17.0",
+    "playwright": "^1.60.0",
+    "puppeteer": "^23.11.1",
+    "tsx": "^4.19.2"
+  }
+}

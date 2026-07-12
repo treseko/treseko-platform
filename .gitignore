@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment / local config
+.env
+.env.*
+!.env.example
+!.env.production.example
+!**/.env.production.example
+compose.production.env
+.treseko-local/
+backend/.env
+frontend/.env
+opencode.json
+
+# Logs
+logs/
+*.log
+*.jsonl
+logs/test-trace/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+backend/.venv/
+
+# Local databases and backups
+*.db
+*.sqlite
+*.sqlite3
+*.db.backup
+*.backup
+backend/*.backup
+!backend/qa_platform.db
+backups/
+
+# Uploaded/runtime files
+backend/app/static/attachments/**
+backend/app/static/evidencias/**
+backend/app/static/branding/**
+!backend/app/static/
+!backend/app/static/attachments/
+!backend/app/static/evidencias/
+!backend/app/static/branding/
+!backend/app/static/attachments/.gitkeep
+!backend/app/static/evidencias/.gitkeep
+!backend/app/static/branding/.gitkeep
+
+# Frontend build artifacts
+dist/
+frontend/dist/
+frontend/.vite/
+
+# Tooling
+.codex/
+.opencode/plugins/
+AGENTS.md
+automation-worker/.runner-token
+docs/release-evidence/*
+!docs/release-evidence/.gitignore

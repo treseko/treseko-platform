@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+!.env.production.example
+.runner-token
+node_modules
+dist
+build
+coverage
+logs
+test-results
+*.log
+*.jsonl
+__pycache__
+*.pyc

@@ -1,0 +1,1 @@
+"""Plugin provider registry package."""

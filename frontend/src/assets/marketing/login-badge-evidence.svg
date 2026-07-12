@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-labelledby="title desc">
+  <title id="title">Evidencia confiable</title>
+  <desc id="desc">Archivo de evidencia validado para una ejecucion QA.</desc>
+  <rect x="20" y="14" width="116" height="146" rx="18" fill="#ffffff" stroke="#94a3b8" stroke-width="4"/>
+  <path d="M104 14v38h32" fill="#dbeafe"/>
+  <path d="M104 14v38h32" fill="none" stroke="#94a3b8" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="116" cy="118" r="34" fill="#16a34a"/>
+  <path d="M100 118l12 12 24-28" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="44" y="70" width="54" height="8" rx="4" fill="#cbd5e1"/>
+  <rect x="44" y="92" width="42" height="8" rx="4" fill="#cbd5e1"/>
+</svg>
