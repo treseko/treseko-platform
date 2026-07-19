@@ -418,6 +418,8 @@ export function ReportesPage({
   })
   const [snapshotBugLinks, setSnapshotBugLinks] = useState<Record<string, any>>({})
   const [creatingSnapshotBugId, setCreatingSnapshotBugId] = useState<string | null>(null)
+  const [traceabilityCoverage, setTraceabilityCoverage] = useState<any | null>(null)
+  const [traceabilityLoading, setTraceabilityLoading] = useState(false)
   const [showViewConfig, setShowViewConfig] = useState(false)
   const [savingViewConfig, setSavingViewConfig] = useState(false)
   const profileSettings = loggedUser?.profileSettings || {}
@@ -430,6 +432,31 @@ export function ReportesPage({
       ? REPORTES_WIDGET_IDS.filter((id) => profileSettings.reportes_widgets.includes(id))
       : REPORTES_WIDGET_IDS
   ))
+  const canReadTraceability = canAccessCapability ? canAccessCapability('reportes.trazabilidad', 'read') : true
+
+  const loadTraceabilityCoverage = useCallback(async () => {
+    if (!currentProjectId || !canReadTraceability) {
+      setTraceabilityCoverage(null)
+      return
+    }
+    setTraceabilityLoading(true)
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/trazabilidad/cobertura/`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.detail || `Backend respondio ${response.status}`)
+      setTraceabilityCoverage(payload)
+    } catch {
+      setTraceabilityCoverage(null)
+    } finally {
+      setTraceabilityLoading(false)
+    }
+  }, [currentProjectId, canReadTraceability, fetchWithAuth])
+
+  useEffect(() => {
+    let active = true
+    loadTraceabilityCoverage().then(() => { if (!active) return })
+    return () => { active = false }
+  }, [loadTraceabilityCoverage])
   const [showReportSettings, setShowReportSettings] = useState(false)
   const [loadingReportSettings, setLoadingReportSettings] = useState(false)
   const [savingReportSettings, setSavingReportSettings] = useState(false)
@@ -1720,6 +1747,15 @@ export function ReportesPage({
           </div>
         </div>
       </div>
+
+      {canReadTraceability && (
+        <Card className="border shadow-sm mb-4 rounded-3">
+          <Card.Body className="py-3">
+            <div className="d-flex justify-content-between align-items-center mb-2"><div><h6 className="fw-bold mb-0">Cobertura de trazabilidad</h6><span className="small text-muted">Cobertura de diseno entre requisitos, historias y casos.</span></div><Button variant="outline-secondary" size="sm" onClick={loadTraceabilityCoverage} disabled={traceabilityLoading} title="Actualizar cobertura"><RefreshCw size={14} /></Button></div>
+            {traceabilityLoading ? <span className="small text-muted">Cargando trazabilidad...</span> : traceabilityCoverage ? <><Row className="g-2 small mb-3"><Col xs={6} md={3}><strong>{traceabilityCoverage.requisitos_total}</strong><div className="text-muted">Requisitos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.historias_con_casos}/{traceabilityCoverage.historias_total}</strong><div className="text-muted">Historias con casos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.casos_sin_historia}</strong><div className="text-muted">Casos sin historia</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.cobertura_historias_porcentaje}%</strong><div className="text-muted">Cobertura de historias</div></Col></Row><div className="table-responsive"><Table size="sm" className="mb-0 align-middle"><thead><tr><th>Requisito</th><th>Historia</th><th>Casos</th><th>Ultimo resultado</th></tr></thead><tbody>{traceabilityCoverage.items?.flatMap((requirement: any) => requirement.historias?.length ? requirement.historias.flatMap((story: any) => story.casos?.length ? story.casos.map((testCase: any) => <tr key={`${story.id}-${testCase.master_id}`}><td><span className="fw-bold">{requirement.codigo}</span><div className="small text-muted">{requirement.titulo}</div></td><td><span className="fw-bold">{story.codigo}</span><div className="small text-muted">{story.titulo}</div></td><td>{testCase.codigo} · {testCase.titulo}</td><td>{testCase.ultimo_resultado || 'Sin ejecutar'}</td></tr>) : <tr key={story.id}><td>{requirement.codigo}</td><td>{story.codigo} · {story.titulo}</td><td className="text-muted">Sin casos</td><td>-</td></tr>) : <tr key={requirement.id}><td>{requirement.codigo} · {requirement.titulo}</td><td className="text-muted">Sin historias</td><td>-</td><td>-</td></tr>)}</tbody></Table></div></> : <span className="small text-muted">No hay datos de trazabilidad disponibles.</span>}
+          </Card.Body>
+        </Card>
+      )}
 
       {metricsLoading ? (
         <div className="text-center py-5">

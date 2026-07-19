@@ -60,11 +60,12 @@ else:
 USER_ASSIGNABLE_EXCLUDED_MODULES = {"clientes"}
 ATTACHMENT_CONFIG_KEY = "attachments"
 AI_ENGINE_CONFIG_KEY = "ai_engine"
+AI_AGENT_EVIDENCE_RULE = "Regla de evidencia: decide solo con DOM, screenshot, datos del caso, variables, historial o respuestas verificables. No inventes informacion; si falta evidencia, baja confianza o bloquea indicando el dato faltante."
 DEFAULT_AI_AGENT_WORKFLOW = [
-    {"id": "AI_AGENT", "name": "Agente IA", "enabled": True, "locked": True, "action": "plan_action", "retry_limit": 0, "prompt": "Sos un agente QA que controla un navegador real. Ejecuta solo el paso actual. Responde solo JSON con action, target_ref, value, reason, expected, confidence y step_number. No inventes target_ref ni copies ejemplos."},
-    {"id": "QA_GUARD", "name": "QA Guard", "enabled": True, "locked": True, "action": "validate_action", "retry_limit": 0, "prompt": "Rol: Agente QA Guard de seguridad de ejecucion. Evita alucinaciones, acciones irrelevantes, navegacion externa accidental y waits inutiles. Aprueba solo acciones coherentes con el objetivo y el DOM."},
-    {"id": "SENTINEL", "name": "Sentinel", "enabled": True, "locked": True, "action": "execute_action", "retry_limit": 2, "prompt": "Rol: Agente centinela. Ejecuta acciones validadas, detecta estados de carga, errores visibles y valida estabilidad despues de cada accion antes de continuar."},
-    {"id": "AUDITOR", "name": "Auditor", "enabled": True, "locked": True, "action": "final_audit", "retry_limit": 0, "prompt": "Auditoria de QA Senior final. Evalua historial, screenshot final y resultado esperado. Responde solo JSON con status, reason y confidence. Usa PASSED, FAILED, BLOCKED o SKIPPED."},
+    {"id": "AI_AGENT", "name": "Agente IA", "enabled": True, "locked": True, "action": "plan_action", "retry_limit": 0, "prompt": f"Sos un agente QA que controla un navegador real. Ejecuta solo el paso actual. Responde solo JSON con action, target_ref, value, reason, expected, confidence y step_number. No inventes target_ref ni copies ejemplos. {AI_AGENT_EVIDENCE_RULE}"},
+    {"id": "QA_GUARD", "name": "QA Guard", "enabled": True, "locked": True, "action": "validate_action", "retry_limit": 0, "prompt": f"Rol: Agente QA Guard de seguridad de ejecucion. Evita alucinaciones, acciones irrelevantes, navegacion externa accidental y waits inutiles. Aprueba solo acciones coherentes con el objetivo y el DOM. {AI_AGENT_EVIDENCE_RULE}"},
+    {"id": "SENTINEL", "name": "Sentinel", "enabled": True, "locked": True, "action": "execute_action", "retry_limit": 2, "prompt": f"Rol: Agente centinela. Ejecuta acciones validadas, detecta estados de carga, errores visibles y valida estabilidad despues de cada accion antes de continuar. {AI_AGENT_EVIDENCE_RULE}"},
+    {"id": "AUDITOR", "name": "Auditor", "enabled": True, "locked": True, "action": "final_audit", "retry_limit": 0, "prompt": f"Auditoria de QA Senior final. Evalua historial, screenshot final y resultado esperado. Responde solo JSON con status, reason y confidence. Usa PASSED, FAILED, BLOCKED o SKIPPED. {AI_AGENT_EVIDENCE_RULE}"},
 ]
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 ATTACHMENTS_DIR = str(BACKEND_DIR / "app" / "static" / "attachments")
@@ -116,9 +117,15 @@ DEFAULT_AI_ENGINE_CONFIG = {
     "token_cost_per_1k": 0.01,
     "model_capabilities": {},
     "model_catalog": [],
+    "provider_api_keys": {},
+    "provider_api_key_configured": False,
+    "provider_api_key_source": None,
     "auto_scan_enabled": False,
     "last_model_scan_at": None,
     "last_model_scan_status": None,
+    "last_model_scan_requires_api_key": False,
+    "last_model_scan_api_key_env": None,
+    "last_model_scan_api_key_configured": False,
     "agent_workflow": DEFAULT_AI_AGENT_WORKFLOW,
     "active_workflow_id": None,
 }

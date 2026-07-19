@@ -1,6 +1,8 @@
 import { memo, useMemo, useState } from 'react'
 import { Button, Dropdown } from 'react-bootstrap'
 import { Archive, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FileText, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, PlusCircle, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
+import { compareTestsBySuiteOrder } from './testOrdering'
+import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 
 type SuiteTreeProps = {
   suites: any[]
@@ -51,12 +53,6 @@ const naturalCompare = (left: any, right: any) =>
     sensitivity: 'base'
   })
 
-const compareTestsByTitle = (left: any, right: any) =>
-  naturalCompare(left.title, right.title)
-  || naturalCompare(left.code, right.code)
-  || naturalCompare(left.createdAt || left.fecha_creacion, right.createdAt || right.fecha_creacion)
-  || naturalCompare(left.id, right.id)
-
 const compareSuitesByName = (left: any, right: any) =>
   naturalCompare(left.nombre || left.name, right.nombre || right.name)
   || naturalCompare(left.id, right.id)
@@ -104,6 +100,7 @@ const SuiteTreeNode = ({
   visited?: Set<string>
 }) => {
   if (!suite?.id || visited.has(suite.id)) return null
+  const isUnsuitedRoot = suite.id === UNSUITED_CASES_ROOT_ID
   const childVisited = new Set(visited)
   childVisited.add(suite.id)
   const {
@@ -140,27 +137,38 @@ const SuiteTreeNode = ({
     openSuiteDropdown,
     onToggleSuiteDropdown
   } = props
-  const isExpanded = expandedSuites[suite.id]
+  const isExpanded = isUnsuitedRoot ? expandedSuites[suite.id] !== false : expandedSuites[suite.id]
   const isSelected = selectedSuiteId === suite.id || selectedSubSuiteId === suite.id
   const query = testSearchQuery.trim().toLowerCase()
   const suiteTests = casosList
-    .filter(test => test.suiteId === suite.id)
+    .filter(test => isUnsuitedRoot ? !test.suiteId : test.suiteId === suite.id)
     .filter(test => !currentCompId || test.componentId === currentCompId)
     .filter(test => !query || test.title.toLowerCase().includes(query) || test.id.toLowerCase().includes(query) || (test.code || '').toLowerCase().includes(query) || (test.tags || []).some((tag: string) => tag.toLowerCase().includes(query)))
-    .sort(compareTestsByTitle)
-  const shouldShowTests = isExpanded || isSelected || query !== ''
+    .sort(compareTestsBySuiteOrder)
+  const hasChildSuites = (suite.children || []).length > 0
+  const hasExpandableContent = hasChildSuites || suiteTests.length > 0
+  // Selection identifies the active suite; only expansion controls its contents.
+  const shouldShowTests = isExpanded || query !== ''
   const metrics = showMetrics && getSuiteMetrics ? getSuiteMetrics(suite.id) : null
   const hasMetricResults = !!metrics && (metrics.passed > 0 || metrics.failed > 0 || metrics.blocked > 0 || metrics.pending > 0)
   const suiteTreeIds = collectSuiteIds(suite)
   const descendantSuiteCount = Math.max(0, suiteTreeIds.length - 1)
   const cumulativeTestCount = casosList.filter(test =>
-    suiteTreeIds.includes(test.suiteId) && (!currentCompId || test.componentId === currentCompId)
+    (isUnsuitedRoot ? !test.suiteId : suiteTreeIds.includes(test.suiteId)) && (!currentCompId || test.componentId === currentCompId)
   ).length
   const showCountChips = !showMetrics && (descendantSuiteCount > 0 || cumulativeTestCount > 0)
   const suiteColor = suite.color || '#F1F5F9'
   const SuiteIcon = suiteIconMap[suite.icono || suite.icon || 'folder'] || Folders
   const suiteFullName = String(suite.nombre || suite.name || 'Sin nombre')
-  const suiteTooltip = `Carpeta: ${suiteFullName}`
+  const suiteTooltip = isUnsuitedRoot
+    ? `Casos sin suite. Clic para ${isExpanded ? 'contraer' : 'desplegar'}.`
+    : hasExpandableContent
+      ? `Carpeta: ${suiteFullName}. Clic para ${isExpanded ? 'contraer' : 'desplegar'}.`
+      : `Carpeta: ${suiteFullName}`
+  const handleSuiteToggle = () => {
+    onSelectSuite(suite.id)
+    onToggleSuite(suite.id)
+  }
   const getTestTone = (test: any) => {
     const raw = String(test?.lastResult || test?.status || '').toLowerCase()
     if (['passed', 'ok', 'paso'].includes(raw)) return { bg: '#ECFDF3', border: '#198754', icon: 'text-success' }
@@ -172,17 +180,22 @@ const SuiteTreeNode = ({
   return (
     <div className="mb-1">
       <div
-        onClick={() => {
-          onSelectSuite(suite.id)
-          onToggleSuite(suite.id)
+        onClick={handleSuiteToggle}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          handleSuiteToggle()
         }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={hasExpandableContent ? isExpanded : undefined}
         className={`p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${isSelected ? 'border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
         style={{ marginLeft: level * 16, minHeight: '38px', background: suiteColor }}
         title={suiteTooltip}
         aria-label={suiteTooltip}
       >
         <span className="flex-shrink-0 d-flex align-items-center justify-content-center me-2" style={{ width: '16px' }}>
-          {suite.children && suite.children.length > 0 ? (
+          {hasExpandableContent ? (
             isExpanded ? <ChevronDown size={14} className={isSelected ? 'text-primary' : 'text-muted'} /> : <ChevronRight size={14} className="text-muted" />
           ) : (
             <div style={{ width: '14px' }} />
@@ -207,7 +220,7 @@ const SuiteTreeNode = ({
           </span>
         )}
 
-        {showActions && <div className="ms-auto pl-2 flex-shrink-0">
+        {showActions && !isUnsuitedRoot && <div className="ms-auto pl-2 flex-shrink-0">
           <Dropdown show={openSuiteDropdown === suite.id} onToggle={(isOpen) => onToggleSuiteDropdown?.(isOpen ? suite.id : null)} onClick={(e) => e.stopPropagation()}>
             <Dropdown.Toggle variant="link" size="sm" className="p-1 text-muted shadow-none border-0 hover-text-primary d-flex align-items-center flex-shrink-0">
               <Settings size={14} />
@@ -240,7 +253,7 @@ const SuiteTreeNode = ({
         </div>}
       </div>
 
-      {isExpanded && suite.children && suite.children.length > 0 && (
+      {isExpanded && hasChildSuites && (
         <div className="mt-1 border-start ms-3 ps-2 border-light-subtle">
           {suite.children.slice().sort(compareSuitesByName).filter((child: any) => child?.id !== suite.id && !childVisited.has(child?.id)).map((child: any) => (
             <SuiteTreeNode key={child.id} suite={child} level={level + 1} props={props} visited={childVisited} />
@@ -256,6 +269,8 @@ const SuiteTreeNode = ({
             const testCode = test.code || test.id.slice(0, 8).toUpperCase()
             const testFullName = String(test.title || 'Sin nombre')
             const testTooltip = `${testCode} - ${testFullName}`
+            const visibleTags = (test.tags || []).slice(0, 2)
+            const hiddenTagCount = Math.max(0, (test.tags || []).length - visibleTags.length)
             return (
             <div
               key={test.id}
@@ -263,7 +278,7 @@ const SuiteTreeNode = ({
                 e.stopPropagation()
                 onSelectTest(test, suite.id)
               }}
-              className={`py-1 px-2 rounded-2 d-flex align-items-center gap-1 cursor-pointer border text-dark ${isSelectedTest ? 'shadow-sm' : ''}`}
+              className={`py-1 px-2 rounded-2 d-flex align-items-center gap-1 cursor-pointer border text-dark suite-tree-case-row ${isSelectedTest ? 'shadow-sm' : ''}`}
               style={{ minHeight: '28px', background: isSelectedTest ? '#E7F1FF' : tone.bg, borderColor: isSelectedTest ? '#0D6EFD' : tone.border }}
               title={testTooltip}
               aria-label={testTooltip}
@@ -271,9 +286,16 @@ const SuiteTreeNode = ({
               <FileText size={12} className={`flex-shrink-0 ${isSelectedTest ? 'text-primary' : tone.icon}`} />
               <span className="font-monospace x-small fw-bold text-secondary flex-shrink-0">{testCode}</span>
               <span className="x-small text-truncate flex-grow-1" title={testTooltip} aria-label={testTooltip}>{testFullName}</span>
-              {(test.tags || []).slice(0, 2).map((tag: string) => (
-                <span key={tag} className="badge bg-light text-primary border x-small flex-shrink-0">{tag}</span>
-              ))}
+              <span className="suite-tree-case-tags d-inline-flex align-items-center gap-1">
+                {visibleTags.map((tag: string) => (
+                  <span key={tag} className="badge bg-light text-primary border x-small suite-tree-case-tag" title={tag}>{tag}</span>
+                ))}
+                {hiddenTagCount > 0 && (
+                  <span className="badge bg-light text-secondary border x-small flex-shrink-0" title={(test.tags || []).slice(visibleTags.length).join(', ')}>
+                    +{hiddenTagCount}
+                  </span>
+                )}
+              </span>
               {test.isOutdatedVersion && (
                 <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle x-small flex-shrink-0">v{test.version}-&gt;v{test.latestVersion}</span>
               )}
@@ -285,7 +307,7 @@ const SuiteTreeNode = ({
                   as="button"
                   type="button"
                   bsPrefix="suite-tree-case-actions-toggle"
-                  className="text-muted flex-shrink-0 d-inline-flex align-items-center justify-content-center"
+                  className="text-muted suite-tree-case-actions d-inline-flex align-items-center justify-content-center"
                   title="Opciones del caso"
                   aria-label={`Opciones del caso: ${testTooltip}`}
                 >
@@ -350,8 +372,20 @@ export const SuiteTree = memo((props: SuiteTreeProps) => {
     onToggleSuiteDropdown: props.onToggleSuiteDropdown ?? setLocalOpenSuiteDropdown,
   }), [props, localOpenTestDropdown, localOpenSuiteDropdown])
 
+  const hasUnsuitedCases = props.casosList.some(test =>
+    !test?.suiteId && (!props.currentCompId || test.componentId === props.currentCompId)
+  )
+  const unsuitedRoot = {
+    id: UNSUITED_CASES_ROOT_ID,
+    nombre: 'Casos sin suite',
+    icono: 'file-check',
+    color: '#F8FAFC',
+    children: []
+  }
+
   return (
     <>
+      {hasUnsuitedCases && <SuiteTreeNode suite={unsuitedRoot} level={0} props={mergedProps} />}
       {props.suites.slice().sort(compareSuitesByName).map((suite: any) => (
         <SuiteTreeNode key={suite.id} suite={suite} level={0} props={mergedProps} />
       ))}

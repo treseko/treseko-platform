@@ -24,13 +24,35 @@ const POLL_INTERVAL_MS = Number(process.env.QA_POLL_INTERVAL_MS || 3000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.QA_HEARTBEAT_INTERVAL_MS || 10000);
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 10000);
 const HEADLESS = String(process.env.QA_HEADLESS || "true").toLowerCase() !== "false";
-const ARTIFACT_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt"]);
+const ARTIFACT_MAX_BYTES = 10 * 1024 * 1024;
+const ARTIFACT_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".txt",
+  ".json",
+  ".csv",
+  ".xml",
+  ".pdf",
+  ".zip",
+  ".xls",
+  ".xlsx",
+  ".doc",
+  ".docx",
+  ".ppt",
+  ".pptx",
+  ".mp4",
+  ".webm",
+]);
 const RUNNER_NAME = process.env.QA_RUNNER_NAME || os.hostname() || "Local Playwright Worker";
 const MAX_PARALLEL_JOBS = Number(process.env.QA_MAX_PARALLEL_JOBS || 1);
 const TAGS = String(process.env.QA_RUNNER_TAGS || "local,v1,playwright")
   .split(",")
   .map((item) => item.trim())
   .filter(Boolean);
+const WORKER_VERSION = readWorkerVersion();
 
 let runnerToken = process.env.QA_RUNNER_TOKEN || readTokenFile();
 let runnerId = "";
@@ -46,6 +68,32 @@ function localIps() {
     }
   }
   return ips;
+}
+
+function readWorkerVersion() {
+  const candidates = [
+    process.env.TRESEKO_WORKER_VERSION,
+    process.env.TRESEKO_VERSION,
+    process.env.npm_package_version,
+    path.join(ROOT_DIR, "VERSION"),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (!String(candidate).includes("/") && !String(candidate).includes("\\")) return String(candidate).trim();
+    try {
+      if (fs.existsSync(candidate)) {
+        const version = fs.readFileSync(candidate, "utf8").trim();
+        if (version) return version;
+      }
+    } catch (_) {
+      // Version lookup must not prevent worker startup.
+    }
+  }
+  try {
+    return require(path.join(ROOT_DIR, "package.json")).version || "0.0.0-dev";
+  } catch (_) {
+    return "0.0.0-dev";
+  }
 }
 
 function traceEnabled() {
@@ -135,11 +183,24 @@ function contentTypeForFile(filePath) {
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
   if (ext === ".txt") return "text/plain";
+  if (ext === ".json") return "application/json";
+  if (ext === ".csv") return "text/csv";
+  if (ext === ".xml") return "application/xml";
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".zip") return "application/zip";
+  if (ext === ".xls") return "application/vnd.ms-excel";
+  if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (ext === ".doc") return "application/msword";
+  if (ext === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (ext === ".ppt") return "application/vnd.ms-powerpoint";
+  if (ext === ".pptx") return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (ext === ".mp4") return "video/mp4";
+  if (ext === ".webm") return "video/webm";
   return "application/octet-stream";
 }
 
 function artifactFromBuffer({ filename, contentType = "image/png", buffer, type = "screenshot", stepNumber = null }) {
-  if (!buffer?.length) return null;
+  if (!buffer?.length || buffer.length > ARTIFACT_MAX_BYTES) return null;
   return {
     type,
     filename,
@@ -152,7 +213,7 @@ function artifactFromBuffer({ filename, contentType = "image/png", buffer, type 
 function artifactFromFile(filePath, type = "screenshot") {
   try {
     const stat = fs.statSync(filePath);
-    if (!stat.isFile() || stat.size <= 0 || stat.size > 10 * 1024 * 1024) return null;
+    if (!stat.isFile() || stat.size <= 0 || stat.size > ARTIFACT_MAX_BYTES) return null;
     return artifactFromBuffer({
       filename: path.basename(filePath),
       contentType: contentTypeForFile(filePath),
@@ -178,7 +239,14 @@ function collectArtifacts(rootDir) {
       if (entry.isDirectory()) {
         visit(fullPath);
       } else if (ARTIFACT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-        const artifact = artifactFromFile(fullPath, path.extname(entry.name).toLowerCase() === ".txt" ? "log" : "screenshot");
+        if (entry.name === ".last-run.json") continue;
+        const ext = path.extname(entry.name).toLowerCase();
+        const artifactType = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext)
+          ? "screenshot"
+          : ext === ".json" && entry.name.toLowerCase().includes("report")
+            ? "report"
+            : "evidence";
+        const artifact = artifactFromFile(fullPath, artifactType);
         if (artifact) artifacts.push(artifact);
       }
     }
@@ -399,6 +467,7 @@ function capabilities() {
     selenium: ["python"],
   };
   const versions = {
+    automation_worker: WORKER_VERSION,
     playwright: getPlaywrightVersion(),
     puppeteer: getPackageVersion("puppeteer"),
     cypress: getPackageVersion("cypress"),
@@ -406,6 +475,9 @@ function capabilities() {
   };
   return {
     frameworks: ["playwright", "puppeteer", "cypress", "selenium"],
+    component: "automation-worker",
+    component_version: WORKER_VERSION,
+    worker_version: WORKER_VERSION,
     framework_languages: frameworkLanguages,
     languages: frameworkLanguages,
     language_status: {
@@ -682,7 +754,7 @@ function processResultPayload({ job, framework, started, result, successObservat
       os: os.type(),
       ...metadata,
     },
-    artifacts: status === "PASSED" ? [] : artifacts,
+    artifacts,
     steps: [],
   };
 }
@@ -863,6 +935,40 @@ function summarizePlaywrightReport(report, stderr = "") {
   return { text: lines.join("\n"), tests };
 }
 
+function compactPlaywrightMetadata(report, tests = []) {
+  const stats = report?.stats || {};
+  return {
+    status: playwrightReportStatus(report, tests),
+    stats: {
+      start_time: stats.startTime || null,
+      duration_ms: Math.round(Number(stats.duration || 0)),
+      expected: Number(stats.expected || 0),
+      unexpected: Number(stats.unexpected || 0),
+      skipped: Number(stats.skipped || 0),
+      flaky: Number(stats.flaky || 0),
+    },
+    tests: tests.slice(0, 50).map((test) => ({
+      title: test.title,
+      status: test.status,
+      expected_status: test.expected_status,
+      duration_ms: test.duration_ms,
+      retry: test.retry,
+      errors_count: Array.isArray(test.errors) ? test.errors.length : 0,
+    })),
+    errors_count: Array.isArray(report?.errors) ? report.errors.length : 0,
+  };
+}
+
+function playwrightReportArtifact(report, job) {
+  if (!report) return null;
+  return artifactFromBuffer({
+    filename: `playwright-report-${String(job.id).slice(0, 8)}.json`,
+    contentType: "application/json",
+    buffer: Buffer.from(JSON.stringify(report, null, 2), "utf8"),
+    type: "report",
+  });
+}
+
 async function executePlaywrightTestJob(job, script, variables, started) {
   const payload = job.payload_congelado || {};
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-"));
@@ -908,7 +1014,6 @@ async function executePlaywrightTestJob(job, script, variables, started) {
     const summary = summarizePlaywrightReport(report, result.stderr);
     const combined = [
       summary?.text,
-      report ? `\nReporte JSON de Playwright:\n${JSON.stringify(report, null, 2)}` : null,
       !report ? result.stdout : null,
       result.stderr,
     ].filter(Boolean).join("\n");
@@ -934,13 +1039,15 @@ async function executePlaywrightTestJob(job, script, variables, started) {
         framework: payload.framework || "playwright",
         framework_version: getPlaywrightVersion(),
         script_format: "playwright_test",
-        playwright_report: report,
-        playwright_tests: summary?.tests || [],
+        playwright_report: report ? compactPlaywrightMetadata(report, summary?.tests || []) : null,
         headless: shouldRunHeadless(job),
         debug_mode: isDebugMode(job),
         os: os.type(),
       },
-      artifacts: status === "PASSED" ? [] : collectArtifacts(workspace),
+      artifacts: [
+        playwrightReportArtifact(report, job),
+        ...collectArtifacts(workspace),
+      ].filter(Boolean),
       steps: [],
     };
   } finally {

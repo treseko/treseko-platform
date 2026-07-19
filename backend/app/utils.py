@@ -2,6 +2,7 @@ import base64
 import binascii
 import logging
 import os
+from pathlib import Path
 from uuid import UUID
 from typing import Optional
 
@@ -10,7 +11,7 @@ from .services.error_sanitizer import sanitize_external_error
 
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = "app/static/evidencias"
+STATIC_DIR = Path(__file__).resolve().parent / "static" / "evidencias"
 MAX_EVIDENCE_IMAGE_BASE64_LENGTH = 16 * 1024 * 1024
 MAX_EVIDENCE_IMAGE_BYTES = 12 * 1024 * 1024
 ALLOWED_IMAGE_SIGNATURES = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"RIFF")

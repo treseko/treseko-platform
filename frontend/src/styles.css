@@ -2264,10 +2264,94 @@ button.theme-choice.is-selected,
   gap: 10px;
   text-align: left;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.workflow-agent-card:active {
+  cursor: grabbing;
 }
 
 .workflow-agent-card:disabled {
   opacity: 0.55;
+}
+
+.workflow-pending-agent {
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px dashed #1455FF;
+  border-radius: 8px;
+  background: #F2F6FF;
+  color: #1646B8;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.workflow-canvas[data-placement-active="true"] {
+  cursor: copy;
+}
+
+.workflow-drop-status {
+  position: absolute;
+  z-index: 15;
+  left: 16px;
+  bottom: 16px;
+  max-width: min(440px, calc(100% - 32px));
+  padding: 9px 12px;
+  border: 1px solid #94A3B8;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #F8FAFC;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.workflow-drop-status.is-valid {
+  border-color: #16A34A;
+  background: rgba(20, 83, 45, 0.94);
+}
+
+.workflow-drop-preview {
+  position: absolute;
+  z-index: 20;
+  width: 176px;
+  padding: 9px 11px;
+  border: 2px dashed #1455FF;
+  border-radius: 10px;
+  background: rgba(239, 246, 255, 0.96);
+  color: #123C9D;
+  box-shadow: 0 12px 26px rgba(20, 85, 255, 0.16);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.workflow-drop-preview span,
+.workflow-drop-preview small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-drop-preview span { font-weight: 800; }
+.workflow-drop-preview small { color: #5270B5; }
+
+.workflow-graph-save-state {
+  color: #64748B;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.workflow-graph-save-state.is-saving { color: #1D4ED8; }
+.workflow-graph-save-state.is-saved { color: #047857; }
+.workflow-graph-save-state.is-error { color: #BE123C; }
+
+.workflow-undo-button {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .workflow-agent-icon,
@@ -2378,7 +2462,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-status-dot-blocked {
-  background: #F97316;
+  background: #2563EB;
 }
 
 .workflow-status-border-pending,
@@ -2403,7 +2487,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-status-border-blocked {
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12), 0 14px 32px rgba(15, 23, 42, 0.10);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12), 0 14px 32px rgba(15, 23, 42, 0.10);
 }
 
 .workflow-agent-bg-blue { background: #DBEAFE; }
@@ -3465,6 +3549,30 @@ button.theme-choice.is-selected,
   line-height: 1;
 }
 
+.suite-tree-case-row {
+  min-width: 0;
+}
+
+.suite-tree-case-tags {
+  min-width: 0;
+  max-width: 44%;
+  overflow: hidden;
+  flex: 0 1 auto;
+}
+
+.suite-tree-case-tag {
+  display: inline-block;
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+.suite-tree-case-actions {
+  flex: 0 0 26px;
+}
+
 .suite-tree-case-actions-toggle::after {
   display: none;
 }
@@ -3743,5 +3851,54 @@ button.theme-choice.is-selected,
 
   .update-maintenance-panel .btn {
     justify-self: stretch;
+  }
+}
+.traceability-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.traceability-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.traceability-toolbar-actions .form-select {
+  width: 160px;
+}
+
+.traceability-toolbar-actions .btn {
+  white-space: nowrap;
+}
+
+.traceability-component-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--bs-light-bg-subtle);
+}
+
+@media (max-width: 900px) {
+  .traceability-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .traceability-toolbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .traceability-toolbar-actions .form-select {
+    flex: 1 1 150px;
+    width: auto;
   }
 }

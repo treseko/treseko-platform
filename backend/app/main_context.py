@@ -294,18 +294,19 @@ class SecureEvidenceStaticFiles(StaticFiles):
 
     @staticmethod
     async def _authorize_attachment(db: AsyncSession, user: models.Usuario, public_url: str) -> None:
-        attachment = (await db.execute(
+        attachments = (await db.execute(
             select(models.Attachment).filter(models.Attachment.public_url == public_url)
-        )).scalar_one_or_none()
-        if not attachment:
+        )).scalars().all()
+        if not attachments:
             raise HTTPException(status_code=404, detail="Evidencia no encontrada")
+        attachment_ids = [attachment.id for attachment in attachments]
 
         project_ids: set = set()
         step_rows = (await db.execute(
             select(models.CasoPrueba.proyecto_id)
             .join(models.PasoPrueba, models.PasoPrueba.caso_id == models.CasoPrueba.id)
             .join(models.PasoAttachment, models.PasoAttachment.paso_id == models.PasoPrueba.id)
-            .filter(models.PasoAttachment.attachment_id == attachment.id)
+            .filter(models.PasoAttachment.attachment_id.in_(attachment_ids))
         )).scalars().all()
         project_ids.update(step_rows)
 
@@ -314,18 +315,18 @@ class SecureEvidenceStaticFiles(StaticFiles):
             .join(models.EjecucionCaso, models.EjecucionCaso.test_run_id == models.TestRun.id)
             .join(models.SnapshotPaso, models.SnapshotPaso.ejecucion_caso_id == models.EjecucionCaso.id)
             .join(models.SnapshotAttachment, models.SnapshotAttachment.snapshot_id == models.SnapshotPaso.id)
-            .filter(models.SnapshotAttachment.attachment_id == attachment.id)
+            .filter(models.SnapshotAttachment.attachment_id.in_(attachment_ids))
         )).scalars().all()
         project_ids.update(snapshot_rows)
 
         bug_rows = (await db.execute(
             select(models.BugIssue.proyecto_id)
             .join(models.BugAttachment, models.BugAttachment.bug_id == models.BugIssue.id)
-            .filter(models.BugAttachment.attachment_id == attachment.id)
+            .filter(models.BugAttachment.attachment_id.in_(attachment_ids))
         )).scalars().all()
         project_ids.update(bug_rows)
 
-        if not project_ids and attachment.created_by == user.id:
+        if not project_ids and any(attachment.created_by == user.id for attachment in attachments):
             return
         for project_id in project_ids:
             try:

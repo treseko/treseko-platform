@@ -31,8 +31,11 @@ type ProyectosRouteProps = {
   componentsList: any[]
   buildsList: any[]
   canEditCurrentProject: boolean
+  traceabilityRefreshToken: number
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
+  confirmAction: (options: { title: string, message: string, variant?: 'danger' | 'warning' | 'info', confirmLabel?: string, cancelLabel?: string | null }) => Promise<boolean>
+  onCreateCaseFromStory: (story: any, requirement: any) => void
 }
 
 export function ProyectosRoute({
@@ -66,8 +69,11 @@ export function ProyectosRoute({
   componentsList,
   buildsList,
   canEditCurrentProject,
+  traceabilityRefreshToken,
   fetchWithAuth,
   showFeedback,
+  confirmAction,
+  onCreateCaseFromStory,
 }: ProyectosRouteProps) {
   return (
     <ProyectosPage
@@ -90,6 +96,7 @@ export function ProyectosRoute({
       handleProjectChange={handleProjectChange}
       handleUpdateProject={projectActions.handleUpdateProject}
       canEditCurrentProject={canEditCurrentProject}
+      traceabilityRefreshToken={traceabilityRefreshToken}
       projectMembers={projectMemberState.projectMembers}
       handleAddProjectMember={projectMemberActions.handleAddProjectMember}
       handleRemoveProjectMember={projectMemberActions.handleRemoveProjectMember}
@@ -128,6 +135,8 @@ export function ProyectosRoute({
       handleSaveWikiPage={wikiActions.handleSaveWikiPage}
       fetchWithAuth={fetchWithAuth}
       showFeedback={showFeedback}
+      confirmAction={confirmAction}
+      onCreateCaseFromStory={onCreateCaseFromStory}
     />
   )
 }

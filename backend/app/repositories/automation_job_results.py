@@ -18,7 +18,7 @@ async def complete_automation_job(db: AsyncSession, job: models.AutomationJob, p
     if (job.job_type or "EXECUTION") == "DRY_RUN":
         persisted_artifacts = await _persist_automation_artifacts(db, job, payload.artifacts)
         if persisted_artifacts:
-            metadata_resultado["artifacts"] = persisted_artifacts
+            metadata_resultado = {**metadata_resultado, "artifacts": persisted_artifacts}
             job.metadata_resultado = metadata_resultado
         if job.runner:
             job.runner.estado = "ONLINE"
@@ -126,7 +126,7 @@ async def complete_automation_job(db: AsyncSession, job: models.AutomationJob, p
             default_snapshot=default_artifact_snapshot,
         )
         if persisted_artifacts:
-            metadata_resultado["artifacts"] = persisted_artifacts
+            metadata_resultado = {**metadata_resultado, "artifacts": persisted_artifacts}
             job.metadata_resultado = metadata_resultado
 
         case_result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == execution.caso_id))

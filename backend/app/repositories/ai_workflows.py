@@ -1,4 +1,7 @@
-from .legacy_common import *
+from .repository_context import *
+from .ai_agent_definitions import definition_by_key, ensure_ai_agent_definitions
+from .ai_universal_agents import ensure_legacy_universal_adapter
+from .ai_workflow_validation import validate_workflow_graph
 
 
 async def create_ai_workflow_version(
@@ -75,6 +78,7 @@ async def publish_ai_workflow_version(
 
 
 async def ensure_default_ai_workflow(db: AsyncSession, created_by: Optional[UUID] = None) -> models.AiWorkflow:
+    await ensure_ai_agent_definitions(db)
     default_id = _default_workflow_uuid("qa-agent-workflow-default")
     workflow = await _load_workflow(db, default_id)
     if not workflow:
@@ -90,12 +94,14 @@ async def ensure_default_ai_workflow(db: AsyncSession, created_by: Optional[UUID
         await db.flush()
         nodes_by_key: Dict[str, models.AiWorkflowNode] = {}
         for item in DEFAULT_AI_WORKFLOW_NODES:
+            definition = await definition_by_key(db, item["agent_key"])
             node = models.AiWorkflowNode(
                 id=_default_workflow_uuid(f"default-node-{item['key']}"),
                 workflow_id=workflow.id,
                 type=item["type"],
                 name=item["name"],
                 agent_key=item["agent_key"],
+                agent_definition_id=definition.id if definition else None,
                 enabled=True,
                 locked=True,
                 prompt_template=item.get("prompt_template") or "",
@@ -155,6 +161,7 @@ async def list_ai_workflows(db: AsyncSession) -> List[models.AiWorkflow]:
         select(models.AiWorkflow)
         .options(
             selectinload(models.AiWorkflow.nodes).selectinload(models.AiWorkflowNode.prompt_versions),
+            selectinload(models.AiWorkflow.nodes).selectinload(models.AiWorkflowNode.universal_agent_version),
             selectinload(models.AiWorkflow.edges),
         )
         .order_by(models.AiWorkflow.is_default.desc(), models.AiWorkflow.updated_at.desc())
@@ -200,12 +207,19 @@ async def _replace_workflow_graph(
     for item in nodes:
         node_id = item.id or uuid.uuid4()
         node_ids.add(node_id)
+        definition = None
+        if item.agent_definition_id:
+            definition = (await db.execute(select(models.AiAgentDefinition).filter(models.AiAgentDefinition.id == item.agent_definition_id))).scalar_one_or_none()
+        if not definition:
+            definition = await definition_by_key(db, item.agent_key)
         node = models.AiWorkflowNode(
             id=node_id,
             workflow_id=workflow.id,
             type=item.type,
             name=item.name,
             agent_key=item.agent_key,
+            agent_definition_id=definition.id if definition else item.agent_definition_id,
+            universal_agent_version_id=item.universal_agent_version_id,
             enabled=item.enabled,
             locked=item.locked,
             prompt_template=item.prompt_template or "",
@@ -252,42 +266,67 @@ async def _replace_workflow_graph(
             workflow_id=workflow.id,
             source_node_id=item.source_node_id,
             target_node_id=item.target_node_id,
+            source_handle=item.source_handle,
+            target_handle=item.target_handle,
             condition_type=item.condition_type,
             condition_json=item.condition_json or {},
             priority=item.priority,
             max_passes=item.max_passes,
+            data_mapping_json=item.data_mapping_json or [],
         ))
 
 
 async def create_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowCreate, user_id: Optional[UUID]) -> models.AiWorkflow:
+    await ensure_ai_agent_definitions(db)
+    if str(payload.status).upper() not in {"DRAFT", "INVALID"}:
+        raise ValueError("Los workflows nuevos deben crearse como borrador; publica y activa una version despues.")
     workflow = models.AiWorkflow(
         name=payload.name,
         version=payload.version,
         status=payload.status,
         is_default=payload.is_default,
+        workflow_format=payload.workflow_format,
+        workflow_purpose=payload.workflow_purpose,
+        source_workflow_id=payload.source_workflow_id,
         created_by=user_id,
     )
     db.add(workflow)
     await db.flush()
     await _replace_workflow_graph(db, workflow, payload.nodes, payload.edges, user_id, payload.changelog or "Workflow creado")
     await db.flush()
+    issues = await validate_workflow_graph(db, workflow)
+    if workflow.status == "DRAFT" and any(issue["severity"] == "error" for issue in issues):
+        workflow.status = "INVALID"
     await db.commit()
     return await get_ai_workflow(db, workflow.id)
 
 
 async def update_ai_workflow(db: AsyncSession, workflow_id: UUID, payload: schemas.AiWorkflowUpdate, user_id: Optional[UUID]) -> models.AiWorkflow:
     workflow = await get_ai_workflow(db, workflow_id)
+    if workflow.status == "ACTIVE" and (payload.nodes is not None or payload.edges is not None):
+        raise ValueError("No se puede editar el workflow activo directamente; crea o clona un borrador.")
     if payload.name is not None:
         workflow.name = payload.name
     if payload.version is not None:
         workflow.version = payload.version
     if payload.status is not None:
+        if str(payload.status).upper() not in {"DRAFT", "ACTIVE", "ARCHIVED", "INVALID"}:
+            raise ValueError("Estado de workflow invalido")
+        if str(payload.status).upper() == "ACTIVE":
+            raise ValueError("La activacion debe hacerse desde una version publicada.")
         workflow.status = payload.status
     if payload.is_default is not None:
         workflow.is_default = payload.is_default
+    if payload.workflow_format is not None and payload.workflow_format != workflow.workflow_format:
+        raise ValueError("El formato del workflow es inmutable; crea una copia para cambiar de generacion.")
+    if payload.workflow_purpose is not None and payload.workflow_purpose != workflow.workflow_purpose:
+        raise ValueError("El propósito del workflow es inmutable; crea un workflow dedicado.")
     if payload.nodes is not None or payload.edges is not None:
         await _replace_workflow_graph(db, workflow, payload.nodes or [], payload.edges or [], user_id, payload.changelog or "Guardado draft")
     await db.flush()
+    issues = await validate_workflow_graph(db, workflow)
+    if workflow.status == "DRAFT" and any(issue["severity"] == "error" for issue in issues):
+        workflow.status = "INVALID"
     await db.commit()
     return await get_ai_workflow(db, workflow_id)
 
@@ -299,6 +338,9 @@ async def duplicate_ai_workflow(db: AsyncSession, workflow_id: UUID, user_id: Op
         version=max(1, source.version),
         status="DRAFT",
         is_default=False,
+        workflow_format=source.workflow_format or "legacy_v1",
+        workflow_purpose=source.workflow_purpose or "test_execution",
+        source_workflow_id=source.source_workflow_id,
         created_by=user_id,
     )
     db.add(workflow)
@@ -313,6 +355,8 @@ async def duplicate_ai_workflow(db: AsyncSession, workflow_id: UUID, user_id: Op
             type=source_node.type,
             name=source_node.name,
             agent_key=source_node.agent_key,
+            agent_definition_id=source_node.agent_definition_id,
+            universal_agent_version_id=source_node.universal_agent_version_id,
             enabled=source_node.enabled,
             locked=False,
             prompt_template=source_node.prompt_template,
@@ -330,12 +374,135 @@ async def duplicate_ai_workflow(db: AsyncSession, workflow_id: UUID, user_id: Op
             workflow_id=workflow.id,
             source_node_id=id_map[source_edge.source_node_id],
             target_node_id=id_map[source_edge.target_node_id],
+            source_handle=source_edge.source_handle,
+            target_handle=source_edge.target_handle,
             condition_type=source_edge.condition_type,
             condition_json=source_edge.condition_json or {},
             priority=source_edge.priority,
             max_passes=source_edge.max_passes,
+            data_mapping_json=source_edge.data_mapping_json or [],
         ))
     await db.flush()
+    await db.commit()
+    return await get_ai_workflow(db, workflow.id)
+
+
+async def copy_ai_workflow_as_blocks(db: AsyncSession, workflow_id: UUID, user_id: Optional[UUID]) -> models.AiWorkflow:
+    """Create a V2 draft without mutating the source graph or its history."""
+    # Upsert the V2 catalog first so this route is safe immediately after an
+    # upgrade, before a background/default-workflow bootstrap has run.
+    await ensure_ai_agent_definitions(db)
+    source = await get_ai_workflow(db, workflow_id)
+    workflow = models.AiWorkflow(
+        name=f"{source.name} - bloques",
+        version=1,
+        status="DRAFT",
+        is_default=False,
+        workflow_format="block_v2",
+        workflow_purpose=source.workflow_purpose or "test_execution",
+        source_workflow_id=source.id,
+        created_by=user_id,
+    )
+    db.add(workflow)
+    await db.flush()
+    id_map: Dict[UUID, UUID] = {}
+    for source_node in source.nodes:
+        definition = await definition_by_key(db, f"BLOCK_{source_node.agent_key}") or await definition_by_key(db, source_node.agent_key)
+        new_id = uuid.uuid4()
+        id_map[source_node.id] = new_id
+        config = {**(source_node.config_json or {}), "block_contract_version": "treseko.block/v1", "legacy_source_node_id": str(source_node.id)}
+        db.add(models.AiWorkflowNode(
+            id=new_id, workflow_id=workflow.id, type=source_node.type, name=source_node.name,
+            agent_key=definition.key if definition else source_node.agent_key,
+            agent_definition_id=definition.id if definition else source_node.agent_definition_id,
+            universal_agent_version_id=source_node.universal_agent_version_id,
+            enabled=source_node.enabled, locked=False, prompt_template=source_node.prompt_template,
+            config_json=config, position_x=source_node.position_x, position_y=source_node.position_y,
+            retry_policy=source_node.retry_policy or {}, timeout_sec=source_node.timeout_sec,
+            model_override=source_node.model_override, temperature_override=source_node.temperature_override,
+        ))
+    await db.flush()
+    for source_edge in source.edges:
+        db.add(models.AiWorkflowEdge(
+            workflow_id=workflow.id, source_node_id=id_map[source_edge.source_node_id], target_node_id=id_map[source_edge.target_node_id],
+            source_handle=source_edge.source_handle, target_handle=source_edge.target_handle,
+            condition_type=source_edge.condition_type, condition_json={**(source_edge.condition_json or {}), "contract": "cel-v1"},
+            priority=source_edge.priority, max_passes=source_edge.max_passes,
+            data_mapping_json=source_edge.data_mapping_json or [],
+        ))
+    await db.flush()
+    await create_ai_workflow_version(db, workflow, f"Copia V2 creada desde {source.name}", user_id)
+    await db.commit()
+    return await get_ai_workflow(db, workflow.id)
+
+
+async def copy_ai_workflow_as_universal(db: AsyncSession, workflow_id: UUID, user_id: Optional[UUID]) -> models.AiWorkflow:
+    """Create an explicit Universal v2 draft while preserving the source graph."""
+    source = await get_ai_workflow(db, workflow_id)
+    if source.workflow_format == "universal_v2":
+        return await duplicate_ai_workflow(db, workflow_id, user_id)
+    workflow = models.AiWorkflow(
+        name=f"{source.name} - universal",
+        version=1,
+        status="DRAFT",
+        is_default=False,
+        workflow_format="universal_v2",
+        workflow_purpose=source.workflow_purpose or "test_execution",
+        source_workflow_id=source.id,
+        created_by=user_id,
+    )
+    db.add(workflow)
+    await db.flush()
+    id_map: Dict[UUID, UUID] = {}
+    for source_node in source.nodes:
+        universal_version = await ensure_legacy_universal_adapter(
+            db,
+            source_node.agent_key,
+            source_node.name,
+            source_node.agent_definition.description if source_node.agent_definition else source_node.name,
+            user_id,
+        )
+        new_id = uuid.uuid4()
+        id_map[source_node.id] = new_id
+        db.add(models.AiWorkflowNode(
+            id=new_id,
+            workflow_id=workflow.id,
+            type=source_node.type,
+            name=source_node.name,
+            agent_key=f"UNIVERSAL_{str(source_node.agent_key).removeprefix('BLOCK_')}",
+            agent_definition_id=source_node.agent_definition_id,
+            universal_agent_version_id=universal_version.id,
+            enabled=source_node.enabled,
+            locked=False,
+            prompt_template=source_node.prompt_template,
+            config_json={
+                **(source_node.config_json or {}),
+                "universal_contract_version": "treseko.universal-agent/v1",
+                "legacy_source_node_id": str(source_node.id),
+            },
+            position_x=source_node.position_x,
+            position_y=source_node.position_y,
+            retry_policy=source_node.retry_policy or {},
+            timeout_sec=source_node.timeout_sec,
+            model_override=source_node.model_override,
+            temperature_override=source_node.temperature_override,
+        ))
+    await db.flush()
+    for source_edge in source.edges:
+        db.add(models.AiWorkflowEdge(
+            workflow_id=workflow.id,
+            source_node_id=id_map[source_edge.source_node_id],
+            target_node_id=id_map[source_edge.target_node_id],
+            source_handle=source_edge.source_handle,
+            target_handle=source_edge.target_handle,
+            condition_type=source_edge.condition_type,
+            condition_json=source_edge.condition_json or {},
+            priority=source_edge.priority,
+            max_passes=source_edge.max_passes,
+            data_mapping_json=source_edge.data_mapping_json or [],
+        ))
+    await db.flush()
+    await create_ai_workflow_version(db, workflow, f"Copia universal creada desde {source.name}", user_id)
     await db.commit()
     return await get_ai_workflow(db, workflow.id)
 
@@ -344,6 +511,8 @@ async def archive_ai_workflow(db: AsyncSession, workflow_id: UUID) -> models.AiW
     workflow = await get_ai_workflow(db, workflow_id)
     if workflow.is_default:
         raise ValueError("No se puede archivar el workflow default")
+    if workflow.status == "ACTIVE":
+        raise ValueError("No se puede archivar el workflow activo; activa otro workflow primero.")
     workflow.status = "ARCHIVED"
     await db.commit()
     return await get_ai_workflow(db, workflow_id)
@@ -353,7 +522,7 @@ async def restore_default_ai_workflow(db: AsyncSession, workflow_id: UUID, user_
     workflow = await get_ai_workflow(db, workflow_id)
     workflow.name = "QA Agent Workflow Default"
     workflow.version = max(1, workflow.version + 1)
-    workflow.status = "ACTIVE"
+    workflow.status = "DRAFT"
     workflow.is_default = True
     node_payloads = [
         schemas.AiWorkflowNodeBase(
@@ -386,5 +555,27 @@ async def restore_default_ai_workflow(db: AsyncSession, workflow_id: UUID, user_
     ]
     await _replace_workflow_graph(db, workflow, node_payloads, edge_payloads, user_id, "Restauracion de workflow default")
     await db.flush()
+    issues = await validate_workflow_graph(db, workflow)
+    if any(issue["severity"] == "error" for issue in issues):
+        await db.rollback()
+        raise ValueError("No se pudo restaurar el workflow default porque su grafo es invalido")
+    active_workflows = (await db.execute(
+        select(models.AiWorkflow).filter(
+            models.AiWorkflow.status == "ACTIVE",
+            models.AiWorkflow.id != workflow.id,
+        )
+    )).scalars().all()
+    for active_workflow in active_workflows:
+        active_workflow.status = "DRAFT"
+    workflow.status = "ACTIVE"
+    await create_ai_workflow_version(db, workflow, "Restauracion de workflow default", user_id)
+    config = await get_ai_engine_config(db)
+    config["active_workflow_id"] = workflow.id
+    config["agent_workflow"] = _legacy_agent_workflow_from_definition(_workflow_definition(await _load_workflow(db, workflow.id)))
+    setting = (await db.execute(select(models.AppSetting).filter(models.AppSetting.key == AI_ENGINE_CONFIG_KEY))).scalar_one_or_none()
+    if setting:
+        setting.value = _json_safe(config)
+    else:
+        db.add(models.AppSetting(key=AI_ENGINE_CONFIG_KEY, value=_json_safe(config)))
     await db.commit()
     return await get_ai_workflow(db, workflow_id)

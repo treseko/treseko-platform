@@ -17,7 +17,7 @@ El proceso que se vincula desde `Automatizacion > Workers` es `automation-worker
 
 ## Version
 
-La version del componente se lee desde `VERSION`, `TRESEKO_VERSION` o `package.json`. Debe mantenerse alineada con la version del producto Treseko, por ejemplo `0.9.0-rc.1`.
+La version del componente se lee desde `VERSION`, `TRESEKO_VERSION` o `package.json`. Debe mantenerse alineada con la version del producto Treseko, por ejemplo `1.0.0`.
 
 ## Evidencia local
 

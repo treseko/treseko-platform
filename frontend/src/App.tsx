@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { BuildCaseSelector } from './BuildCaseSelector'
 import { ScriptEditor } from './ScriptEditor'
 import { EvidenceUpload, type AttachmentMeta } from './EvidenceUpload'
-import { findSuiteById, flattenSuites, getRootSuiteId as getRootSuiteIdFromTree, getSuiteDepth as getSuiteDepthFromTree } from './testRepositoryUtils'
+import { findSuiteById, flattenSuites, getRootSuiteId as getRootSuiteIdFromTree, getSuiteDepth as getSuiteDepthFromTree, UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 import type { ConfirmDialogOptions, ConfirmDialogState } from './shared/components/ConfirmDialog'
 import { ConfiguracionRoute } from './app/ConfiguracionRoute'
 import { ProyectosRoute } from './app/ProyectosRoute'
@@ -317,8 +317,11 @@ export default function App() {
   const [newTestScript, setNewTestScript] = useState('')
   const [newTestFramework, setNewTestFramework] = useState('playwright')
   const [newTestLanguage, setNewTestLanguage] = useState('javascript')
+  const [pendingTraceabilityStoryIds, setPendingTraceabilityStoryIds] = useState<string[]>([])
   const [caseEditorBaseline, setCaseEditorBaseline] = useState('')
   const [caseEditorSaving, setCaseEditorSaving] = useState(false)
+  const [aiDryRunRunning, setAiDryRunRunning] = useState(false)
+  const aiDryRunInFlightRef = useRef(false)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     location: false,
     metadata: false,
@@ -360,6 +363,7 @@ export default function App() {
     newTestScript,
     newTestFramework,
     newTestLanguage,
+    pendingTraceabilityStoryIds,
     newTestSteps
   ])
   const hasUnsavedCaseChanges = caseEditorOpen && currentCaseEditorSnapshot !== caseEditorBaseline
@@ -398,7 +402,8 @@ export default function App() {
 
   // Estados para la gestión detallada de proyectos
   const [managingProjectId, setManagingProjectId] = useState<string | null>(null)
-  const [projectInnerTab, setProjectInnerTab] = useState<'config' | 'components' | 'envs' | 'wiki' | 'tickets'>('config')
+  const [projectInnerTab, setProjectInnerTab] = useState<'config' | 'components' | 'envs' | 'traceability' | 'wiki' | 'tickets'>('config')
+  const [traceabilityRefreshToken, setTraceabilityRefreshToken] = useState(0)
 
   // Estados para el módulo wiki
   const [wikiPages, setWikiPages] = useState<any[]>(ALLOW_LOCAL_FALLBACK ? initialWikiPages : []);
@@ -1069,6 +1074,13 @@ export default function App() {
   const getSuiteDepth = (suiteId: string) => getSuiteDepthFromTree(suitesTree, suiteId)
   const selectSuiteTarget = (suiteId: string) => {
     if (!suiteId) return
+    if (suiteId === UNSUITED_CASES_ROOT_ID) {
+      setSelectedSuiteId(suiteId)
+      setSelectedSubSuiteId(suiteId)
+      setNewTestSuite('')
+      setNewTestSuiteSub('')
+      return
+    }
     setSelectedSuiteId(suiteId)
     setSelectedSubSuiteId(suiteId)
     setNewTestSuite(getRootSuiteId(suiteId))
@@ -1344,6 +1356,7 @@ export default function App() {
     executionRunDetail,
     executionRunDetailLoading,
     executionRunDetailError,
+    focusedExecutionId,
     openExecutionRunDetail,
     closeExecutionRunDetail,
   } = useExecutionRunDetail({ loadTestRunDetail })
@@ -1738,7 +1751,14 @@ export default function App() {
   }, [activeBuildCaseIds, buildCaseIds, currentBuildId, loadBuildCaseExecutionStatus])
 
   const { handleRunSavedAutomatedCaseFromEditor, handleRunAiDryRunFromEditor } = createExecutionDryRunActions({
-    currentProjectId, fetchWithAuth, setAutomationMonitor, setIaLogs, showFeedback, stringifyFeedbackMessage,
+    currentProjectId,
+    fetchWithAuth,
+    setAutomationMonitor,
+    aiDryRunInFlightRef,
+    setAiDryRunRunning,
+    setIaLogs,
+    showFeedback,
+    stringifyFeedbackMessage,
   })
 
   const isFailureStatus = (status?: string) => ['FALLO', 'FALLIDO', 'BLOQUEADO'].includes(String(status || '').toUpperCase())
@@ -2514,6 +2534,7 @@ export default function App() {
     newTestScript,
     newTestFramework,
     newTestLanguage,
+    pendingTraceabilityStoryIds,
     caseEditorSaving,
     editingCasoMasterId,
     selectedTest,
@@ -2552,9 +2573,39 @@ export default function App() {
     setCurrentCompId,
     setActiveTab,
     setCaseEditorSaving,
+    setPendingTraceabilityStoryIds,
     setCasosList,
     showFeedback
   })
+
+  const handleCreateCaseFromStory = (story: any, requirement: any) => {
+    const affectedComponents = requirement?.componente_ids || []
+    const componentId = affectedComponents.length === 1 ? String(affectedComponents[0]) : ''
+    setEditingCasoMasterId(null)
+    setSelectedTest(null)
+    setNewTestSuite('')
+    setNewTestSuiteSub('')
+    setNewTestTitle(story?.titulo || '')
+    setNewTestDescription(story?.descripcion_markdown || '')
+    setNewTestPre('')
+    setNewTestPost('')
+    setNewTestData('')
+    setNewTestTags([])
+    setNewTestPriority(story?.prioridad || 'MEDIA')
+    setNewTestCriticality('MEDIA')
+    setNewTestStatus('ACTIVO')
+    setNewTestType('Manual')
+    setNewTestSteps([])
+    setNewTestComponent(componentId)
+    setNewTestScript('')
+    setNewTestFramework('playwright')
+    setNewTestLanguage('javascript')
+    setPendingTraceabilityStoryIds(story?.id ? [String(story.id)] : [])
+    setCaseEditorBaseline('')
+    setCaseEditorOpen(true)
+    setActiveTab('crear_pruebas')
+    setProjectSyncMessage('Nuevo caso abierto desde la historia. La trazabilidad se guardara junto con el caso.')
+  }
 
   const {
     projectActions,
@@ -2765,6 +2816,11 @@ export default function App() {
       void refreshCurrentTestContext(currentCompId)
     }
 
+    if (eventType.startsWith('traceability.')) {
+      setTraceabilityRefreshToken((value) => value + 1)
+      return
+    }
+
     if (eventType.startsWith('execution.') || eventType.startsWith('ia.') || eventType.startsWith('automation.') || eventType.startsWith('worker.')) {
       if (activeTab === 'ejecutar' && affectsCurrentBuild) void refreshExecutionLiveData()
       if (activeTab === 'historial' || activeTab === 'motor_ia') void loadProjectRunHistory(historialInitialFilters)
@@ -2870,6 +2926,13 @@ export default function App() {
     intervalMs: 30000,
     refreshOnFocus: true,
     onRefresh: refreshProjectBuildLiveData,
+  })
+
+  useLiveRefresh({
+    enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'proyectos' && projectInnerTab === 'traceability',
+    intervalMs: 15000,
+    refreshOnFocus: true,
+    onRefresh: () => setTraceabilityRefreshToken((value) => value + 1),
   })
 
   const {
@@ -3246,7 +3309,7 @@ export default function App() {
           {...{
             activeTab, viewMode, selectedTest, setZoomImage, openHistorialRuns, canAccessCapability,
             openExecutionRunDetail, closeExecutionRunDetail, executionRunDetail,
-            executionRunDetailLoading, executionRunDetailError, suiteExplorerWidth,
+            executionRunDetailLoading, executionRunDetailError, focusedExecutionId, suiteExplorerWidth,
             startSuiteExplorerResize, executionInitialLoading, executionRefreshing,
             executionSuiteTree, renderExecutionSuiteTree, currentBuildId, suitesTree,
             selectedSuiteId, testSearchQuery, setTestSearchQuery, setSelectedSubSuiteId,
@@ -3374,12 +3437,15 @@ export default function App() {
           scriptTesting={scriptTesting}
           onRunSavedAutomatedCase={handleRunSavedAutomatedCaseFromEditor}
           onRunAiDryRunFromEditor={handleRunAiDryRunFromEditor}
+          aiDryRunRunning={aiDryRunRunning}
           canSaveCaseEditor={canSaveCaseEditor}
           caseEditorSaving={caseEditorSaving}
           hasUnsavedCaseChanges={hasUnsavedCaseChanges}
           environments={environments}
           setEnvironments={setEnvironments}
           setComponentsList={setComponentsList}
+          pendingTraceabilityStoryIds={pendingTraceabilityStoryIds}
+          setPendingTraceabilityStoryIds={setPendingTraceabilityStoryIds}
           canAccessCapability={canAccessCapability}
         />
       )}
@@ -3392,7 +3458,10 @@ export default function App() {
             canAccessModule, canAccessCapability, hasSystemFeature, setActiveTab, componentActions, buildActions, environmentActions,
             projectMemberActions, wikiActions, organizations, projectsList, currentOrgId,
             currentProjectId, componentsList, buildsList, canEditCurrentProject,
+            traceabilityRefreshToken,
             fetchWithAuth, showFeedback,
+            confirmAction,
+            onCreateCaseFromStory: handleCreateCaseFromStory,
           }}
           projectsState={{ projectsLoading, projectsSource, projectSyncMessage }}
           projectActions={{ ...projectActions, handleProjectChange }}

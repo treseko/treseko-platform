@@ -616,11 +616,6 @@ export function AppShell({
         <main className="app-content flex-grow-1 overflow-auto bg-white text-dark">
           {children}
         </main>
-        <footer className="app-shell-footer bg-dark border-top border-secondary d-flex align-items-center justify-content-center px-3 py-1" style={{ minHeight: '32px' }}>
-          <span className="x-small text-white-50">
-            <a href="https://treseko.com/terminos-y-condiciones" className="text-white-50 text-decoration-none hover-text-primary transition-all">T&eacute;rminos y Condiciones</a>
-          </span>
-        </footer>
       </div>
     </div>
   )

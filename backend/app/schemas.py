@@ -5,6 +5,7 @@ from .schema_sections.organizations import *
 from .schema_sections.projects import *
 from .schema_sections.inventory import *
 from .schema_sections.wiki import *
+from .schema_sections.traceability import *
 from .schema_sections.scheduler import *
 from .schema_sections.testing import *
 from .schema_sections.execution import *

@@ -4,6 +4,7 @@ from .core_settings_ai_workflow_helpers import (
     _project_context_for_automation_job,
     _project_context_for_execution,
 )
+from ..version import PRODUCT_VERSION
 
 
 SAFE_ATTACHMENT_EXTENSIONS = {
@@ -45,13 +46,22 @@ async def _probe_redis_component():
             asyncio.open_connection(SYSTEM_MONITOR_REDIS_HOST, SYSTEM_MONITOR_REDIS_PORT),
             timeout=1.5,
         )
+        writer.write(b"*1\r\n$4\r\nINFO\r\n")
+        await writer.drain()
+        info_payload = await asyncio.wait_for(reader.read(8192), timeout=1.5)
         writer.close()
         await writer.wait_closed()
+        version = None
+        info_text = info_payload.decode("utf-8", errors="ignore")
+        match = re.search(r"^redis_version:([^\r\n]+)", info_text, re.MULTILINE)
+        if match:
+            version = match.group(1).strip()
         return _monitor_component(
             "redis",
             "Redis",
             "CACHE",
             "ONLINE",
+            version=version,
             target=target,
             latency_ms=int((asyncio.get_running_loop().time() - started) * 1000),
             detail="Puerto Redis disponible",
@@ -89,6 +99,7 @@ async def get_system_monitor_summary(db: AsyncSession):
         "API",
         "ONLINE",
         target="http://backend:8000" if IS_PRODUCTION_MONITOR else "http://127.0.0.1:8000",
+        version=PRODUCT_VERSION,
         detail="API respondio esta solicitud",
     )
     frontend_name = "Frontend Nginx" if IS_PRODUCTION_MONITOR else "Frontend Vite"
@@ -96,9 +107,18 @@ async def get_system_monitor_summary(db: AsyncSession):
     database_task = _probe_database_component(db)
     redis_task = _probe_redis_component()
     components = [backend, *(await asyncio.gather(frontend_task, database_task, redis_task))]
+    for component in components:
+        if component["id"] == "frontend":
+            component["version"] = PRODUCT_VERSION
 
     engine_started = asyncio.get_running_loop().time()
     engine_health = await check_ai_engine_health(db)
+    engine_payload = engine_health.get("engine") or {}
+    engine_version = None
+    if isinstance(engine_payload, dict):
+        raw_engine = engine_payload.get("engine")
+        if isinstance(raw_engine, dict):
+            engine_version = raw_engine.get("version")
     engine_status = "ONLINE" if engine_health.get("status") == "ok" else ("DEGRADED" if engine_health.get("engine") else "OFFLINE")
     components.append(
         _monitor_component(
@@ -106,6 +126,7 @@ async def get_system_monitor_summary(db: AsyncSession):
             "Motor IA",
             "AI_ENGINE",
             engine_status,
+            version=str(engine_version or PRODUCT_VERSION),
             target=f"{engine_url}/health",
             latency_ms=int((asyncio.get_running_loop().time() - engine_started) * 1000),
             detail=engine_health.get("detail") or "Health OK",
@@ -117,6 +138,13 @@ async def get_system_monitor_summary(db: AsyncSession):
     has_worker_issue = False
     for runner in runners_result.scalars().all():
         capabilities = runner.capabilities or {}
+        capability_versions = capabilities.get("versions") if isinstance(capabilities.get("versions"), dict) else {}
+        worker_version = (
+            capabilities.get("component_version")
+            or capabilities.get("worker_version")
+            or capabilities.get("version")
+            or capability_versions.get("automation_worker")
+        )
         resources = capabilities.get("resources") or {}
         status = _effective_runner_status(runner)
         if runner.activo and status not in {"ONLINE", "BUSY", "RUNNING"}:
@@ -138,6 +166,7 @@ async def get_system_monitor_summary(db: AsyncSession):
                 "active_jobs": int(capabilities.get("active_jobs") or 0),
                 "current_job_id": capabilities.get("current_job_id"),
                 "uptime_seconds": capabilities.get("uptime_seconds"),
+                "version": str(worker_version) if worker_version else None,
             }
         )
 

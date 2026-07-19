@@ -1,10 +1,12 @@
 {
   "name": "treseko-engine",
-  "version": "0.9.0-rc.1",
+  "version": "1.0.0",
   "description": "",
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "postinstall": "node -e \"if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD) { console.log('Skipping Playwright browser install'); process.exit(0) } process.exit(1)\" || playwright install chromium",
+    "install:browsers": "playwright install chromium",
     "test": "npx tsx src/index.ts",
     "smoke": "npx tsx src/batch-runner.ts",
     "start": "npx tsx src/server.ts"

@@ -128,6 +128,8 @@ export function useWorkflowLocalEdits({
       id: crypto.randomUUID(),
       source_node_id: connection.source,
       target_node_id: connection.target,
+      source_handle: connection.sourceHandle || null,
+      target_handle: connection.targetHandle || null,
       condition_type: 'always',
       condition_json: {},
       priority: 10,
@@ -135,7 +137,14 @@ export function useWorkflowLocalEdits({
     }
     const next = { ...workflowDraft, edges: [...workflowDraft.edges, edge] }
     setWorkflowDraft(next)
-    setFlowEdges(edges => addEdge({ id: edge.id, source: edge.source_node_id, target: edge.target_node_id, label: edge.condition_type }, edges))
+    setFlowEdges(edges => addEdge({
+      id: edge.id,
+      source: edge.source_node_id,
+      target: edge.target_node_id,
+      sourceHandle: edge.source_handle || undefined,
+      targetHandle: edge.target_handle || undefined,
+      label: edge.condition_type,
+    }, edges))
     syncFlowFromWorkflow(next)
   }
 

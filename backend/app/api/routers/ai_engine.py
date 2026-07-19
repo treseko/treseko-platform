@@ -1,6 +1,7 @@
 import secrets
 
 from fastapi import APIRouter
+from jose import JWTError, jwt
 
 from ...main_context import _emit_ai_engine_unavailable_event
 from ...services.edition.entitlement_service import require_feature
@@ -9,7 +10,7 @@ from ...main_context import *
 
 
 router = APIRouter(tags=["Motor IA"])
-MAX_AI_ENGINE_CALLBACK_TOKEN_LENGTH = 256
+MAX_AI_ENGINE_CALLBACK_TOKEN_LENGTH = 2048
 
 
 def _normalize_ai_engine_callback_token(value: Optional[str]) -> str:
@@ -22,6 +23,19 @@ def _normalize_ai_engine_callback_token(value: Optional[str]) -> str:
     ):
         raise HTTPException(status_code=403, detail="Token de Motor IA invalido")
     return token
+
+
+def _is_valid_generated_callback_token(token: str, ejecucion_id: UUID) -> bool:
+    try:
+        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+    except JWTError:
+        return False
+    return (
+        payload.get("type") == "engine_callback"
+        and payload.get("scope") == "ai-engine-callback"
+        and payload.get("sub") == "ai-engine"
+        and payload.get("execution_id") == str(ejecucion_id)
+    )
 
 async def _require_ai_execution_project_access(
     db: AsyncSession,
@@ -300,11 +314,13 @@ async def complete_ai_engine_execution(
     db: AsyncSession = Depends(get_db),
 ):
     raw_expected_token = os.getenv("AI_ENGINE_CALLBACK_TOKEN")
-    if not raw_expected_token:
-        raise HTTPException(status_code=503, detail="Token de callback de Motor IA no configurado")
-    expected_token = _normalize_ai_engine_callback_token(raw_expected_token)
     provided_token = _normalize_ai_engine_callback_token(x_ai_engine_token)
-    if not secrets.compare_digest(provided_token, expected_token):
+    shared_token_valid = False
+    if raw_expected_token:
+        expected_token = _normalize_ai_engine_callback_token(raw_expected_token)
+        shared_token_valid = secrets.compare_digest(provided_token, expected_token)
+    generated_token_valid = _is_valid_generated_callback_token(provided_token, ejecucion_id)
+    if not shared_token_valid and not generated_token_valid:
         raise HTTPException(status_code=403, detail="Token de Motor IA invalido")
     try:
         return await crud.complete_ai_engine_execution(db, ejecucion_id, payload)

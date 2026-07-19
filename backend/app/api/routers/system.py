@@ -193,6 +193,39 @@ async def update_system_time_settings(
     return await config_service.update_system_time_settings(db, settings)
 
 
+@router.get("/system/evidence-sanitization-policy", response_model=schemas.SystemEvidenceSanitizationPolicy)
+async def read_system_evidence_sanitization_policy(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("configuracion.adjuntos", "read")),
+):
+    return await config_service.get_evidence_sanitization_policy(db)
+
+
+@router.patch("/system/evidence-sanitization-policy", response_model=schemas.SystemEvidenceSanitizationPolicy)
+async def update_system_evidence_sanitization_policy(
+    request: Request,
+    payload: schemas.SystemEvidenceSanitizationPolicyUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("settings.evidence_sanitization.manage", "edit")),
+):
+    previous = await config_service.get_evidence_sanitization_policy(db)
+    updated = await config_service.update_evidence_sanitization_policy(db, payload.model_dump(exclude_none=True))
+    client_ip = _request_client_ip(request) or "unknown"
+    action = "EVIDENCE_SANITIZATION_ENABLED" if updated["sanitization_enabled"] else "EVIDENCE_SANITIZATION_DISABLED"
+    await crud.create_audit_log(
+        db=db,
+        usuario_id=current_user.id,
+        accion=action,
+        recurso="evidence_sanitization_policy",
+        detalles={
+            "old_value": previous,
+            "new_value": updated,
+        },
+        ip_address=client_ip,
+    )
+    return updated
+
+
 async def _installation_data_counts(db: AsyncSession) -> dict[str, int]:
     counts: dict[str, int] = {}
     for key, model in (

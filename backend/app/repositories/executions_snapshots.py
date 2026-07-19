@@ -1,10 +1,11 @@
 from .legacy_common import *
 from ..evidence_url_security import sanitize_evidence_url
+from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload
 from ..services.execution_output_sanitizer import sanitize_execution_snapshot_item
 
 
-async def get_test_run_detail(db: AsyncSession, run_id: UUID):
+async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: bool | None = None):
     result = await db.execute(select(models.TestRun).filter(models.TestRun.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
@@ -38,6 +39,10 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID):
     if caso_ids:
         casos_result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id.in_(caso_ids)))
         casos = {caso.id: caso for caso in casos_result.scalars().all()}
+
+    if sanitize_output is None:
+        policy = await config_service.get_evidence_sanitization_policy(db)
+        sanitize_output = bool(policy.get("sanitization_enabled", True))
 
     snapshots_by_execution = await _load_enriched_snapshots_by_execution(db, ejecuciones, run)
     cases_detail = []
@@ -84,7 +89,7 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID):
                 ],
             }
         has_ai_report = bool(ai_report) and is_ai_execution
-        ai_report = sanitize_ai_report_payload(ai_report) if ai_report else {}
+        ai_report = sanitize_ai_report_payload(ai_report) if ai_report and sanitize_output else (ai_report or {})
         cases_detail.append({
             "id": str(ejec.id),
             "execution_id": str(ejec.id),
@@ -102,7 +107,7 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID):
             "execution_mode": execution_mode,
             "execution_mode_label": _execution_mode_label(execution_mode),
             "duracion_segundos": ejec.duracion_segundos,
-            "observaciones": sanitize_ai_report_payload(ejec.observaciones),
+            "observaciones": sanitize_ai_report_payload(ejec.observaciones) if sanitize_output else ejec.observaciones,
             "ai_report": ai_report,
             "has_ai_report": has_ai_report,
             "ai_confidence": ejec.ai_confidence or ai_report.get("confidence"),
@@ -111,7 +116,7 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID):
             "ai_error_code": _ai_error_code_from_report(ai_report, ejec.estado_resultado) if isinstance(ai_report, dict) else None,
             "ai_review_status": review_status,
             "ai_reviewed_at": ejec.ai_reviewed_at.isoformat() if ejec.ai_reviewed_at else None,
-            "ai_review_note": sanitize_ai_report_payload(ejec.ai_review_note),
+            "ai_review_note": sanitize_ai_report_payload(ejec.ai_review_note) if sanitize_output else ejec.ai_review_note,
             "ai_human_review_required": review_required,
             "fecha_ejecucion": ejec.fecha_ejecucion.isoformat() if ejec.fecha_ejecucion else None,
             "snapshots": enriched_snapshots,
@@ -295,7 +300,7 @@ async def mark_ai_execution_reviewed(
     await db.refresh(execution)
     return execution
 
-async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: int = 0, limit: int = 100):
+async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: int = 0, limit: int = 100, sanitize_output: bool = True):
     result = await db.execute(
         select(models.SnapshotPaso)
         .filter(models.SnapshotPaso.ejecucion_caso_id == ejecucion_id)
@@ -367,7 +372,7 @@ async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: in
                 for link in links
                 if link.tipo == "EXPECTED_REFERENCE"
             ]
-        enriched.append(sanitize_execution_snapshot_item(item))
+        enriched.append(sanitize_execution_snapshot_item(item) if sanitize_output else item)
     return enriched
 
 async def get_caso_execution_history(db: AsyncSession, caso_id: UUID, limit: int = 10, build_id: Optional[UUID] = None):

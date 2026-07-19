@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 import logging
 from zoneinfo import ZoneInfo
 
@@ -7,6 +7,18 @@ from ..services.error_sanitizer import sanitize_external_error
 
 logger = logging.getLogger(__name__)
 LEGACY_AI_ENGINE_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+
+def _dashboard_metrics_payload(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "build_id": metrics.get("build_id"),
+        "build_name": metrics.get("build_name"),
+        "total_casos_asignados": metrics.get("total_casos_asignados", 0),
+        "total_ejecutados": metrics.get("total_ejecutados", 0),
+        "cobertura_porcentaje": metrics.get("cobertura_porcentaje", 0),
+        "stats": metrics.get("stats") or {},
+        "historico_versions": metrics.get("historico_versions") or [],
+    }
 
 
 def _build_evaluation_window(build: Optional[models.Build]):
@@ -163,6 +175,10 @@ async def get_dashboard_summary(
         bugs_by_status[bug.estado] = bugs_by_status.get(bug.estado, 0) + 1
         bugs_by_severity[bug.severidad] = bugs_by_severity.get(bug.severidad, 0) + 1
 
+    # El dashboard solo necesita indicadores agregados. No enviar el payload
+    # completo de Reportes, que incluye casos, snapshots y evidencias por suite.
+    dashboard_metrics = _dashboard_metrics_payload(metrics)
+
     return {
         "filters": {
             "proyecto_id": str(proyecto_id),
@@ -187,7 +203,7 @@ async def get_dashboard_summary(
             "recent_failed_cases",
         ],
         "quality_summary": metrics.get("stats") or {},
-        "project_metrics": metrics,
+        "project_metrics": dashboard_metrics,
         "my_tests_today": {
             "count": len(my_tests_today),
             "mine": len(my_tests_today),
@@ -259,6 +275,17 @@ def _normalize_ai_url(value: Any) -> Optional[str]:
         return candidate
     return None
 
+def _normalize_ai_url_for_keys(value: Any) -> Optional[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for key in AI_BASE_URL_KEYS:
+        match = re.search(rf"\b{re.escape(key)}\s*[:=]\s*([^\s\"'<>),;]+)", raw, re.IGNORECASE)
+        normalized = _normalize_ai_url(match.group(1) if match else None)
+        if normalized:
+            return normalized
+    return _normalize_ai_url(raw)
+
 def _snapshot_value(snapshot: Any, key: str, default: Any = None) -> Any:
     if isinstance(snapshot, dict):
         return snapshot.get(key, default)
@@ -283,7 +310,12 @@ def _snapshot_step_data(snapshot: Any) -> Optional[str]:
 
 def get_ai_base_url_from_context(variables: Optional[Dict[str, Any]], snapshots: Optional[List[Any]] = None) -> Optional[str]:
     variables = variables or {}
-    # El caso/paso es la fuente principal. El ambiente solo completa datos faltantes.
+    for key in AI_BASE_URL_KEYS:
+        normalized = _normalize_ai_url(variables.get(key))
+        if normalized:
+            return normalized
+
+    # Si no hay variable explicita, el caso/paso es la fuente principal.
     for snapshot in snapshots or []:
         candidates = [
             _snapshot_value(snapshot, "datos_resueltos"),
@@ -298,14 +330,10 @@ def get_ai_base_url_from_context(variables: Optional[Dict[str, Any]], snapshots:
             _snapshot_value(snapshot, "expected"),
         ]
         for candidate in candidates:
-            normalized = _normalize_ai_url(candidate)
+            normalized = _normalize_ai_url_for_keys(candidate)
             if normalized:
                 return normalized
 
-    for key in AI_BASE_URL_KEYS:
-        normalized = _normalize_ai_url(variables.get(key))
-        if normalized:
-            return normalized
     return None
 
 async def _legacy_trigger_ai_execution_unused(ejecucion_id: UUID, db: AsyncSession):

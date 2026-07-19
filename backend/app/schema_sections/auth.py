@@ -639,6 +639,8 @@ class ApiKeyCreated(ApiKey):
 class AuditLog(BaseModel):
     id: UUID
     usuario_id: Optional[UUID] = None
+    usuario_email: Optional[str] = None
+    usuario_nombre: Optional[str] = None
     accion: str
     recurso: str
     recurso_id: Optional[UUID] = None

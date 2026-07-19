@@ -66,7 +66,7 @@ class CasoPrueba(Base):
 
     __table_args__ = (
         UniqueConstraint("master_id", "version", name="uq_casos_master_version"),
-        Index("ix_casos_proyecto_codigo", "proyecto_id", "codigo", unique=True),
+        Index("ix_casos_proyecto_codigo", "proyecto_id", "codigo"),
     )
 
 class PasoPrueba(Base):

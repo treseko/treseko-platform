@@ -1,4 +1,9 @@
 from .legacy_common import *
+from .ai_provider_catalog import AI_PROVIDER_KEY_ENV, AI_PROVIDER_NO_KEY, AI_PROVIDER_PRESET_MODELS
+from .core_settings_ai_workflow_helpers import (
+    ai_provider_api_key_status,
+    get_configured_ai_provider_api_key,
+)
 from ..services.error_sanitizer import sanitize_external_error
 
 
@@ -57,6 +62,9 @@ async def add_workflow_node_from_preset(
     await db.flush()
     await create_ai_workflow_version(db, workflow, f"Nodo agregado desde preset {preset.name}", user_id)
     await db.commit()
+    # The workflow was loaded with its relationships before adding the node.
+    # Refresh them so the endpoint returns the graph committed in this request.
+    await db.refresh(workflow, attribute_names=["nodes", "edges"])
     return await get_ai_workflow(db, workflow_id)
 
 
@@ -89,20 +97,88 @@ async def list_ai_execution_traces(db: AsyncSession, execution_id: UUID) -> List
 
 
 def _infer_ai_provider(provider: str, endpoint: str) -> str:
-    value = (provider or "openai-compatible").lower()
+    value = (provider or "openai-compatible").lower().replace("_", "-")
+    aliases = {
+        "google": "gemini",
+        "lmstudio": "lm-studio",
+        "lm-studio-local": "lm-studio",
+        "openai-compatible-local": "openai-compatible",
+        "custom-http": "openai-compatible",
+    }
+    value = aliases.get(value, value)
     endpoint_value = (endpoint or "").lower()
     if "127.0.0.1:1234" in endpoint_value or "localhost:1234" in endpoint_value:
         return "lm-studio"
+    if "11434" in endpoint_value:
+        return "ollama"
+    if "openrouter.ai" in endpoint_value:
+        return "openrouter"
+    if "api.groq.com" in endpoint_value:
+        return "groq"
+    if "api.deepseek.com" in endpoint_value:
+        return "deepseek"
+    if "api.mistral.ai" in endpoint_value:
+        return "mistral"
+    if "api.together.xyz" in endpoint_value:
+        return "together"
+    if "fireworks.ai" in endpoint_value:
+        return "fireworks"
+    if "api.perplexity.ai" in endpoint_value:
+        return "perplexity"
+    if "api.x.ai" in endpoint_value:
+        return "xai"
+    if "anthropic.com" in endpoint_value:
+        return "anthropic"
+    if "generativelanguage.googleapis.com" in endpoint_value:
+        return "gemini"
+    if "openai.azure.com" in endpoint_value:
+        return "azure-openai"
     return value
+
+
+def _provider_key_metadata(provider: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    normalized = (provider or "openai-compatible").lower().replace("_", "-")
+    env_name = AI_PROVIDER_KEY_ENV.get(normalized)
+    requires_key = bool(env_name) and normalized not in AI_PROVIDER_NO_KEY
+    status = ai_provider_api_key_status(config or {}, normalized)
+    return {
+        "requires_api_key": requires_key,
+        "api_key_env": env_name,
+        "api_key_configured": bool(status["configured"]),
+        "api_key_source": status["source"],
+    }
+
+
+def _provider_auth_headers(config: Dict[str, Any], provider: str) -> Dict[str, str]:
+    api_key = get_configured_ai_provider_api_key(config, provider)
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
 def _model_capabilities_from_name(model_id: str, source: str = "detected") -> Dict[str, Any]:
     value = (model_id or "").lower()
-    vision = any(token in value for token in ["vision", "vl", "llava", "pixtral", "qwen2.5-vl", "gemma-3", "gemma-4"])
-    reasoning = any(token in value for token in ["reason", "r1", "o1", "o3", "thinking", "qwq", "deepseek"])
-    tools = any(token in value for token in ["gpt", "claude", "gemini", "qwen", "llama-3.1", "llama-3.2", "llama-3.3", "mistral", "command"])
+    vision = any(token in value for token in [
+        "vision", "vl", "llava", "pixtral", "qwen2.5-vl", "qwen-vl", "gemma-3", "gemma-4",
+        "gpt-4o", "claude-3", "claude-sonnet", "claude-opus", "gemini",
+    ])
+    reasoning = any(token in value for token in [
+        "reason", "reasoner", "r1", "o1", "o3", "o4", "thinking", "qwq", "deepseek",
+        "grok-3", "claude-opus", "claude-sonnet", "gemini-2.5", "gpt-4.1",
+    ])
+    tools = any(token in value for token in [
+        "gpt", "claude", "gemini", "qwen", "llama-3.1", "llama-3.2", "llama-3.3",
+        "llama-4", "mistral", "mixtral", "command", "grok", "deepseek-chat",
+    ])
     context_window = 0
-    for pattern, size in [("1m", 1000000), ("128k", 128000), ("64k", 64000), ("32k", 32000), ("16k", 16000), ("8k", 8000)]:
+    for pattern, size in [
+        ("2m", 2000000),
+        ("1m", 1000000),
+        ("200k", 200000),
+        ("128k", 128000),
+        ("64k", 64000),
+        ("32k", 32000),
+        ("16k", 16000),
+        ("8k", 8000),
+    ]:
         if pattern in value:
             context_window = size
             break
@@ -136,21 +212,48 @@ async def scan_ai_engine_models(db: AsyncSession, payload: schemas.AiModelScanRe
     config = await get_ai_engine_config(db)
     endpoint = str(payload.llm_endpoint or config.get("llm_endpoint") or "").rstrip("/")
     provider = _infer_ai_provider(payload.provider or config.get("provider") or "openai-compatible", endpoint)
+    key_metadata = _provider_key_metadata(provider, config)
     scanned_at = utc_now()
     models_found: List[Dict[str, Any]] = []
     status = "ok"
     detail = None
 
     if provider in AI_PROVIDER_PRESET_MODELS:
+        if key_metadata["api_key_configured"] and endpoint and provider not in {"anthropic", "cohere"}:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    response = await client.get(f"{endpoint}/models", headers=_provider_auth_headers(config, provider))
+                data = response.json() if response.text else {}
+                raw_models = data.get("data", []) if isinstance(data, dict) else []
+                models_found = [_normalize_model_item(provider, item, "detected") for item in raw_models]
+                models_found = [item for item in models_found if item]
+                if response.status_code < 400 and models_found:
+                    return {
+                        "status": "ok",
+                        "detail": f"{len(models_found)} modelos detectados desde el proveedor.",
+                        "provider": provider,
+                        "llm_endpoint": endpoint or None,
+                        "models": models_found,
+                        "scanned_at": scanned_at,
+                        **key_metadata,
+                    }
+                detail = f"Catalogo preset local; el proveedor no devolvio modelos detectables por /models."
+            except Exception as exc:
+                detail = f"Catalogo preset local; no se pudo consultar /models: {_safe_ai_monitor_detail(exc)}"
         models_found = [_normalize_model_item(provider, item, "preset") for item in AI_PROVIDER_PRESET_MODELS[provider]]
         models_found = [item for item in models_found if item]
         return {
             "status": status,
-            "detail": "Catalogo preset local; no se consultaron secretos ni API remotas.",
+            "detail": detail or (
+                "Catalogo preset local; configure la API key en el servidor para ejecutar llamadas reales."
+                if key_metadata["requires_api_key"] and not key_metadata["api_key_configured"]
+                else "Catalogo preset local; no se consultaron APIs remotas."
+            ),
             "provider": provider,
             "llm_endpoint": endpoint or None,
             "models": models_found,
             "scanned_at": scanned_at,
+            **key_metadata,
         }
 
     try:
@@ -173,8 +276,9 @@ async def scan_ai_engine_models(db: AsyncSession, payload: schemas.AiModelScanRe
                 else:
                     candidates = [(endpoint, f"{endpoint}/models")]
                 response = None
+                headers = _provider_auth_headers(config, provider)
                 for candidate_endpoint, models_url in candidates:
-                    response = await client.get(models_url)
+                    response = await client.get(models_url, headers=headers)
                     data = response.json() if response.text else {}
                     raw_models = data.get("data", []) if isinstance(data, dict) else []
                     models_found = [_normalize_model_item(provider, item, "detected") for item in raw_models]
@@ -200,6 +304,7 @@ async def scan_ai_engine_models(db: AsyncSession, payload: schemas.AiModelScanRe
         "llm_endpoint": endpoint or None,
         "models": models_found,
         "scanned_at": scanned_at,
+        **key_metadata,
     }
 
 
@@ -208,7 +313,8 @@ async def check_ai_engine_health(db: AsyncSession):
     config = await get_ai_engine_config(db)
     llm_endpoint = str(config.get("llm_endpoint") or "").rstrip("/")
     model = config.get("model") or DEFAULT_AI_ENGINE_CONFIG["model"]
-    provider = config.get("provider") or "openai-compatible"
+    provider = _infer_ai_provider(config.get("provider") or "openai-compatible", llm_endpoint)
+    key_metadata = _provider_key_metadata(provider, config)
     health_payload: Dict[str, Any] = {}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -228,50 +334,79 @@ async def check_ai_engine_health(db: AsyncSession):
             "engine": health_payload or None,
         }
 
-    if provider in {"openai", "openai-compatible"}:
+    if provider not in {"anthropic", "cohere"}:
         if not llm_endpoint:
             return {
                 "status": "error",
                 "detail": "Endpoint LLM no configurado",
                 "engine": health_payload,
             }
+        if key_metadata["requires_api_key"] and not key_metadata["api_key_configured"]:
+            return {
+                "status": "error",
+                "detail": f"El proveedor {provider} requiere configurar {key_metadata['api_key_env']} en el servidor",
+                "engine": health_payload,
+            }
+        llm_base_endpoint = llm_endpoint
+        if provider == "ollama" and not llm_base_endpoint.endswith("/v1"):
+            llm_base_endpoint = f"{llm_base_endpoint}/v1"
+        headers = _provider_auth_headers(config, provider)
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 llm_response = await client.post(
-                    f"{llm_endpoint}/chat/completions",
+                    f"{llm_base_endpoint}/chat/completions",
                     json={
                         "model": model,
                         "messages": [{"role": "user", "content": "ping"}],
                         "max_tokens": 5,
                     },
+                    headers=headers,
                 )
             llm_data = llm_response.json() if llm_response.text else {}
             health_payload["llm"] = {
-                "endpoint": llm_endpoint,
+                "endpoint": llm_base_endpoint,
+                "provider": provider,
                 "model": model,
                 "status_code": llm_response.status_code,
                 "model_response": llm_data.get("model") if isinstance(llm_data, dict) else None,
+                "requires_api_key": key_metadata["requires_api_key"],
+                "api_key_configured": key_metadata["api_key_configured"],
             }
             if llm_response.status_code >= 400:
                 detail = llm_data.get("error") if isinstance(llm_data, dict) else llm_response.text[:300]
                 return {
                     "status": "error",
                     "detail": (
-                        f"LM Studio/LLM rechazo la verificacion: HTTP {llm_response.status_code} "
+                        f"LLM rechazo la verificacion: HTTP {llm_response.status_code} "
                         f"{_safe_ai_monitor_detail(detail)}"
                     ),
                     "engine": health_payload,
                 }
         except Exception as exc:
             health_payload["llm"] = {
-                "endpoint": llm_endpoint,
+                "endpoint": llm_base_endpoint,
+                "provider": provider,
                 "model": model,
             }
             return {
                 "status": "error",
-                "detail": f"No se pudo conectar con LM Studio/LLM: {_safe_ai_monitor_detail(exc)}",
+                "detail": f"No se pudo conectar con el LLM: {_safe_ai_monitor_detail(exc)}",
                 "engine": health_payload,
             }
+    else:
+        health_payload["llm"] = {
+            "endpoint": llm_endpoint,
+            "provider": provider,
+            "model": model,
+            "requires_api_key": key_metadata["requires_api_key"],
+            "api_key_configured": key_metadata["api_key_configured"],
+            "detail": "Health remoto nativo no ejecutado; use un endpoint OpenAI-compatible o proxy compatible para este motor.",
+        }
+        return {
+            "status": "error",
+            "detail": f"El proveedor {provider} no esta soportado directamente por el Motor IA actual; use OpenRouter, LiteLLM u otro proxy OpenAI-compatible.",
+            "engine": health_payload,
+        }
 
     return {
         "status": "ok",
@@ -285,6 +420,7 @@ def _monitor_component(
     name: str,
     component_type: str,
     status: str,
+    version: Optional[str] = None,
     target: Optional[str] = None,
     latency_ms: Optional[int] = None,
     detail: Optional[str] = None,
@@ -293,6 +429,7 @@ def _monitor_component(
         "id": component_id,
         "name": name,
         "type": component_type,
+        "version": version,
         "target": target,
         "status": status,
         "latency_ms": latency_ms,
@@ -334,15 +471,21 @@ async def _probe_http_component(component_id: str, name: str, target: str, timeo
 async def _probe_database_component(db: AsyncSession):
     started = asyncio.get_running_loop().time()
     try:
-        await db.execute(text("SELECT 1"))
+        result = await db.execute(text("SELECT version()"))
+        version_text = str(result.scalar_one_or_none() or "")
+        version = None
+        match = re.search(r"PostgreSQL\s+([0-9]+(?:\.[0-9]+)*)", version_text)
+        if match:
+            version = match.group(1)
         return _monitor_component(
             "database",
             "PostgreSQL / Base de datos",
             "DATABASE",
             "ONLINE",
+            version=version,
             target=os.getenv("DATABASE_URL", "").split("@")[-1] or "DATABASE_URL",
             latency_ms=int((asyncio.get_running_loop().time() - started) * 1000),
-            detail="SELECT 1 OK",
+            detail="SELECT version() OK",
         )
     except Exception as exc:
         return _monitor_component(

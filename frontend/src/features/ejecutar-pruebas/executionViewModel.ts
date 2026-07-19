@@ -1,4 +1,5 @@
-import { getSuiteAndDescendantIds as getSuiteAndDescendantIdsFromTree } from '../../testRepositoryUtils'
+import { getSuiteAndDescendantIds as getSuiteAndDescendantIdsFromTree, UNSUITED_CASES_ROOT_ID } from '../../testRepositoryUtils'
+import { orderTestsBySuiteTree } from '../../testOrdering'
 
 type BuildExecutionViewModelParams = {
   currentBuildId: string
@@ -100,8 +101,9 @@ export function buildExecutionViewModel({
   const executionRefreshing = (suitesLoading || casosLoading || activeBuildCasesLoading || activeBuildResultsLoading) && !executionInitialLoading
 
   const selectedSuiteTarget = selectedSubSuiteId || selectedSuiteId
+  const selectedUnsuitedCases = selectedSuiteTarget === UNSUITED_CASES_ROOT_ID
   const selectedSuiteAndDescendantIds = selectedSuiteTarget
-    ? getSuiteAndDescendantIdsFromTree(suitesTree, selectedSuiteTarget)
+    ? selectedUnsuitedCases ? [] : getSuiteAndDescendantIdsFromTree(suitesTree, selectedSuiteTarget)
     : []
   const query = testSearchQuery.trim().toLowerCase()
   const matchesCaseQuery = (test: any) => (
@@ -110,7 +112,7 @@ export function buildExecutionViewModel({
     (test.code || '').toLowerCase().includes(query) ||
     (test.tags || []).some((tag: string) => tag.toLowerCase().includes(query))
   )
-  const filteredTests = currentExecutionCaseSource.filter(test => {
+  const filteredTests = orderTestsBySuiteTree(currentExecutionCaseSource.filter(test => {
     const belongsToComponent = belongsToCurrentComponent(test)
     const belongsToCurrentBuild = currentBuildId && activeBuildCaseSet.has(test.id)
     if (query) {
@@ -118,11 +120,13 @@ export function buildExecutionViewModel({
         matchesCaseQuery(test)
       )
     }
-    return belongsToComponent && belongsToCurrentBuild && selectedSuiteAndDescendantIds.includes(test.suiteId)
-  })
+    return belongsToComponent && belongsToCurrentBuild && (
+      selectedUnsuitedCases ? !test.suiteId : selectedSuiteAndDescendantIds.includes(test.suiteId)
+    )
+  }), executionSuiteTree)
 
   const suiteCandidateTests = currentExecutionCaseSource.filter(test =>
-    selectedSuiteAndDescendantIds.includes(test.suiteId) &&
+    (selectedUnsuitedCases ? !test.suiteId : selectedSuiteAndDescendantIds.includes(test.suiteId)) &&
     (!query || matchesCaseQuery(test))
   )
   const suiteComponentMismatchCount = suiteCandidateTests.filter(test => !belongsToCurrentComponent(test)).length
@@ -157,9 +161,10 @@ export function buildExecutionViewModel({
   const allVisibleExecutionTestsSelected = filteredTests.length > 0 && filteredTests.every(test => selectedExecutionTestIds.includes(test.id))
 
   const getSuiteExecutionMetrics = (suiteId: string) => {
-    const suiteIds = getSuiteAndDescendantIdsFromTree(suitesTree, suiteId)
+    const unsuitedCases = suiteId === UNSUITED_CASES_ROOT_ID
+    const suiteIds = unsuitedCases ? [] : getSuiteAndDescendantIdsFromTree(suitesTree, suiteId)
     const suiteTests = currentExecutionCaseSource.filter(test =>
-      suiteIds.includes(test.suiteId) &&
+      (unsuitedCases ? !test.suiteId : suiteIds.includes(test.suiteId)) &&
       belongsToCurrentComponent(test) &&
       activeBuildCaseSet.has(test.id)
     )

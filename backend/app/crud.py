@@ -23,6 +23,8 @@ _MODULE_NAMES = [
     "app.repositories.scheduler",
     "app.repositories.settings",
     "app.repositories.external_api",
+    "app.repositories.traceability",
+    "app.repositories.story_generation",
 ]
 
 _modules = [import_module(name) for name in _MODULE_NAMES]

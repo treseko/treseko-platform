@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Row, Col, Card, Badge, Button, ListGroup, Alert, Spinner } from 'react-bootstrap'
-import { Cpu, LayoutList, PlugZap, Settings } from 'lucide-react'
+import { Cpu, LayoutList, PlugZap, Settings, X } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { AiExecutionReportModal } from './AiExecutionReportModal'
 import { formatTime } from '../../shared/utils/dateTime'
@@ -19,12 +19,14 @@ type IaLogEntry = {
   step?: string | number
   attempt?: string | number
   confidence?: number
+  reason?: string
   metrics?: Record<string, any>
 }
 
 type IaExecutionStream = {
   executionId: string
   caseId: string
+  runId?: string
   caseCode?: string
   caseTitle?: string
   runName?: string
@@ -41,6 +43,7 @@ type IaExecutionStream = {
 type IaQueueItem = {
   caseId: string
   executionId: string
+  runId?: string
   caseCode: string
   caseTitle: string
   component: string
@@ -53,6 +56,31 @@ type IaQueueItem = {
   confidence?: number
   consensus?: string
   humanReviewRequired?: boolean
+}
+
+type AiEngineHealthState = {
+  status?: string
+  detail?: string | null
+  engine?: {
+    status?: string
+    service?: string
+    version?: string
+    engine?: {
+      status?: string
+      service?: string
+      engine?: string
+      version?: string
+    }
+    llm?: {
+      endpoint?: string
+      provider?: string
+      model?: string
+      status_code?: number
+      model_response?: string | null
+      requires_api_key?: boolean
+      api_key_configured?: boolean
+    }
+  } | null
 }
 
 type MotorIaPageProps = {
@@ -161,15 +189,94 @@ const logClass = (level: IaLogLevel) => {
   return 'text-success'
 }
 
+const normalizeAgentKey = (agent?: string) => String(agent || '').replace(/\s+/g, '').toUpperCase()
+
+const agentDisplayName = (agent?: string) => {
+  const raw = String(agent || '').trim()
+  const value = normalizeAgentKey(raw)
+  const labels: Record<string, string> = {
+    SYSTEM: 'Sistema',
+    WORKFLOW: 'Workflow',
+    BROWSER: 'Navegador',
+    AI_AGENT: 'Agente IA',
+    QAGUARD: 'QA Guard',
+    QA_GUARD: 'QA Guard',
+    SENTINEL: 'Sentinel',
+    VALIDATOR: 'Validator',
+    OBSERVER: 'Observer',
+    CONTEXTRESOLVER: 'Context Resolver',
+    PLANNER: 'Planner',
+    SECURITYGUARD: 'Security Guard',
+    EXECUTOR: 'Executor',
+    RECOVERY: 'Recovery',
+    AUDITOR: 'Auditor',
+    REPORTER: 'Reporter',
+    AGENT_LOG: 'Agente',
+    STREAM_DOM_LOG: 'Stream',
+    EXECUTION_FINISHED: 'Finalizacion',
+  }
+  return labels[value] || raw || 'Motor'
+}
+
 const agentClass = (agent?: string) => {
-  const value = String(agent || '').toUpperCase()
+  const value = normalizeAgentKey(agent)
   if (value === 'QA_GUARD') return 'text-warning'
+  if (value === 'QAGUARD') return 'text-warning'
   if (value === 'AUDITOR') return 'text-info'
   if (value === 'AI_AGENT') return 'text-primary'
   if (value === 'SENTINEL') return 'text-light'
   if (value === 'BROWSER') return 'text-success'
   if (value === 'RECOVERY') return 'text-warning'
   return 'text-secondary'
+}
+
+const cleanDuplicateCasePrefix = (message: string, caseCode?: string) => {
+  let result = String(message || '').trim()
+  const code = String(caseCode || '').trim()
+  if (!code) return result
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  result = result.replace(new RegExp(`^${escaped}\\s+${escaped}:\\s*`, 'i'), '')
+  result = result.replace(new RegExp(`^${escaped}:\\s*`, 'i'), '')
+  result = result.replace(new RegExp(`^${escaped}\\s+`, 'i'), '')
+  return result
+}
+
+const summarizeStartMessage = (message: string) => {
+  const match = message.match(/Iniciando tarea:\s*Ejecutar caso manual\s+([^:]+):\s*(.+?)(?:\s+Precondiciones:|$)/i)
+  if (!match) return message
+  return `Iniciando prueba ${match[1].trim()}: ${match[2].trim()}`
+}
+
+const humanizeWorkflowMessage = (message: string, reason?: string) => {
+  const value = message.trim()
+  if (/^Ejecutando workflow\s+/i.test(value)) {
+    return value.replace(/^Ejecutando workflow\s+/i, 'Workflow iniciado: ')
+  }
+  if (/^Context Resolver:\s*SUCCESS$/i.test(value)) return 'Contexto resuelto'
+  if (/^Observer:\s*SUCCESS$/i.test(value)) return 'Observacion completada'
+  if (/^Observer:\s*BLOCKED$/i.test(value) && reason === 'no_more_steps') return 'Observacion finalizada: no quedan pasos pendientes'
+  if (/^Observer:\s*sin mas pasos$/i.test(value)) return 'Observacion finalizada: no quedan pasos pendientes'
+  if (/^Planner:\s*SUCCESS$/i.test(value)) return 'Plan de accion preparado'
+  if (/^Security Guard:\s*SUCCESS$/i.test(value)) return 'Accion aprobada por QA Guard'
+  if (/^Executor:\s*SUCCESS$/i.test(value)) return 'Ejecucion de pasos completada'
+  if (/^Validator:\s*SUCCESS$/i.test(value)) return 'Resultado validado'
+  if (/^Auditor:\s*SUCCESS$/i.test(value)) return 'Auditoria de workflow completada'
+  if (/^Reporter:\s*SUCCESS$/i.test(value)) return 'Reporte preparado'
+  if (/^Paso\s+\d+:\s*solicitando accion estricta/i.test(value)) {
+    return value.replace(/solicitando accion estricta/i, 'consultando al modelo')
+  }
+  if (/^Paso\s+\d+:\s*Validacion funcional no requerida/i.test(value)) {
+    return value.replace(/Validacion funcional no requerida/i, 'Validacion funcional omitida')
+  }
+  if (/^Test\s+[0-9a-f-]{20,}\s+finalizado\./i.test(value)) {
+    return 'Ejecucion tecnica cerrada'
+  }
+  return value
+}
+
+const formatConsoleMessage = (log: IaLogEntry) => {
+  const withoutPrefix = cleanDuplicateCasePrefix(log.message, log.caseCode)
+  return humanizeWorkflowMessage(summarizeStartMessage(withoutPrefix), log.reason)
 }
 
 const formatMetrics = (metrics?: Record<string, any>) => {
@@ -186,6 +293,8 @@ const formatMetrics = (metrics?: Record<string, any>) => {
 
 const normalizeEngineStatus = (value?: string): IaRunStatus => {
   const status = String(value || '').toUpperCase()
+  if (status.includes('EJECUTANDO') || status.includes('RUNNING') || status.includes('EN_EJECUCION')) return 'EN_EJECUCION'
+  if (status.includes('ESPERA') || status.includes('PENDING') || status.includes('SIN_CORRER')) return 'EN_ESPERA'
   if (status.includes('BLOQUE')) return 'BLOQUEADO'
   if (status.includes('FAIL') || status.includes('FALLO')) return 'FALLO'
   if (status.includes('ERROR')) return 'ERROR'
@@ -218,9 +327,13 @@ export function MotorIaPage({
   const hasAdvancedEngine = featureEnabled('ai.engine')
   const hasBasicAiExecution = featureEnabled('ai.basic_execution')
 
-  const [health, setHealth] = useState<any>(null)
+  const [health, setHealth] = useState<AiEngineHealthState | null>(null)
   const [checking, setChecking] = useState(false)
   const [clockTick, setClockTick] = useState(0)
+  const [lastHealthCheckedAt, setLastHealthCheckedAt] = useState('')
+  const [healthRefreshError, setHealthRefreshError] = useState('')
+  const [hiddenQueueItems, setHiddenQueueItems] = useState<Set<string>>(() => new Set())
+  const [showQueueHelp, setShowQueueHelp] = useState(true)
   const [reportState, setReportState] = useState<{ show: boolean; loading: boolean; error: string; report: any | null }>({
     show: false,
     loading: false,
@@ -246,6 +359,10 @@ export function MotorIaPage({
         : stream
     )))
   }
+
+  const hasLiveEngineActivity = iaStatus === 'running' || iaExecutionStreams.some(stream => (
+    ['EN_ESPERA', 'EN_EJECUCION'].includes(stream.status || '')
+  ))
 
   useEffect(() => {
     const hasRunning = iaExecutionStreams.some(stream => stream.status === 'EN_EJECUCION')
@@ -290,18 +407,19 @@ export function MotorIaPage({
           const data = JSON.parse(event.data)
           const eventType = data.type || data.event || ''
           const agent = data.agent || data.source || eventType || 'ENGINE'
-          const prefix = stream.caseCode || stream.caseTitle || stream.executionId
           const step = data.step || data.step_number || data.numero_paso || ''
           const text = data.text || data.message || data.detail || data.log || JSON.stringify(data)
+          const finalEventTypes = new Set(['RUN_RESULT', 'RUN_FINISHED', 'EXECUTION_RESULT', 'FINAL_RESULT', 'AUDIT_RESULT', 'AUDITOR_RESULT'])
+          const isFinalEvent = finalEventTypes.has(String(eventType).toUpperCase())
           const isStepResult = eventType === 'STEP_RESULT' || Boolean(data.status)
-          const nextStatus = isStepResult ? normalizeEngineStatus(data.status) : 'EN_EJECUCION'
+          const nextStatus = isFinalEvent ? normalizeEngineStatus(data.status) : 'EN_EJECUCION'
           updateStream(stream.executionId, {
             status: nextStatus,
             startedAt: stream.startedAt || ts,
-            endedAt: ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR'].includes(nextStatus) && isStepResult ? ts : undefined,
+            endedAt: ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR'].includes(nextStatus) && isFinalEvent ? ts : undefined,
             lastMessage: text,
             lastStep: step || stream.lastStep,
-            confidence: data.confidence ?? data.metadata?.confidence ?? stream.confidence,
+              confidence: data.confidence ?? data.metadata?.confidence ?? stream.confidence,
             consensus: data.consensus ?? data.status ?? stream.consensus,
             humanReviewRequired: data.human_review_required ?? stream.humanReviewRequired,
           })
@@ -312,12 +430,13 @@ export function MotorIaPage({
               level: data.level?.toLowerCase?.() === 'error' ? 'error' : data.level?.toLowerCase?.() === 'warn' ? 'warn' : isStepResult ? (nextStatus === 'ERROR' || nextStatus === 'FALLO' ? 'error' : 'engine') : 'engine',
               source: eventType || 'ENGINE',
               agent,
-              message: `${prefix}${step ? ` paso ${step}` : ''}${data.status ? ` [${data.status}]` : ''}: ${text}`,
+              message: `${step ? `Paso ${step}: ` : ''}${data.status ? `[${data.status}] ` : ''}${text}`,
               executionId: stream.executionId,
               caseCode: stream.caseCode,
               step,
               attempt: data.attempt,
               confidence: data.confidence,
+              reason: data.reason,
               metrics: data.metrics || data.metadata,
             }
           ])
@@ -366,22 +485,94 @@ export function MotorIaPage({
     return () => sockets.forEach(ws => ws.close())
   }, [iaExecutionStreams.map(stream => stream.executionId).join('|')])
 
-  const checkHealth = async () => {
-    setChecking(true)
+  useEffect(() => {
+    const activeStreams = iaExecutionStreams.filter(stream => (
+      stream.runId && !['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'].includes(String(stream.status || '').toUpperCase())
+    ))
+    if (!activeStreams.length) return
+
+    let cancelled = false
+    const finalStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
+    const pollExecutions = async () => {
+      const runIds = [...new Set(activeStreams.map(stream => stream.runId).filter(Boolean))]
+      for (const runId of runIds) {
+        try {
+          const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=500`)
+          if (!response.ok) continue
+          const executions = await response.json()
+          if (cancelled || !Array.isArray(executions)) return
+          setIaExecutionStreams((prev: IaExecutionStream[]) => prev.map(stream => {
+            if (stream.runId !== runId) return stream
+            const current = executions.find((item: any) => item.id === stream.executionId)
+            if (!current?.estado_resultado) return stream
+            const nextStatus = normalizeEngineStatus(current.estado_resultado)
+            const isFinal = finalStatuses.has(String(current.estado_resultado).toUpperCase())
+            const nextMessage = current.observaciones || `Estado actualizado: ${current.estado_resultado}`
+            if (
+              stream.status === nextStatus
+              && stream.lastMessage === nextMessage
+              && stream.confidence === current.ai_confidence
+            ) {
+              return stream
+            }
+            return {
+              ...stream,
+              status: nextStatus,
+              startedAt: stream.startedAt || current.fecha_ejecucion || nowIso(),
+              endedAt: isFinal ? (stream.endedAt || nowIso()) : stream.endedAt,
+              lastMessage: nextMessage,
+              confidence: current.ai_confidence ?? stream.confidence,
+              consensus: current.ai_consensus ?? stream.consensus,
+              humanReviewRequired: current.ai_human_review_required ?? stream.humanReviewRequired,
+            }
+          }))
+        } catch {
+          // El WebSocket sigue siendo la fuente primaria. Este polling solo evita UI congelada.
+        }
+      }
+    }
+
+    pollExecutions()
+    const timer = window.setInterval(pollExecutions, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [fetchWithAuth, iaExecutionStreams.map(stream => `${stream.executionId}:${stream.runId}:${stream.status}`).join('|')])
+
+  const checkHealth = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setChecking(true)
     try {
       const response = await fetchWithAuth(`${API_BASE}/ai-engine/health`)
       if (!response.ok) throw new Error(`Backend respondio ${response.status}`)
       const data = await response.json()
       setHealth(data)
-      pushLog('engine', `Motor IA -> ${data.status}${data.detail ? ` (${data.detail})` : ''}`)
+      setLastHealthCheckedAt(nowIso())
+      setHealthRefreshError('')
+      if (!options.silent) {
+        pushLog('engine', `Motor IA -> ${data.status}${data.detail ? ` (${data.detail})` : ''}`)
+      }
     } catch (error: any) {
-      setHealth({ status: 'error', detail: error.message || 'Motor IA no disponible' })
-      pushLog('error', error.message || 'Motor IA no disponible')
-      showFeedback('Motor IA', error.message || 'Motor IA no disponible.', 'danger')
+      const message = error.message || 'Motor IA no disponible'
+      setHealthRefreshError(message)
+      setLastHealthCheckedAt(nowIso())
+      setHealth((previous) => (options.silent && previous ? previous : { status: 'error', detail: message }))
+      if (!options.silent) {
+        pushLog('error', message)
+        showFeedback('Motor IA', message, 'danger')
+      }
     } finally {
-      setChecking(false)
+      if (!options.silent) setChecking(false)
     }
-  }
+  }, [fetchWithAuth, setIaLogs, showFeedback])
+
+  useEffect(() => {
+    if (!canViewStatus) return
+    checkHealth({ silent: true })
+    const intervalMs = hasLiveEngineActivity ? 3000 : 10000
+    const timer = window.setInterval(() => checkHealth({ silent: true }), intervalMs)
+    return () => window.clearInterval(timer)
+  }, [canViewStatus, checkHealth, hasLiveEngineActivity])
 
   const openAiReport = async (executionId: string) => {
     if (!executionId) return
@@ -429,6 +620,7 @@ export function MotorIaPage({
       return {
         caseId: stream.caseId,
         executionId: stream.executionId,
+        runId: stream.runId,
         caseCode: stream.caseCode || test?.code || test?.codigo || stream.caseId,
         caseTitle: stream.caseTitle || test?.title || test?.titulo || 'Caso IA',
         component: test?.component || test?.componente || 'Caso',
@@ -461,8 +653,69 @@ export function MotorIaPage({
     return [...streamItems, ...waitingItems]
   }, [clockTick, currentProjectCases, currentProjectIaQueue, iaExecutionStreams])
 
-  const runningCount = queueItems.filter(item => item.status === 'EN_EJECUCION').length
-  const healthStatus = health?.status || 'unknown'
+  const getQueueItemKey = (item: Pick<IaQueueItem, 'executionId' | 'caseId'>) => item.executionId || `waiting:${item.caseId}`
+  const finalQueueStatuses = useMemo(() => new Set<IaRunStatus>(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'STREAM_CERRADO']), [])
+  const visibleQueueItems = useMemo(
+    () => queueItems.filter(item => !hiddenQueueItems.has(getQueueItemKey(item))),
+    [hiddenQueueItems, queueItems]
+  )
+  const hiddenFinishedCount = queueItems.length - visibleQueueItems.length
+  const finishedQueueItemsCount = visibleQueueItems.filter(item => finalQueueStatuses.has(item.status)).length
+  const runningCount = visibleQueueItems.filter(item => item.status === 'EN_EJECUCION').length
+  const hideQueueItem = (item: IaQueueItem) => {
+    setHiddenQueueItems(previous => {
+      const next = new Set(previous)
+      next.add(getQueueItemKey(item))
+      return next
+    })
+  }
+  const hideFinishedQueueItems = () => {
+    setHiddenQueueItems(previous => {
+      const next = new Set(previous)
+      visibleQueueItems.forEach(item => {
+        if (finalQueueStatuses.has(item.status)) next.add(getQueueItemKey(item))
+      })
+      return next
+    })
+  }
+  const clearHiddenQueueItems = () => setHiddenQueueItems(new Set())
+  const rawHealthStatusValue = String(health?.status || '').toLowerCase()
+  const rawHealthStatus = ['unknown', 'desconocido'].includes(rawHealthStatusValue) ? '' : rawHealthStatusValue
+  const enginePayload = health?.engine || null
+  const directEnginePayload = enginePayload?.engine || enginePayload
+  const engineProcessStatus = String(directEnginePayload?.status || enginePayload?.status || '').toLowerCase()
+  const engineProcessOnline = ['ok', 'online', 'healthy'].includes(engineProcessStatus)
+    || Boolean(directEnginePayload?.version || enginePayload?.version || directEnginePayload?.service)
+  const llmStatusCode = health?.engine?.llm?.status_code
+  const llmOnline = typeof llmStatusCode === 'number' ? llmStatusCode < 400 : rawHealthStatus === 'ok'
+  const liveActivity = runningCount > 0 || hasLiveEngineActivity || iaExecutionStreams.length > 0
+  const healthStatus = rawHealthStatus === 'ok'
+    ? 'online'
+    : engineProcessOnline
+      ? 'degraded'
+      : liveActivity
+        ? 'active'
+        : !health
+        ? 'checking'
+        : rawHealthStatus || 'checking'
+  const healthBadgeVariant = healthStatus === 'online'
+    ? 'success'
+    : healthStatus === 'active'
+      ? 'primary'
+    : healthStatus === 'degraded' || healthStatus === 'checking'
+      ? 'warning'
+      : healthStatus === 'error'
+        ? 'danger'
+        : 'secondary'
+  const healthLabel = healthStatus === 'online'
+    ? 'ONLINE'
+    : healthStatus === 'active'
+      ? 'ACTIVO'
+    : healthStatus === 'degraded'
+      ? 'DEGRADADO'
+      : healthStatus === 'checking'
+        ? 'VERIFICANDO'
+        : healthStatus.toUpperCase()
 
   return (
     <div className="p-4 h-100 d-flex flex-column animate__animated animate__fadeIn text-dark text-start">
@@ -479,7 +732,7 @@ export function MotorIaPage({
         </div>
         <div className="d-flex flex-wrap gap-2">
           {canViewStatus && (
-            <Button variant="outline-primary" size="sm" className="fw-bold border-2 rounded-pill px-3 shadow-none" onClick={checkHealth} disabled={checking}>
+            <Button variant="outline-primary" size="sm" className="fw-bold border-2 rounded-pill px-3 shadow-none" onClick={() => checkHealth()} disabled={checking}>
               {checking ? <><Spinner size="sm" className="me-1" /> Verificando...</> : 'Verificar motor'}
             </Button>
           )}
@@ -533,24 +786,31 @@ export function MotorIaPage({
                 shouldAutoScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32
               }}
             >
-              {logs.map((log, index) => (
-                <div key={`${log.ts}-${index}`} className="text-light mb-1">
-                  <span className="text-muted">[{formatLogTime(log.ts)}]</span>{' '}
-                  {(log.agent || log.source) && <span className={agentClass(log.agent || log.source)}>[{log.agent || log.source}]</span>}{' '}
-                  {log.caseCode && <span className="text-info">{log.caseCode}</span>}{' '}
-                  <span className={logClass(log.level)}>{log.message}</span>
-                  {(log.step || log.attempt || typeof log.confidence === 'number' || formatMetrics(log.metrics)) && (
-                    <span className="text-muted">
-                      {' '}({[
-                        log.step ? `paso ${log.step}` : '',
-                        log.attempt ? `intento ${log.attempt}` : '',
-                        typeof log.confidence === 'number' ? `conf ${log.confidence}%` : '',
-                        formatMetrics(log.metrics),
-                      ].filter(Boolean).join(' · ')})
-                    </span>
-                  )}
-                </div>
-              ))}
+              {logs.map((log, index) => {
+                const agentLabel = agentDisplayName(log.agent || log.source)
+                return (
+                  <div key={`${log.ts}-${index}`} className="text-light mb-1">
+                    <span className="text-muted">[{formatLogTime(log.ts)}]</span>{' '}
+                    {(log.agent || log.source) && (
+                      <span className={agentClass(log.agent || log.source)} title={log.agent || log.source}>
+                        [{agentLabel}]
+                      </span>
+                    )}{' '}
+                    {log.caseCode && <span className="text-info">{log.caseCode}</span>}{' '}
+                    <span className={logClass(log.level)}>{formatConsoleMessage(log)}</span>
+                    {(log.step || log.attempt || typeof log.confidence === 'number' || formatMetrics(log.metrics)) && (
+                      <span className="text-muted">
+                        {' '}({[
+                          log.step ? `paso ${log.step}` : '',
+                          log.attempt ? `intento ${log.attempt}` : '',
+                          typeof log.confidence === 'number' ? `conf ${log.confidence}%` : '',
+                          formatMetrics(log.metrics),
+                        ].filter(Boolean).join(' · ')})
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </Card.Body>
           </Card>
         </Col>}
@@ -561,26 +821,46 @@ export function MotorIaPage({
               <h6 className="fw-bold text-secondary m-0 d-flex align-items-center gap-2">
                 <PlugZap size={16} /> Estado del Motor IA
               </h6>
-              <Badge bg={healthStatus === 'ok' ? 'success' : healthStatus === 'error' ? 'danger' : 'secondary'}>
-                {healthStatus.toUpperCase()}
+              <Badge bg={healthBadgeVariant}>
+                {healthLabel}
               </Badge>
             </div>
             <div className="x-small text-muted">
-              Servicio interno gestionado por la aplicacion. La conexion y el puerto no se configuran desde esta pantalla.
+              {engineProcessOnline
+                ? `Engine ${directEnginePayload?.version || enginePayload?.version || 'activo'}${llmOnline ? ' y modelo disponible.' : '; revisa el proveedor/modelo configurado.'}`
+                : liveActivity
+                  ? 'Hay una ejecucion activa. Verificando health del engine en segundo plano.'
+                : 'Servicio interno gestionado por la aplicacion. La conexion y el puerto no se configuran desde esta pantalla.'}
             </div>
+            <div className="x-small text-muted mt-1">
+              Ultima verificacion: {lastHealthCheckedAt ? formatLogTime(lastHealthCheckedAt) : 'pendiente'}
+            </div>
+            {healthRefreshError && healthStatus !== 'error' && (
+              <div className="x-small text-warning mt-1">Ultimo refresco: {healthRefreshError}</div>
+            )}
             {health?.detail && <Alert variant="warning" className="py-2 px-3 mt-2 mb-0 x-small">{health.detail}</Alert>}
           </Card>}
 
           {canViewWorkflows && <Card className="border-0 shadow-sm rounded-3 bg-white p-3 mb-3">
-            <h6 className="fw-bold text-secondary mb-3 d-flex align-items-center gap-2 text-start">
-              <LayoutList size={16} /> Cola de Ejecucion ({queueItems.length})
-            </h6>
-            {queueItems.length > 0 ? (
+            <div className="d-flex align-items-start justify-content-between gap-2 mb-3">
+              <div>
+                <h6 className="fw-bold text-secondary mb-1 d-flex align-items-center gap-2 text-start">
+                  <LayoutList size={16} /> Cola de Ejecucion ({visibleQueueItems.length})
+                </h6>
+                <div className="x-small text-muted text-start">Vista temporal. Ocultar no elimina historial ni reportes.</div>
+              </div>
+              {hiddenFinishedCount > 0 && (
+                <Button variant="link" size="sm" className="x-small p-0 text-decoration-none flex-shrink-0" onClick={clearHiddenQueueItems}>
+                  Mostrar ocultas
+                </Button>
+              )}
+            </div>
+            {visibleQueueItems.length > 0 ? (
               <ListGroup variant="flush" className="small">
-                {queueItems.map(item => {
+                {visibleQueueItems.map(item => {
                   const meta = statusMeta[item.status as IaRunStatus] || statusMeta.EN_ESPERA
                   return (
-                    <ListGroup.Item key={`${item.executionId || 'waiting'}-${item.caseId}`} className="px-0 py-3 bg-transparent text-dark border-light">
+                    <ListGroup.Item key={`${item.executionId || 'waiting'}-${item.caseId}`} className="px-0 py-3 bg-transparent text-dark border-light position-relative pe-4">
                       <div className="d-flex justify-content-between align-items-start gap-2">
                         <div className="min-w-0">
                           <div className="fw-bold text-dark text-truncate">
@@ -589,7 +869,19 @@ export function MotorIaPage({
                           </div>
                           {item.runName && <div className="x-small text-muted text-truncate">{item.runName}</div>}
                         </div>
-                        <Badge bg={meta.bg} text={meta.text as any} className="flex-shrink-0">{meta.label}</Badge>
+                        <div className="d-flex align-items-center gap-1 flex-shrink-0">
+                          <Badge bg={meta.bg} text={meta.text as any}>{meta.label}</Badge>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="p-0 text-muted lh-1"
+                            title="Quitar de esta cola"
+                            aria-label={`Quitar ${item.caseCode} de la cola temporal`}
+                            onClick={() => hideQueueItem(item)}
+                          >
+                            <X size={15} />
+                          </Button>
+                        </div>
                       </div>
                       <div className="d-flex flex-wrap gap-2 align-items-center mt-2 x-small text-muted">
                         <Badge bg="light" text="dark" className="border">{item.component}</Badge>
@@ -610,15 +902,25 @@ export function MotorIaPage({
                 })}
               </ListGroup>
             ) : (
-              <div className="text-muted text-center x-small py-4">No hay casos en la cola de ejecucion.</div>
+              <div className="text-muted text-center x-small py-4">
+                {queueItems.length > 0 ? 'Todas las ejecuciones estan ocultas en esta vista temporal.' : 'No hay casos en la cola de ejecucion.'}
+              </div>
             )}
-            {queueItems.length > 0 && (
-              <Button variant="outline-secondary" size="sm" className="mt-2 rounded-pill shadow-none" onClick={() => {
-                setIaQueue((prev: string[]) => prev.filter(id => !currentProjectIaQueue.includes(id)))
-                setIaExecutionStreams([])
-              }}>
-                Limpiar cola local
-              </Button>
+            {visibleQueueItems.length > 0 && (
+              <div className="d-grid gap-2 mt-2">
+                {finishedQueueItemsCount > 0 && (
+                  <Button variant="outline-primary" size="sm" className="rounded-pill shadow-none" onClick={hideFinishedQueueItems}>
+                    Limpiar finalizadas
+                  </Button>
+                )}
+                <Button variant="outline-secondary" size="sm" className="rounded-pill shadow-none" onClick={() => {
+                  setIaQueue((prev: string[]) => prev.filter(id => !currentProjectIaQueue.includes(id)))
+                  setIaExecutionStreams([])
+                  setHiddenQueueItems(new Set())
+                }}>
+                  Limpiar cola local
+                </Button>
+              </div>
             )}
             {iaExecutionStreams.length > 0 && (
               <Button variant="outline-secondary" size="sm" className="mt-2 rounded-pill shadow-none" onClick={() => setIaExecutionStreams([])}>
@@ -627,10 +929,22 @@ export function MotorIaPage({
             )}
           </Card>}
 
-          <Alert variant="info" className="small">
-            Para ejecutar casos con IA usa <strong>Ejecutar Pruebas</strong> y selecciona <strong>IA Agent Engine</strong>.
-            Para probar un caso sin historial usa <strong>Dry-run IA</strong> desde el editor de casos.
-          </Alert>
+          {showQueueHelp && (
+            <Alert variant="info" className="small position-relative pe-4">
+              <Button
+                variant="link"
+                size="sm"
+                className="position-absolute top-0 end-0 p-2 text-info"
+                title="Ocultar ayuda"
+                aria-label="Ocultar ayuda de Motor IA"
+                onClick={() => setShowQueueHelp(false)}
+              >
+                <X size={14} />
+              </Button>
+              Para ejecutar casos con IA usa <strong>Ejecutar Pruebas</strong> y selecciona <strong>IA Agent Engine</strong>.
+              Para probar un caso sin historial usa <strong>Dry-run IA</strong> desde el editor de casos.
+            </Alert>
+          )}
         </Col>
       </Row>
       <AiExecutionReportModal

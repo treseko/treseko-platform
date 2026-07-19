@@ -96,6 +96,10 @@ Convencion: `permisos_detallados` guarda `none`, `read` o `edit`. `none` explici
 | historial | historial.ver | Ver historial | VIEWER: read | historial runs | UI protegido |
 | historial | historial.detalle | Detalle | VIEWER: read | detalle ejecucion | UI protegido |
 | historial | historial.evidencias | Evidencias | VIEWER: read | evidencias | UI protegido |
+| proyectos | proyectos.requisitos | Requisitos | QA_LEAD: edit, TESTER: read | requisitos e historial | Implementado |
+| proyectos | proyectos.historias | Historias de usuario | QA_LEAD: edit, TESTER: read | historias e historial | Implementado |
+| crear_pruebas | crear_pruebas.trazabilidad | Vínculos caso-historia | QA_LEAD: edit, TESTER: edit si puede editar casos | editor de casos | Implementado |
+| reportes | reportes.trazabilidad | Cobertura requisito-historia-caso | QA_LEAD: read, TESTER: read | Reportes | Implementado |
 | configuracion | configuracion.preferencias | Preferencias | Usuario: read/edit propio | tab Configuracion | UI protegido |
 | configuracion | configuracion.perfil | Mi Perfil | Usuario: edit propio | profile | UI protegido |
 | configuracion | configuracion.clientes | Clientes / Soluciones | ADMIN: edit | clientes | UI protegido |

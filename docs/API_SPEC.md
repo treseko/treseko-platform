@@ -296,6 +296,47 @@ Cuando el script usa `{{URL_BASE}}`, el worker resuelve en este orden:
 - Campo `ticket_url` en CasoPrueba para trazabilidad requisito-caso (ver Epica 5.1 en PRODUCT_BACKLOG.md).
 - Worker de ejecucion automatizada (Playwright/Selenium/Cypress/Puppeteer).
 
+## Roadmap API v1.0.0 - Evidencias externas e importadores
+
+Estas rutas quedan planificadas para `v1.0.0`. No forman parte del contrato estable de la version actual.
+
+### Evidencias externas por API key
+
+Objetivo: permitir que runners externos suban archivos reales y los asocien a reportes externos.
+
+| Metodo | Endpoint | Auth | Estado | Descripcion |
+|---|---|---|---|---|
+| POST | `/external/attachments/` | API key | Planeado 1.0.0 | Sube archivo `multipart/form-data`, valida tipo/tamano/hash/proyecto y devuelve `attachment_id`. |
+| POST | `/external/executions/report` | API key | Extension planeada 1.0.0 | Acepta `attachment_ids` por caso y por paso, manteniendo `evidence_url` como compatibilidad. |
+
+Reglas esperadas:
+
+- `evidence_url` representa evidencia externa referenciada, no persistida dentro de Treseko.
+- `attachment_ids` representa evidencia persistida dentro de Treseko.
+- Toda evidencia debe marcar origen: `manual`, `worker`, `ia`, `external_api_url` o `external_api_attachment`.
+- Reportes e historial deben distinguir si la evidencia es interna o externa por API.
+- Los archivos subidos por API key deben respetar la configuracion de adjuntos y limites de storage.
+
+### Complementos de migracion de casos
+
+Objetivo: importar casos desde herramientas externas mediante plugins/provider, con previsualizacion y versionado.
+
+| Metodo | Endpoint | Auth | Estado | Descripcion |
+|---|---|---|---|---|
+| GET | `/plugins/migrations/providers/` | `plugins.catalogo` | Planeado 1.0.0 | Lista migradores disponibles: CSV/Excel/TestLink/Zephyr/Xray/etc. |
+| POST | `/plugins/migrations/{provider_id}/preview/` | `plugins.provider.*.preview` | Planeado 1.0.0 | Valida archivo/API externa y devuelve conteos sin escribir datos. |
+| POST | `/plugins/migrations/{provider_id}/import/` | `plugins.provider.*.importar_casos` | Planeado 1.0.0 | Importa suites, casos, pasos y versiones confirmadas. |
+| GET | `/plugins/migrations/jobs/{job_id}/` | `plugins.auditoria` | Planeado 1.0.0 | Estado y reporte de migracion. |
+| POST | `/plugins/migrations/jobs/{job_id}/rollback/` | `plugins.provider.*.revertir_lote` | Planeado 1.0.0 | Revierte o descarta un lote si las reglas de seguridad lo permiten. |
+
+Reglas esperadas:
+
+- Ningun migrador escribe sin preview.
+- Cada caso migrado conserva `external_source`, `external_id` y `external_version`.
+- Las versiones historicas no deben pisar la version vigente.
+- Los errores se reportan por fila/caso.
+- Toda importacion queda auditada por usuario, plugin, version del plugin y resumen del lote.
+
 ## Notificaciones / Email V1
 
 | Metodo | Endpoint | Auth | Estado | Descripcion |
@@ -317,6 +358,21 @@ Cuando el script usa `{{URL_BASE}}`, el worker resuelve en este orden:
 | POST | `/notifications/process/` | `notificaciones.admin:edit` | Implementado | Procesa outbox manualmente. |
 
 Eventos de dominio V1 incluyen bugs, ejecuciones/snapshots, automation jobs, `ai.execution.*`, `ai.engine.unavailable`, reportes compartidos/generados, `report.quality_gate_failed`, usuarios/roles, seguridad y cambios de proyecto/build.
+
+## Trazabilidad QA
+
+| Metodo | Endpoint | Auth | Estado | Descripcion |
+|---|---|---|---|---|
+| GET/POST | `/proyectos/{proyecto_id}/requisitos/`, `/requisitos/` | `proyectos.requisitos` | Implementado | Lista y crea requisitos del proyecto. |
+| GET/PATCH | `/requisitos/{requisito_id}` | `proyectos.requisitos` | Implementado | Detalle y edición con historial de cambios. |
+| POST/GET | `/requisitos/{requisito_id}/archive`, `/requisitos/{requisito_id}/history/` | `proyectos.requisitos` | Implementado | Archivado/restauración y versiones. |
+| GET/POST | `/proyectos/{proyecto_id}/historias/`, `/historias/` | `proyectos.historias` | Implementado | Lista y crea historias vinculadas a un requisito. |
+| GET/PATCH | `/historias/{historia_id}` | `proyectos.historias` | Implementado | Detalle y edición; marca vínculos de caso para revisión. |
+| GET/PUT | `/casos/{master_id}/historias/` | `crear_pruebas.trazabilidad` | Implementado | Consulta o reemplaza los vínculos N:N del caso. |
+| POST | `/casos/{master_id}/historias/{historia_id}/confirmar-revision` | `crear_pruebas.trazabilidad:edit` | Implementado | Confirma que el caso se revisó tras un cambio de historia. |
+| GET | `/proyectos/{proyecto_id}/trazabilidad/cobertura/` | `reportes.trazabilidad` | Implementado | Matriz requisito -> historia -> caso y último resultado. |
+
+Las referencias externas (`external_provider`, `external_reference`, `external_url`) son opcionales y solo almacenan una referencia segura HTTP/HTTPS; no realizan sincronización ni envíos al sistema externo.
 
 ## Active Directory / OIDC V1
 

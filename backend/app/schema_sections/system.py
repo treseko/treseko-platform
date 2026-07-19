@@ -182,6 +182,23 @@ class SystemTimeSettings(BaseModel):
         return normalized
 
 
+class SystemEvidenceSanitizationPolicy(BaseModel):
+    sanitization_enabled: bool = True
+    traceability_complete_enabled: bool = False
+
+
+class SystemEvidenceSanitizationPolicyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sanitization_enabled: Optional[bool] = None
+    traceability_complete_enabled: Optional[bool] = None
+
+    @field_validator("sanitization_enabled", "traceability_complete_enabled")
+    @classmethod
+    def validate_policy_bool(cls, value: Optional[bool]) -> Optional[bool]:
+        return value
+
+
 class SystemFirstRunState(BaseModel):
     completed: bool
     requires_onboarding: bool

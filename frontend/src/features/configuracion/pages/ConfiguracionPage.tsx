@@ -16,7 +16,6 @@ import { RolesSettingsTab, UsersSettingsTab } from '../components/tabs/UsersRole
 import { SystemMonitorTab } from '../components/tabs/SystemMonitorTab'
 import { UpdatesSettingsTab } from '../components/tabs/UpdatesSettingsTab'
 import { WorkflowBuilderModal } from '../components/workflow/WorkflowBuilderModal'
-import { WorkflowSummaryCard } from '../components/workflow/WorkflowSummaryCard'
 import {
   fetchAiWorkflows,
 } from '../api/aiWorkflowApi'
@@ -563,15 +562,13 @@ function ConfiguracionPageInner({
                     updateActiveModelCapability={updateActiveModelCapability}
                     aiEngineHealth={aiEngineHealth}
                     checkAiEngineHealth={checkAiEngineHealth}
-                  />
-                  <WorkflowSummaryCard
                     workflowDraft={workflowDraft}
                     workflowLoadError={workflowLoadError}
                     agentPresetsError={agentPresetsError}
                     workflowStatusColor={workflowStatusColor}
                     formatWorkflowDate={formatWorkflowDate}
-                    canEditAi={canEditAi}
                     onOpenWorkflowBuilder={openWorkflowBuilder}
+                    onOpenLogs={() => setActiveTab('motor_ia')}
                   />
 
                   <WorkflowBuilderModal

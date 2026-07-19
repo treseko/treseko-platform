@@ -3,10 +3,20 @@ from typing import Annotated
 from fastapi import APIRouter
 
 from ...main_context import *
+from ...services import config_service
 from ...services.ai_report_sanitizer import sanitize_ai_report_payload
 
 
 router = APIRouter(tags=["Test Runs"])
+
+
+def _is_ai_execution_in_progress(execution: models.EjecucionCaso) -> bool:
+    return execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI
+
+
+async def _should_sanitize_evidence_output(db: AsyncSession) -> bool:
+    policy = await config_service.get_evidence_sanitization_policy(db)
+    return bool(policy.get("sanitization_enabled", True))
 
 async def _require_test_run_access(
     db: AsyncSession,
@@ -42,7 +52,7 @@ async def _require_execution_access(
 
 @router.post("/test-runs/", response_model=schemas.TestRun)
 async def create_test_run(
-    run: schemas.TestRunCreate,
+    run: schemas.TestRunCreate, 
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.manual", "edit"))
 ):
@@ -117,7 +127,7 @@ async def create_test_run(
 
 @router.get("/proyectos/{proyecto_id}/test-runs/")
 async def read_test_runs(
-    proyecto_id: UUID,
+    proyecto_id: UUID, 
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     build_id: Optional[UUID] = None,
@@ -174,14 +184,18 @@ async def read_test_run_detail(
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
 ):
     await _require_test_run_access(db, current_user, run_id, "read")
-    detail = await crud.get_test_run_detail(db, run_id=run_id)
+    detail = await crud.get_test_run_detail(
+        db,
+        run_id=run_id,
+        sanitize_output=await _should_sanitize_evidence_output(db),
+    )
     if not detail:
         raise HTTPException(status_code=404, detail="Run no encontrado")
     return detail
 
 @router.get("/test-runs/{run_id}/ejecuciones/", response_model=List[schemas.EjecucionCaso])
 async def read_ejecuciones_run(
-    run_id: UUID,
+    run_id: UUID, 
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -192,14 +206,20 @@ async def read_ejecuciones_run(
 
 @router.get("/ejecuciones/{ejecucion_id}/snapshots/", response_model=List[schemas.SnapshotPaso])
 async def read_snapshots_ejecucion(
-    ejecucion_id: UUID,
+    ejecucion_id: UUID, 
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
 ):
     await _require_execution_access(db, current_user, ejecucion_id, "read")
-    return await crud.get_snapshots_ejecucion(db, ejecucion_id=ejecucion_id, skip=skip, limit=limit)
+    return await crud.get_snapshots_ejecucion(
+        db,
+        ejecucion_id=ejecucion_id,
+        skip=skip,
+        limit=limit,
+        sanitize_output=await _should_sanitize_evidence_output(db),
+    )
 
 @router.get("/ejecuciones/{ejecucion_id}/ai-report/")
 async def read_ai_execution_report(
@@ -232,6 +252,11 @@ async def read_ai_execution_report(
     ai_report = execution.ai_report or {}
     review_status = crud._review_status_for_execution(execution) if is_ai_execution else models.AiReviewStatus.NO_REQUIERE_REVISION.value
     review_required = bool(is_ai_execution and review_status == models.AiReviewStatus.REQUIERE_REVISION.value)
+    if is_ai_execution and _is_ai_execution_in_progress(execution):
+        raise HTTPException(
+            status_code=409,
+            detail="La ejecucion IA todavia esta finalizando. Espera la auditoria final para ver el reporte completo.",
+        )
     if not ai_report and is_ai_execution:
         snapshots_result = await db.execute(
             select(models.SnapshotPaso)
@@ -286,11 +311,13 @@ async def read_ai_execution_report(
             if evidence:
                 evidencias = evidence.get("evidencias") or []
                 first_evidence = evidencias[0] if evidencias else None
-                step_payload["evidence_url"] = step_payload.get("evidence_url") or evidence.get("evidencia_url") or (first_evidence or {}).get("public_url")
+                first_evidence_url = (first_evidence or {}).get("public_url")
+                step_payload["evidence_url"] = first_evidence_url or step_payload.get("evidence_url") or evidence.get("evidencia_url")
                 step_payload["evidences"] = step_payload.get("evidences") or evidencias
             enriched_steps.append(step_payload)
         ai_report["steps"] = enriched_steps
-    ai_report = sanitize_ai_report_payload(ai_report)
+    sanitize_output = await _should_sanitize_evidence_output(db)
+    ai_report = sanitize_ai_report_payload(ai_report) if sanitize_output else ai_report
 
     return {
         "execution_id": str(execution.id),
@@ -298,7 +325,7 @@ async def read_ai_execution_report(
         "case_code": case.codigo,
         "case_title": case.titulo,
         "status": execution.estado_resultado.value if hasattr(execution.estado_resultado, "value") else execution.estado_resultado,
-        "observations": sanitize_ai_report_payload(execution.observaciones),
+        "observations": sanitize_ai_report_payload(execution.observaciones) if sanitize_output else execution.observaciones,
         "duration_seconds": execution.duracion_segundos,
         "confidence": execution.ai_confidence or ai_report.get("confidence"),
         "consensus": execution.ai_consensus or ai_report.get("consensus"),
@@ -308,7 +335,7 @@ async def read_ai_execution_report(
         "review_status": review_status,
         "reviewed_by": str(execution.ai_reviewed_by) if execution.ai_reviewed_by else None,
         "reviewed_at": execution.ai_reviewed_at.isoformat() if execution.ai_reviewed_at else None,
-        "review_note": sanitize_ai_report_payload(execution.ai_review_note),
+        "review_note": sanitize_ai_report_payload(execution.ai_review_note) if sanitize_output else execution.ai_review_note,
         "human_review_required": review_required,
         "ai_report": ai_report,
     }

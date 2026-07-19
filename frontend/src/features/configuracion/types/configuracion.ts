@@ -86,6 +86,8 @@ export type AiWorkflowEdge = {
   workflow_id?: string
   source_node_id: string
   target_node_id: string
+  source_handle?: string | null
+  target_handle?: string | null
   condition_type: string
   condition_json?: Record<string, any>
   priority?: number

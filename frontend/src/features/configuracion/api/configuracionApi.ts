@@ -21,6 +21,19 @@ export async function updateAttachmentConfig(fetchWithAuth: FetchWithAuth, confi
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
 
+export async function fetchEvidenceSanitizationPolicy(fetchWithAuth: FetchWithAuth) {
+  const response = await fetchWithAuth(`${API_BASE}/system/evidence-sanitization-policy`)
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
+export async function updateEvidenceSanitizationPolicy(fetchWithAuth: FetchWithAuth, policy: { sanitization_enabled?: boolean, traceability_complete_enabled?: boolean }) {
+  const response = await fetchWithAuth(`${API_BASE}/system/evidence-sanitization-policy`, {
+    method: 'PATCH',
+    body: JSON.stringify(policy),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
 export async function fetchUserApiKeys(fetchWithAuth: FetchWithAuth) {
   const response = await fetchWithAuth(`${API_BASE}/users/me/api-keys/`)
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
@@ -61,6 +74,7 @@ export type SystemMonitorComponent = {
   id: string
   name: string
   type: string
+  version?: string | null
   target?: string | null
   status: string
   latency_ms?: number | null
@@ -85,6 +99,7 @@ export type SystemMonitorWorker = {
   active_jobs: number
   current_job_id?: string | null
   uptime_seconds?: number | null
+  version?: string | null
 }
 
 export type SystemMonitorSummary = {

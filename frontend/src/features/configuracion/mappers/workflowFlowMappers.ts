@@ -31,8 +31,8 @@ export const mapWorkflowEdgesToFlowEdges = (
     const meta = getEdgeUiMeta(edge, nodesByIdForEdges)
     const feedbackEdge = isFeedbackWorkflowEdge(edge, nodesByIdForEdges)
     const targetNode = nodesByIdForEdges.get(edge.target_node_id)
-    const sourceHandle = feedbackEdge || targetNode?.type === 'Recovery' ? 'source-bottom' : 'source-right'
-    const targetHandle = feedbackEdge ? 'target-bottom' : targetNode?.type === 'Recovery' ? 'target-top' : 'target-left'
+    const sourceHandle = edge.source_handle || (feedbackEdge || targetNode?.type === 'Recovery' ? 'source-bottom' : 'source-right')
+    const targetHandle = edge.target_handle || (feedbackEdge ? 'target-bottom' : targetNode?.type === 'Recovery' ? 'target-top' : 'target-left')
     const label = shouldShowWorkflowEdgeLabel(edge, meta.label, feedbackEdge) ? meta.label : ''
 
     return {

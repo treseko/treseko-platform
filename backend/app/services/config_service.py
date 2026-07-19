@@ -11,6 +11,7 @@ AUTH_SESSION_CONFIG_KEY = "auth_session"
 WORKSPACE_BRANDING_KEY = "workspace_branding"
 SYSTEM_TIME_SETTINGS_KEY = "system_time_settings"
 FIRST_RUN_ONBOARDING_KEY = "first_run_onboarding"
+EVIDENCE_SANITIZATION_POLICY_KEY = "evidence_sanitization_policy"
 DEFAULT_SYSTEM_TIMEZONE = "America/Argentina/Buenos_Aires"
 
 DEFAULT_BRANDING = {
@@ -44,6 +45,10 @@ DEFAULT_FIRST_RUN_ONBOARDING = {
     "terms_accepted": False,
     "terms_version": None,
     "telemetry_opt_in": False,
+}
+
+DEFAULT_EVIDENCE_SANITIZATION_POLICY = {
+    "sanitization_enabled": True,
 }
 
 
@@ -131,6 +136,38 @@ async def update_first_run_onboarding(db: AsyncSession, value: dict[str, Any]) -
         setting.value = normalized
     else:
         db.add(models.AppSetting(key=FIRST_RUN_ONBOARDING_KEY, value=normalized))
+    await db.commit()
+    return normalized
+
+
+def normalize_evidence_sanitization_policy(value: dict[str, Any] | None) -> dict[str, Any]:
+    raw = value or {}
+    sanitization_enabled = raw.get("sanitization_enabled")
+    if sanitization_enabled is None and "traceability_complete_enabled" in raw:
+        sanitization_enabled = not bool(raw.get("traceability_complete_enabled"))
+    if sanitization_enabled is None:
+        sanitization_enabled = DEFAULT_EVIDENCE_SANITIZATION_POLICY["sanitization_enabled"]
+    return {
+        "sanitization_enabled": bool(sanitization_enabled),
+        "traceability_complete_enabled": not bool(sanitization_enabled),
+    }
+
+
+async def get_evidence_sanitization_policy(db: AsyncSession) -> dict[str, Any]:
+    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == EVIDENCE_SANITIZATION_POLICY_KEY))
+    setting = result.scalar_one_or_none()
+    return normalize_evidence_sanitization_policy(setting.value if setting else {})
+
+
+async def update_evidence_sanitization_policy(db: AsyncSession, value: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_evidence_sanitization_policy(value)
+    stored = {"sanitization_enabled": normalized["sanitization_enabled"]}
+    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == EVIDENCE_SANITIZATION_POLICY_KEY))
+    setting = result.scalar_one_or_none()
+    if setting:
+        setting.value = stored
+    else:
+        db.add(models.AppSetting(key=EVIDENCE_SANITIZATION_POLICY_KEY, value=stored))
     await db.commit()
     return normalized
 

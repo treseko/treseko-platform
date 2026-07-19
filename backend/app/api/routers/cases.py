@@ -124,6 +124,9 @@ async def create_caso_prueba(
     await validate_caso_component(db, caso)
     try:
         new_caso = await crud.create_caso_prueba(db=db, caso=caso)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=422, detail="No se pudo crear el caso: pasos duplicados o datos relacionados invalidos") from exc
@@ -161,6 +164,9 @@ async def update_caso_prueba(
     await validate_caso_component(db, caso)
     try:
         updated = await crud.update_caso_prueba(db=db, master_id=master_id, caso_update=caso)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="No se pudo actualizar el caso por una restriccion de datos relacionada a sus pasos o evidencias") from exc

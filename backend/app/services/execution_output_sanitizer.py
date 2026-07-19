@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .error_sanitizer import sanitize_external_error
-
 
 SNAPSHOT_VISIBLE_TEXT_FIELDS = {
     "accion_congelada",
@@ -13,6 +11,14 @@ SNAPSHOT_VISIBLE_TEXT_FIELDS = {
     "comentarios",
     "error_log",
 }
+MAX_SNAPSHOT_VISIBLE_TEXT_LENGTH = 4000
+
+
+def _clean_snapshot_text(value: str) -> str:
+    text = str(value or "").replace("\x00", "").strip()
+    if len(text) > MAX_SNAPSHOT_VISIBLE_TEXT_LENGTH:
+        return f"{text[:MAX_SNAPSHOT_VISIBLE_TEXT_LENGTH].rstrip()}..."
+    return text
 
 
 def sanitize_execution_snapshot_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -20,5 +26,5 @@ def sanitize_execution_snapshot_item(item: dict[str, Any]) -> dict[str, Any]:
     for field in SNAPSHOT_VISIBLE_TEXT_FIELDS:
         value = sanitized.get(field)
         if isinstance(value, str) and value.strip():
-            sanitized[field] = sanitize_external_error(value, max_len=2000)
+            sanitized[field] = _clean_snapshot_text(value)
     return sanitized

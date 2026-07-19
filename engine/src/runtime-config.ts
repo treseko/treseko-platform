@@ -32,7 +32,7 @@ function readVersion(): string {
       // Version lookup must never prevent engine startup.
     }
   }
-  return '0.9.0-rc.1';
+  return '1.0.0';
 }
 
 export function safePathSegment(value: string | undefined, fallback = 'default'): string {
@@ -46,4 +46,3 @@ export const ENGINE_LOG_DIR = process.env.ENGINE_LOG_DIR || 'logs';
 export const ENGINE_REPORTS_DIR = process.env.ENGINE_REPORTS_DIR || 'reports';
 export const ENGINE_LOCAL_EVIDENCE_ENABLED =
   envFlag('ENGINE_LOCAL_EVIDENCE_ENABLED') || envFlag('ENGINE_LOCAL_REPORTS_ENABLED');
-

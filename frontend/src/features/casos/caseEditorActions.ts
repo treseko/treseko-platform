@@ -25,6 +25,7 @@ type CreateCaseEditorActionsParams = {
   newTestScript: string
   newTestFramework: string
   newTestLanguage: string
+  pendingTraceabilityStoryIds: string[]
   caseEditorSaving: boolean
   editingCasoMasterId: string | null
   selectedTest: any
@@ -63,6 +64,7 @@ type CreateCaseEditorActionsParams = {
   setCurrentCompId: (componentId: string) => void
   setActiveTab: (tab: string) => void
   setCaseEditorSaving: (saving: boolean) => void
+  setPendingTraceabilityStoryIds: (ids: string[]) => void
   setCasosList: Dispatch<SetStateAction<any[]>>
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
 }
@@ -85,6 +87,7 @@ export function createCaseEditorActions({
   newTestScript,
   newTestFramework,
   newTestLanguage,
+  pendingTraceabilityStoryIds,
   caseEditorSaving,
   editingCasoMasterId,
   selectedTest,
@@ -123,6 +126,7 @@ export function createCaseEditorActions({
   setCurrentCompId,
   setActiveTab,
   setCaseEditorSaving,
+  setPendingTraceabilityStoryIds,
   setCasosList,
   showFeedback
 }: CreateCaseEditorActionsParams) {
@@ -423,6 +427,19 @@ export function createCaseEditorActions({
           ? await handleUpdateCaso(editingCasoMasterId, { ...casoPayload, proyecto_id: currentProjectId })
           : await handleCreateCaso(casoPayload)
         if (saved) {
+          const linkedStoryCount = pendingTraceabilityStoryIds.length
+          const createdFromStory = !editingCasoMasterId && linkedStoryCount > 0
+          if ((editingCasoMasterId || pendingTraceabilityStoryIds.length > 0) && (saved.master_id || saved.masterId)) {
+            const traceabilityResponse = await fetchWithAuth(`${API_BASE}/casos/${saved.master_id || saved.masterId}/historias/`, {
+              method: 'PUT',
+              body: JSON.stringify({ historia_ids: pendingTraceabilityStoryIds })
+            })
+            if (!traceabilityResponse.ok) {
+              const error = await traceabilityResponse.json().catch(() => null)
+              throw new Error(error?.detail || 'El caso se guardo, pero no se pudo vincular con la historia.')
+            }
+            if (!editingCasoMasterId) setPendingTraceabilityStoryIds([])
+          }
           await linkSavedStepAttachments(saved)
           setCaseEditorBaseline(currentCaseEditorSnapshot)
           if (targetSuiteId) {
@@ -436,8 +453,10 @@ export function createCaseEditorActions({
             setTimeout(() => setAddTestSuccess(false), 3000)
           }
           showFeedback(
-            saved.version && previousVersion && saved.version > previousVersion ? 'Nueva versión creada' : 'Guardado',
-            saved.version && previousVersion && saved.version > previousVersion ? 'El caso tenía ejecuciones finales.' : 'Cambios guardados.',
+            createdFromStory ? 'Caso creado y vinculado' : saved.version && previousVersion && saved.version > previousVersion ? 'Nueva versión creada' : 'Guardado',
+            createdFromStory
+              ? `${saved.codigo || saved.code || 'El caso'} quedó vinculado a ${linkedStoryCount} ${linkedStoryCount === 1 ? 'historia' : 'historias'}${saved.suite_id || saved.suiteId ? ' y guardado en la carpeta seleccionada.' : '.'}`
+              : saved.version && previousVersion && saved.version > previousVersion ? 'El caso tenía ejecuciones finales.' : 'Cambios guardados.',
             'success'
           )
         }

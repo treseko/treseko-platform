@@ -2,6 +2,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { traceEntry, traceRequestId } from '../test-trace.ts';
 import type { QAEngineStep, StrictAIAction, StructuredHistoryItem } from '../automation/action-types.ts';
+import type { AuditDecision, AuditEvidenceBundle, AuditImage } from '../audit/consensus.ts';
 
 dotenv.config({ override: false });
 
@@ -35,8 +36,10 @@ export interface AIResult<T> {
 }
 
 export class AIClient {
+  private readonly provider: string;
   private readonly endpoint: string;
   public readonly model: string;
+  private readonly apiKey: string | undefined;
   private readonly maxContext: number;
   private readonly temperature: number;
   private readonly maxRetries: number;
@@ -44,12 +47,18 @@ export class AIClient {
   private readonly tokenCostPer1K: number;
   private readonly promptTokenCostPer1K: number;
   private readonly completionTokenCostPer1K: number;
+  private readonly requestTimeoutMs: number;
+  private readonly maxCompletionTokens: number;
+  private readonly disableThinking: boolean;
+  public readonly supportsVision: boolean;
   private readonly agentWorkflow: any[];
   private messageHistory: any[] = [];
 
-  constructor(config: { endpoint?: string; model?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number } = {}) {
+  constructor(config: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxCompletionTokens?: number; disableThinking?: boolean } = {}) {
+    this.provider = normalizeProvider(config.provider || process.env.AI_PROVIDER || 'openai-compatible');
     this.endpoint = config.endpoint || process.env.AI_API_ENDPOINT || 'http://172.16.10.4:1234/v1';
     this.model = config.model || process.env.AI_MODEL || 'google/gemma-4-e4b';
+    this.apiKey = config.apiKey || resolveProviderApiKey(this.provider);
     this.maxContext = parseInt(process.env.AI_MAX_CONTEXT || '32768');
     this.temperature = Number.isFinite(config.temperature) ? Number(config.temperature) : parseFloat(process.env.AI_TEMPERATURE || '0.1');
     this.maxRetries = parseInt(process.env.AI_MAX_RETRIES || '5');
@@ -57,6 +66,16 @@ export class AIClient {
     this.tokenCostPer1K = Number.isFinite(config.tokenCostPer1K) ? Number(config.tokenCostPer1K) : parseFloat(process.env.AI_TOKEN_COST_PER_1K || '0.01');
     this.promptTokenCostPer1K = Number.isFinite(config.promptTokenCostPer1K) ? Number(config.promptTokenCostPer1K) : parseFloat(process.env.AI_PROMPT_TOKEN_COST_PER_1K || '0');
     this.completionTokenCostPer1K = Number.isFinite(config.completionTokenCostPer1K) ? Number(config.completionTokenCostPer1K) : parseFloat(process.env.AI_COMPLETION_TOKEN_COST_PER_1K || '0');
+    this.requestTimeoutMs = Math.max(5_000, Math.min(600_000, parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '600000')));
+    // Actions and audit decisions are compact JSON. A bounded completion keeps
+    // one malformed or verbose model response from stalling an entire run.
+    const configuredMaxCompletionTokens = Number.isFinite(config.maxCompletionTokens)
+      ? Number(config.maxCompletionTokens)
+      : parseInt(process.env.AI_MAX_COMPLETION_TOKENS || '256');
+    this.maxCompletionTokens = Math.max(32, Math.min(2048, configuredMaxCompletionTokens));
+    this.disableThinking = config.disableThinking === true;
+    // Do not infer vision from a model name: providers differ and an image request can fail or add cost.
+    this.supportsVision = config.visionEnabled === true;
     this.agentWorkflow = Array.isArray(config.agentWorkflow) ? config.agentWorkflow : [];
     
     this.messageHistory.push({
@@ -137,7 +156,7 @@ Responde JSON:
 
     const currentMessage: any = {
       role: 'user',
-      content: screenshotBase64 ? [
+      content: this.supportsVision && screenshotBase64 ? [
         { type: 'text', text: userPrompt },
         { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } }
       ] : userPrompt
@@ -163,7 +182,7 @@ Responde JSON:
     }
 
     try {
-      const result = await this.sendWithRetry(payloadMessages);
+      const result = await this.sendWithRetry<AIAction>(payloadMessages);
       
       // OPTIMIZACIÓN: Solo guardamos un resumen de la acción en la historia, NO el pageState completo
       const stepSummary = `Acción previa: ${result.data.action} en ${result.data.elementId || 'N/A'}. Motivo: ${result.data.reason}`;
@@ -207,9 +226,9 @@ Responde JSON:
                 
                 if (statusMatch || reasonMatch) {
                     return {
-                        status: statusMatch ? statusMatch[1] : 'FAILED',
-                        reason: reasonMatch ? reasonMatch[1] : 'Error de parseo parcial',
-                        confidence: confMatch ? parseInt(confMatch[1]) : 0,
+                        status: statusMatch?.[1] || 'FAILED',
+                        reason: reasonMatch?.[1] || 'Error de parseo parcial',
+                        confidence: parseInt(confMatch?.[1] || '0'),
                         approved: jsonPart.includes('"approved": true'),
                         action: 'error'
                     };
@@ -241,7 +260,12 @@ Responde JSON:
         const aiPayload = {
           model: this.model,
           messages,
-          temperature: temperature ?? (attempts > 0 ? this.retryTemperature : this.temperature)
+          temperature: temperature ?? (attempts > 0 ? this.retryTemperature : this.temperature),
+          max_tokens: this.maxCompletionTokens,
+          ...(this.disableThinking ? {
+            reasoning_effort: 'none',
+            chat_template_kwargs: { enable_thinking: false },
+          } : {}),
         };
         const attemptStarted = Date.now();
         traceEntry('ai_request', {
@@ -249,8 +273,12 @@ Responde JSON:
           endpoint: `${this.endpoint}/chat/completions`,
           attempt: attempts + 1,
           body: aiPayload,
+          provider: this.provider,
         });
-        const response = await axios.post(`${this.endpoint}/chat/completions`, aiPayload);
+        const response = await axios.post(`${this.endpoint}/chat/completions`, aiPayload, {
+          headers: this.authHeaders(),
+          timeout: this.requestTimeoutMs,
+        });
         traceEntry('ai_response', {
           request_id: requestId,
           endpoint: `${this.endpoint}/chat/completions`,
@@ -306,6 +334,7 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
           error: {
             message: error?.message || String(error),
             code: error?.code,
+            timeout_ms: this.requestTimeoutMs,
             status: error?.response?.status,
             response_body: error?.response?.data,
             stack: error?.stack,
@@ -330,6 +359,14 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
   }
 
   async checkLoadingState(screenshotBase64: string): Promise<AIResult<{ loading: boolean, reason: string }>> {
+    if (!this.supportsVision) {
+      return {
+        data: { loading: false, reason: 'Modelo sin capacidad visual configurada; se usa la observacion estructurada del navegador.' },
+        metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
+        prompt: { skipped: 'vision_not_supported' },
+        rawResponse: { skipped: 'vision_not_supported' },
+      };
+    }
     const agentPrompt = this.getAgentPrompt('SENTINEL');
     const prompt = `${agentPrompt ? `${agentPrompt}\n\n` : ''}
 ### ROL: AGENTE SENTINELA DE CARGA (LOADING SENTINEL)
@@ -395,16 +432,20 @@ ${args.historyText}
 
 ### REGLAS
 1. Responde SOLO JSON, sin Markdown ni texto extra.
-2. Usa siempre uno de estos action: navigate, click, click_at, type, select, press, wait, assert_visible, assert_text, finish, fail, blocked.
+2. Usa siempre uno de estos action: navigate, click, click_at, type, fill_form, check, select, press, wait, assert_visible, assert_text, finish, fail, blocked.
 3. Si interactuas con un elemento del snapshot, usa target_ref exacto, por ejemplo "el-3".
 4. Si la captura muestra un control o desplegable complejo que no aparece bien en el snapshot, puedes usar click_at con coordenadas x/y absolutas del viewport.
 5. Para type/select/press/navigate/assert_text usa value. Para click_at usa x/y y deja target_ref vacio.
 6. No inventes target_ref. Si usas click_at, las coordenadas deben caer dentro del elemento visible que quieres accionar.
 7. Si el paso ya esta cumplido visualmente, usa assert_visible o finish.
-8. step_number debe ser exactamente ${args.step.number}.
+8. step_number es informativo: el engine siempre lo fija en ${args.step.number}.
 9. Si faltan datos imprescindibles, usa blocked y explica que dato falta.
-10. No copies textos de ejemplo. El campo reason debe describir lo que ves o el dato tecnico que falta.
-11. No uses frases genericas como "Motivo breve en espanol", "N/A", "TODO" o "reason".
+10. No uses blocked para describir una accion que podes ejecutar. Si el paso dice "ingresar", "completar", "buscar", "abrir", "presionar" o "validar" y hay un elemento visible compatible en el snapshot, debes elegir una accion ejecutable.
+11. Si hay usuario, password, search_term, query, url o base_url en Datos disponibles, usa esos valores. Para un login, primero usa type sobre el campo usuario, luego type sobre password en el siguiente intento/paso, y finalmente click/press para enviar.
+12. El campo reason es una explicacion breve de la decision; no es la accion. La accion real debe estar en action.
+13. No copies textos de ejemplo. El campo reason debe describir lo que ves o el dato tecnico que falta.
+14. No uses frases genericas como "Motivo breve en espanol", "N/A", "TODO" o "reason".
+15. No inventes URLs, credenciales, valores ni resultados. Si un dato obligatorio no aparece en Datos disponibles ni en el snapshot, usa blocked e identifica exactamente el dato faltante.
 
 ### JSON OBLIGATORIO
 {
@@ -419,12 +460,22 @@ ${args.historyText}
   "step_number": ${args.step.number}
 }
 
+### EJEMPLOS VALIDOS
+Para completar usuario:
+{ "action": "type", "target_ref": "el-2", "value": "tomsmith", "reason": "Completar usuario disponible en datos sobre el campo username visible.", "expected": "Usuario ingresado", "confidence": 90, "step_number": ${args.step.number} }
+
+Para buscar texto:
+{ "action": "type", "target_ref": "el-5", "value": "Selenium software", "reason": "Escribir el termino de busqueda disponible en datos sobre el buscador visible.", "expected": "Busqueda ingresada", "confidence": 88, "step_number": ${args.step.number} }
+
+Para abrir una URL:
+{ "action": "navigate", "value": "https://example.com", "reason": "Navegar a la URL indicada por los datos del paso.", "expected": "Pagina cargada", "confidence": 95, "step_number": ${args.step.number} }
+
 Si devuelves reason o expected iguales al ejemplo, la accion sera rechazada y reintentada.
 `;
 
     const currentMessage: any = {
       role: 'user',
-      content: args.screenshotBase64 ? [
+      content: this.supportsVision && args.screenshotBase64 ? [
         { type: 'text', text: prompt },
         { type: 'image_url', image_url: { url: `data:image/png;base64,${args.screenshotBase64}` } }
       ] : prompt
@@ -547,8 +598,9 @@ Responde SOLO JSON con esta forma minima:
         endpoint: `${this.endpoint}/chat/completions`,
         body: payload,
         health_check: true,
+        provider: this.provider,
       });
-      const response = await axios.post(`${this.endpoint}/chat/completions`, payload);
+      const response = await axios.post(`${this.endpoint}/chat/completions`, payload, { headers: this.authHeaders() });
       traceEntry('ai_response', {
         request_id: requestId,
         endpoint: `${this.endpoint}/chat/completions`,
@@ -575,7 +627,19 @@ Responde SOLO JSON con esta forma minima:
     }
   }
 
-  async validateGoal(goal: string, pageState: string, screenshotBase64: string, history: string[]): Promise<AIResult<{ status: 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED', reason: string, confidence: number }>> {
+  private authHeaders(): Record<string, string> {
+    if (!this.apiKey) return {};
+    return { Authorization: `Bearer ${this.apiKey}` };
+  }
+
+  async validateGoal(
+    goal: string,
+    pageState: string,
+    screenshotBase64: string,
+    history: string[],
+    evidenceBundle?: AuditEvidenceBundle,
+    evidenceImages: AuditImage[] = [],
+  ): Promise<AIResult<AuditDecision>> {
     const agentPrompt = this.getAgentPrompt('AUDITOR');
     const prompt = `${agentPrompt ? `${agentPrompt}\n\n` : ''}
 ### AUDITORÍA DE QA SENIOR - EVALUACIÓN FINAL
@@ -587,26 +651,46 @@ ${history.join('\n') || 'No se registraron pasos exitosos.'}
 ### ESTADO FINAL
 ${pageState.substring(0, 3000)}
 
+### PAQUETE DE EVIDENCIA ESTRUCTURADA
+${JSON.stringify(evidenceBundle || {}, null, 2).slice(0, 18000)}
+
 ### REGLAS DEL AUDITOR:
-1. **PASSED**: El objetivo se cumplió. Confía en el HISTORIAL si dice "Success" en los pasos clave.
-2. **FAILED**: El objetivo NO se cumplió, hubo errores visuales o el historial está vacío/incoherente.
-3. **SÓLO JSON**: Responde ÚNICAMENTE con el objeto JSON usando exactamente estas claves en inglés: "status", "reason", "confidence".
+1. Basa el dictamen solamente en datos del paquete, historial y capturas adjuntas. No supongas contenido que no esté visible o registrado.
+2. **PASSED**: el resultado esperado está demostrado por una validación concluyente, texto/URL/DOM o una captura identificada.
+3. **FAILED**: existe evidencia concreta y referenciable de que un resultado esperado no se cumplió.
+4. **BLOCKED**: falta evidencia suficiente, hay contradicciones o no puedes determinar el resultado con seguridad.
+5. Una acción ejecutada sin error no demuestra por sí sola que el resultado funcional se haya cumplido.
+6. Si contradices el estado técnico, identifica la evidencia exacta en evidence_refs y explica la contradicción.
+7. No declares FAILED por una captura ambigua. En ese caso usa BLOCKED y completa missing_evidence.
+8. Si el objetivo esperado es logout, cierre de sesión o finalizar sesión, quedar en login después de cerrar sesión es evidencia de éxito.
+9. **SÓLO JSON** con exactamente estas claves: status, reason, confidence, evidence_refs, failed_expectations, missing_evidence, contradictions.
 
 Ejemplo de respuesta obligatoria:
-{ "status": "FAILED", "reason": "La suma no coincide con 42", "confidence": 95 }
+{ "status": "BLOCKED", "reason": "La captura no permite confirmar el mensaje esperado", "confidence": 60, "evidence_refs": ["step-4-attempt-1-screenshot"], "failed_expectations": [], "missing_evidence": ["Texto visible del mensaje final"], "contradictions": [] }
 `;
-    const messages = [
-      { role: 'user', content: [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } }
-      ]}
-    ];
+    const images = this.supportsVision
+      ? (evidenceImages.length ? evidenceImages : [{ evidence_ref: 'final-screenshot', base64: screenshotBase64 }])
+      : [];
+    const content: any[] = [{ type: 'text', text: prompt }];
+    for (const image of images.slice(-6)) {
+      content.push({ type: 'text', text: `EVIDENCIA VISUAL: ${image.evidence_ref}` });
+      content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${image.base64}` } });
+    }
+    const messages = [{ role: 'user', content }];
 
     try {
-      return await this.sendWithRetry<{ status: 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED', reason: string, confidence: number }>(messages, 0);
+      return await this.sendWithRetry<AuditDecision>(messages, 0);
     } catch (error: any) {
       return {
-        data: { status: 'FAILED', reason: 'Error de validación: ' + error.message, confidence: 0 },
+        data: {
+          status: 'BLOCKED',
+          reason: 'Error de validación: ' + error.message,
+          confidence: 0,
+          evidence_refs: [],
+          failed_expectations: [],
+          missing_evidence: ['El auditor no pudo procesar la evidencia'],
+          contradictions: [],
+        },
         metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
         prompt: messages,
         rawResponse: error.message
@@ -645,7 +729,7 @@ Responde JSON: { "approved": true/false, "reason": "Breve explicación en ESPAÑ
 
     const messages: any[] = [{
         role: 'user',
-        content: screenshotBase64 ? [
+        content: this.supportsVision && screenshotBase64 ? [
             { type: 'text', text: prompt },
             { type: 'image_url', image_url: { url: `data:image/png;base64,${screenshotBase64}` } }
         ] : prompt
@@ -662,4 +746,37 @@ Responde JSON: { "approved": true/false, "reason": "Breve explicación en ESPAÑ
       };
     }
   }
+}
+
+function normalizeProvider(provider: string): string {
+  const value = String(provider || 'openai-compatible').toLowerCase().replace(/_/g, '-');
+  if (value === 'lmstudio') return 'lm-studio';
+  if (value === 'google') return 'gemini';
+  if (value === 'custom-http') return 'openai-compatible';
+  return value;
+}
+
+function resolveProviderApiKey(provider: string): string | undefined {
+  const envByProvider: Record<string, string[]> = {
+    openai: ['OPENAI_API_KEY'],
+    gemini: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    anthropic: ['ANTHROPIC_API_KEY'],
+    openrouter: ['OPENROUTER_API_KEY'],
+    groq: ['GROQ_API_KEY'],
+    deepseek: ['DEEPSEEK_API_KEY'],
+    mistral: ['MISTRAL_API_KEY'],
+    together: ['TOGETHER_API_KEY'],
+    cohere: ['COHERE_API_KEY'],
+    fireworks: ['FIREWORKS_API_KEY'],
+    perplexity: ['PERPLEXITY_API_KEY'],
+    xai: ['XAI_API_KEY'],
+    'azure-openai': ['AZURE_OPENAI_API_KEY'],
+    'openai-compatible': ['AI_API_KEY', 'OPENAI_API_KEY'],
+  };
+  const envNames = envByProvider[provider] || [];
+  for (const envName of envNames) {
+    const value = process.env[envName];
+    if (value) return value;
+  }
+  return undefined;
 }

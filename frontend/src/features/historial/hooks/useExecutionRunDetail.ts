@@ -8,10 +8,12 @@ export function useExecutionRunDetail({ loadTestRunDetail }: UseExecutionRunDeta
   const [executionRunDetail, setExecutionRunDetail] = useState<any | null>(null)
   const [executionRunDetailLoading, setExecutionRunDetailLoading] = useState(false)
   const [executionRunDetailError, setExecutionRunDetailError] = useState('')
+  const [focusedExecutionId, setFocusedExecutionId] = useState('')
 
-  const openExecutionRunDetail = async (runId: string) => {
+  const openExecutionRunDetail = async (runId: string, executionId = '') => {
     setExecutionRunDetail(null)
     setExecutionRunDetailError('')
+    setFocusedExecutionId(executionId)
     setExecutionRunDetailLoading(true)
     try {
       const data = await loadTestRunDetail(runId)
@@ -26,12 +28,14 @@ export function useExecutionRunDetail({ loadTestRunDetail }: UseExecutionRunDeta
   const closeExecutionRunDetail = () => {
     setExecutionRunDetail(null)
     setExecutionRunDetailError('')
+    setFocusedExecutionId('')
   }
 
   return {
     executionRunDetail,
     executionRunDetailLoading,
     executionRunDetailError,
+    focusedExecutionId,
     openExecutionRunDetail,
     closeExecutionRunDetail,
   }

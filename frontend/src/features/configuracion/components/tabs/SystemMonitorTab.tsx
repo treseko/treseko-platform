@@ -135,6 +135,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
             <tr>
               <th>Componente</th>
               <th>Estado</th>
+              <th>Versión</th>
               <th>IP / URL</th>
               <th>Latencia</th>
               <th>Detalle</th>
@@ -151,6 +152,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
                     <div className="small text-muted">{component.type}</div>
                   </td>
                   <td><Badge bg={statusVariant(component.status)}>{component.status}</Badge></td>
+                  <td className="small fw-semibold">{component.version || 'n/d'}</td>
                   <td className="small text-break">{component.target || 'n/d'}</td>
                   <td className="small">{component.latency_ms ?? 0} ms</td>
                   <td className="small" style={{ minWidth: 220 }}>{component.detail || 'Sin detalle'}</td>
@@ -186,6 +188,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
               <tr>
                 <th>Worker</th>
                 <th>Estado</th>
+                <th>Versión</th>
                 <th>Host / IP</th>
                 <th>Capacidades</th>
                 <th>Recursos</th>
@@ -202,6 +205,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
                     <div className="small text-muted">{worker.tags.join(', ') || 'Sin tags'}</div>
                   </td>
                   <td><Badge bg={statusVariant(worker.status)}>{worker.status}</Badge></td>
+                  <td className="small fw-semibold">{worker.version || worker.capabilities?.worker_version || worker.capabilities?.component_version || 'n/d'}</td>
                   <td className="small">
                     <div>{worker.hostname || 'Host no reportado'}</div>
                     <div className="text-muted">{worker.local_ips.join(', ') || 'IP no reportada'}</div>

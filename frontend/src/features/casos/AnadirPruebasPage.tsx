@@ -35,6 +35,7 @@ import { API_BASE } from '../../app/constants'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { AutomationFunctionsModal } from './AutomationFunctionsModal'
 import { AutomationVariablesModal } from './AutomationVariablesModal'
+import { CaseTraceabilitySection } from './CaseTraceabilitySection'
 import { defaultLanguageForFramework, languageLabel, languageOptionsByFramework, normalizeAutomationLanguage, normalizeCaseTags } from './caseUtils'
 
 type AnadirPruebasPageProps = any
@@ -271,12 +272,15 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     scriptTesting,
     onRunSavedAutomatedCase,
     onRunAiDryRunFromEditor,
+    aiDryRunRunning,
     canSaveCaseEditor,
     caseEditorSaving,
     hasUnsavedCaseChanges,
     environments,
     setEnvironments,
     setComponentsList,
+    pendingTraceabilityStoryIds,
+    setPendingTraceabilityStoryIds,
     canAccessCapability
   } = props
   const canUseCapability = canAccessCapability || (() => true)
@@ -286,8 +290,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   const canEditAttachments = canUseCapability('crear_pruebas.adjuntos', 'edit')
   const canEditScripts = canUseCapability('crear_pruebas.scripts', 'edit')
   const canUseIaDryRun = canUseCapability('ejecutar.ia', 'edit')
-  const canSaveCurrentCase = canSaveCaseEditor && canEditCases
-
   const [showFunctionsModal, setShowFunctionsModal] = useState(false)
   const [showVariablesModal, setShowVariablesModal] = useState(false)
   const [showLocationModal, setShowLocationModal] = useState(false)
@@ -353,6 +355,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   const selectedLanguageLabel = languageLabel(newTestLanguage || defaultLanguageForFramework(newTestFramework || 'playwright'))
   const currentSuiteId = newTestSuiteSub || newTestSuite
   const currentSuiteBreadcrumb = suiteBreadcrumb(suitesTree, currentSuiteId)
+  const canSaveCurrentCase = canSaveCaseEditor && canEditCases
   const cloneDestinationSuites = useMemo(() => {
     if (!cloneSourceCase) return []
     return flattenSuites(suitesTree).filter((suite: any) => {
@@ -769,6 +772,15 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                 )}
               </Card>
 
+              <CaseTraceabilitySection
+                projectId={currentProjectId}
+                masterId={editingCasoMasterId}
+                fetchWithAuth={fetchWithAuth}
+                storyIds={pendingTraceabilityStoryIds}
+                setStoryIds={setPendingTraceabilityStoryIds}
+                editable={canEditCases}
+              />
+
               <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
                 <div
                   className="bg-light border-bottom py-2 px-3 d-flex justify-content-between align-items-center"
@@ -1095,8 +1107,9 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                       variant="outline-primary"
                       size="sm"
                       className="fw-bold shadow-none"
-                      disabled={!newTestTitle.trim() || newTestSteps.length === 0}
+                      disabled={aiDryRunRunning || !newTestTitle.trim() || newTestSteps.length === 0}
                       onClick={() => {
+                        if (aiDryRunRunning) return
                         const defaultEnvironment = environments?.find?.((environment: any) => uuidOrNull(environment?.id)) || null
                         const defaultDataset = defaultEnvironment?.datasets?.find?.((dataset: any) => (dataset.es_default || dataset.isDefault) && uuidOrNull(dataset?.id))
                           || defaultEnvironment?.datasets?.find?.((dataset: any) => uuidOrNull(dataset?.id))
@@ -1122,7 +1135,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                         })
                       }}
                     >
-                      <PlayCircle size={14} className="me-1" /> Dry-run IA
+                      {aiDryRunRunning ? <RefreshCw size={14} className="me-1 animate-pulse" /> : <PlayCircle size={14} className="me-1" />}
+                      {aiDryRunRunning ? 'Ejecutando...' : 'Dry-run IA'}
                     </Button>
                   </Card.Body>
                 </Card>

@@ -1,6 +1,7 @@
 import logging
 
 from .legacy_common import *
+from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
 from .. import auth
 from ..services.edition.entitlement_service import ensure_feature_enabled
 from ..services.edition.usage_limits import enforce_weekly_ai_execution_limit
@@ -142,6 +143,11 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         "dataset": dataset_resuelto,
         "variables": variables_resueltas,
         "callback_url": callback_url,
+        "callback_token": auth.create_access_token(
+            data={"sub": "ai-engine", "scope": "ai-engine-callback", "execution_id": str(ejecucion_id)},
+            expires_delta=timedelta(hours=6),
+            token_type="engine_callback",
+        ),
         "engine_ws_token": auth.create_access_token(
             data={"sub": "ai-engine", "scope": "ai-engine-ws", "execution_id": str(ejecucion_id)},
             expires_delta=timedelta(hours=6),
@@ -158,6 +164,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         "provider": config.get("provider"),
         "llm_endpoint": config.get("llm_endpoint"),
         "model": config.get("model"),
+        "provider_api_key": get_configured_ai_provider_api_key(config, config.get("provider")),
         "temperature": config.get("temperature"),
         "token_cost_prompt_per_1k": config.get("token_cost_prompt_per_1k"),
         "token_cost_completion_per_1k": config.get("token_cost_completion_per_1k"),

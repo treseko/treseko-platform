@@ -35,6 +35,7 @@ ALLOWED_ENGINE_WS_EVENT_TYPES = {
     "PROGRESS",
     "ERROR",
     "WARNING",
+    "EXECUTION_FINISHED",
 }
 SAFE_ENGINE_WS_BROADCAST_FIELDS = {
     "type",
@@ -54,6 +55,9 @@ SAFE_ENGINE_WS_BROADCAST_FIELDS = {
     "confidence",
     "consensus",
     "human_review_required",
+    "duration_seconds",
+    "error_message",
+    "ai_report_summary",
 }
 
 # --- WEBSOCKET SYNC ---
@@ -295,6 +299,8 @@ def _sanitize_engine_broadcast_event(event: dict) -> dict | None:
             sanitized[field] = _sanitize_ws_metadata(value)
         elif field in {"confidence", "consensus", "human_review_required"}:
             sanitized[field] = _sanitize_ws_metadata(value) if isinstance(value, (int, float, bool, str)) or value is None else None
+        elif field in {"duration_seconds", "error_message", "ai_report_summary"}:
+            sanitized[field] = _sanitize_ws_metadata(value)
         else:
             sanitized[field] = value
 
@@ -472,6 +478,123 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                 if sanitized_event:
                     await manager.broadcast(sanitized_event, str(ejecucion_id))
                 logger.info("WS Engine saved snapshot %s", snapshot_id)
+            elif event["type"] == "EXECUTION_FINISHED":
+                raw_status = event.get("status")
+                try:
+                    estado = models.EstadoResultado(raw_status)
+                except (TypeError, ValueError):
+                    await _send_engine_error(websocket, "Estado final invalido.")
+                    continue
+
+                try:
+                    duration_seconds = max(0, min(604800, int(event.get("duration_seconds") or 0)))
+                except (TypeError, ValueError):
+                    duration_seconds = 0
+
+                observations = _bounded_optional_text(
+                    event.get("observations") or event.get("message") or event.get("error_message"),
+                    max_length=8_000,
+                )
+                error_message = _bounded_optional_text(event.get("error_message"), max_length=schemas.MAX_AI_ERROR_LENGTH)
+                summary = event.get("ai_report_summary")
+                if not isinstance(summary, dict):
+                    summary = {}
+
+                async with AsyncSessionLocal() as session:
+                    context = await _get_execution_context(session, ejecucion_id)
+                    result = await session.execute(
+                        select(models.EjecucionCaso).filter(models.EjecucionCaso.id == ejecucion_id)
+                    )
+                    execution = result.scalar_one_or_none()
+                    if not context or not execution:
+                        await _send_engine_error(websocket, "Ejecucion no encontrada.")
+                        continue
+
+                    if execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI:
+                        now = utc_now()
+                        execution.estado_resultado = estado
+                        execution.execution_mode = models.ExecutionMode.IA
+                        execution.duracion_segundos = duration_seconds
+                        execution.observaciones = observations or error_message or execution.observaciones
+                        execution.fecha_ejecucion = now
+                        current_report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
+                        fallback_report = {
+                            **current_report,
+                            "status": estado.value,
+                            "summary": observations,
+                            "duration_seconds": duration_seconds,
+                            "consensus": summary.get("consensus") or estado.value,
+                            "confidence": summary.get("confidence"),
+                            "failure_category": summary.get("failure_category"),
+                            "human_review_required": bool(
+                                summary.get("human_review_required", estado != models.EstadoResultado.PASO)
+                            ),
+                            "completed_via": "engine.websocket.finish",
+                        }
+                        if error_message:
+                            fallback_report["error_message"] = error_message
+                        execution.ai_report = fallback_report
+                        try:
+                            execution.ai_confidence = (
+                                int(round(float(fallback_report["confidence"])))
+                                if fallback_report.get("confidence") is not None
+                                else None
+                            )
+                        except (TypeError, ValueError):
+                            execution.ai_confidence = None
+                        execution.ai_consensus = str(fallback_report.get("consensus") or estado.value)[:30]
+                        failure_category = fallback_report.get("failure_category")
+                        execution.ai_failure_category = str(failure_category)[:80] if failure_category else None
+                        execution.ai_human_review_required = bool(
+                            fallback_report.get("human_review_required", estado != models.EstadoResultado.PASO)
+                        )
+                        execution.ai_review_status = (
+                            models.AiReviewStatus.REQUIERE_REVISION
+                            if execution.ai_human_review_required
+                            else models.AiReviewStatus.NO_REQUIERE_REVISION
+                        )
+
+                        pending_result = await session.execute(
+                            select(models.EjecucionCaso.id)
+                            .filter(
+                                models.EjecucionCaso.test_run_id == execution.test_run_id,
+                                models.EjecucionCaso.id != execution.id,
+                                models.EjecucionCaso.estado_resultado.in_([
+                                    models.EstadoResultado.SIN_CORRER,
+                                    models.EstadoResultado.EJECUTANDO_AI,
+                                ]),
+                            )
+                            .limit(1)
+                        )
+                        if pending_result.scalar_one_or_none() is None:
+                            run_result = await session.execute(
+                                select(models.TestRun).filter(models.TestRun.id == execution.test_run_id)
+                            )
+                            run = run_result.scalar_one_or_none()
+                            if run:
+                                run.estado_run = models.EstadoRun.CERRADO
+                                run.fecha_cierre = now
+                        await session.commit()
+
+                    await realtime_event_bus.publish(
+                        context.proyecto_id,
+                        "execution.ai.finished",
+                        component_id=context.componente_id,
+                        build_id=context.build_id,
+                        case_id=context.caso_id,
+                        run_id=context.test_run_id,
+                        execution_id=ejecucion_id,
+                        payload={
+                            "status": estado.value,
+                            "duration_seconds": duration_seconds,
+                            "source": "ai.engine.websocket",
+                        },
+                    )
+
+                sanitized_event = _sanitize_engine_broadcast_event(event)
+                if sanitized_event:
+                    await manager.broadcast(sanitized_event, str(ejecucion_id))
+                logger.info("WS Engine finished execution %s with %s", ejecucion_id, estado.value)
             else:
                 sanitized_event = _sanitize_engine_broadcast_event(event)
                 if sanitized_event:

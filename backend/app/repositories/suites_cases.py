@@ -211,6 +211,25 @@ async def generate_case_code(db: AsyncSession, prefix: str = "TC") -> str:
             continue
     return f"{prefix}-{max_number + 1:03d}"
 
+async def _ensure_case_code_available(
+    db: AsyncSession,
+    proyecto_id: UUID,
+    codigo: Optional[str],
+    *,
+    master_id: Optional[UUID] = None,
+) -> None:
+    if not codigo:
+        return
+    result = await db.execute(
+        select(models.CasoPrueba.master_id)
+        .filter(models.CasoPrueba.proyecto_id == proyecto_id)
+        .filter(models.CasoPrueba.codigo == codigo)
+        .limit(1)
+    )
+    existing_master_id = result.scalar_one_or_none()
+    if existing_master_id and existing_master_id != master_id:
+        raise ValueError(f"Ya existe otro caso con el codigo {codigo} en este proyecto")
+
 async def ensure_case_codes(db: AsyncSession, proyecto_id: Optional[UUID] = None):
     query = select(models.CasoPrueba).order_by(models.CasoPrueba.fecha_creacion, models.CasoPrueba.id)
     if proyecto_id:
@@ -242,6 +261,7 @@ async def create_caso_prueba(db: AsyncSession, caso: schemas.CasoPruebaCreate):
     caso_data = caso.model_dump(exclude={"pasos"})
     if not caso_data.get("codigo"):
         caso_data["codigo"] = await generate_case_code(db)
+    await _ensure_case_code_available(db, caso_data["proyecto_id"], caso_data.get("codigo"))
     db_caso = models.CasoPrueba(**caso_data, master_id=uuid.uuid4())
     db.add(db_caso)
     await db.flush()
@@ -261,6 +281,12 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
     caso_data["codigo"] = latest_caso.codigo or await generate_case_code(db)
     if not latest_caso.codigo:
         latest_caso.codigo = caso_data["codigo"]
+    await _ensure_case_code_available(
+        db,
+        caso_data["proyecto_id"],
+        caso_data.get("codigo"),
+        master_id=master_id,
+    )
 
     if not await has_executions(db, latest_caso.id):
         for field, value in caso_data.items():

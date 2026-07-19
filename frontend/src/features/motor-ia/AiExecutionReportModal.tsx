@@ -40,12 +40,16 @@ const actionTarget = (action?: any) => {
 
 const screenshotSrc = (base64?: string) => {
   if (!base64) return ''
-  return String(base64).startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
+  const value = String(base64).trim()
+  if (!value || value.startsWith('[') || value.length < 64) return ''
+  return value.startsWith('data:') ? value : `data:image/png;base64,${value}`
 }
 
 const evidenceSrc = (attempt: any, step: any) => {
-  if (attempt?.screenshot_base64) return screenshotSrc(attempt.screenshot_base64)
-  return resolveAssetUrl(step?.evidence_url || step?.evidences?.[0]?.public_url || '')
+  const screenshot = screenshotSrc(attempt?.screenshot_base64)
+  if (screenshot) return screenshot
+  const imageEvidence = (step?.evidences || []).find((item: any) => String(item?.content_type || '').startsWith('image/') && item?.public_url)
+  return resolveAssetUrl(imageEvidence?.public_url || step?.evidences?.[0]?.public_url || step?.evidence_url || '')
 }
 
 export function AiExecutionReportModal({ show, loading, error, report, onHide, onMarkReviewed }: AiExecutionReportModalProps) {
@@ -230,7 +234,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                         <tbody>
                           {(step.attempts || []).map((attempt: any) => {
                             const evidence = evidenceSrc(attempt, step)
-                            const isFallbackEvidence = !attempt.screenshot_base64 && Boolean(evidence)
+                            const isFallbackEvidence = !screenshotSrc(attempt?.screenshot_base64) && Boolean(evidence)
                             return (
                             <tr key={attempt.attempt}>
                               <td>{attempt.attempt}</td>

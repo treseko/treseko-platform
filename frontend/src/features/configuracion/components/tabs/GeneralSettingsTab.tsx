@@ -1,9 +1,10 @@
 ﻿import { useEffect, useState } from 'react'
-import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
-import { Clock, Crown, Image as ImageIcon, Save } from 'lucide-react'
+import { Alert, Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
+import { Clock, Crown, Image as ImageIcon, Save, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '../../../../app/constants'
 import { DEFAULT_BRANDING, normalizeBrandingState, type BrandingState } from '../../../../app/branding'
 import { resolveAssetUrl } from '../../../../shared/utils/assets'
+import { fetchEvidenceSanitizationPolicy, updateEvidenceSanitizationPolicy } from '../../api/configuracionApi'
 import { ApiKeyPanel } from '../ApiKeyPanel'
 import { SessionSettingsTab } from './SessionSettingsTab'
 import { ActiveDirectorySettingsTab } from './ActiveDirectorySettingsTab'
@@ -78,6 +79,7 @@ export function GeneralSettingsTab({
   const canEditPreferences = canAccessCapability('configuracion.preferencias', 'edit')
   const canEditSession = canAccessCapability('configuracion.sesion', 'edit')
   const canEditAttachments = canAccessCapability('configuracion.adjuntos', 'edit')
+  const canManageEvidenceSanitization = canAccessCapability('settings.evidence_sanitization.manage', 'edit')
   const canCustomizeBranding = hasSystemFeature('branding.custom')
   const showSsoPreview = canAccessCapability('configuracion.sesion', 'read') && !hasSystemFeature('auth.sso')
   const getAttachmentOptionValues = (option: AttachmentMimeOption) => (
@@ -95,6 +97,9 @@ export function GeneralSettingsTab({
   const [timeSettings, setTimeSettings] = useState({ timezone: 'America/Argentina/Buenos_Aires' })
   const [timeSettingsLoading, setTimeSettingsLoading] = useState(false)
   const [timeSettingsSaving, setTimeSettingsSaving] = useState(false)
+  const [evidencePolicy, setEvidencePolicy] = useState({ sanitization_enabled: true, traceability_complete_enabled: false })
+  const [evidencePolicyLoading, setEvidencePolicyLoading] = useState(false)
+  const [evidencePolicySaving, setEvidencePolicySaving] = useState(false)
 
   const loadBranding = async () => {
     setBrandingLoading(true)
@@ -140,6 +145,56 @@ export function GeneralSettingsTab({
     void loadTimeSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const loadEvidencePolicy = async () => {
+    setEvidencePolicyLoading(true)
+    try {
+      const data = await fetchEvidenceSanitizationPolicy(fetchWithAuth)
+      setEvidencePolicy({
+        sanitization_enabled: Boolean(data?.sanitization_enabled ?? true),
+        traceability_complete_enabled: Boolean(data?.traceability_complete_enabled ?? !data?.sanitization_enabled),
+      })
+    } catch (error: any) {
+      showFeedback('Adjuntos y evidencias', error?.message || 'No se pudo cargar la politica de sanitizacion.', 'warning')
+    } finally {
+      setEvidencePolicyLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadEvidencePolicy()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const saveEvidencePolicy = async (traceabilityEnabled: boolean) => {
+    const previous = evidencePolicy
+    const nextPolicy = {
+      sanitization_enabled: !traceabilityEnabled,
+      traceability_complete_enabled: traceabilityEnabled,
+    }
+    setEvidencePolicy(nextPolicy)
+    setEvidencePolicySaving(true)
+    try {
+      const data = await updateEvidenceSanitizationPolicy(fetchWithAuth, nextPolicy)
+      const normalized = {
+        sanitization_enabled: Boolean(data?.sanitization_enabled ?? nextPolicy.sanitization_enabled),
+        traceability_complete_enabled: Boolean(data?.traceability_complete_enabled ?? nextPolicy.traceability_complete_enabled),
+      }
+      setEvidencePolicy(normalized)
+      showFeedback(
+        'Adjuntos y evidencias',
+        normalized.traceability_complete_enabled
+          ? 'Modo trazabilidad completa activado para reportes y evidencias.'
+          : 'Modo seguro activado: Treseko volvera a ocultar datos sensibles.',
+        'success',
+      )
+    } catch (error: any) {
+      setEvidencePolicy(previous)
+      showFeedback('Adjuntos y evidencias', error?.message || 'No se pudo guardar la politica de sanitizacion.', 'danger')
+    } finally {
+      setEvidencePolicySaving(false)
+    }
+  }
 
   const saveTimeSettings = async () => {
     setTimeSettingsSaving(true)
@@ -419,10 +474,45 @@ export function GeneralSettingsTab({
       <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4">
         <div className="d-flex justify-content-between align-items-start mb-3">
           <div>
-            <h6 className="fw-bold text-dark m-0">Adjuntos y evidencias</h6>
+            <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+              <ShieldCheck size={18} className="text-primary" /> Adjuntos y evidencias
+            </h6>
             <span className="small text-muted">Límites globales para referencias de pasos y evidencias de ejecución.</span>
           </div>
           <Badge bg="light" text="dark" className="border">{attachmentConfig.allowed_mime_types?.length || 0} tipos</Badge>
+        </div>
+        <div className="border rounded-4 bg-light p-3 mb-4">
+          <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div className="pe-lg-4">
+              <div className="fw-bold text-dark">Modo trazabilidad completa</div>
+              <div className="small text-muted">
+                Muestra datos de prueba completos en reportes, pasos y evidencias. Usalo solo en entornos controlados.
+              </div>
+              {!canManageEvidenceSanitization && (
+                <div className="x-small text-muted mt-2">
+                  Necesitas permiso para gestionar la sanitizacion de evidencias.
+                </div>
+              )}
+            </div>
+            <div className="d-flex align-items-center gap-3">
+              <Badge bg={evidencePolicy.traceability_complete_enabled ? 'warning' : 'success'} text={evidencePolicy.traceability_complete_enabled ? 'dark' : undefined} className="border">
+                {evidencePolicy.traceability_complete_enabled ? 'Trazabilidad completa' : 'Modo seguro'}
+              </Badge>
+              <Form.Check
+                type="switch"
+                id="evidence-traceability-mode"
+                label={evidencePolicy.traceability_complete_enabled ? 'Activo' : 'Inactivo'}
+                checked={Boolean(evidencePolicy.traceability_complete_enabled)}
+                disabled={!canManageEvidenceSanitization || evidencePolicyLoading || evidencePolicySaving}
+                onChange={(event) => { void saveEvidencePolicy(event.target.checked) }}
+              />
+            </div>
+          </div>
+          {evidencePolicy.traceability_complete_enabled && (
+            <Alert variant="warning" className="small mb-0 mt-3 py-2">
+              Treseko conservara y mostrara valores funcionales de prueba sin redaccion en reportes IA, snapshots y detalles de ejecucion. Las claves internas de infraestructura siguen protegidas por sus controles especificos.
+            </Alert>
+          )}
         </div>
         <Form onSubmit={(e) => { e.preventDefault(); saveAttachmentConfig(attachmentConfig) }}>
           <Row className="g-3">

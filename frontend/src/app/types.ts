@@ -16,7 +16,7 @@ export type CoreCapabilityId =
   | 'redmine.ver' | 'redmine.configuracion' | 'redmine.reportar' | 'redmine.vinculos'
   | 'notificaciones.ver' | 'notificaciones.inbox' | 'notificaciones.configuracion' | 'notificaciones.reglas' | 'notificaciones.plantillas' | 'notificaciones.auditoria' | 'notificaciones.admin'
   | 'historial.ver' | 'historial.detalle' | 'historial.evidencias'
-  | 'configuracion.preferencias' | 'configuracion.perfil' | 'configuracion.clientes' | 'configuracion.usuarios' | 'configuracion.roles' | 'configuracion.integraciones' | 'configuracion.pruebas_ia' | 'configuracion.monitor' | 'configuracion.api_keys' | 'configuracion.sesion' | 'configuracion.adjuntos' | 'configuracion.licencia'
+  | 'configuracion.preferencias' | 'configuracion.perfil' | 'configuracion.clientes' | 'configuracion.usuarios' | 'configuracion.roles' | 'configuracion.integraciones' | 'configuracion.pruebas_ia' | 'configuracion.monitor' | 'configuracion.api_keys' | 'configuracion.sesion' | 'configuracion.adjuntos' | 'settings.evidence_sanitization.manage' | 'configuracion.licencia'
   | 'integraciones.catalogo' | 'integraciones.ver_estado' | 'integraciones.test_conexion' | 'integraciones.configurar' | 'integraciones.secretos' | 'integraciones.webhooks' | 'integraciones.auditoria'
   | 'plugins.catalogo' | 'plugins.instalar' | 'plugins.desinstalar' | 'plugins.habilitar' | 'plugins.configurar' | 'plugins.gestionar_secretos' | 'plugins.auditoria'
 export type DynamicCapabilityId =

@@ -1,6 +1,7 @@
 import { memo, useMemo, useState, useCallback } from 'react'
 import { Button, Form } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, Folders, FileText, Search } from 'lucide-react'
+import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 
 type BuildCaseSelectorProps = {
   suitesTree: any[]
@@ -28,7 +29,7 @@ type SuiteNodeProps = {
 
 const getSuiteCaseIds = (suite: any, casosList: any[]): string[] => {
   const ids: string[] = []
-  const directCases = casosList.filter(c => c.suiteId === suite.id)
+  const directCases = casosList.filter(c => suite.id === UNSUITED_CASES_ROOT_ID ? !c.suiteId : c.suiteId === suite.id)
   ids.push(...directCases.map(c => c.id))
   if (suite.children && suite.children.length > 0) {
     for (const child of suite.children) {
@@ -64,7 +65,7 @@ const SuiteNode = memo(({
   const isIndeterminate = checkedCount > 0 && checkedCount < suiteCaseIds.length
   const lockCount = suiteCaseIds.filter(id => lockedIds.has(id)).length
 
-  const directCases = allCases.filter(c => c.suiteId === suite.id)
+  const directCases = allCases.filter(c => suite.id === UNSUITED_CASES_ROOT_ID ? !c.suiteId : c.suiteId === suite.id)
 
   const query = searchQuery.trim().toLowerCase()
 
@@ -79,7 +80,7 @@ const SuiteNode = memo(({
     if (childCases.length === 0) return false
     if (!query) return true
     if (child.nombre.toLowerCase().includes(query)) return true
-    const childDirectCases = allCases.filter(c => c.suiteId === child.id)
+    const childDirectCases = allCases.filter(c => child.id === UNSUITED_CASES_ROOT_ID ? !c.suiteId : c.suiteId === child.id)
     return childDirectCases.some(c =>
       c.title.toLowerCase().includes(query) ||
       c.id.toLowerCase().includes(query) ||
@@ -205,6 +206,13 @@ export const BuildCaseSelector = memo(({
     ),
     [casosList, componentId]
   )
+  const selectorSuites = useMemo(() => {
+    const unsuitedCases = filteredCases.filter(test => !test.suiteId)
+    const unsuitedRoot = unsuitedCases.length > 0
+      ? [{ id: UNSUITED_CASES_ROOT_ID, nombre: 'Casos sin suite', color: '#F8FAFC', children: [] }]
+      : []
+    return [...unsuitedRoot, ...suitesTree]
+  }, [filteredCases, suitesTree])
 
   const [expandedSuites, setExpandedSuites] = useState<Record<string, boolean>>({})
   const allExpanded = useMemo(() => {
@@ -215,9 +223,9 @@ export const BuildCaseSelector = memo(({
         if (s.children) expandAll(s.children)
       }
     }
-    expandAll(suitesTree)
+    expandAll(selectorSuites)
     return result
-  }, [suitesTree])
+  }, [selectorSuites])
 
   const effectiveExpanded = useMemo(() => {
     const hasAny = Object.values(expandedSuites).some(v => v)
@@ -302,12 +310,12 @@ export const BuildCaseSelector = memo(({
         </div>
       </div>
       <div className="border rounded-3 overflow-auto p-2" style={{ maxHeight: '420px' }}>
-        {suitesTree.length === 0 ? (
+        {selectorSuites.length === 0 ? (
           <div className="text-center text-muted small py-4">
             No hay suites disponibles.
           </div>
         ) : (
-          suitesTree.map(suite => (
+          selectorSuites.map(suite => (
             <SuiteNode
               key={suite.id}
               suite={suite}

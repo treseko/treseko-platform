@@ -159,6 +159,7 @@ export const RBAC_CAPABILITIES: RbacCapabilityGroup[] = [
     { id: 'configuracion.api_keys', label: 'API keys' },
     { id: 'configuracion.sesion', label: 'Sesión y seguridad' },
     { id: 'configuracion.adjuntos', label: 'Adjuntos y evidencias' },
+    { id: 'settings.evidence_sanitization.manage', label: 'Gestionar sanitizacion de evidencias' },
     { id: 'configuracion.licencia', label: 'Licencia' }
   ] }
 ]

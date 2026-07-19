@@ -7,7 +7,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci && npx playwright install --with-deps chromium
 COPY . .
 COPY . /opt/treseko/engine-source
 COPY entrypoint.sh /entrypoint.sh

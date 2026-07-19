@@ -1,4 +1,6 @@
 from .legacy_common import *
+from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
+from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload
 
 
@@ -25,6 +27,8 @@ async def complete_ai_engine_execution(
     execution.observaciones = payload.observations or payload.error_message or payload.logs
     execution.fecha_ejecucion = now
     ai_report = {**(execution.ai_report or {}), **(payload.ai_report or {})}
+    evidence_policy = await config_service.get_evidence_sanitization_policy(db)
+    sanitize_output = bool(evidence_policy.get("sanitization_enabled", True))
     report_summary = payload.metadata.get("ai_report_summary") if isinstance(payload.metadata, dict) else None
     if not isinstance(report_summary, dict):
         report_summary = {}
@@ -107,9 +111,9 @@ async def complete_ai_engine_execution(
                 workflow_version=item.get("workflow_version"),
                 node_id=node_id,
                 status=str(item.get("status") or item.get("level") or "SUCCESS")[:30],
-                input_json=sanitize_ai_report_payload(item.get("input_json") if isinstance(item.get("input_json"), dict) else item.get("input") if isinstance(item.get("input"), dict) else {}),
-                output_json=sanitize_ai_report_payload(item.get("output_json") if isinstance(item.get("output_json"), dict) else item.get("output") if isinstance(item.get("output"), dict) else {}),
-                metrics_json=sanitize_ai_report_payload(item.get("metrics_json") if isinstance(item.get("metrics_json"), dict) else item.get("metrics") if isinstance(item.get("metrics"), dict) else {}),
+                input_json=sanitize_ai_report_payload(item.get("input_json") if isinstance(item.get("input_json"), dict) else item.get("input") if isinstance(item.get("input"), dict) else {}) if sanitize_output else (item.get("input_json") if isinstance(item.get("input_json"), dict) else item.get("input") if isinstance(item.get("input"), dict) else {}),
+                output_json=sanitize_ai_report_payload(item.get("output_json") if isinstance(item.get("output_json"), dict) else item.get("output") if isinstance(item.get("output"), dict) else {}) if sanitize_output else (item.get("output_json") if isinstance(item.get("output_json"), dict) else item.get("output") if isinstance(item.get("output"), dict) else {}),
+                metrics_json=sanitize_ai_report_payload(item.get("metrics_json") if isinstance(item.get("metrics_json"), dict) else item.get("metrics") if isinstance(item.get("metrics"), dict) else {}) if sanitize_output else (item.get("metrics_json") if isinstance(item.get("metrics_json"), dict) else item.get("metrics") if isinstance(item.get("metrics"), dict) else {}),
                 started_at=_parse_trace_time(item.get("started_at") or item.get("ts")),
                 ended_at=_parse_trace_time(item.get("ended_at") or item.get("ts")),
             ))
@@ -132,7 +136,7 @@ async def complete_ai_engine_execution(
         if execution.ai_human_review_required
         else models.AiReviewStatus.NO_REQUIERE_REVISION
     )
-    execution.ai_report = sanitize_ai_report_payload(ai_report)
+    execution.ai_report = sanitize_ai_report_payload(ai_report) if sanitize_output else ai_report
 
     snapshots_result = await db.execute(
         select(models.SnapshotPaso)
@@ -239,9 +243,7 @@ async def run_ai_engine_dry_run(
         raise ConnectionError(f"Motor IA no disponible: {health.get('detail') or 'no responde'}")
 
     variables, environment_name, dataset_name, dataset_vars, case_vars = await _resolve_dry_run_variables(db, payload)
-    base_url = get_ai_base_url_from_context(variables, payload.pasos)
-    if not base_url:
-        raise ValueError("Motor IA requiere una URL base en el ambiente/dataset o en los datos de un paso.")
+    base_url = get_ai_base_url_from_context(variables, payload.pasos) or ""
 
     steps = _automation_steps_for_payload(payload.pasos)
     guidance = "\n".join(
@@ -281,6 +283,7 @@ async def run_ai_engine_dry_run(
         "provider": config.get("provider"),
         "llm_endpoint": config.get("llm_endpoint"),
         "model": config.get("model"),
+        "provider_api_key": get_configured_ai_provider_api_key(config, config.get("provider")),
         "temperature": config.get("temperature"),
         "token_cost_prompt_per_1k": config.get("token_cost_prompt_per_1k"),
         "token_cost_completion_per_1k": config.get("token_cost_completion_per_1k"),

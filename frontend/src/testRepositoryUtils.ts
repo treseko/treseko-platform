@@ -1,3 +1,6 @@
+// UI-only identifier. Cases keep suite_id=null in the database.
+export const UNSUITED_CASES_ROOT_ID = '__unsuited_cases__'
+
 export const findSuiteById = (suites: any[], id: string): any => {
   for (const suite of suites) {
     if (suite.id === id) return suite

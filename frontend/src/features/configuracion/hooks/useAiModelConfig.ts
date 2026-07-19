@@ -24,20 +24,30 @@ export function useAiModelConfig({
   const [modelScanLoading, setModelScanLoading] = useState(false)
   const [modelScanError, setModelScanError] = useState('')
   const selectedRuntimeProvider = inferAiRuntimeProvider(aiEngineConfig)
-  const selectedProviderMeta = aiProviderOptions.find(option => option.value === selectedRuntimeProvider) || aiProviderOptions[1]
+  const defaultProviderMeta = aiProviderOptions.find(option => option.value === 'openai-compatible') || aiProviderOptions[0]
+  const selectedProviderMeta = aiProviderOptions.find(option => option.value === selectedRuntimeProvider) || defaultProviderMeta
   const modelCatalog = getModelCatalog(aiEngineConfig)
   const activeModelCapabilities = getActiveModelCapabilities(aiEngineConfig)
 
   const updateAiRuntimeProvider = (provider: string) => {
-    const option = aiProviderOptions.find(item => item.value === provider) || aiProviderOptions[1]
+    const option = aiProviderOptions.find(item => item.value === provider) || defaultProviderMeta
     const currentEndpoint = String(aiEngineConfig.llm_endpoint || '')
     const shouldReplaceEndpoint = !currentEndpoint || aiProviderOptions.some(item => item.defaultEndpoint === currentEndpoint)
+    const providerKeyEntry = aiEngineConfig.provider_api_keys?.[provider]
+    const providerKeyConfigured = Boolean(providerKeyEntry?.api_key) || (aiEngineConfig.provider === provider && Boolean(aiEngineConfig.provider_api_key_configured))
     setAiEngineConfig({
       ...aiEngineConfig,
       provider,
       provider_label: option.label,
       llm_endpoint: shouldReplaceEndpoint ? option.defaultEndpoint : aiEngineConfig.llm_endpoint,
+      model: option.defaultModel || aiEngineConfig.model,
+      model_catalog: [],
       last_model_scan_status: null,
+      last_model_scan_requires_api_key: option.requiresApiKey,
+      last_model_scan_api_key_env: option.apiKeyEnv || null,
+      last_model_scan_api_key_configured: providerKeyConfigured,
+      provider_api_key_configured: providerKeyConfigured,
+      provider_api_key_source: providerKeyConfigured ? 'stored' : null,
     })
   }
 
@@ -71,7 +81,9 @@ export function useAiModelConfig({
       if (!response.ok) throw new Error(`Backend respondio ${response.status}`)
       const result = await response.json()
       const scannedModels = Array.isArray(result.models) ? result.models : []
-      const nextModel = aiEngineConfig.model || scannedModels[0]?.id || ''
+      const currentModel = String(aiEngineConfig.model || '')
+      const currentModelExists = scannedModels.some((item: any) => item?.id === currentModel || item?.name === currentModel)
+      const nextModel = currentModelExists ? currentModel : (scannedModels[0]?.id || selectedProviderMeta.defaultModel || currentModel || '')
       const nextCapabilities = scannedModels.reduce((acc: any, item: any) => {
         if (item?.id) acc[item.id] = item.capabilities || defaultModelCapabilities
         return acc
@@ -87,6 +99,11 @@ export function useAiModelConfig({
         auto_scan_enabled: true,
         last_model_scan_at: result.scanned_at,
         last_model_scan_status: result.status,
+        last_model_scan_requires_api_key: Boolean(result.requires_api_key),
+        last_model_scan_api_key_env: result.api_key_env || selectedProviderMeta.apiKeyEnv || null,
+        last_model_scan_api_key_configured: Boolean(result.api_key_configured),
+        provider_api_key_configured: Boolean(result.api_key_configured),
+        provider_api_key_source: result.api_key_source || aiEngineConfig.provider_api_key_source || null,
       })
       if (result.status === 'ok' || result.status === 'empty') {
         showFeedback('Modelos IA', result.detail || `${scannedModels.length} modelos detectados.`, result.status === 'ok' ? 'success' : 'warning')

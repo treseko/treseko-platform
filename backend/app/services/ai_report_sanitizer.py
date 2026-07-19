@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
-
-from .error_sanitizer import sanitize_external_error
 
 MAX_AI_REPORT_BYTES = 96 * 1024
 MAX_AI_REPORT_LIST_ITEMS = 40
@@ -35,6 +34,30 @@ HEAVY_KEY_MARKERS = {
     "trace",
     "video",
 }
+
+
+def _sanitize_ai_report_text(value: str) -> str:
+    text = str(value or "").replace("\x00", "").strip()
+    if not text:
+        return ""
+    text = re.sub(
+        r"(?i)\b(authorization)\s*:\s*(bearer|basic|digest)\s+[^\s,;]+",
+        r"\1: \2 [redacted]",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\b(cookie|set-cookie|x-api-key|private-token)\s*[:=]\s*[^\r\n,;]+",
+        r"\1=[redacted]",
+        text,
+    )
+    text = re.sub(
+        r"(?i)(token|api[_-]?key|password|secret|client_secret|refresh_token|access_token)\s*[:=]\s*[^\s,;]+",
+        r"\1=[redacted]",
+        text,
+    )
+    if len(text) > MAX_AI_REPORT_STRING_LENGTH:
+        return f"{text[:MAX_AI_REPORT_STRING_LENGTH].rstrip()}..."
+    return text
 
 
 def _is_sensitive_key(key: Any) -> bool:
@@ -73,7 +96,7 @@ def _sanitize_ai_report_payload(value: Any, *, key: Any = None, depth: int = 0) 
             sanitized.append({"truncated_items": len(value) - MAX_AI_REPORT_LIST_ITEMS})
         return sanitized
     if isinstance(value, str):
-        return sanitize_external_error(value, max_len=MAX_AI_REPORT_STRING_LENGTH)
+        return _sanitize_ai_report_text(value)
     return value
 
 

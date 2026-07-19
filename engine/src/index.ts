@@ -13,8 +13,23 @@ import WebSocket from 'ws';
 
 dotenv.config({ override: false });
 
-const BACKEND_WS_URL = process.env.BACKEND_WS_URL || 'ws://localhost:8000/ws/engine-sync';
+function backendWsUrlFromPublicUrl(value?: string): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    parsed.pathname = '/ws/engine-sync';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
+const BACKEND_WS_URL = process.env.BACKEND_WS_URL || backendWsUrlFromPublicUrl(process.env.BACKEND_PUBLIC_URL) || 'ws://localhost:8000/ws/engine-sync';
 const BACKEND_WS_TOKEN = process.env.AI_ENGINE_CALLBACK_TOKEN || '';
+const URL_PATTERN = /\bhttps?:\/\/[^\s"'<>),;]+|\bwww\.[^\s"'<>),;]+/i;
 
 const program = new Command();
 
@@ -100,13 +115,38 @@ function sumMetricsFromTimeline(timeline: AgentTimelineEvent[]): Record<string, 
   });
 }
 
-function buildBackendWsUrl(executionId: string, engineWsToken?: string): string {
-  const base = `${BACKEND_WS_URL}/${encodeURIComponent(executionId)}`;
+function buildBackendWsUrl(executionId: string, engineWsToken?: string, callbackUrl?: string): string {
+  const wsBase = backendWsUrlFromPublicUrl(callbackUrl) || BACKEND_WS_URL;
+  const base = `${wsBase}/${encodeURIComponent(executionId)}`;
   const token = engineWsToken || BACKEND_WS_TOKEN;
   if (!token) return base;
   const separator = base.includes('?') ? '&' : '?';
   const paramName = engineWsToken ? 'engine_token' : 'callback_token';
   return `${base}${separator}${paramName}=${encodeURIComponent(token)}`;
+}
+
+function normalizeEngineUrl(value?: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const match = raw.match(URL_PATTERN);
+  const candidate = (match?.[0] || raw).trim().replace(/^["']|["']$/g, '');
+  const withProtocol = /^www\./i.test(candidate) ? `https://${candidate}` : candidate;
+  try {
+    const parsed = new URL(withProtocol);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function firstStepUrl(steps?: QAEngineStep[]): string {
+  for (const step of steps || []) {
+    const source = `${step.data || ''}\n${step.action || ''}\n${step.expected || ''}`;
+    const normalized = normalizeEngineUrl(source);
+    if (normalized) return normalized;
+  }
+  return '';
 }
 
 function compactHistoryItem(item: any): Record<string, any> {
@@ -118,9 +158,66 @@ function compactHistoryItem(item: any): Record<string, any> {
     validation: item.validation,
     observation_before: item.observation_before,
     duration_ms: item.duration_ms,
-    screenshot_base64: item.screenshot_base64,
+    screenshot_available: Boolean(item.screenshot_base64),
     metrics: item.metrics,
     raw_ai_response_excerpt: item.raw_ai_response ? JSON.stringify(item.raw_ai_response).slice(0, 2500) : undefined,
+  };
+}
+
+function compactWorkflowValue(value: any, depth = 0): any {
+  if (value === null || value === undefined) return value;
+  if (depth > 3) return undefined;
+  if (typeof value === 'string') return value.length > 2000 ? `${value.slice(0, 2000)}...` : value;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => compactWorkflowValue(item, depth + 1));
+  if (typeof value === 'object') {
+    const compact: Record<string, any> = {};
+    for (const [key, item] of Object.entries(value).slice(0, 30)) {
+      if (['screenshot', 'screenshot_base64', 'image_base64', 'base64'].includes(key)) {
+        compact[`${key}_available`] = Boolean(item);
+        continue;
+      }
+      if (['prompt_template', 'prompt', 'system_prompt', 'raw_response', 'rawResponse'].includes(key)) {
+        compact[`${key}_excerpt`] = typeof item === 'string' ? item.slice(0, 1000) : JSON.stringify(item).slice(0, 1000);
+        continue;
+      }
+      compact[key] = compactWorkflowValue(item, depth + 1);
+    }
+    return compact;
+  }
+  return String(value).slice(0, 1000);
+}
+
+function compactWorkflowNode(node: any): Record<string, any> {
+  return {
+    id: node?.id,
+    type: node?.type,
+    name: node?.name,
+    agent_key: node?.agent_key,
+    enabled: node?.enabled,
+    locked: node?.locked,
+    timeout_sec: node?.timeout_sec,
+    position_x: node?.position_x,
+    position_y: node?.position_y,
+    model_override: node?.model_override,
+    temperature_override: node?.temperature_override,
+  };
+}
+
+function compactWorkflowTrace(trace: WorkflowTrace): Record<string, any> {
+  return {
+    ts: trace.ts || trace.started_at,
+    workflow_id: trace.workflow_id,
+    workflow_version: trace.workflow_version,
+    node_id: trace.node_id,
+    node_name: trace.node_name,
+    node_type: trace.node_type,
+    status: trace.status,
+    started_at: trace.started_at,
+    ended_at: trace.ended_at,
+    input_json: compactWorkflowValue(trace.input_json),
+    output_json: compactWorkflowValue(trace.output_json),
+    metrics_json: compactWorkflowValue(trace.metrics_json),
   };
 }
 
@@ -163,7 +260,15 @@ function buildAiReport(args: {
   const metrics = sumMetricsFromTimeline(timeline);
   const workflowDefinition = (args.parameters || {}).workflow_definition || null;
   const workflowMeta = workflowDefinition?.workflow || null;
-  const workflowConversation = (args.workflowTraces || []).map((trace) => ({
+  const workflowNodes = (workflowDefinition?.nodes || []).map(compactWorkflowNode);
+  const workflowEdges = (workflowDefinition?.edges || []).map((edge: any) => ({
+    id: edge?.id,
+    source_node_id: edge?.source_node_id,
+    target_node_id: edge?.target_node_id,
+    condition: edge?.condition,
+  }));
+  const compactTraces = (args.workflowTraces || []).map(compactWorkflowTrace);
+  const workflowConversation = compactTraces.map((trace) => ({
     ts: trace.ts || trace.started_at,
     level: trace.status === 'FAILED' ? 'ERROR' : trace.status === 'BLOCKED' ? 'WARN' : 'INFO',
     agent: trace.node_name || trace.node_type || 'WORKFLOW',
@@ -179,6 +284,16 @@ function buildAiReport(args: {
     started_at: trace.started_at,
     ended_at: trace.ended_at,
   }));
+  const compactParameters = {
+    ...(args.parameters || {}),
+    workflow_definition: workflowDefinition
+      ? {
+          workflow: workflowMeta,
+          nodes_count: workflowNodes.length,
+          edges_count: workflowEdges.length,
+        }
+      : null,
+  };
   return {
     schema_version: 1,
     execution_id: args.testId,
@@ -194,12 +309,18 @@ function buildAiReport(args: {
     started_at: new Date(args.startedAt).toISOString(),
     ended_at: new Date().toISOString(),
     model: args.model,
-    parameters: args.parameters || {},
+    parameters: compactWorkflowValue(compactParameters),
     workflow_id: workflowMeta?.id,
     workflow_version: workflowMeta?.version,
-    workflow_snapshot: workflowDefinition,
-    workflow_nodes: workflowDefinition?.nodes || [],
-    workflow_edges: workflowDefinition?.edges || [],
+    workflow_snapshot: workflowDefinition
+      ? {
+          workflow: workflowMeta,
+          nodes_count: workflowNodes.length,
+          edges_count: workflowEdges.length,
+        }
+      : null,
+    workflow_nodes: workflowNodes,
+    workflow_edges: workflowEdges,
     data: (args.parameters || {}).context || {},
     metrics: {
       ...metrics,
@@ -207,7 +328,7 @@ function buildAiReport(args: {
       avg_latency_ms: metrics.aiCalls ? Math.round(metrics.latencyMs / metrics.aiCalls) : 0,
     },
     timeline,
-    workflow_traces: args.workflowTraces || [],
+    workflow_traces: compactTraces,
     agent_conversation: workflowConversation.length
       ? workflowConversation
       : timeline.filter((item) => ['AI_AGENT', 'QA_GUARD', 'AUDITOR', 'RECOVERY', 'SENTINEL'].includes(item.agent)),
@@ -270,7 +391,7 @@ export async function runTask(
     headless?: boolean;
     viewport?: { width: number; height: number };
     io?: any;
-    aiConfig?: { endpoint?: string; model?: string; temperature?: number; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number };
+    aiConfig?: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number };
     steps?: QAEngineStep[];
     contextData?: Record<string, any>;
     agentWorkflow?: Array<Record<string, any>>;
@@ -278,12 +399,19 @@ export async function runTask(
     timeoutSeconds?: number;
     caseId?: string;
     engineWsToken?: string;
+    callbackUrl?: string;
   } = {}
 ): Promise<EngineRunResult> {
   const startedAt = Date.now();
-  const ws = new WebSocket(buildBackendWsUrl(testId, options.engineWsToken));
+  const ws = new WebSocket(buildBackendWsUrl(testId, options.engineWsToken, options.callbackUrl));
   let backendWsReady = false;
   const pendingWsMessages: string[] = [];
+  const backendWsEventType = (event: string): string => {
+    if (event === 'step_result') return 'STEP_RESULT';
+    if (event === 'agent_event') return 'AGENT_LOG';
+    if (event === 'execution_finished') return 'EXECUTION_FINISHED';
+    return 'STREAM_DOM_LOG';
+  };
   ws.on('open', () => {
     backendWsReady = true;
     while (pendingWsMessages.length && ws.readyState === WebSocket.OPEN) {
@@ -300,16 +428,14 @@ export async function runTask(
 
   const emit = (event: string, data: any) => {
     try { options.io?.to(testId).emit(event, data); } catch (e) {}
+    const snapshot_id = data.step ? step_map[data.step.toString()] : null;
+    const message = JSON.stringify({
+      type: backendWsEventType(event),
+      ...data,
+      snapshot_id,
+      text: data.message || JSON.stringify(data)
+    });
     if (backendWsReady && ws.readyState === WebSocket.OPEN) {
-        // Mapear numero de paso a snapshot_id de la base de datos
-        const snapshot_id = data.step ? step_map[data.step.toString()] : null;
-        
-        const message = JSON.stringify({
-            type: event === 'step_result' ? 'STEP_RESULT' : event === 'agent_event' ? 'AGENT_EVENT' : 'STREAM_DOM_LOG',
-            ...data,
-            snapshot_id: snapshot_id,
-            text: data.message || JSON.stringify(data)
-        });
         try {
           ws.send(message);
         } catch (error) {
@@ -318,14 +444,30 @@ export async function runTask(
           console.warn(`[WS] Could not send progress for ${testId}: ${(error as Error)?.message || error}`);
         }
     } else {
-      const snapshot_id = data.step ? step_map[data.step.toString()] : null;
-      pendingWsMessages.push(JSON.stringify({
-        type: event === 'step_result' ? 'STEP_RESULT' : event === 'agent_event' ? 'AGENT_EVENT' : 'STREAM_DOM_LOG',
-        ...data,
-        snapshot_id,
-        text: data.message || JSON.stringify(data),
-      }));
+      pendingWsMessages.push(message);
     }
+  };
+
+  const flushAndCloseBackendWs = async () => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      try { ws.close(); } catch (_) {}
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+      ws.once('close', finish);
+      setTimeout(finish, 350);
+      try {
+        ws.close(1000, 'execution finished');
+      } catch (_) {
+        finish();
+      }
+    });
   };
 
   const browser = new BrowserController();
@@ -362,18 +504,8 @@ export async function runTask(
   if (expected) report.setPostConditions(`Resultado esperado: ${expected}`);
 
   emitAgent('SYSTEM', 'INFO', `Iniciando tarea: ${task}`, { step: 0 });
-  emit('status', { agent: 'SYSTEM', level: 'INFO', message: `Iniciando tarea: ${task}`, step: 0 });
 
   try {
-    await browser.init(Boolean(options.headless), options.viewport);
-    report.setModel(ai.model);
-    const page = browser.getPage();
-    emitAgent('BROWSER', 'INFO', `Navegando a ${url}...`, { step: 0 });
-    emit('status', { agent: 'BROWSER', level: 'INFO', message: `Navegando a ${url}...`, step: 0 });
-    await page.goto(url, { waitUntil: 'networkidle' });
-    report.setPreConditions(`Navegador abierto en ${url} con carga inicial completa.`);
-    emitAgent('BROWSER', 'INFO', 'Navegacion completada y pagina estable.', { step: 0 });
-
     const qaSteps = (options.steps && options.steps.length > 0)
       ? options.steps
       : Array.from({ length: Math.max(1, maxSteps || 1) }, (_, index) => ({
@@ -382,6 +514,25 @@ export async function runTask(
           data: manualSteps,
           expected,
         }));
+    const urlCandidate = normalizeEngineUrl(url) || firstStepUrl(qaSteps);
+
+    await browser.init(Boolean(options.headless), options.viewport);
+    report.setModel(ai.model);
+    const page = browser.getPage();
+    let activeBaseUrl = '';
+    const navigateToResolvedBaseUrl = async (candidate: unknown, source: string): Promise<string> => {
+      const resolved = normalizeEngineUrl(candidate) || firstStepUrl(qaSteps);
+      if (!resolved) {
+        throw new Error('URL inicial invalida: el Context Resolver no devolvio una base_url ejecutable.');
+      }
+      if (activeBaseUrl === resolved && page.url() !== 'about:blank') return resolved;
+      emitAgent('BROWSER', 'INFO', `Navegando a ${resolved} (${source})...`, { step: 0 });
+      await page.goto(resolved, { waitUntil: 'networkidle' });
+      activeBaseUrl = resolved;
+      report.setPreConditions(`Navegador abierto en ${resolved} con carga inicial completa.`);
+      emitAgent('BROWSER', 'INFO', 'Navegacion completada y pagina estable.', { step: 0 });
+      return resolved;
+    };
 
     let runResult: Awaited<ReturnType<typeof runQaSteps>> | undefined;
     let workflowTraces: WorkflowTrace[] = [];
@@ -396,29 +547,72 @@ export async function runTask(
           context: {
             task,
             expected,
-            url,
+            received_url: url,
+            url_candidate: urlCandidate,
             manualSteps,
             qaSteps,
             ...(options.contextData || {}),
           },
           sharedMemory: {
-            base_url: url,
+            base_url_candidate: urlCandidate,
             current_step: qaSteps[0]?.number ?? null,
             retry_count: {},
           },
         },
         {
-          ContextResolver: async (node, input) => ({
-            status: 'SUCCESS',
-            confidence: 100,
-            reason: 'Contexto inicial resuelto',
-            events: [],
-            sharedMemoryPatch: {
-              base_url: url,
-              total_steps: qaSteps.length,
-              workflow_node: node.name,
-            },
-          }),
+          ContextResolver: async (node, input) => {
+            const fallbackUrl = normalizeEngineUrl(input.sharedMemory.base_url)
+              || normalizeEngineUrl(input.sharedMemory.base_url_candidate)
+              || normalizeEngineUrl(input.context.url_candidate)
+              || firstStepUrl(qaSteps);
+            try {
+              const output = await runLlmAgent(ai, node, {
+                ...input,
+                context: {
+                  ...input.context,
+                  resolver_role: 'Elegir la URL/base_url correcta para iniciar la prueba usando todos los datos disponibles. No ejecutes navegador; solo resuelve contexto.',
+                  expected_shared_memory_patch: {
+                    base_url: 'URL absoluta http/https elegida para iniciar la prueba',
+                    reason: 'por que se eligio esa URL',
+                    relevant_variables: 'variables o datos usados',
+                  },
+                },
+              });
+              const decidedUrl = normalizeEngineUrl(output.sharedMemoryPatch?.base_url)
+                || normalizeEngineUrl(output.decision?.base_url)
+                || normalizeEngineUrl(output.decision?.url)
+                || normalizeEngineUrl(output.decision?.target_url);
+              return {
+                ...output,
+                status: output.status || 'SUCCESS',
+                confidence: output.confidence ?? (decidedUrl ? 95 : 80),
+                reason: output.reason || (decidedUrl ? 'Contexto resuelto por agente' : 'Contexto resuelto con fallback'),
+                sharedMemoryPatch: {
+                  ...(output.sharedMemoryPatch || {}),
+                  base_url: decidedUrl || fallbackUrl,
+                  total_steps: qaSteps.length,
+                  workflow_node: node.name,
+                  context_resolver_used: true,
+                },
+              };
+            } catch (error: any) {
+              return {
+                status: fallbackUrl ? 'SUCCESS' : 'BLOCKED',
+                confidence: fallbackUrl ? 70 : 100,
+                reason: fallbackUrl
+                  ? `Context Resolver no pudo consultar el LLM; se usa URL candidata: ${error?.message || error}`
+                  : `Context Resolver no encontro URL ejecutable: ${error?.message || error}`,
+                events: [],
+                sharedMemoryPatch: {
+                  base_url: fallbackUrl,
+                  total_steps: qaSteps.length,
+                  workflow_node: node.name,
+                  context_resolver_used: true,
+                  context_resolver_fallback: true,
+                },
+              };
+            }
+          },
           Observer: async (_node, input) => {
             if (input.sharedMemory.qa_run_complete) {
               return {
@@ -449,7 +643,8 @@ export async function runTask(
             events: [],
             decision: { approved: true },
           }),
-          Executor: async () => {
+          Executor: async (_node, input) => {
+            await navigateToResolvedBaseUrl(input.sharedMemory.base_url, 'Context Resolver');
             runResult = await runQaSteps(page, ai, qaSteps, {
               executionId: testId,
               task,
@@ -507,7 +702,8 @@ export async function runTask(
           }),
           llm_agent: async (node, input) => runLlmAgent(ai, node, input),
           rule_agent: async (node, input) => runRuleAgent(node, input),
-          browser_action_agent: async () => {
+          browser_action_agent: async (_node, input) => {
+            await navigateToResolvedBaseUrl(input.sharedMemory.base_url, 'Context Resolver');
             if (!runResult) {
               runResult = await runQaSteps(page, ai, qaSteps, {
                 executionId: testId,
@@ -546,9 +742,11 @@ export async function runTask(
           timeoutMs: workflowTimeoutMs,
           emitTrace: (trace) => {
             workflowTraces.push(trace);
-            emitAgent(trace.node_type || 'WORKFLOW', trace.status === 'FAILED' ? 'ERROR' : trace.status === 'BLOCKED' ? 'WARN' : 'INFO', `${trace.node_name}: ${trace.status}`, {
+            const traceReason = String(trace.output_json?.reason || '');
+            const isNoMoreSteps = trace.node_type === 'Observer' && trace.status === 'BLOCKED' && traceReason === 'no_more_steps';
+            emitAgent(trace.node_type || 'WORKFLOW', trace.status === 'FAILED' ? 'ERROR' : isNoMoreSteps ? 'INFO' : trace.status === 'BLOCKED' ? 'WARN' : 'INFO', `${trace.node_name}: ${isNoMoreSteps ? 'sin mas pasos' : trace.status}`, {
               metrics: trace.metrics_json,
-              reason: String(trace.output_json?.reason || ''),
+              reason: traceReason,
             });
           },
         },
@@ -558,6 +756,7 @@ export async function runTask(
         runResult = { steps: [], history: [], visited_urls: [], errors: workflowResult.lastOutput?.reason ? [workflowResult.lastOutput.reason] : ['Workflow finalizado sin ejecutar pasos'] };
       }
     } else {
+      await navigateToResolvedBaseUrl(urlCandidate, 'fallback sin workflow');
       runResult = await runQaSteps(page, ai, qaSteps, {
         executionId: testId,
         task,
@@ -621,8 +820,6 @@ export async function runTask(
       confidence: validation.confidence,
       reason: validation.reason,
     });
-    emit('status', { agent: 'AUDITOR', level: 'INFO', message: `Auditoria finalizada: ${validation.status}`, status: validation.status, confidence: validation.confidence });
-
     report.setFinalStatus(validation.status, validation.reason, validation.confidence);
     await browser.close();
     
@@ -631,7 +828,6 @@ export async function runTask(
       ? `Reporte generado: ${reportPath}`
       : reportPath;
     emitAgent('SYSTEM', 'SUCCESS', `Test ${testId} finalizado.`);
-    ws.close();
     const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
     const finalStatus = normalizeAuditStatus(validation.status);
     const aiReport = buildAiReport({
@@ -656,6 +852,7 @@ export async function runTask(
         headless: Boolean(options.headless),
         viewport: options.viewport,
         llm_endpoint: options.aiConfig?.endpoint,
+        provider: options.aiConfig?.provider,
         model: ai.model,
         temperature: options.aiConfig?.temperature,
         step_count: qaSteps.length,
@@ -664,6 +861,24 @@ export async function runTask(
         context: options.contextData || {},
       },
     });
+    emit('execution_finished', {
+      status: finalStatus,
+      duration_seconds: durationSeconds,
+      observations: validation.reason,
+      confidence: aiReport.confidence,
+      consensus: aiReport.consensus,
+      failure_category: aiReport.failure_category,
+      human_review_required: aiReport.human_review_required,
+      model: ai.model,
+      message: `Ejecucion finalizada: ${finalStatus}`,
+      ai_report_summary: {
+        confidence: aiReport.confidence,
+        consensus: aiReport.consensus,
+        failure_category: aiReport.failure_category,
+        human_review_required: aiReport.human_review_required,
+      },
+    });
+    await flushAndCloseBackendWs();
     return {
       status: finalStatus,
       duration_seconds: durationSeconds,
@@ -702,7 +917,6 @@ export async function runTask(
       finalScreenshot = page.isClosed() ? undefined : (await page.screenshot()).toString('base64');
     } catch (_) {}
     await browser.close();
-    ws.close();
     const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
     const errorReport = buildAiReport({
       task,
@@ -725,6 +939,7 @@ export async function runTask(
         headless: Boolean(options.headless),
         viewport: options.viewport,
         llm_endpoint: options.aiConfig?.endpoint,
+        provider: options.aiConfig?.provider,
         model: ai.model,
         temperature: options.aiConfig?.temperature,
         agent_workflow: options.agentWorkflow || [],
@@ -732,6 +947,25 @@ export async function runTask(
         context: options.contextData || {},
       },
     });
+    emit('execution_finished', {
+      status: 'FALLO',
+      duration_seconds: durationSeconds,
+      observations: error.message,
+      error_message: error.message,
+      confidence: errorReport.confidence,
+      consensus: errorReport.consensus,
+      failure_category: errorReport.failure_category,
+      human_review_required: true,
+      model: ai.model,
+      message: 'Ejecucion finalizada con error',
+      ai_report_summary: {
+        confidence: errorReport.confidence,
+        consensus: errorReport.consensus,
+        failure_category: errorReport.failure_category,
+        human_review_required: errorReport.human_review_required,
+      },
+    });
+    await flushAndCloseBackendWs();
     return {
       status: 'FALLO',
       duration_seconds: durationSeconds,

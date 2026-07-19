@@ -34,8 +34,21 @@ import { PremiumGate } from '../premium/PremiumGate'
 import { featureEnabled } from '../premium/featureAccess'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { dateTimeMs, formatDateTime, toDateTimeLocalInput } from '../../shared/utils/dateTime'
+import { TraceabilityTab } from './TraceabilityTab'
 
 type ProyectosPageProps = any
+
+const BUG_STATUS_OPTIONS = [
+  'ABIERTO', 'TRIAGE', 'ASIGNADO', 'EN_PROGRESO', 'LISTO_PARA_RETEST', 'EN_RETEST',
+  'RESUELTO', 'REABIERTO', 'CERRADO', 'DUPLICADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE', 'BLOQUEADO',
+]
+
+const PROJECT_BUG_COLUMNS = [
+  { id: 'pendientes', label: 'Pendientes', statuses: ['ABIERTO', 'TRIAGE', 'ASIGNADO'] },
+  { id: 'en_curso', label: 'En curso', statuses: ['EN_PROGRESO', 'BLOQUEADO'] },
+  { id: 'validacion', label: 'Validación', statuses: ['LISTO_PARA_RETEST', 'EN_RETEST', 'REABIERTO'] },
+  { id: 'cerrados', label: 'Cerrados', statuses: ['RESUELTO', 'CERRADO', 'DUPLICADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE'] },
+]
 
 export function ProyectosPage(props: ProyectosPageProps) {
   const {
@@ -53,6 +66,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
     currentProjectId,
     componentsList,
     buildsList,
+    traceabilityRefreshToken,
     handleProjectChange,
     handleUpdateProject,
     canEditCurrentProject,
@@ -95,7 +109,9 @@ export function ProyectosPage(props: ProyectosPageProps) {
     fetchWithAuth,
     showFeedback,
     hasSystemFeature,
-    setActiveTab
+    setActiveTab,
+    confirmAction,
+    onCreateCaseFromStory
   } = props
   const activeOrganizations = organizations.filter((org: any) => org.active !== false)
   const canUseCapability = canAccessCapability || ((capabilityId: string, level = 'read') => canAccessModule(capabilityId.split('.')[0], level))
@@ -114,6 +130,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
   const canEditProjectDatasets = canUseCapability('proyectos.datasets', 'edit')
   const canReadProjectWiki = canUseCapability('proyectos.wiki', 'read')
   const canEditProjectWiki = canUseCapability('proyectos.wiki', 'edit')
+  const canReadTraceability = canUseCapability('proyectos.requisitos', 'read') || canUseCapability('proyectos.historias', 'read')
+  const canEditTraceability = canUseCapability('proyectos.requisitos', 'edit') && canUseCapability('proyectos.historias', 'edit')
   const canReadProjectTickets = canUseCapability('redmine.vinculos', 'read') || canUseCapability('redmine.ver', 'read')
   const canEditProjectTickets = canUseCapability('redmine.reportar', 'edit') || canUseCapability('redmine.vinculos', 'edit')
   const reportSnapshotsEnabled = featureEnabled(hasSystemFeature, 'reports.snapshots', false)
@@ -123,6 +141,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
     { id: 'config', label: canReadProjectTeam ? 'Configuracion & Equipo' : 'Configuracion', icon: Sliders, visible: canEditProjectPortfolio || canReadProjectTeam },
     { id: 'components', label: 'Componentes y Builds', icon: Layers, visible: canReadProjectComponents || canReadProjectBuilds || canReadProjectBuildScope },
     { id: 'envs', label: 'Ambientes y Datasets', icon: Server, visible: canReadProjectEnvironments || canReadProjectDatasets },
+    { id: 'traceability', label: 'Requisitos e Historias', icon: Link, visible: canReadTraceability },
     { id: 'wiki', label: 'Wiki / Documentacion', icon: FileText, visible: canReadProjectWiki },
     { id: 'tickets', label: 'Tickets e Incidencias', icon: Ticket, visible: canReadProjectTickets },
   ].filter(tab => tab.visible)
@@ -1596,6 +1615,22 @@ export function ProyectosPage(props: ProyectosPageProps) {
                     </div>
                   )}
 
+                  {canReadTraceability && managingProjectId && (
+                    <div className={projectInnerTab === 'traceability' ? 'h-100' : 'd-none'} aria-hidden={projectInnerTab !== 'traceability'}>
+                      <TraceabilityTab
+                      projectId={managingProjectId}
+                      components={componentsList}
+                      fetchWithAuth={fetchWithAuth}
+                      canEdit={canEditTraceability}
+                      active={projectInnerTab === 'traceability'}
+                      refreshToken={traceabilityRefreshToken}
+                      confirmAction={confirmAction}
+                      onCreateCaseFromStory={onCreateCaseFromStory}
+                      showFeedback={showFeedback}
+                      />
+                    </div>
+                  )}
+
                   {/* SUB-TAB: WIKI Y DOCUMENTACIÓN (AVANZADO) */}
                   {projectInnerTab === 'wiki' && canReadProjectWiki && (
                     <div className="animate__animated animate__fadeIn h-100 d-flex flex-column">
@@ -1794,13 +1829,13 @@ export function ProyectosPage(props: ProyectosPageProps) {
                       </Card>}
 
                       <Row className="g-3 mb-4">
-                        {['ABIERTO', 'EN_ANALISIS', 'EN_PROGRESO', 'RESUELTO', 'CERRADO'].map((estado) => {
-                          const items = bugIssues.filter((bug: any) => bug.estado === estado || (estado === 'ABIERTO' && !bug.estado))
+                        {PROJECT_BUG_COLUMNS.map((column) => {
+                          const items = bugIssues.filter((bug: any) => column.statuses.includes(bug.estado || 'ABIERTO'))
                           return (
-                            <Col lg={estado === 'CERRADO' ? 2 : 3} md={6} key={estado}>
+                            <Col lg={3} md={6} key={column.id}>
                               <Card className="border-0 shadow-sm bg-light h-100">
                                 <Card.Header className="bg-white fw-bold py-3 border-bottom-0 d-flex justify-content-between align-items-center">
-                                  <span><KanbanSquare size={18} className="me-2" />{estado.replaceAll('_', ' ')}</span>
+                                  <span><KanbanSquare size={18} className="me-2" />{column.label}</span>
                                   <Badge bg="light" text="dark" className="border">{items.length}</Badge>
                                 </Card.Header>
                                 <Card.Body className="d-flex flex-column gap-2 p-2 pt-0">
@@ -1808,11 +1843,12 @@ export function ProyectosPage(props: ProyectosPageProps) {
                                   {items.map((bug: any) => (
                                     <div key={bug.id} className={`p-3 bg-white border rounded-3 shadow-sm border-start border-4 ${bug.severidad === 'BLOCKER' || bug.severidad === 'CRITICA' ? 'border-danger' : bug.severidad === 'ALTA' ? 'border-warning' : 'border-primary'}`}>
                                       <div className="d-flex justify-content-between mb-1"><strong className="small text-dark">{bug.codigo}</strong> <Badge bg={bug.severidad === 'BLOCKER' || bug.severidad === 'CRITICA' ? 'danger' : bug.severidad === 'ALTA' ? 'warning' : 'secondary'}>{bug.severidad}</Badge></div>
+                                      <Badge bg="light" text="dark" className="border mb-2">{String(bug.estado || 'ABIERTO').replaceAll('_', ' ')}</Badge>
                                       <p className="x-small text-muted mb-2">{bug.titulo}</p>
                                       {bug.descripcion && <div className="x-small text-secondary mb-2">{bug.descripcion}</div>}
                                       {canEditProjectTickets ? (
                                         <Form.Select size="sm" value={bug.estado} onChange={(e) => updateBugIssue(bug, { estado: e.target.value })}>
-                                          {['ABIERTO', 'EN_ANALISIS', 'EN_PROGRESO', 'RESUELTO', 'CERRADO', 'REABIERTO'].map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}
+                                          {BUG_STATUS_OPTIONS.map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}
                                         </Form.Select>
                                       ) : (
                                         <Badge bg="light" text="dark" className="border">{String(bug.estado || 'ABIERTO').replaceAll('_', ' ')}</Badge>
