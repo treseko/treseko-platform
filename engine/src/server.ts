@@ -1530,7 +1530,7 @@ httpServer.listen(PORT, () => {
     if (!fs.existsSync(restartMarker) || activeExecutionIds.size > 0) return;
     try {
       fs.unlinkSync(restartMarker);
-      console.log("Update de Engine preparado; reiniciando sin ejecuciones activas.");
+      console.info("Update de Engine preparado; reiniciando sin ejecuciones activas.");
       void shutdownEngine();
     } catch (error) {
       console.error("No se pudo aplicar el reinicio diferido del Engine:", error);

@@ -1192,6 +1192,18 @@ class UpdateService:
             raise ValueError("La version interna del paquete no coincide con el manifest autorizado.")
         if not changelog_path.read_text(encoding="utf-8").strip():
             raise ValueError("El CHANGELOG.md del paquete esta vacio.")
+        component_version_paths = (
+            "frontend/dist/VERSION",
+            "engine/VERSION",
+            "automation-worker/VERSION",
+        )
+        for relative_path in component_version_paths:
+            component_version_path = extracted_dir / relative_path
+            if not component_version_path.is_file():
+                raise ValueError(f"El paquete no contiene {relative_path}.")
+            component_version = component_version_path.read_text(encoding="utf-8").strip()
+            if component_version != expected_version:
+                raise ValueError(f"La version de {relative_path} no coincide con el manifest autorizado.")
         for field_name in ("channel", "edition", "artifact"):
             expected = str(manifest.get(field_name) or "").strip()
             actual = str(package_manifest.get(field_name) or "").strip()
