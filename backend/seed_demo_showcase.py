@@ -709,15 +709,22 @@ async def seed_extension_catalog_and_instances(session, org: models.Organizacion
 
     for project in projects:
         for provider_id in ("bug_tracker", "motor_llm", "notification_email"):
+            scope_key = f"project:{project.id}"
             result = await session.execute(
                 select(models.IntegrationInstance).where(
                     models.IntegrationInstance.provider_id == provider_id,
-                    models.IntegrationInstance.proyecto_id == project.id,
+                    models.IntegrationInstance.scope_key == scope_key,
                 )
             )
             instance = result.scalar_one_or_none()
             if not instance:
-                instance = models.IntegrationInstance(id=new_id(), provider_id=provider_id, proyecto_id=project.id, organizacion_id=org.id)
+                instance = models.IntegrationInstance(
+                    id=new_id(),
+                    provider_id=provider_id,
+                    scope_key=scope_key,
+                    proyecto_id=project.id,
+                    organizacion_id=org.id,
+                )
                 session.add(instance)
             instance.enabled = True
             instance.config_json = {"seed": SEED_MARK, "mode": "demo", "secrets": "not-stored"}
