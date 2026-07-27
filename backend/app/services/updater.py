@@ -168,12 +168,23 @@ class UpdateTaskState:
     events: list[dict[str, Any]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        # Mientras una tarea esta en curso, ``previous_version`` identifica
+        # correctamente la version desde la que se esta actualizando. Una vez
+        # aplicada, la version actual debe ser la que expone el proceso que ya
+        # arranco con el paquete nuevo; conservar la anterior en este campo
+        # hacia que la UI mostrara un estado final contradictorio.
+        installed_version = (
+            PRODUCT_VERSION
+            if self.status == "done" and self.stage == "applied"
+            else self.previous_version or PRODUCT_VERSION
+        )
+        pending_version = None if self.status == "done" and self.stage == "applied" else self.version
         return {
             "task_id": self.task_id,
             "status": self.status,
             "channel": self.channel,
-            "current_version": self.previous_version or PRODUCT_VERSION,
-            "pending_version": self.version,
+            "current_version": installed_version,
+            "pending_version": pending_version,
             "version": self.version,
             "previous_version": self.previous_version,
             "started_at": self.started_at,
@@ -233,19 +244,27 @@ class UpdateService:
         self._db_history_dirty = False
         self._load_history()
 
-    async def check_community_update(self, channel: str | None = None) -> dict[str, Any]:
+    async def check_community_update(self, channel: str | None = None, *, force_refresh: bool = False) -> dict[str, Any]:
         channel = channel if channel in COMMUNITY_UPDATE_CHANNELS else configured_community_update_channel()
         now = time.monotonic()
         cache_key = f"treseko:update:{channel}:latest"
+        def cache_matches_installed_version(payload: dict[str, Any] | None) -> bool:
+            if not isinstance(payload, dict):
+                return False
+            cached_current = str(payload.get("current_version") or "").strip()
+            return not cached_current or cached_current == PRODUCT_VERSION
         if (
+            not force_refresh
+            and
             self._community_update_cache is not None
             and UPDATE_CHECK_CACHE_SECONDS > 0
             and now - self._community_update_cache_at < UPDATE_CHECK_CACHE_SECONDS
             and self._community_update_cache.get("channel") == channel
+            and cache_matches_installed_version(self._community_update_cache)
         ):
             return copy.deepcopy(self._community_update_cache)
-        cached = await self._get_redis_json(cache_key)
-        if cached is not None:
+        cached = None if force_refresh else await self._get_redis_json(cache_key)
+        if cached is not None and cache_matches_installed_version(cached):
             self._community_update_cache = copy.deepcopy(cached)
             self._community_update_cache_at = now
             return cached
@@ -1204,6 +1223,21 @@ class UpdateService:
             component_version = component_version_path.read_text(encoding="utf-8").strip()
             if component_version != expected_version:
                 raise ValueError(f"La version de {relative_path} no coincide con el manifest autorizado.")
+        component_metadata_paths = (
+            "frontend/dist/version.json",
+            "engine/package.json",
+            "automation-worker/package.json",
+        )
+        for relative_path in component_metadata_paths:
+            metadata_path = extracted_dir / relative_path
+            if not metadata_path.is_file():
+                raise ValueError(f"El paquete no contiene {relative_path}.")
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{relative_path} no contiene JSON valido.") from exc
+            if not isinstance(metadata, dict) or str(metadata.get("version") or "").strip() != expected_version:
+                raise ValueError(f"La version declarada en {relative_path} no coincide con el manifest autorizado.")
         for field_name in ("channel", "edition", "artifact"):
             expected = str(manifest.get(field_name) or "").strip()
             actual = str(package_manifest.get(field_name) or "").strip()

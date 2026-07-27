@@ -304,6 +304,10 @@ PY
     # El Engine detecta esta marca y se reinicia despues de que el backend
     # termine de reemplazar sus fuentes. No se corta una ejecucion en curso.
     : > "$ENGINE_DIR/.treseko-update-restart"
+    # Engine corre con UID dedicado 10001. El backend aplica el update como
+    # root, por lo que debe devolverle propiedad para que pueda consumir la
+    # marca y reiniciarse.
+    chown -R 10001:10001 "$ENGINE_DIR"
   fi
 
   if [ -d "$update_dir/automation-worker" ]; then
@@ -311,6 +315,10 @@ PY
     mkdir -p "$WORKER_DIR"
     rm -rf "$WORKER_DIR"/*
     cp -a "$update_dir/automation-worker/." "$WORKER_DIR/"
+    # Workers nuevos consumen esta marca cuando terminan el job activo. Las
+    # releases anteriores requieren un reinicio manual unico para adoptar este
+    # comportamiento, sin interrumpir ejecuciones en curso.
+    : > "$WORKER_DIR/.treseko-update-restart"
   fi
 
   rm -f "$flag_file"

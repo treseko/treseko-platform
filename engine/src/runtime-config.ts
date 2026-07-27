@@ -13,11 +13,11 @@ function envFlag(name: string, defaultValue = false): boolean {
 function readVersion(): string {
   const candidates = [
     process.env.TRESEKO_VERSION,
-    process.env.npm_package_version,
     path.resolve(process.cwd(), 'VERSION'),
     path.resolve(__dirname, '../VERSION'),
     path.resolve(__dirname, '../../VERSION'),
     '/VERSION',
+    process.env.npm_package_version,
   ].filter(Boolean) as string[];
 
   for (const candidate of candidates) {

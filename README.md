@@ -8,13 +8,18 @@
 [![Database](https://img.shields.io/badge/database-PostgreSQL-336791?style=for-the-badge)](docs/DATABASE.md)
 [![Automation](https://img.shields.io/badge/automation-Playwright%20%7C%20Cypress%20%7C%20Selenium-ff6b00?style=for-the-badge)](automation-worker/)
 
-Treseko es una plataforma open core para gestionar QA de punta a punta: casos de prueba, ejecuciones manuales, automatizacion, evidencias, bugs, reportes de build y trazabilidad para decisiones de release.
+**Treseko Community** es un gestor de pruebas de software de código abierto para equipos QA y desarrollo. Organizá casos de prueba, ejecuciones, evidencias y bugs en un solo lugar; instalalo en tu propio servidor con Docker y conservá la trazabilidad necesaria para decidir cada release con contexto.
 
-La version Community esta pensada para equipos que quieren una instalacion self-hosted limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
+La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
+
+> **Conocé Treseko, sus ediciones y la propuesta de producto en la [landing oficial de Treseko](https://treseko.com).**
 
 - Sitio oficial: [treseko.com](https://treseko.com)
 - Terminos y condiciones: [treseko.com/terminos-y-condiciones](https://treseko.com/terminos-y-condiciones)
 - Licencia del codigo Community: [AGPL-3.0-or-later](LICENSE)
+
+Este repositorio público contiene la edición Community bajo AGPL. Los servicios
+comerciales y la infraestructura de licencias no forman parte de esta publicación.
 
 
 ## Por Que Treseko

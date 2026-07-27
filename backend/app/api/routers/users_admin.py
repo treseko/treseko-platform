@@ -249,7 +249,7 @@ async def create_usuario_admin(
         new_user = await crud.create_user_admin(db, user=user, hashed_password=hashed_password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -277,7 +277,7 @@ async def create_usuario_admin(
             db=db, usuario_id=current_user.id, accion="QUEUE", recurso="notification_welcome", recurso_id=invitation.id,
             detalles={"user_id": str(new_user.id), "auth_provider": new_user.auth_provider}, ip_address=client_ip,
         )
-    
+
     return new_user
 
 
@@ -356,7 +356,7 @@ async def update_usuario_admin(
             payload={"user": {"id": str(updated.id), "email": updated.email, "rol": updated.rol.value}, "actor": {"email": current_user.email}, "message": "Rol o permisos de usuario actualizados"},
             dedupe_key=f"user.role_changed:{usuario_id}:{utc_now().strftime('%Y%m%d%H%M')}",
         )
-    
+
     return updated
 
 @router.delete("/usuarios/{usuario_id}", response_model=schemas.Usuario)
@@ -393,7 +393,6 @@ async def deactivate_usuario_admin(
         payload={"user": {"id": str(updated.id), "email": updated.email, "rol": updated.rol.value}, "actor": {"email": current_user.email}, "message": f"Usuario desactivado: {updated.email}"},
         dedupe_key=f"user.disabled:{usuario_id}",
     )
-    
+
     return updated
 # --- ENDPOINTS AUDITORIA ---
-

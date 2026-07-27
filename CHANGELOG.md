@@ -1,4 +1,6 @@
-# Treseko 1.0.0-rc.1
+# Treseko
+
+## 1.0.0-rc.1
 
 Esta versión incorpora mejoras principales respecto de la RC anterior:
 
@@ -10,5 +12,7 @@ Esta versión incorpora mejoras principales respecto de la RC anterior:
 - Reportes y métricas de build con cobertura de trazabilidad.
 - Workers de automatización vinculados por código temporal.
 - Permisos granulares, configuraciones de IA y límites por edición.
+- Actualización Community con verificación, backup, migraciones y estado final
+  consistente de la versión instalada.
 
 Esta es la versión estable de Treseko Community para uso productivo.

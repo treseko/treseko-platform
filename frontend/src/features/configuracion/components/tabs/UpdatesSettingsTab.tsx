@@ -205,6 +205,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
           clearUpdateMaintenanceSignal()
           const historyPayload = await fetchSystemUpdateHistory(fetchWithAuth, 8).catch(() => ({ tasks: [] }))
           setHistory(historyPayload.tasks || [])
+          void load()
         }
       } catch {
         if (status.status === 'restarting') {
@@ -254,7 +255,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       id: 'ai_engine',
       name: 'Motor IA',
       description: 'Ejecución asistida y automatizada.',
-      version: findComponent('ai_engine')?.detail?.match(/v[0-9][\w.-]*/i)?.[0] || 'según health',
+      version: findComponent('ai_engine')?.version || 'sin versión reportada',
       status: findComponent('ai_engine')?.status || 'OFFLINE',
       detail: findComponent('ai_engine')?.detail || 'Sin health reportado',
       icon: Cpu,
@@ -263,11 +264,10 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       id: 'worker',
       name: 'Worker automatización',
       description: 'Ejecución Playwright/local y jobs automatizados.',
-      version: primaryWorker?.capabilities?.playwright_version
-        ? `Playwright ${primaryWorker.capabilities.playwright_version}`
-        : primaryWorker?.capabilities?.node_version
-          ? `Node ${primaryWorker.capabilities.node_version}`
-          : 'sin worker activo',
+      version: primaryWorker?.version
+        || primaryWorker?.capabilities?.component_version
+        || primaryWorker?.capabilities?.worker_version
+        || 'sin worker activo',
       status: onlineWorkers.length ? 'ONLINE' : 'OFFLINE',
       detail: workers.length ? `${onlineWorkers.length}/${workers.length} worker(s) online` : 'No hay workers registrados',
       icon: Bot,
@@ -403,15 +403,17 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                   </div>
                 </div>
 
-                <Button
-                  variant="primary"
-                  className="fw-bold"
-                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium || isPrepared}
-                  onClick={() => setApplyConfirmation(true)}
-                >
-                  {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
-                  {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
-                </Button>
+                {latestUpdate?.available && (
+                  <Button
+                    variant="primary"
+                    className="fw-bold"
+                    disabled={!canApplyUpdates || applyingPremium || isPrepared}
+                    onClick={() => setApplyConfirmation(true)}
+                  >
+                    {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
+                    {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
+                  </Button>
+                )}
                 {!canApplyUpdates && <div className="x-small text-muted mt-2">Necesitas permiso para gestionar actualizaciones.</div>}
               </Card.Body>
             </Card>
@@ -573,15 +575,17 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                   </div>
                 </div>
 
-                <Button
-                  variant="primary"
-                  className="fw-bold"
-                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium || isPrepared}
-                  onClick={() => setApplyConfirmation(true)}
-                >
-                  {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
-                  {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
-                </Button>
+                {latestUpdate?.available && (
+                  <Button
+                    variant="primary"
+                    className="fw-bold"
+                    disabled={!canApplyUpdates || applyingPremium || isPrepared}
+                    onClick={() => setApplyConfirmation(true)}
+                  >
+                    {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
+                    {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
+                  </Button>
+                )}
                 {!canApplyUpdates && <div className="x-small text-muted mt-2">Necesitas permiso para gestionar actualizaciones.</div>}
               </Card.Body>
             </Card>

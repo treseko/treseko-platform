@@ -187,7 +187,7 @@ export async function fetchSystemUpdateChannels(fetchWithAuth: FetchWithAuth) {
 }
 
 export async function checkCommunityUpdate(fetchWithAuth: FetchWithAuth) {
-  const response = await fetchWithAuth(`${API_BASE}/system/updates/check-community`)
+  const response = await fetchWithAuth(`${API_BASE}/system/updates/check-community?force=true`)
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
 

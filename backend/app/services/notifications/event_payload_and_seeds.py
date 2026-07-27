@@ -367,4 +367,3 @@ async def ensure_notification_seeds(db: AsyncSession) -> None:
             priority=item["priority"],
         ))
     await db.commit()
-

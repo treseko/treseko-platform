@@ -790,10 +790,11 @@ async def prepare_system_update_download_grant_request(
 
 @router.get("/system/updates/check-community", response_model=schemas.SystemCommunityUpdateCheckResponse)
 async def check_system_community_update(
+    force: bool = Query(default=False, description="Ignora la cache para consultar el canal remoto."),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
     try:
-        return await get_update_service().check_community_update()
+        return await get_update_service().check_community_update(force_refresh=force)
     except Exception as exc:
         return {
             "available": False,

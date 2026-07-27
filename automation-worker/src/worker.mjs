@@ -12,6 +12,7 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const envPath = path.join(ROOT_DIR, ".env");
 const tokenPath = path.join(ROOT_DIR, ".runner-token");
+const restartMarkerPath = path.join(ROOT_DIR, ".treseko-update-restart");
 const RUN_ONCE = process.argv.includes("--once");
 const startedAt = Date.now();
 const STARTED_AT_ISO = new Date(startedAt).toISOString();
@@ -74,8 +75,8 @@ function readWorkerVersion() {
   const candidates = [
     process.env.TRESEKO_WORKER_VERSION,
     process.env.TRESEKO_VERSION,
-    process.env.npm_package_version,
     path.join(ROOT_DIR, "VERSION"),
+    process.env.npm_package_version,
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -526,6 +527,19 @@ async function heartbeat(status = "ONLINE") {
       uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
     }),
   });
+  restartIfUpdateIsReady();
+}
+
+function restartIfUpdateIsReady() {
+  if (activeJobs > 0 || !fs.existsSync(restartMarkerPath)) return;
+  console.info("Actualizacion del worker lista; reiniciando el proceso para cargarla.");
+  try {
+    fs.unlinkSync(restartMarkerPath);
+  } catch (error) {
+    console.error("No se pudo consumir la marca de actualizacion del worker:", error?.message || error);
+    return;
+  }
+  process.exit(0);
 }
 
 function getValue(source, key) {
