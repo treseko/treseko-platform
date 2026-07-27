@@ -103,11 +103,15 @@ chmod 0700 "$LOCAL_DIR" "$SECRETS_DIR" 2>/dev/null || true
 ADMIN_PASSWORD="$(generate_secret 24)"
 DB_PASSWORD="$(generate_secret 32)"
 SECRET_KEY="$(generate_secret 64)"
+AI_CREDENTIALS_MASTER_KEY="$(generate_secret 64)"
+AI_ENGINE_INTERNAL_TOKEN="$(generate_secret 64)"
 DATABASE_URL="postgresql+asyncpg://treseko:${DB_PASSWORD}@db:5432/treseko"
 
 printf '%s' "$DB_PASSWORD" > "${SECRETS_DIR}/db-password"
 printf '%s' "$DATABASE_URL" > "${SECRETS_DIR}/database-url"
 printf '%s' "$SECRET_KEY" > "${SECRETS_DIR}/secret-key"
+printf '%s' "$AI_CREDENTIALS_MASTER_KEY" > "${SECRETS_DIR}/ai-credentials-master-key"
+printf '%s' "$AI_ENGINE_INTERNAL_TOKEN" > "${SECRETS_DIR}/ai-engine-internal-token"
 printf '%s' "$ADMIN_PASSWORD" > "${SECRETS_DIR}/admin-password"
 chmod 0600 "${SECRETS_DIR}"/* 2>/dev/null || true
 
@@ -117,6 +121,8 @@ TRESEKO_HTTP_PORT=${HTTP_PORT}
 TRESEKO_DB_PASSWORD_FILE=${SECRETS_DIR}/db-password
 TRESEKO_DATABASE_URL_FILE=${SECRETS_DIR}/database-url
 TRESEKO_SECRET_KEY_FILE=${SECRETS_DIR}/secret-key
+TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE=${SECRETS_DIR}/ai-credentials-master-key
+TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE=${SECRETS_DIR}/ai-engine-internal-token
 DB_USER=treseko
 DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
