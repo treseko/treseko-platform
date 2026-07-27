@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   fetchAiEngineConfig,
   fetchAiEngineHealth,
@@ -33,6 +33,9 @@ export function useAiEngineConfig({
 
   const normalizeConfig = (config: any) => ({
     ...config,
+    ai_execution_driver: config.ai_execution_driver === 'opencode' ? 'opencode' : 'treseko_engine',
+    opencode_timeout_seconds: Number(config.opencode_timeout_seconds ?? 30),
+    opencode_max_steps: Number(config.opencode_max_steps ?? 20),
     provider_label: config.provider_label || null,
     headless: config.headless ?? true,
     max_parallel_ai_runs: Number(config.max_parallel_ai_runs ?? 1),
@@ -44,7 +47,9 @@ export function useAiEngineConfig({
     auto_scan_enabled: Boolean(config.auto_scan_enabled),
     last_model_scan_at: config.last_model_scan_at || null,
     last_model_scan_status: config.last_model_scan_status || null,
+    active_provider_profile_id: config.active_provider_profile_id || null,
     active_workflow_id: config.active_workflow_id || null,
+    active_workflow_ids: config.active_workflow_ids || {},
     agent_workflow: normalizeAiAgentWorkflow(Array.isArray(config.agent_workflow) ? config.agent_workflow : []),
   })
 
@@ -79,24 +84,28 @@ export function useAiEngineConfig({
     }
   }
 
-  const checkAiEngineHealth = async () => {
+  const checkAiEngineHealth = useCallback(async (options: { silent?: boolean } = {}) => {
     try {
       const health = await fetchAiEngineHealth(fetchWithAuth)
       setAiEngineHealth(health)
-      setIaLogs((prev: any[]) => [...prev, {
-        ts: new Date().toISOString(),
-        level: 'engine',
-        source: 'ENGINE',
-        message: `Motor IA -> ${health.status}${health.detail ? ` (${health.detail})` : ''}`,
-      }])
+      if (!options.silent) {
+        setIaLogs((prev: any[]) => [...prev, {
+          ts: new Date().toISOString(),
+          level: 'engine',
+          source: 'ENGINE',
+          message: `Motor IA -> ${health.status}${health.detail ? ` (${health.detail})` : ''}`,
+        }])
+      }
       return health
     } catch (error: any) {
       const health = { status: 'error', detail: error.message || 'Motor IA no disponible' }
       setAiEngineHealth(health)
-      showFeedback('Motor IA', health.detail, 'danger')
+      if (!options.silent) {
+        showFeedback('Motor IA', health.detail, 'danger')
+      }
       return health
     }
-  }
+  }, [fetchWithAuth, setIaLogs, showFeedback])
 
   return {
     aiEngineConfig,

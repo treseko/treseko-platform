@@ -101,7 +101,7 @@ async def enforce_weekly_execution_limit(
     solution_name = await _get_solution_name(db, solution_id)
     reset_message = _format_usage_reset_time(reset_at)
     detail = (
-        f"Limite de Treseko {edition} alcanzado para {label} en {solution_name}. "
+        f"Limite de Treseko {edition} alcanzado para {label} en {solution_name} ({solution_id}). "
         f"Uso actual: {result['current']} de {limit}. "
         f"Esta accion solicita {result['requested']} ejecucion{'es' if result['requested'] != 1 else ''}. "
         f"{reset_message}"

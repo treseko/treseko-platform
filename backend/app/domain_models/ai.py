@@ -9,6 +9,50 @@ from ..database import Base
 from ..time_utils import UTCDateTime
 from .enums import *
 
+
+class AiProviderCredential(Base):
+    __tablename__ = "ai_provider_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider = Column(String(80), nullable=False, index=True)
+    label = Column(String(160), nullable=False)
+    secret_value_encrypted = Column(Text, nullable=False)
+    key_id = Column(String(80), nullable=False)
+    active = Column(Boolean, default=True, nullable=False, index=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now())
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    profiles = relationship("AiProviderProfile", back_populates="credential")
+    creator = relationship("Usuario")
+
+
+class AiProviderProfile(Base):
+    __tablename__ = "ai_provider_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(160), nullable=False, unique=True, index=True)
+    provider = Column(String(80), nullable=False, index=True)
+    adapter = Column(String(80), nullable=False, index=True)
+    endpoint = Column(String(500), nullable=False)
+    model = Column(String(160), nullable=False)
+    credential_id = Column(UUID(as_uuid=True), ForeignKey("ai_provider_credentials.id", ondelete="RESTRICT"), nullable=True, index=True)
+    capabilities_json = Column(JSON, default=dict, nullable=False)
+    capability_status = Column(String(20), default="unknown", nullable=False, index=True)
+    enabled = Column(Boolean, default=True, nullable=False, index=True)
+    request_timeout_seconds = Column(Integer, default=300, nullable=False)
+    max_retries = Column(Integer, default=1, nullable=False)
+    max_input_tokens = Column(Integer, nullable=True)
+    max_output_tokens = Column(Integer, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now())
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    credential = relationship("AiProviderCredential", back_populates="profiles")
+    workflows = relationship("AiWorkflow", back_populates="provider_profile")
+    creator = relationship("Usuario")
+
+
 class AiWorkflow(Base):
     __tablename__ = "ai_workflows"
 
@@ -21,6 +65,9 @@ class AiWorkflow(Base):
     workflow_format = Column(String(32), default="legacy_v1", nullable=False, index=True)
     workflow_purpose = Column(String(40), default="test_execution", nullable=False, index=True)
     source_workflow_id = Column(UUID(as_uuid=True), ForeignKey("ai_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
+    provider_profile_id = Column(UUID(as_uuid=True), ForeignKey("ai_provider_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    fallback_profile_ids = Column(JSON, default=list, nullable=False)
+    decision_policy_json = Column(JSON, default=dict, nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(UTCDateTime(), server_default=func.now())
     updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
@@ -30,6 +77,7 @@ class AiWorkflow(Base):
     versions = relationship("AiWorkflowVersion", back_populates="workflow", cascade="all, delete-orphan")
     creator = relationship("Usuario")
     source_workflow = relationship("AiWorkflow", remote_side=[id], foreign_keys=[source_workflow_id])
+    provider_profile = relationship("AiProviderProfile", back_populates="workflows")
 
 
 class AiAgentDefinition(Base):

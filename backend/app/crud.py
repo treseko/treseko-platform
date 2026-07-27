@@ -25,6 +25,7 @@ _MODULE_NAMES = [
     "app.repositories.external_api",
     "app.repositories.traceability",
     "app.repositories.story_generation",
+    "app.repositories.case_generation",
 ]
 
 _modules = [import_module(name) for name in _MODULE_NAMES]
@@ -39,7 +40,22 @@ for _module in _modules:
         if not _name.startswith("__"):
             _exports[_name] = _value
 globals().update(_exports)
+# Los módulos de repositorio pueden compartir utilidades públicas a través de este
+# agregador por compatibilidad histórica. No propagar nombres privados: dos
+# repositorios pueden tener helpers internos con el mismo nombre (por ejemplo
+# ``_call_engine``) y sobrescribirlos cambia silenciosamente el flujo que usa
+# cada uno.
 for _module in [*_modules, *_source_modules]:
-    vars(_module).update(_exports)
+    _module_vars = vars(_module)
+    # Algunos módulos históricos consumen helpers privados inyectados por el
+    # agregador. Sólo completar los que no existan; jamás reemplazar el helper
+    # privado que el propio módulo ya declaró.
+    _module_vars.update(
+        {
+            name: value
+            for name, value in _exports.items()
+            if not name.startswith("_") or name not in _module_vars
+        }
+    )
 __all__ = sorted(_exports)
-del import_module, _MODULE_NAMES, _modules, _source_modules, _module, _name, _value, _exports
+del import_module, _MODULE_NAMES, _modules, _source_modules, _module, _name, _value, _exports, _module_vars

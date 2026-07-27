@@ -458,11 +458,22 @@ class UsuarioCreate(UsuarioBase):
 class UsuarioAdminCreate(UsuarioBase):
     password: Optional[str] = Field(default=None, min_length=8, max_length=MAX_USER_PASSWORD_LENGTH)
     activo: bool = True
+    send_welcome: bool = False
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: Optional[str]) -> Optional[str]:
         return _validate_password(value)
+
+
+class WelcomeActivationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    password: str = Field(min_length=8, max_length=MAX_USER_PASSWORD_LENGTH)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value) or value
 
 class UsuarioUpdate(BaseModel):
     email: Optional[str] = Field(default=None, min_length=3, max_length=MAX_USER_EMAIL_LENGTH)
@@ -611,6 +622,12 @@ class UserPreferences(BaseModel):
     profile_settings: Dict[str, Any] = {}
     project_theme_overrides: Dict[str, Any] = {}
 
+class UserPasswordChangeResponse(UserPreferences):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    session_timeout_minutes: Optional[int] = None
+
 class UserPasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=MAX_USER_PASSWORD_LENGTH)
     new_password: str = Field(min_length=8, max_length=MAX_USER_PASSWORD_LENGTH)
@@ -620,34 +637,6 @@ class UserPasswordChange(BaseModel):
     def validate_new_password(cls, value: str) -> str:
         return _validate_password(value) or value
 
-class ApiKeyCreate(BaseModel):
-    nombre: str = Field(default="Automatizacion externa", min_length=1, max_length=100)
-
-class ApiKey(BaseModel):
-    id: UUID
-    nombre: str
-    key_prefix: str
-    activo: bool
-    fecha_creacion: datetime
-    ultimo_uso: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-class ApiKeyCreated(ApiKey):
-    api_key: str
-
-class AuditLog(BaseModel):
-    id: UUID
-    usuario_id: Optional[UUID] = None
-    usuario_email: Optional[str] = None
-    usuario_nombre: Optional[str] = None
-    accion: str
-    recurso: str
-    recurso_id: Optional[UUID] = None
-    detalles: Optional[dict] = None
-    ip_address: Optional[str] = None
-    fecha: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
+from .auth_api_keys import ApiKey, ApiKeyCreate, ApiKeyCreated, AuditLog
 
 # --- FUNCIONES AUTOMATIZADAS ---

@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from . import crud, models, schemas
 from .database import get_db
 from .rbac_compat import legacy_capability_level
 from .rbac_catalog import ALL_CAPABILITIES, CAPABILITY_LEVELS, get_capability_module
+from .runtime_environment import IS_PRODUCTION, RUNTIME_ENVIRONMENT
 from .time_utils import utc_now
 
 def _env_or_file(name: str) -> str:
@@ -34,11 +36,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 def _runtime_environment() -> str:
-    return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "development").strip().lower()
+    return RUNTIME_ENVIRONMENT
 
 
 def _is_production_environment(environment: str | None = None) -> bool:
-    return (environment or _runtime_environment()) in {"prod", "production"}
+    return IS_PRODUCTION
 
 
 def validate_secret_key_for_runtime(secret_key: str | None = None, environment: str | None = None) -> None:
@@ -216,6 +218,13 @@ def get_capability_permission(user: models.Usuario, capability_id: str):
     if not module_id:
         return None
     module_permissions = effective_permissions_for_user(user)
+    # The personal inbox is always scoped to the authenticated user by its
+    # endpoints.  Preserve compatibility for existing QA Lead, Tester and
+    # Viewer accounts that already have read access to the notifications
+    # module, without granting access to notification configuration, rules or
+    # audit data.
+    if capability_id == "notificaciones.inbox" and module_permissions.get("notificaciones") in {"read", "edit"}:
+        return "edit"
     legacy_level = legacy_capability_level(module_permissions, capability_id)
     if legacy_level:
         return legacy_level
@@ -294,12 +303,17 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
+        token_session_version = payload.get("sv", 0)
+        if isinstance(token_session_version, bool) or not isinstance(token_session_version, int):
+            raise credentials_exception
         token_data = schemas.TokenData(email=email)
     except JWTError:
         raise credentials_exception
 
     user = await crud.get_user_by_email(db, email=token_data.email)
     if user is None:
+        raise credentials_exception
+    if int(user.session_version or 0) != token_session_version:
         raise credentials_exception
     return user
 

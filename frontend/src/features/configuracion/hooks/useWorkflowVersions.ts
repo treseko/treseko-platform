@@ -5,6 +5,7 @@ import {
   fetchWorkflowVersions,
   publishAiWorkflowVersion,
   rollbackAiWorkflowVersion,
+  validateAiWorkflow,
 } from '../api/aiWorkflowApi'
 import type { AiWorkflow, AiWorkflowVersion } from '../types/configuracion'
 import type { FetchWithAuth } from '../api/configuracionApi'
@@ -35,6 +36,7 @@ export function useWorkflowVersions({
   const [workflowChangelog, setWorkflowChangelog] = useState('')
   const [workflowVersions, setWorkflowVersions] = useState<AiWorkflowVersion[]>([])
   const [selectedWorkflowVersion, setSelectedWorkflowVersion] = useState<AiWorkflowVersion | null>(null)
+  const [workflowValidationIssues, setWorkflowValidationIssues] = useState<any[]>([])
 
   const loadWorkflowVersions = async (workflowId: string) => {
     try {
@@ -67,10 +69,30 @@ export function useWorkflowVersions({
     }
   }
 
+  const validateWorkflow = async () => {
+    if (!workflowDraft) return false
+    setWorkflowLoading(true)
+    try {
+      const result = await validateAiWorkflow(fetchWithAuth, workflowDraft.id)
+      const issues = Array.isArray(result?.issues) ? result.issues : []
+      setWorkflowValidationIssues(issues)
+      if (result?.valid) showFeedback('Workflow IA', issues.length ? 'Workflow valido con advertencias.' : 'Workflow valido.', issues.length ? 'warning' : 'success')
+      else showFeedback('Workflow IA', 'El workflow tiene errores bloqueantes. Revisa el resumen de validacion.', 'danger')
+      return Boolean(result?.valid)
+    } catch (error: any) {
+      showFeedback('Workflow IA', error?.message || 'No se pudo validar el workflow.', 'danger')
+      return false
+    } finally {
+      setWorkflowLoading(false)
+    }
+  }
+
   const activateWorkflowVersion = async (version: AiWorkflowVersion) => {
     if (!workflowDraft) return
     try {
-      const saved = await activateAiWorkflowVersion(fetchWithAuth, workflowDraft.id, version.version)
+      const confirmRunning = window.confirm(`Activar la version ${version.version} para nuevas ejecuciones? Las ejecuciones ya iniciadas conservaran su snapshot.`)
+      if (!confirmRunning) return
+      const saved = await activateAiWorkflowVersion(fetchWithAuth, workflowDraft.id, version.version, true)
       setWorkflowDraft(saved)
       syncFlowFromWorkflow(saved)
       await loadAiWorkflows()
@@ -101,8 +123,10 @@ export function useWorkflowVersions({
     setWorkflowChangelog,
     workflowVersions,
     selectedWorkflowVersion,
+    workflowValidationIssues,
     loadWorkflowVersions,
     publishWorkflowVersion,
+    validateWorkflow,
     activateWorkflowVersion,
     rollbackWorkflow,
   }

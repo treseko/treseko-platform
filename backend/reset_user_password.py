@@ -78,6 +78,7 @@ async def main() -> None:
         profile_settings["security"] = security
 
         user.hashed_password = auth.get_password_hash(temporary_password)
+        user.session_version = int(user.session_version or 0) + 1
         user.profile_settings = profile_settings
 
         session.add(models.AuditLog(

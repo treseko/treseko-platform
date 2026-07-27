@@ -1,5 +1,6 @@
 import type { AttachmentMeta } from '../EvidenceUpload'
 import { dateTimeMs, formatDateTime } from '../shared/utils/dateTime'
+export { sortBuildsNewestFirst } from './buildSorting'
 import { DEV_ADMIN_EMAIL, MODULE_PERMISSIONS, ROLE_ACCESS } from './constants'
 import { CAPABILITY_TO_MODULE } from './rbac/rbacCatalog'
 import type { AuthMode, ModuleId, ModulePermissionMap, PermissionLevel, RoleKey, SessionUser } from './types'
@@ -93,6 +94,7 @@ export const mapBackendBuildToItem = (build: any) => ({
   componentId: build.componente_id || '',
   name: build.nombre,
   changeContext: build.contexto_cambio || '',
+  state: build.estado || (build.activo ? 'ACTIVA' : 'HISTORICA'),
   createdAt: build.fecha_creacion ?? null,
   startDate: build.fecha_inicio ?? null,
   endDate: build.fecha_fin ?? null,
@@ -100,12 +102,6 @@ export const mapBackendBuildToItem = (build: any) => ({
   hidden: Boolean(build.oculto)
 })
 
-export const sortBuildsNewestFirst = (builds: any[]) => builds.slice().sort((a, b) => {
-  const dateA = dateTimeMs(a.startDate) || dateTimeMs(a.endDate) || dateTimeMs(a.createdAt) || 0
-  const dateB = dateTimeMs(b.startDate) || dateTimeMs(b.endDate) || dateTimeMs(b.createdAt) || 0
-  if (dateA !== dateB) return dateB - dateA
-  return String(b.id || '').localeCompare(String(a.id || ''))
-})
 
 export const firstUrlFromText = (value?: string) => value?.match(/https?:\/\/\S+/)?.[0] || ''
 

@@ -1,36 +1,54 @@
-# Bug Tracker / Seguimiento de Bugs
+# Bug Tracker
 
-## Resumen
-El modulo Bug Tracker registra defectos internos con trazabilidad QA completa. Un bug puede nacer de carga manual o de un snapshot fallido/bloqueado, y queda preparado para vincularse despues con Redmine, Jira, GitHub Issues u otro tracker externo sin crear tickets externos automaticamente.
+Bug Tracker permite registrar, seguir y cerrar defectos sin perder el vínculo
+con el caso, la ejecución, el paso y la evidencia donde se detectaron.
 
-## Trazabilidad
-`BugIssue` vincula proyecto, componente, build, caso, test run, ejecucion, snapshot, entorno, dataset, usuario reportante y asignado. Tambien conserva codigo de caso/build, paso afectado, modo de ejecucion, datos congelados, esperado/obtenido, logs, error tecnico, notas QA, impacto, bloqueos, dedupe hash y metadata.
+## Crear un bug desde una ejecución
 
-## Flujo Desde Prueba Fallida
-1. La ejecucion queda en `FALLO` o `BLOQUEADO`.
-2. El usuario revisa snapshot, comentarios y evidencias.
-3. El sistema permite crear un bug interno desde `/snapshots/{snapshot_id}/bugs/`.
-4. El payload se precarga con build, caso, run, ejecucion, snapshot, paso, datos congelados, esperado y comentario/error.
-5. El usuario puede editar titulo, obtenido, severidad, prioridad, asignado y notas antes de guardar.
-6. El bug interno puede vincularse despues a un issue externo mediante `ExternalIssueLink`.
+Esta es la forma recomendada cuando un paso falla o queda bloqueado:
 
-## API Principal
-- `GET /proyectos/{proyecto_id}/bugs/`: listado paginado con filtros.
-- `GET /bugs/{bug_id}/`: detalle.
-- `POST /bugs/`: creacion manual validada.
-- `POST /snapshots/{snapshot_id}/bugs/`: creacion desde snapshot fallido/bloqueado.
-- `PATCH /bugs/{bug_id}` y `POST /bugs/{bug_id}/transition/`: edicion y workflow.
-- `GET/POST /bugs/{bug_id}/comments/`: comentarios.
-- `GET/POST/DELETE /bugs/{bug_id}/attachments/`: evidencias.
-- `GET/POST/DELETE /bugs/{bug_id}/external-links/`: vinculos externos genericos.
-- `POST /bugs/{bug_id}/external-preview/`: markdown copiable para trackers externos.
-- `GET /proyectos/{proyecto_id}/bugs/summary/`: KPIs.
-- `GET /proyectos/{proyecto_id}/bugs/dedupe-suggestions/` y `POST /bugs/{bug_id}/mark-duplicate/`: deduplicacion.
+1. Durante la ejecución, marcá el paso como **Falló** o **Bloqueado**.
+2. Registrá el resultado obtenido y adjuntá la evidencia disponible.
+3. Seleccioná **Preparar bug interno** o **Reportar bug interno**.
+4. Revisá el título, severidad, prioridad, descripción y contexto precargado.
+5. Guardá el bug.
 
-## RBAC
-Capacidades: `bugs.ver`, `bugs.crear`, `bugs.editar`, `bugs.triage`, `bugs.asignar`, `bugs.comentar`, `bugs.adjuntos`, `bugs.vincular_externo`, `bugs.exportar`, `bugs.admin`.
+El bug conserva el caso, build, componente, ejecución y paso de origen. No
+necesitás copiar esos datos manualmente.
 
-ADMIN y QA_LEAD tienen edicion. TESTER puede ver/crear/comentar/adjuntar/editar segun permiso de modulo. VIEWER solo lectura.
+## Crear y gestionar un bug manualmente
 
-## Restricciones
-El modulo no envia issues a Redmine/Jira/GitHub automaticamente. El preview genera markdown y los vinculos externos se registran solo por accion explicita del usuario.
+Abrí **Bug Tracker** y seleccioná **Añadir nuevo bug** si el defecto no proviene
+de una ejecución registrada. Completá un título claro, el problema observado,
+el resultado esperado, la prioridad y la severidad.
+
+Desde el detalle del bug podés:
+
+- asignar una persona responsable;
+- agregar comentarios y evidencias;
+- cambiar el estado según avance la corrección;
+- indicar la build donde se corrigió;
+- preparar un resumen para un tracker externo;
+- registrar un vínculo externo de forma explícita.
+
+## Estados y retest
+
+Al cerrar un bug, Treseko solicita la build de corrección y una resolución. Si
+la corrección debe verificarse, usá **Listo para retest** y luego **En retest**.
+Así se conserva tanto la build donde se detectó el problema como la build donde
+se corrigió.
+
+## Vincular herramientas externas
+
+Treseko no crea tickets externos automáticamente. Podés generar un resumen
+para copiar y pegar en Redmine, Jira, GitHub Issues u otra herramienta y
+guardar el identificador o enlace externo en el bug. Cada vínculo se registra
+de forma independiente para evitar que dos bugs compartan un ticket por error.
+
+## Ayuda rápida
+
+- Reportá un bug nuevo para un defecto distinto, aunque ocurra en el mismo caso.
+- Si el defecto ya existe, actualizá ese bug en lugar de crear un duplicado.
+- Adjuntá evidencia antes de reportar cuando ayude a reproducir el problema.
+- Si no podés crear o editar un bug, pedí permisos para Bug Tracker a un
+  administrador.

@@ -292,9 +292,7 @@ export function DashboardPage({
       setError('')
     }
     loadSummary()
-    return () => {
-      summaryAbortRef.current?.abort()
-    }
+    return () => { summaryAbortRef.current?.abort(); summaryAbortRef.current = null; inFlightSummaryKeyRef.current = '' }
   }, [loadSummary, summaryContextKey])
 
   const visibleWidgets = useMemo(() => WIDGETS.filter(widget => enabledWidgets.includes(widget.id)), [enabledWidgets])

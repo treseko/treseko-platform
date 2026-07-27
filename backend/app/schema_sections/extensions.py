@@ -70,3 +70,12 @@ class ExtensionTestResponse(BaseModel):
     status: str
     message: str
     instance: ExtensionInstanceSummary
+
+
+class ExtensionInstallTargetRequest(BaseModel):
+    """Target only; the official artifact is fetched server-to-server."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organizacion_id: Optional[UUID] = None
+    proyecto_id: Optional[UUID] = None

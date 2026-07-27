@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
 
 
@@ -257,7 +257,7 @@ async def list_automation_jobs(
         .outerjoin(models.CasoPrueba, models.CasoPrueba.id == models.AutomationJob.caso_id)
     )
     if not include_dry_runs:
-        query = query.filter(models.AutomationJob.job_type != "DRY_RUN")
+        query = query.filter(models.AutomationJob.job_type.notin_(("DRY_RUN", "AI_EXECUTION")))
     if runner_id:
         query = query.filter(models.AutomationJob.runner_id == runner_id)
     if status:
@@ -299,7 +299,10 @@ async def list_automation_jobs(
 async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRunner):
     result = await db.execute(
         select(models.AutomationJob)
-        .filter(models.AutomationJob.estado == models.AutomationJobStatus.PENDING)
+        .filter(
+            models.AutomationJob.estado == models.AutomationJobStatus.PENDING,
+            models.AutomationJob.job_type != "AI_EXECUTION",
+        )
         .order_by(models.AutomationJob.fecha_creacion)
     )
     jobs = result.scalars().all()

@@ -1,9 +1,8 @@
-import os
-
 from fastapi import APIRouter
 
 from .routers import (
     audit,
+    ai_dry_run,
     ai_engine,
     auth,
     auth_ad,
@@ -13,8 +12,8 @@ from .routers import (
     bugs,
     builds,
     cases,
+    case_portability,
     components,
-    debug,
     executions,
     extensions,
     external_api,
@@ -34,6 +33,7 @@ from .routers import (
     system_monitor,
     suites,
     test_runs,
+    traceability,
     users,
     websocket_sync,
     wiki,
@@ -43,6 +43,7 @@ from .routers import (
 api_router = APIRouter()
 api_router.include_router(audit.router)
 api_router.include_router(ai_engine.router)
+api_router.include_router(ai_dry_run.router)
 api_router.include_router(auth.router)
 api_router.include_router(auth_ad.router)
 api_router.include_router(attachments.router)
@@ -51,9 +52,8 @@ api_router.include_router(automation.router)
 api_router.include_router(bugs.router)
 api_router.include_router(builds.router)
 api_router.include_router(cases.router)
+api_router.include_router(case_portability.router)
 api_router.include_router(components.router)
-if (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "").strip().lower() in {"dev", "development", "local"}:
-    api_router.include_router(debug.router)
 api_router.include_router(executions.router)
 api_router.include_router(extensions.router)
 api_router.include_router(external_api.router)
@@ -74,5 +74,6 @@ api_router.include_router(notifications.router)
 api_router.include_router(system_monitor.router)
 api_router.include_router(suites.router)
 api_router.include_router(test_runs.router)
+api_router.include_router(traceability.router)
 api_router.include_router(websocket_sync.router)
 api_router.include_router(wiki.router)

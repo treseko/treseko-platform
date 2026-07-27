@@ -212,7 +212,7 @@ export function AutomationCodesPanel({
         <div className="x-small text-muted mb-3">Mostrando los primeros {visibleCases.length} de {visibleCasesTotal} casos del contexto.</div>
       )}
 
-      <pre className="bg-dark text-light p-3 rounded-3 small mb-0 overflow-auto" style={{ fontSize: '11px' }}>{samplePayload}</pre>
+      <pre className="bg-dark text-light p-3 rounded-3 small mb-0 overflow-auto" style={{ fontSize: 'var(--app-font-size-micro)' }}>{samplePayload}</pre>
     </Card>
   )
 }

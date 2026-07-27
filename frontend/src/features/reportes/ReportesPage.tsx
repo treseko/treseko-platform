@@ -11,8 +11,10 @@ import { API_BASE } from '../../app/constants'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { PremiumGate } from '../premium/PremiumGate'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { featureEnabled, humanizePremiumError, type FeatureLookup } from '../premium/featureAccess'
 import { formatBugPriorityOption, getBugPriorityPresentation } from '../bugs/bugPresentation'
+import { BugBuildHistoryMetrics, BugBuildTrendBars } from './BugBuildHistoryMetrics'
 import {
   BarChart,
   Bar,
@@ -23,17 +25,15 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
-
 const ResponsiveReportesGridLayout = WidthProvider(Responsive)
-
 type ReportesViewConfig = {
   sections: Record<string, boolean>
   kpis: Record<string, boolean>
   aiBlocks: Record<string, boolean>
   columns: Record<string, Record<string, boolean>>
 }
-
 const REPORTES_VIEW_SECTIONS = [
+  { id: 'traceabilityCoverage', label: 'Cobertura de trazabilidad' },
   { id: 'context', label: 'Contexto de build' },
   { id: 'kpis', label: 'Tarjetas KPI' },
   { id: 'temporal', label: 'Progreso temporal' },
@@ -65,29 +65,31 @@ const REPORTES_WIDGET_IDS = REPORTES_VIEW_SECTIONS.map((section) => section.id)
 const REPORTES_BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }
 const REPORTES_COLS = { lg: 12, md: 6, sm: 6, xs: 4, xxs: 2 }
 const REPORTES_BREAKPOINT_KEYS = Object.keys(REPORTES_COLS) as Array<keyof typeof REPORTES_COLS>
+const TRACEABILITY_COVERAGE_LAYOUT_HEIGHT = 5
 
 const REPORTES_DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: 'context', x: 0, y: 0, w: 12, h: 3, minW: 4, minH: 2 },
-  { i: 'kpis', x: 0, y: 3, w: 12, h: 4, minW: 4, minH: 3 },
-  { i: 'temporal', x: 0, y: 7, w: 12, h: 3, minW: 4, minH: 3 },
-  { i: 'aiMetrics', x: 0, y: 10, w: 12, h: 5, minW: 4, minH: 4 },
-  { i: 'buildComparison', x: 0, y: 15, w: 12, h: 4, minW: 4, minH: 3 },
-  { i: 'filters', x: 0, y: 19, w: 12, h: 3, minW: 4, minH: 2 },
-  { i: 'bugTraceability', x: 0, y: 22, w: 5, h: 4, minW: 3, minH: 3 },
-  { i: 'bugs', x: 5, y: 22, w: 7, h: 4, minW: 4, minH: 3 },
-  { i: 'failures', x: 0, y: 26, w: 7, h: 5, minW: 4, minH: 3 },
-  { i: 'evidence', x: 7, y: 26, w: 5, h: 5, minW: 3, minH: 3 },
-  { i: 'statusChart', x: 0, y: 31, w: 6, h: 5, minW: 4, minH: 4 },
-  { i: 'executionModeChart', x: 6, y: 31, w: 6, h: 5, minW: 4, minH: 4 },
-  { i: 'priority', x: 0, y: 36, w: 12, h: 5, minW: 4, minH: 3 },
-  { i: 'suites', x: 0, y: 41, w: 12, h: 6, minW: 4, minH: 4 },
-  { i: 'trend', x: 0, y: 47, w: 12, h: 5, minW: 4, minH: 4 },
-  { i: 'sharedHistory', x: 0, y: 52, w: 12, h: 5, minW: 4, minH: 3 },
+  { i: 'traceabilityCoverage', x: 0, y: 0, w: 12, h: TRACEABILITY_COVERAGE_LAYOUT_HEIGHT, minW: 4, minH: 3 },
+  { i: 'context', x: 0, y: 5, w: 12, h: 3, minW: 4, minH: 2 },
+  { i: 'kpis', x: 0, y: 8, w: 12, h: 4, minW: 4, minH: 3 },
+  { i: 'temporal', x: 0, y: 12, w: 12, h: 3, minW: 4, minH: 3 },
+  { i: 'aiMetrics', x: 0, y: 15, w: 12, h: 5, minW: 4, minH: 4 },
+  { i: 'buildComparison', x: 0, y: 20, w: 12, h: 4, minW: 4, minH: 3 },
+  { i: 'filters', x: 0, y: 24, w: 12, h: 3, minW: 4, minH: 2 },
+  { i: 'bugTraceability', x: 0, y: 27, w: 5, h: 4, minW: 3, minH: 3 },
+  { i: 'bugs', x: 5, y: 27, w: 7, h: 4, minW: 4, minH: 3 },
+  { i: 'failures', x: 0, y: 31, w: 7, h: 5, minW: 4, minH: 3 },
+  { i: 'evidence', x: 7, y: 31, w: 5, h: 5, minW: 3, minH: 3 },
+  { i: 'statusChart', x: 0, y: 36, w: 6, h: 5, minW: 4, minH: 4 },
+  { i: 'executionModeChart', x: 6, y: 36, w: 6, h: 5, minW: 4, minH: 4 },
+  { i: 'priority', x: 0, y: 41, w: 12, h: 5, minW: 4, minH: 3 },
+  { i: 'suites', x: 0, y: 46, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'trend', x: 0, y: 52, w: 12, h: 5, minW: 4, minH: 4 },
+  { i: 'sharedHistory', x: 0, y: 57, w: 12, h: 5, minW: 4, minH: 3 },
 ]
 
 const fitReportesLayoutItemToCols = (item: LayoutItem, cols: number): LayoutItem => ({
   ...item,
-  x: Math.max(0, Math.min(item.x || 0, Math.max(0, cols - 1))),
+  x: Math.max(0, Math.min(item.x || 0, Math.max(0, cols - Math.max(1, Math.min(item.w || cols, cols))))),
   w: Math.max(1, Math.min(item.w || cols, cols)),
   minW: item.minW ? Math.min(item.minW, cols) : undefined,
   maxW: item.maxW ? Math.min(item.maxW, cols) : undefined,
@@ -100,7 +102,7 @@ const defaultReportesLayouts = (): ResponsiveLayouts<string> => Object.fromEntri
       breakpoint,
       REPORTES_DEFAULT_LAYOUT.map((item) => {
         const width = breakpoint === 'lg' ? item.w : breakpoint === 'md' || breakpoint === 'sm' ? Math.min(item.w, cols) : cols
-        return fitReportesLayoutItemToCols({ ...item, x: breakpoint === 'lg' ? item.x : 0, w: width }, cols)
+        return fitReportesLayoutItemToCols({ ...item, x: breakpoint === 'lg' ? item.x : breakpoint === 'md' ? item.x % cols : 0, w: width }, cols)
       }),
     ]
   })
@@ -112,12 +114,30 @@ const sanitizeReportesLayouts = (value: any): ResponsiveLayouts<string> => {
   return Object.fromEntries(REPORTES_BREAKPOINT_KEYS.map((breakpoint) => {
     const cols = REPORTES_COLS[breakpoint]
     const incoming = Array.isArray(value?.[breakpoint]) ? value[breakpoint] : []
+    const requiresTraceabilityCoverageMigration = !incoming.some((item: any) => item?.i === 'traceabilityCoverage')
     const byId = new Map(incoming.filter((item: any) => REPORTES_WIDGET_IDS.includes(item?.i)).map((item: any) => [item.i, item]))
     return [
       breakpoint,
-      defaults[breakpoint].map((base) => fitReportesLayoutItemToCols({ ...base, ...(byId.get(base.i) || {}) }, cols)),
+      defaults[breakpoint].map((base) => {
+        const savedItem = byId.get(base.i)
+        const migratedItem = savedItem && requiresTraceabilityCoverageMigration
+          ? { ...savedItem, y: Math.max(0, Number(savedItem.y || 0) + TRACEABILITY_COVERAGE_LAYOUT_HEIGHT) }
+          : savedItem
+        return fitReportesLayoutItemToCols({ ...base, ...(migratedItem || {}) }, cols)
+      }),
     ]
   }))
+}
+
+const sanitizeReportesWidgets = (widgets: any, layouts: any): string[] => {
+  if (!Array.isArray(widgets)) return REPORTES_WIDGET_IDS
+  const savedWidgets = REPORTES_WIDGET_IDS.filter((id) => widgets.includes(id))
+  const hasTraceabilityCoverageLayout = Object.values(layouts || {}).some((layout: any) =>
+    Array.isArray(layout) && layout.some((item: any) => item?.i === 'traceabilityCoverage')
+  )
+  return hasTraceabilityCoverageLayout || savedWidgets.includes('traceabilityCoverage')
+    ? savedWidgets
+    : [...savedWidgets, 'traceabilityCoverage']
 }
 
 const withReportesEditFlags = (layouts: ResponsiveLayouts<string>, editing: boolean): ResponsiveLayouts<string> =>
@@ -427,11 +447,9 @@ export function ReportesPage({
   const [viewDraft, setViewDraft] = useState<ReportesViewConfig>(() => reportesView)
   const [editingReportesLayout, setEditingReportesLayout] = useState(false)
   const [reportesLayouts, setReportesLayouts] = useState<ResponsiveLayouts<string>>(() => sanitizeReportesLayouts(profileSettings.reportes_layout))
-  const [reportesWidgets, setReportesWidgets] = useState<string[]>(() => (
-    Array.isArray(profileSettings.reportes_widgets)
-      ? REPORTES_WIDGET_IDS.filter((id) => profileSettings.reportes_widgets.includes(id))
-      : REPORTES_WIDGET_IDS
-  ))
+  const [reportesWidgets, setReportesWidgets] = useState<string[]>(() =>
+    sanitizeReportesWidgets(profileSettings.reportes_widgets, profileSettings.reportes_layout)
+  )
   const canReadTraceability = canAccessCapability ? canAccessCapability('reportes.trazabilidad', 'read') : true
 
   const loadTraceabilityCoverage = useCallback(async () => {
@@ -509,11 +527,7 @@ export function ReportesPage({
 
   useEffect(() => {
     setReportesLayouts(sanitizeReportesLayouts(profileSettings.reportes_layout))
-    setReportesWidgets(
-      Array.isArray(profileSettings.reportes_widgets)
-        ? REPORTES_WIDGET_IDS.filter((id) => profileSettings.reportes_widgets.includes(id))
-        : REPORTES_WIDGET_IDS
-    )
+    setReportesWidgets(sanitizeReportesWidgets(profileSettings.reportes_widgets, profileSettings.reportes_layout))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedUser?.id, JSON.stringify(profileSettings.reportes_layout || {}), JSON.stringify(profileSettings.reportes_widgets || [])])
 
@@ -1256,7 +1270,7 @@ export function ReportesPage({
             h1{font-size:24px;margin:0 0 6px}
             h2{font-size:16px;margin:24px 0 8px;color:#1d4ed8}
             .meta{color:#64748b;font-size:12px;margin-bottom:18px}
-            table{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:11px}
+            table{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:12px}
             th,td{border:1px solid #dbe3ef;padding:6px;text-align:left;vertical-align:top}
             th{background:#eef4ff;color:#334155}
             @media print{body{margin:14mm}button{display:none}}
@@ -1645,6 +1659,15 @@ export function ReportesPage({
     return rows
   })
 
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="Los reportes y las métricas aparecerán cuando tengas un proyecto seleccionado."
+      />
+    )
+  }
+
   return (
     <div className={`p-4 animate__animated animate__fadeIn text-dark text-start reportes-page ${editingReportesLayout ? 'is-editing-layout' : ''}`}>
       <div className="reportes-header d-flex flex-column flex-xl-row justify-content-between align-items-start gap-3 mb-4">
@@ -1748,15 +1771,6 @@ export function ReportesPage({
         </div>
       </div>
 
-      {canReadTraceability && (
-        <Card className="border shadow-sm mb-4 rounded-3">
-          <Card.Body className="py-3">
-            <div className="d-flex justify-content-between align-items-center mb-2"><div><h6 className="fw-bold mb-0">Cobertura de trazabilidad</h6><span className="small text-muted">Cobertura de diseno entre requisitos, historias y casos.</span></div><Button variant="outline-secondary" size="sm" onClick={loadTraceabilityCoverage} disabled={traceabilityLoading} title="Actualizar cobertura"><RefreshCw size={14} /></Button></div>
-            {traceabilityLoading ? <span className="small text-muted">Cargando trazabilidad...</span> : traceabilityCoverage ? <><Row className="g-2 small mb-3"><Col xs={6} md={3}><strong>{traceabilityCoverage.requisitos_total}</strong><div className="text-muted">Requisitos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.historias_con_casos}/{traceabilityCoverage.historias_total}</strong><div className="text-muted">Historias con casos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.casos_sin_historia}</strong><div className="text-muted">Casos sin historia</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.cobertura_historias_porcentaje}%</strong><div className="text-muted">Cobertura de historias</div></Col></Row><div className="table-responsive"><Table size="sm" className="mb-0 align-middle"><thead><tr><th>Requisito</th><th>Historia</th><th>Casos</th><th>Ultimo resultado</th></tr></thead><tbody>{traceabilityCoverage.items?.flatMap((requirement: any) => requirement.historias?.length ? requirement.historias.flatMap((story: any) => story.casos?.length ? story.casos.map((testCase: any) => <tr key={`${story.id}-${testCase.master_id}`}><td><span className="fw-bold">{requirement.codigo}</span><div className="small text-muted">{requirement.titulo}</div></td><td><span className="fw-bold">{story.codigo}</span><div className="small text-muted">{story.titulo}</div></td><td>{testCase.codigo} · {testCase.titulo}</td><td>{testCase.ultimo_resultado || 'Sin ejecutar'}</td></tr>) : <tr key={story.id}><td>{requirement.codigo}</td><td>{story.codigo} · {story.titulo}</td><td className="text-muted">Sin casos</td><td>-</td></tr>) : <tr key={requirement.id}><td>{requirement.codigo} · {requirement.titulo}</td><td className="text-muted">Sin historias</td><td>-</td><td>-</td></tr>)}</tbody></Table></div></> : <span className="small text-muted">No hay datos de trazabilidad disponibles.</span>}
-          </Card.Body>
-        </Card>
-      )}
-
       {metricsLoading ? (
         <div className="text-center py-5">
           <RefreshCw size={32} className="text-primary animate-pulse" />
@@ -1780,6 +1794,15 @@ export function ReportesPage({
             if (editingReportesLayout) setReportesLayouts(stripReportesEditFlags(allLayouts))
           }}
         >
+          {renderReportesWidget('traceabilityCoverage', (
+            <Card className="border shadow-sm rounded-3">
+              <Card.Body className="py-3">
+                <div className="d-flex justify-content-between align-items-center mb-2"><div><h6 className="fw-bold mb-0">Cobertura de trazabilidad</h6><span className="small text-muted">Cobertura de diseño entre requisitos, historias y casos.</span></div><Button variant="outline-secondary" size="sm" onClick={loadTraceabilityCoverage} disabled={traceabilityLoading} title="Actualizar cobertura"><RefreshCw size={14} /></Button></div>
+                {traceabilityLoading ? <span className="small text-muted">Cargando trazabilidad...</span> : traceabilityCoverage ? <><Row className="g-2 small mb-3"><Col xs={6} md={3}><strong>{traceabilityCoverage.requisitos_total}</strong><div className="text-muted">Requisitos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.historias_con_casos}/{traceabilityCoverage.historias_total}</strong><div className="text-muted">Historias con casos</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.casos_sin_historia}</strong><div className="text-muted">Casos sin historia</div></Col><Col xs={6} md={3}><strong>{traceabilityCoverage.cobertura_historias_porcentaje}%</strong><div className="text-muted">Cobertura de historias</div></Col></Row><div className="table-responsive"><Table size="sm" className="mb-0 align-middle"><thead><tr><th>Requisito</th><th>Historia</th><th>Casos</th><th>Último resultado</th></tr></thead><tbody>{traceabilityCoverage.items?.flatMap((requirement: any) => requirement.historias?.length ? requirement.historias.flatMap((story: any) => story.casos?.length ? story.casos.map((testCase: any) => <tr key={`${story.id}-${testCase.master_id}`}><td><span className="fw-bold">{requirement.codigo}</span><div className="small text-muted">{requirement.titulo}</div></td><td><span className="fw-bold">{story.codigo}</span><div className="small text-muted">{story.titulo}</div></td><td>{testCase.codigo} · {testCase.titulo}</td><td>{testCase.ultimo_resultado || 'Sin ejecutar'}</td></tr>) : <tr key={story.id}><td>{requirement.codigo}</td><td>{story.codigo} · {story.titulo}</td><td className="text-muted">Sin casos</td><td>-</td></tr>) : <tr key={requirement.id}><td>{requirement.codigo} · {requirement.titulo}</td><td className="text-muted">Sin historias</td><td>-</td><td>-</td></tr>)}</tbody></Table></div></> : <span className="small text-muted">No hay datos de trazabilidad disponibles.</span>}
+              </Card.Body>
+            </Card>
+          ), canReadTraceability && isSectionVisible('traceabilityCoverage'))}
+
           {renderReportesWidget('context', (
           <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
             <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
@@ -1892,7 +1915,7 @@ export function ReportesPage({
             <Row className="g-4 mb-4">
               <Col md={12}>
                 <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
-                  <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
                     <div>
                       <h6 className="fw-bold mb-1 text-secondary text-start d-flex align-items-center gap-2">
                         <Activity size={18} /> Metricas de ejecucion IA
@@ -2165,9 +2188,6 @@ export function ReportesPage({
           ))}
 
           {renderReportesWidget('bugTraceability', (
-          <Row className="g-4 mb-4">
-            {isSectionVisible('bugTraceability') && (
-            <Col lg={isSectionVisible('bugs') ? 5 : 12}>
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start d-flex align-items-center gap-2">
                   <Bug size={18} /> Trazabilidad de bugs
@@ -2190,12 +2210,12 @@ export function ReportesPage({
                       </div>
                     </Col>
                   ))}
+                  <BugBuildHistoryMetrics metrics={bugMetrics} formatInt={formatInt} formatPercent={formatPercent} />
                 </Row>
               </Card>
-            </Col>
-            )}
-            {isSectionVisible('bugs') && (
-            <Col lg={isSectionVisible('bugTraceability') ? 7 : 12}>
+          ))}
+
+          {renderReportesWidget('bugs', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h6 className="fw-bold text-secondary text-start d-flex align-items-center gap-2 m-0">
@@ -2258,15 +2278,9 @@ export function ReportesPage({
                   </tbody>
                 </Table>
               </Card>
-            </Col>
-            )}
-          </Row>
-          ), isSectionVisible('bugTraceability') || isSectionVisible('bugs'))}
+          ))}
 
           {renderReportesWidget('failures', (
-          <Row className="g-4 mb-4">
-            {isSectionVisible('failures') && (
-            <Col lg={isSectionVisible('evidence') ? 7 : 12}>
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start">Fallos y bloqueos accionables</h6>
                 <Table hover responsive className="mb-0 align-middle">
@@ -2309,10 +2323,9 @@ export function ReportesPage({
                   </tbody>
                 </Table>
               </Card>
-            </Col>
-            )}
-            {isSectionVisible('evidence') && (
-            <Col lg={isSectionVisible('failures') ? 5 : 12}>
+          ))}
+
+          {renderReportesWidget('evidence', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start d-flex align-items-center gap-2">
                   <ImageIcon size={18} /> Evidencias
@@ -2347,15 +2360,9 @@ export function ReportesPage({
                   {filteredEvidenceItems.length === 0 && <div className="text-center text-muted small py-4">Sin evidencias para los filtros seleccionados.</div>}
                 </div>
               </Card>
-            </Col>
-            )}
-          </Row>
-          ), isSectionVisible('failures') || isSectionVisible('evidence'))}
+          ))}
 
           {renderReportesWidget('statusChart', (
-          <Row className="g-4 mb-4">
-            {isSectionVisible('statusChart') && (
-            <Col md={isSectionVisible('executionModeChart') ? 6 : 12}>
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
                 <h6 className="fw-bold mb-4 text-secondary text-start">Estado de Ejecuciones</h6>
                 <div style={{ height: '260px' }}>
@@ -2400,11 +2407,9 @@ export function ReportesPage({
                   Total ejecutadas: {formatInt(executedStatusTotal)}
                 </div>
               </Card>
-            </Col>
-            )}
+          ))}
 
-            {isSectionVisible('executionModeChart') && (
-            <Col md={isSectionVisible('statusChart') ? 6 : 12}>
+          {renderReportesWidget('executionModeChart', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
                 <h6 className="fw-bold mb-4 text-secondary text-start">Por modo de ejecucion</h6>
                 <div style={{ height: '260px' }}>
@@ -2459,10 +2464,7 @@ export function ReportesPage({
                   </div>
                 )}
               </Card>
-            </Col>
-            )}
-          </Row>
-          ), isSectionVisible('statusChart') || isSectionVisible('executionModeChart'))}
+          ))}
 
           {renderReportesWidget('priority', Object.keys(projectMetrics.por_prioridad).length > 0 ? (
             <Row className="g-4 mb-4">
@@ -2578,6 +2580,7 @@ export function ReportesPage({
                         <Bar dataKey="pasados" name="Pasados" fill="#198754" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="fallados" name="Fallados" fill="#dc3545" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="bloqueados" name="Bloqueados" fill="#0d6efd" radius={[4, 4, 0, 0]} />
+                        <BugBuildTrendBars />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -2720,13 +2723,13 @@ export function ReportesPage({
           </Table>
         </Card>
       )}
-      <Modal show={showViewConfig} onHide={() => setShowViewConfig(false)} centered size="xl">
-        <Modal.Header closeButton>
+      <Modal show={showViewConfig} onHide={() => setShowViewConfig(false)} centered size="xl" scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <SlidersHorizontal size={20} /> Configurar vista de Reportes
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="pt-0">
           <div className="d-flex flex-wrap gap-2 mb-4">
             <Button variant="outline-primary" size="sm" onClick={() => applyViewPreset('all')}>
               Mostrar todo
@@ -2943,7 +2946,7 @@ export function ReportesPage({
             </Tab>
           </Tabs>
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-0 pt-0">
           <Button variant="outline-secondary" onClick={resetReportesLayout} disabled={savingViewConfig}>
             <RotateCcw size={14} className="me-1" /> Restaurar layout
           </Button>
@@ -2958,13 +2961,13 @@ export function ReportesPage({
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showReportSettings} onHide={() => setShowReportSettings(false)} centered size="lg">
+      <Modal show={showReportSettings} onHide={() => setShowReportSettings(false)} centered size="lg" scrollable>
         <Modal.Header closeButton>
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <SlidersHorizontal size={20} /> Configurar informes del proyecto
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="pt-0">
           <div className="border rounded-3 bg-light p-3 mb-3 small text-muted">
             Esta configuración pertenece al proyecto actual. Los próximos links Ejecutivo, Desarrollo e Interno quedarán congelados con estos switches; los links viejos no cambian.
           </div>
@@ -3037,7 +3040,7 @@ export function ReportesPage({
             El informe de Desarrollo puede exponer fichas completas de bugs en modo público solo lectura. No incluye acciones de edición ni secretos técnicos.
           </div>
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-0 pt-0">
           <Button variant="outline-secondary" onClick={() => setShowReportSettings(false)} disabled={savingReportSettings}>
             Cancelar
           </Button>
@@ -3046,11 +3049,14 @@ export function ReportesPage({
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showShareModal} onHide={() => setShowShareModal(false)} centered size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title className="fw-bold">{sharedReport ? 'Links vigentes reutilizados' : 'Compartir informe'}</Modal.Title>
+      <Modal show={showShareModal} onHide={() => setShowShareModal(false)} centered size="lg" scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <Share2 size={20} />
+            {sharedReport ? 'Links vigentes reutilizados' : 'Compartir informe'}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="pt-0">
           {!sharedReport ? (
             <>
               <div className="border rounded-3 bg-light p-3 mb-3">
@@ -3187,7 +3193,7 @@ export function ReportesPage({
             </>
           )}
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-0 pt-0">
           <Button variant="outline-secondary" onClick={() => setShowShareModal(false)}>Cerrar</Button>
           {!sharedReport ? (
             <Button

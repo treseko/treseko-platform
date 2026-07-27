@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap'
+import { Accordion, Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap'
 import { Bell, Eye, Mail, Play, Plus, RotateCw, Save, Send, Trash2, Users } from 'lucide-react'
 import { notificationClient } from '../../../notificaciones/notificationClient'
 
@@ -7,15 +7,17 @@ type Props = {
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
   canAccessCapability: (capabilityId: any, level?: any) => boolean
+  projects?: any[]
 }
 
-export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAccessCapability }: Props) {
+export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAccessCapability, projects = [] }: Props) {
   const [config, setConfig] = useState<any>({ enabled: false, host: '', port: 587, use_starttls: true, use_ssl: false, from_email: '', from_name: 'Treseko', base_url: 'http://localhost:5173' })
   const [testEmail, setTestEmail] = useState('')
   const [rules, setRules] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateDraft, setTemplateDraft] = useState<any | null>(null)
+  const [templatePreview, setTemplatePreview] = useState<any | null>(null)
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [preferences, setPreferences] = useState<any[]>([])
   const [showRuleModal, setShowRuleModal] = useState(false)
@@ -25,10 +27,20 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
   const [ruleConditionsText, setRuleConditionsText] = useState('{}')
   const [ruleRecipientsText, setRuleRecipientsText] = useState('{}')
   const [inbox, setInbox] = useState<any[]>([])
+  const [stakeholderProjectId, setStakeholderProjectId] = useState('')
+  const [stakeholders, setStakeholders] = useState<any[]>([])
+  const [digests, setDigests] = useState<any[]>([])
+  const [stakeholderDraft, setStakeholderDraft] = useState({ nombre: '', email: '', consent_source: 'manual', allowed_event_types: ['report.exported', 'project.closed'] })
+  const [stakeholderSchedule, setStakeholderSchedule] = useState({ frequency: 'daily', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', send_hour: 9, send_day: 1 })
+  const [mySchedule, setMySchedule] = useState({ proyectoId: '', frequency: 'daily', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', send_hour: 9, send_day: 1, mutedUntil: '' })
   const canEdit = canAccessCapability('notificaciones.configuracion', 'edit')
   const canEditRules = canAccessCapability('notificaciones.reglas', 'edit')
   const canEditTemplates = canAccessCapability('notificaciones.plantillas', 'edit')
   const canAdmin = canAccessCapability('notificaciones.admin', 'edit')
+  const canReadAudit = canAccessCapability('notificaciones.auditoria', 'read')
+  const canManageStakeholders = canAccessCapability('notificaciones.destinatarios', 'edit')
+  const canReadDigests = canAccessCapability('notificaciones.resumenes', 'read')
+  const canEditOwnSubscriptions = canAccessCapability('notificaciones.inbox', 'edit')
 
   const eventLabels: Record<string, string> = {
     'bug.created': 'Bug creado',
@@ -215,13 +227,14 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
   }
 
   const load = async () => {
-    const [configPayload, rulesPayload, templatesPayload, deliveriesPayload, preferencesPayload, inboxPayload] = await Promise.all([
-      notificationClient.getEmailConfig(fetchWithAuth),
-      notificationClient.listRules(fetchWithAuth),
-      notificationClient.listTemplates(fetchWithAuth),
-      notificationClient.listDeliveries(fetchWithAuth, 10),
+    const [configPayload, rulesPayload, templatesPayload, deliveriesPayload, preferencesPayload, inboxPayload, digestsPayload] = await Promise.all([
+      canAccessCapability('notificaciones.configuracion', 'read') ? notificationClient.getEmailConfig(fetchWithAuth) : Promise.resolve(config),
+      canAccessCapability('notificaciones.reglas', 'read') ? notificationClient.listRules(fetchWithAuth) : Promise.resolve([]),
+      canAccessCapability('notificaciones.plantillas', 'read') ? notificationClient.listTemplates(fetchWithAuth) : Promise.resolve([]),
+      canReadAudit ? notificationClient.listDeliveries(fetchWithAuth, 10) : Promise.resolve([]),
       notificationClient.listPreferences(fetchWithAuth),
       notificationClient.listInbox(fetchWithAuth, 10),
+      canReadDigests ? notificationClient.listDigests(fetchWithAuth) : Promise.resolve([]),
     ])
     setConfig(configPayload)
     setRules(rulesPayload)
@@ -229,6 +242,7 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
     setDeliveries(deliveriesPayload)
     setPreferences(preferencesPayload)
     setInbox(inboxPayload)
+    setDigests(digestsPayload)
     const selected = selectedTemplateId ? templatesPayload.find((item: any) => item.id === selectedTemplateId) : templatesPayload[0]
     if (selected) {
       setSelectedTemplateId(selected.id)
@@ -237,6 +251,15 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
   }
 
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (!stakeholderProjectId || !canAccessCapability('notificaciones.destinatarios', 'read')) {
+      setStakeholders([])
+      return
+    }
+    notificationClient.listStakeholders(fetchWithAuth, stakeholderProjectId)
+      .then(setStakeholders)
+      .catch((error: any) => showFeedback('Stakeholders', error.message || 'No se pudieron cargar los destinatarios del proyecto.', 'danger'))
+  }, [stakeholderProjectId])
 
   const save = async () => {
     try {
@@ -257,10 +280,19 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
     }
   }
 
-  const savePreference = async (eventType: string, channel: string, enabled: boolean) => {
+  const testConnection = async () => {
+    try {
+      await notificationClient.testEmailConnection(fetchWithAuth)
+      showFeedback('SMTP', 'La conexión y autenticación SMTP se verificaron sin enviar un correo.', 'success')
+    } catch (error: any) {
+      showFeedback('SMTP', error.message || 'No se pudo verificar la conexión SMTP.', 'danger')
+    }
+  }
+
+  const savePreference = async (eventType: string, channel: string, enabled: boolean, frequency = 'daily') => {
     const next = [
       ...preferences.filter(item => !(item.event_type === eventType && item.channel === channel)),
-      { event_type: eventType, channel, enabled, frequency: enabled ? 'immediate' : 'never' },
+      { event_type: eventType, channel, enabled, frequency: enabled ? frequency : 'never' },
     ]
     setPreferences(await notificationClient.savePreferences(fetchWithAuth, next))
     showFeedback('Preferencias de correo', 'Preferencias de correo actualizadas.', 'success')
@@ -282,6 +314,7 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
       const saved = await notificationClient.saveTemplate(fetchWithAuth, templateDraft.id, {
         subject_template: templateDraft.subject_template,
         text_template: templateDraft.text_template,
+        html_template: templateDraft.html_template,
         enabled: !!templateDraft.enabled,
       })
       setTemplateDraft(saved)
@@ -289,6 +322,18 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
       await load()
     } catch (error: any) {
       showFeedback('Plantillas', error.message || 'No se pudo guardar la plantilla.', 'danger')
+    }
+  }
+
+  const previewTemplate = async () => {
+    if (!templateDraft) return
+    try {
+      setTemplatePreview(await notificationClient.previewTemplate(fetchWithAuth, templateDraft.id, {
+        platform: { name: config.from_name || 'Treseko' }, user: { nombre: 'Usuario de prueba', email: 'usuario@example.com' },
+        proyecto: { nombre: 'Proyecto de prueba' }, message: 'Este es un ejemplo seguro de la notificación.',
+      }))
+    } catch (error: any) {
+      showFeedback('Vista previa', error.message || 'No se pudo generar la vista previa.', 'danger')
     }
   }
 
@@ -309,6 +354,47 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
       await load()
     } catch (error: any) {
       showFeedback('Outbox', error.message || 'No se pudo procesar el outbox.', 'danger')
+    }
+  }
+
+  const createStakeholder = async () => {
+    if (!stakeholderProjectId) return showFeedback('Stakeholders', 'Selecciona un proyecto.', 'warning')
+    try {
+      const created = await notificationClient.createStakeholder(fetchWithAuth, stakeholderProjectId, stakeholderDraft)
+      await notificationClient.saveStakeholderSubscription(fetchWithAuth, created.id, { event_type: null, channel: 'email', enabled: true, ...stakeholderSchedule })
+      setStakeholderDraft({ nombre: '', email: '', consent_source: 'manual', allowed_event_types: ['report.exported', 'project.closed'] })
+      setStakeholders(await notificationClient.listStakeholders(fetchWithAuth, stakeholderProjectId))
+      showFeedback('Stakeholders', 'Destinatario externo agregado al proyecto.', 'success')
+    } catch (error: any) {
+      showFeedback('Stakeholders', error.message || 'No se pudo agregar el destinatario.', 'danger')
+    }
+  }
+
+  const deactivateStakeholder = async (stakeholder: any) => {
+    try {
+      await notificationClient.updateStakeholder(fetchWithAuth, stakeholder.id, { active: false })
+      setStakeholders(await notificationClient.listStakeholders(fetchWithAuth, stakeholderProjectId))
+      showFeedback('Stakeholders', 'Destinatario dado de baja. Se conserva su auditoría.', 'success')
+    } catch (error: any) {
+      showFeedback('Stakeholders', error.message || 'No se pudo dar de baja el destinatario.', 'danger')
+    }
+  }
+
+  const saveMySchedule = async () => {
+    try {
+      await notificationClient.saveMySubscription(fetchWithAuth, {
+        event_type: null,
+        channel: 'email',
+        enabled: true,
+        frequency: mySchedule.frequency,
+        timezone: mySchedule.timezone,
+        send_hour: Number(mySchedule.send_hour),
+        send_day: ['weekly', 'monthly'].includes(mySchedule.frequency) ? Number(mySchedule.send_day) : null,
+        muted_until: mySchedule.mutedUntil ? new Date(mySchedule.mutedUntil).toISOString() : null,
+      }, mySchedule.proyectoId || undefined)
+      showFeedback('Resúmenes', 'Tu preferencia de resumen fue guardada.', 'success')
+    } catch (error: any) {
+      showFeedback('Resúmenes', error.message || 'No se pudo guardar tu preferencia.', 'danger')
     }
   }
 
@@ -340,27 +426,61 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
     <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
       <div className="d-flex justify-content-between align-items-start mb-3">
         <div>
-          <h6 className="fw-bold text-dark m-0"><Mail size={17} className="me-2" />Correo del sistema</h6>
-          <span className="small text-muted">SMTP, plantillas para bugs e informes, reglas de envío y auditoría reciente de entregas.</span>
+          <h6 className="fw-bold text-dark m-0"><Mail size={17} className="me-2" />Correo y notificaciones</h6>
+          <span className="small text-muted">Define desde qué dirección se envían los avisos y comprobá la configuración con un correo de prueba.</span>
         </div>
         <Badge bg={config.enabled ? 'success' : 'secondary'}>{config.enabled ? 'SMTP activo' : 'SMTP inactivo'}</Badge>
       </div>
       <Row className="g-3">
-        <Col md={3}><Form.Check type="switch" label="Habilitado" checked={!!config.enabled} disabled={!canEdit} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} /></Col>
-        <Col md={5}><Form.Control size="sm" placeholder="Host SMTP" value={config.host || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, host: e.target.value })} /></Col>
-        <Col md={2}><Form.Control size="sm" type="number" placeholder="Puerto" value={config.port || 587} disabled={!canEdit} onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })} /></Col>
-        <Col md={2}><Form.Control size="sm" placeholder="Usuario" value={config.username || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, username: e.target.value })} /></Col>
-        <Col md={4}><Form.Control size="sm" placeholder="From email" value={config.from_email || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_email: e.target.value })} /></Col>
-        <Col md={4}><Form.Control size="sm" placeholder="From name" value={config.from_name || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_name: e.target.value })} /></Col>
-        <Col md={4}><Form.Control size="sm" placeholder="Base URL publica" value={config.base_url || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, base_url: e.target.value })} /></Col>
-        <Col md={3}><Form.Check type="switch" label="STARTTLS" checked={!!config.use_starttls} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_starttls: e.target.checked })} /></Col>
-        <Col md={3}><Form.Check type="switch" label="SSL directo" checked={!!config.use_ssl} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_ssl: e.target.checked })} /></Col>
-        <Col md={3}><Badge bg="light" text="dark" className="border">Clave SMTP: {config.password_configured ? 'configurada' : 'pendiente'}</Badge></Col>
-        {canEdit && <Col md={3} className="text-end"><Button size="sm" onClick={save}><Save size={14} className="me-1" />Guardar SMTP</Button></Col>}
-        <Col md={8}><Form.Control size="sm" type="email" placeholder="correo@empresa.com *" required value={testEmail} disabled={!canEdit} onChange={(e) => setTestEmail(e.target.value)} /></Col>
-        {canEdit && <Col md={4}><Button size="sm" variant="outline-primary" className="w-100" onClick={sendTest} disabled={!testEmail}><Play size={14} className="me-1" />Enviar test</Button></Col>}
+        <Col md={12}>
+          <Form.Check type="switch" className="fw-semibold" label="Enviar notificaciones por correo" checked={!!config.enabled} disabled={!canEdit} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />
+          <div className="app-meta text-muted ms-5">Al activarlo, Treseko podrá enviar los avisos configurados a sus destinatarios.</div>
+        </Col>
+        <Col md={12}>
+          <Form.Check type="switch" className="fw-semibold" label="Modo de prueba seguro" checked={!!config.test_mode} disabled={!canEdit} onChange={(e) => setConfig({ ...config, test_mode: e.target.checked })} />
+          <div className="app-meta text-muted ms-5">Mientras esté activo, el outbox no envía avisos normales y la prueba sólo puede llegar a tu email verificado.</div>
+        </Col>
+        <Col md={6}>
+          <Form.Label className="app-label fw-bold text-muted">Nombre que verá el destinatario</Form.Label>
+          <Form.Control value={config.from_name || ''} placeholder="Ej.: Equipo de calidad" disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_name: e.target.value })} />
+        </Col>
+        <Col md={6}>
+          <Form.Label className="app-label fw-bold text-muted">Responder a</Form.Label>
+          <Form.Control type="email" value={config.reply_to || ''} placeholder="soporte@tuempresa.com (opcional)" disabled={!canEdit} onChange={(e) => setConfig({ ...config, reply_to: e.target.value })} />
+          <div className="app-meta text-muted mt-1">Los destinatarios verán un único remitente institucional; Treseko no crea casillas personales.</div>
+        </Col>
+        <Col md={6}>
+          <Form.Label className="app-label fw-bold text-muted">Dirección desde la que se envía</Form.Label>
+          <Form.Control type="email" value={config.from_email || ''} placeholder="notificaciones@tuempresa.com" disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_email: e.target.value })} />
+        </Col>
+        <Col md={8}>
+          <Form.Label className="app-label fw-bold text-muted">Enviar correo de prueba a</Form.Label>
+          <Form.Control type="email" placeholder="tu.correo@empresa.com" value={testEmail} disabled={!canEdit} onChange={(e) => setTestEmail(e.target.value)} />
+        </Col>
+        {canEdit && <Col md={4} className="align-self-end d-flex gap-2"><Button variant="outline-secondary" className="rounded-pill fw-bold text-nowrap" onClick={testConnection}><RotateCw size={16} className="me-1" />Probar SMTP</Button><Button variant="outline-primary" className="flex-grow-1 rounded-pill fw-bold" onClick={sendTest} disabled={!testEmail}><Play size={16} className="me-2" />Enviar prueba</Button></Col>}
+        {canEdit && <Col md={12} className="text-end"><Button onClick={save} className="app-save-button"><Save size={16} />Guardar configuración de correo</Button></Col>}
       </Row>
-      <Row className="g-3 mt-2">
+      <Accordion className="mt-4 notifications-settings-advanced" defaultActiveKey={config.enabled && config.host ? undefined : 'connection'}>
+        <Accordion.Item eventKey="connection">
+          <Accordion.Header>Configuración del proveedor de correo</Accordion.Header>
+          <Accordion.Body>
+            <p className="app-meta text-muted mb-3">Estos datos los proporciona tu servicio de correo (Google Workspace, Microsoft 365 u otro proveedor SMTP).</p>
+            <Row className="g-3">
+              <Col md={6}><Form.Label className="app-label fw-bold text-muted">Servidor SMTP</Form.Label><Form.Control size="sm" placeholder="smtp.tuempresa.com" value={config.host || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, host: e.target.value })} /></Col>
+              <Col md={2}><Form.Label className="app-label fw-bold text-muted">Puerto</Form.Label><Form.Control size="sm" type="number" value={config.port || 587} disabled={!canEdit} onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })} /></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">Usuario SMTP</Form.Label><Form.Control size="sm" placeholder="usuario@tuempresa.com" value={config.username || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, username: e.target.value })} /></Col>
+              <Col md={6}><Form.Label className="app-label fw-bold text-muted">URL pública de Treseko</Form.Label><Form.Control size="sm" placeholder="https://qa.tuempresa.com" value={config.base_url || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, base_url: e.target.value })} /></Col>
+              <Col md={3} className="d-flex align-items-end"><Form.Check type="switch" label="Usar STARTTLS (recomendado)" checked={!!config.use_starttls} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_starttls: e.target.checked })} /></Col>
+              <Col md={3} className="d-flex align-items-end"><Form.Check type="switch" label="Usar SSL directo" checked={!!config.use_ssl} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_ssl: e.target.checked })} /></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">Límite diario</Form.Label><Form.Control size="sm" type="number" value={config.daily_send_limit || 500} disabled={!canEdit} onChange={(e) => setConfig({ ...config, daily_send_limit: Number(e.target.value) })} /></Col>
+              <Col md={8} className="d-flex align-items-end"><Badge bg="light" text="dark" className="border">Contraseña SMTP: {config.password_configured ? 'configurada' : 'pendiente de configurar'} · nunca se muestra ni se guarda desde esta pantalla</Badge></Col>
+            </Row>
+          </Accordion.Body>
+        </Accordion.Item>
+        <Accordion.Item eventKey="automation">
+          <Accordion.Header>Automatización, plantillas y actividad reciente</Accordion.Header>
+          <Accordion.Body>
+      <Row className="g-3">
         <Col lg={12}>
           <div className="d-flex justify-content-between align-items-center mb-2">
             <div>
@@ -424,21 +544,18 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
           </div>
         </Col>
         <Col lg={12}>
-          <div className="small fw-bold mb-2">Preferencias personales por correo</div>
-          <div className="d-flex flex-wrap gap-3">
+          <div className="small fw-bold mb-1">Preferencias personales por correo</div>
+          <div className="x-small text-muted mb-2">La actividad normal se agrupa en un resumen. Las alertas críticas pueden llegar de forma inmediata.</div>
+          <div className="d-flex flex-column gap-2">
             {['bug.created', 'bug.assigned', 'execution.failed', 'ai.execution.review_required'].map(eventType => {
               const pref = preferences.find(item => item.event_type === eventType && item.channel === 'email')
               const enabled = pref ? pref.enabled && pref.frequency !== 'never' : true
-              return (
-                <Form.Check
-                  key={eventType}
-                  type="switch"
-                  id={`pref-${eventType}`}
-                  label={`${eventLabels[eventType] || eventType} por email`}
-                  checked={enabled}
-                  onChange={(event) => savePreference(eventType, 'email', event.target.checked)}
-                />
-              )
+              return <div key={eventType} className="d-flex flex-wrap align-items-center gap-2 border rounded-3 px-2 py-1 bg-light-subtle">
+                <Form.Check type="switch" id={`pref-${eventType}`} label={`${eventLabels[eventType] || eventType} por email`} checked={enabled} onChange={(event) => savePreference(eventType, 'email', event.target.checked, pref?.frequency || 'daily')} />
+                <Form.Select size="sm" aria-label={`Frecuencia ${eventLabels[eventType] || eventType}`} value={pref?.frequency || 'daily'} disabled={!enabled} style={{ width: 180 }} onChange={(event) => savePreference(eventType, 'email', true, event.target.value)}>
+                  <option value="immediate">Inmediata</option><option value="daily">Resumen diario</option><option value="weekly">Resumen semanal</option><option value="monthly">Resumen mensual</option><option value="never">No enviar</option>
+                </Form.Select>
+              </div>
             })}
           </div>
         </Col>
@@ -473,7 +590,7 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
             )}
           </div>
         </Col>
-        <Col lg={6}>
+        {canReadAudit && <Col lg={6}>
           <div className="small fw-bold mb-2">Plantillas</div>
           <Form.Select
             size="sm"
@@ -511,14 +628,18 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
                 disabled={!canEditTemplates}
                 onChange={(event) => setTemplateDraft({ ...templateDraft, text_template: event.target.value })}
               />
-              {canEditTemplates && (
-                <div className="text-end mt-2">
-                  <Button size="sm" onClick={saveTemplate}><Save size={14} className="me-1" />Guardar plantilla</Button>
-                </div>
-              )}
+              <Form.Label className="x-small fw-bold text-muted mt-2">HTML compatible con Gmail/Outlook (opcional)</Form.Label>
+              <Form.Control as="textarea" rows={4} size="sm" value={templateDraft.html_template || ''} disabled={!canEditTemplates} onChange={(event) => setTemplateDraft({ ...templateDraft, html_template: event.target.value })} placeholder="HTML sanitizado por el servidor; sin scripts ni recursos remotos." />
+              <div className="d-flex justify-content-between gap-2 mt-2">
+                <Button size="sm" variant="outline-secondary" onClick={previewTemplate}><Eye size={14} className="me-1" />Vista previa</Button>
+                {canEditTemplates && (
+                  <Button size="sm" onClick={saveTemplate} className="app-save-button"><Save size={14} />Guardar plantilla</Button>
+                )}
+              </div>
+              {templatePreview && <div className="mt-2 border rounded-3 overflow-hidden"><div className="small fw-semibold bg-light px-2 py-1">{templatePreview.subject || 'Sin asunto'}</div>{templatePreview.html ? <iframe title="Vista previa de correo" sandbox="" className="w-100 border-0" style={{ minHeight: 180 }} srcDoc={templatePreview.html} /> : <pre className="small p-2 mb-0 text-wrap">{templatePreview.text}</pre>}</div>}
             </div>
           )}
-        </Col>
+        </Col>}
         <Col lg={6}>
           <div className="d-flex justify-content-between align-items-center mb-2">
             <div className="small fw-bold">Auditoría de entregas</div>
@@ -542,6 +663,57 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
           </Table>
         </Col>
       </Row>
+          </Accordion.Body>
+        </Accordion.Item>
+        <Accordion.Item eventKey="digests">
+          <Accordion.Header>Resúmenes programados</Accordion.Header>
+          <Accordion.Body>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <p className="app-meta text-muted mb-0">Los resúmenes agrupan actividad por destinatario, proyecto y período. Los eventos críticos pueden seguir siendo inmediatos.</p>
+              {canAdmin && <Button size="sm" variant="outline-secondary" className="rounded-pill" onClick={async () => { try { await notificationClient.processDigests(fetchWithAuth); await load(); showFeedback('Resúmenes', 'Se procesaron los resúmenes pendientes.', 'success') } catch (error: any) { showFeedback('Resúmenes', error.message || 'No se pudieron procesar los resúmenes.', 'danger') } }}><RotateCw size={14} className="me-1" />Procesar pendientes</Button>}
+            </div>
+            {canEditOwnSubscriptions && <div className="border rounded-3 p-3 mb-3 bg-light-subtle">
+              <div className="small fw-bold mb-2">Mi resumen por correo</div>
+              <Row className="g-2 align-items-end">
+                <Col md={3}><Form.Label className="app-label fw-bold text-muted">Proyecto</Form.Label><Form.Select size="sm" value={mySchedule.proyectoId} onChange={(e) => setMySchedule({ ...mySchedule, proyectoId: e.target.value })}><option value="">Todos los proyectos permitidos</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
+                <Col md={2}><Form.Label className="app-label fw-bold text-muted">Frecuencia</Form.Label><Form.Select size="sm" value={mySchedule.frequency} onChange={(e) => setMySchedule({ ...mySchedule, frequency: e.target.value })}><option value="daily">Diario</option><option value="weekly">Semanal</option><option value="monthly">Mensual</option><option value="never">No enviar</option></Form.Select></Col>
+                <Col md={3}><Form.Label className="app-label fw-bold text-muted">Zona horaria</Form.Label><Form.Control size="sm" value={mySchedule.timezone} onChange={(e) => setMySchedule({ ...mySchedule, timezone: e.target.value })} /></Col>
+                <Col md={1}><Form.Label className="app-label fw-bold text-muted">Hora</Form.Label><Form.Control size="sm" type="number" min="0" max="23" value={mySchedule.send_hour} onChange={(e) => setMySchedule({ ...mySchedule, send_hour: Number(e.target.value) })} /></Col>
+                <Col md={1}><Form.Label className="app-label fw-bold text-muted">Día</Form.Label><Form.Control size="sm" type="number" min="1" max={mySchedule.frequency === 'weekly' ? '7' : '31'} value={mySchedule.send_day} disabled={!['weekly', 'monthly'].includes(mySchedule.frequency)} onChange={(e) => setMySchedule({ ...mySchedule, send_day: Number(e.target.value) })} /></Col>
+                <Col md={2}><Button size="sm" className="w-100 rounded-pill" onClick={saveMySchedule}>Guardar</Button></Col>
+                <Col md={5}><Form.Label className="app-label fw-bold text-muted">Silenciar hasta</Form.Label><Form.Control size="sm" type="datetime-local" value={mySchedule.mutedUntil} onChange={(e) => setMySchedule({ ...mySchedule, mutedUntil: e.target.value })} /></Col>
+              </Row>
+            </div>}
+            {!canReadDigests && <div className="small text-muted">No tenés permiso para consultar resúmenes programados.</div>}
+            {canReadDigests && <Table size="sm" responsive hover className="mb-0">
+              <thead><tr><th>Destinatario</th><th>Proyecto</th><th>Frecuencia</th><th>Período</th><th>Próximo envío</th><th>Estado</th></tr></thead>
+              <tbody>{digests.slice(0, 20).map(digest => <tr key={digest.id}><td>{digest.recipient_email}</td><td>{projects.find(project => project.id === digest.proyecto_id)?.nombre || 'Global'}</td><td>{({ daily: 'Diario', weekly: 'Semanal', monthly: 'Mensual', on_report_export: 'Al exportar reporte', on_build_closure: 'Al cerrar build', on_project_closure: 'Al cerrar proyecto' } as any)[digest.frequency] || digest.frequency}</td><td className="small">{new Date(digest.period_start).toLocaleDateString()} – {new Date(digest.period_end).toLocaleDateString()}</td><td className="small">{digest.scheduled_for ? new Date(digest.scheduled_for).toLocaleString() : 'Al ocurrir el evento'}</td><td><Badge bg={digest.status === 'SENT' ? 'success' : digest.status === 'FAILED' ? 'danger' : 'secondary'}>{digest.status}</Badge></td></tr>)}</tbody>
+            </Table>}
+            {canReadDigests && !digests.length && <div className="small text-muted py-2">Todavía no hay resúmenes generados. Se crearán cuando ocurra actividad compatible con una regla y destinatario.</div>}
+          </Accordion.Body>
+        </Accordion.Item>
+        <Accordion.Item eventKey="stakeholders">
+          <Accordion.Header>Stakeholders externos por proyecto</Accordion.Header>
+          <Accordion.Body>
+            <p className="app-meta text-muted">Los destinatarios externos no reciben acceso a Treseko. Sólo reciben los eventos permitidos del proyecto elegido.</p>
+            <Row className="g-2 align-items-end">
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">Proyecto</Form.Label><Form.Select size="sm" value={stakeholderProjectId} onChange={(e) => setStakeholderProjectId(e.target.value)}><option value="">Seleccionar proyecto…</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
+              <Col md={3}><Form.Label className="app-label fw-bold text-muted">Nombre</Form.Label><Form.Control size="sm" value={stakeholderDraft.nombre} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, nombre: e.target.value })} /></Col>
+              <Col md={3}><Form.Label className="app-label fw-bold text-muted">Email</Form.Label><Form.Control size="sm" type="email" value={stakeholderDraft.email} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, email: e.target.value })} /></Col>
+              <Col md={2}>{canManageStakeholders && <Button size="sm" className="w-100 rounded-pill" onClick={createStakeholder} disabled={!stakeholderDraft.nombre || !stakeholderDraft.email}><Plus size={14} className="me-1" />Agregar</Button>}</Col>
+              <Col md={12}><Form.Label className="app-label fw-bold text-muted">Eventos permitidos</Form.Label><Form.Select size="sm" multiple value={stakeholderDraft.allowed_event_types} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, allowed_event_types: Array.from(e.currentTarget.selectedOptions).map(option => option.value) })}><option value="report.exported">Reporte exportado</option><option value="report.shared">Reporte compartido</option><option value="build.closed">Cierre de build</option><option value="project.closed">Cierre de proyecto</option></Form.Select></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">Frecuencia inicial</Form.Label><Form.Select size="sm" value={stakeholderSchedule.frequency} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, frequency: e.target.value })}><option value="immediate">Inmediata</option><option value="daily">Resumen diario</option><option value="weekly">Resumen semanal</option><option value="monthly">Resumen mensual</option><option value="on_report_export">Al exportar reporte</option><option value="on_build_closure">Al cerrar build</option><option value="on_project_closure">Al cerrar proyecto</option></Form.Select></Col>
+              <Col md={5}><Form.Label className="app-label fw-bold text-muted">Zona horaria</Form.Label><Form.Control size="sm" value={stakeholderSchedule.timezone} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, timezone: e.target.value })} /></Col>
+              <Col md={2}><Form.Label className="app-label fw-bold text-muted">Hora del resumen</Form.Label><Form.Control size="sm" type="number" min="0" max="23" value={stakeholderSchedule.send_hour} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_hour: Number(e.target.value) })} /></Col>
+              <Col md={1}><Form.Label className="app-label fw-bold text-muted">Día</Form.Label><Form.Control size="sm" type="number" min="1" max={stakeholderSchedule.frequency === 'weekly' ? '7' : '31'} value={stakeholderSchedule.send_day} disabled={!canManageStakeholders || !['weekly', 'monthly'].includes(stakeholderSchedule.frequency)} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_day: Number(e.target.value) })} /></Col>
+            </Row>
+            <div className="mt-3 border rounded-3 overflow-hidden">
+              {stakeholders.map(stakeholder => <div key={stakeholder.id} className="d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom px-3 py-2"><div><span className="fw-semibold">{stakeholder.nombre}</span><span className="small text-muted ms-2">{stakeholder.email}</span><div className="x-small text-muted">{(stakeholder.allowed_event_types || []).join(' · ') || 'Sin eventos habilitados'}</div></div><div className="d-flex align-items-center gap-2"><Badge bg={stakeholder.active ? 'success' : 'secondary'}>{stakeholder.active ? 'Activo' : 'Baja'}</Badge>{stakeholder.active && canManageStakeholders && <Button size="sm" variant="outline-danger" onClick={() => deactivateStakeholder(stakeholder)}>Dar de baja</Button>}</div></div>)}
+              {stakeholderProjectId && !stakeholders.length && <div className="small text-muted p-3">No hay destinatarios externos para este proyecto.</div>}
+            </div>
+          </Accordion.Body>
+        </Accordion.Item>
+      </Accordion>
       <Modal show={showRuleModal} onHide={() => setShowRuleModal(false)} centered size="lg" backdrop="static">
         <Modal.Header closeButton className="bg-light">
           <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
@@ -615,7 +787,7 @@ export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAcces
             </Button>
           )}
           <Button variant="outline-secondary" onClick={() => setShowRuleModal(false)}>Cancelar</Button>
-          {canEditRules && <Button onClick={saveRuleDraft}><Save size={14} className="me-1" />Guardar</Button>}
+          {canEditRules && <Button onClick={saveRuleDraft} className="app-save-button"><Save size={14} />Guardar</Button>}
         </Modal.Footer>
       </Modal>
       <Modal show={showEventsModal} onHide={() => setShowEventsModal(false)} centered size="xl">

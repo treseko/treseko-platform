@@ -30,7 +30,7 @@ MAX_NOTIFICATION_STRING_LENGTH = 4000
 MAX_NOTIFICATION_EXPLICIT_EMAILS = 50
 MAX_NOTIFICATION_PREFERENCES_BATCH = 100
 ALLOWED_NOTIFICATION_CHANNELS = {"in_app", "email"}
-ALLOWED_NOTIFICATION_FREQUENCIES = {"immediate", "daily", "weekly", "never"}
+ALLOWED_NOTIFICATION_FREQUENCIES = {"immediate", "daily", "weekly", "monthly", "on_report_export", "on_build_closure", "on_project_closure", "never"}
 
 
 def _notification_json_size(value: Dict[str, Any]) -> int:
@@ -235,6 +235,8 @@ class NotificationInboxResponse(BaseModel):
     severity: str
     read_at: Optional[datetime] = None
     created_at: datetime
+    notification_type: str = "GENERAL"
+    actor_name: Optional[str] = None
     metadata_json: Dict[str, Any] = {}
 
     model_config = ConfigDict(from_attributes=True)
@@ -260,6 +262,102 @@ class NotificationDeliveryResponse(BaseModel):
     updated_at: Optional[datetime] = None
     metadata_json: Dict[str, Any] = {}
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationStakeholderCreate(BaseModel):
+    nombre: str = Field(min_length=1, max_length=160)
+    email: str = Field(min_length=3, max_length=320)
+    allowed_event_types: List[str] = Field(default_factory=list, max_length=50)
+    consent_source: str = Field(default="manual", min_length=1, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        # Persist a canonical address so duplicate checks are deterministic.
+        return (_validate_plain_email(value, required=True) or "").lower()
+
+    @field_validator("allowed_event_types")
+    @classmethod
+    def validate_event_types(cls, value: List[str]) -> List[str]:
+        return sorted({item.strip() for item in value if item and item.strip()})
+
+
+class NotificationStakeholderUpdate(BaseModel):
+    nombre: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    allowed_event_types: Optional[List[str]] = Field(default=None, max_length=50)
+    active: Optional[bool] = None
+    consent_source: Optional[str] = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("allowed_event_types")
+    @classmethod
+    def validate_event_types(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        return sorted({item.strip() for item in value if item and item.strip()}) if value is not None else value
+
+
+class NotificationStakeholderResponse(BaseModel):
+    id: UUID
+    proyecto_id: UUID
+    nombre: str
+    email: str
+    allowed_event_types: List[str] = []
+    active: bool
+    consent_source: str
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    deactivated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationSubscriptionUpdate(BaseModel):
+    event_type: Optional[str] = Field(default=None, max_length=120)
+    channel: str = Field(default="email", max_length=30)
+    frequency: str = Field(default="daily", max_length=30)
+    timezone: str = Field(default="UTC", min_length=1, max_length=80)
+    send_hour: int = Field(default=9, ge=0, le=23)
+    send_day: Optional[int] = Field(default=None, ge=1, le=31)
+    muted_until: Optional[datetime] = None
+    enabled: bool = True
+
+    @field_validator("channel")
+    @classmethod
+    def validate_channel(cls, value: str) -> str:
+        if value.strip() not in ALLOWED_NOTIFICATION_CHANNELS:
+            raise ValueError("Canal de notificacion no soportado")
+        return value.strip()
+
+    @field_validator("frequency")
+    @classmethod
+    def validate_frequency(cls, value: str) -> str:
+        if value.strip() not in ALLOWED_NOTIFICATION_FREQUENCIES:
+            raise ValueError("Frecuencia de notificacion no soportada")
+        return value.strip()
+
+
+class NotificationSubscriptionResponse(NotificationSubscriptionUpdate):
+    id: UUID
+    user_id: Optional[UUID] = None
+    stakeholder_id: Optional[UUID] = None
+    proyecto_id: Optional[UUID] = None
+    muted_until: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationDigestResponse(BaseModel):
+    id: UUID
+    recipient_email: str
+    proyecto_id: Optional[UUID] = None
+    frequency: str
+    period_start: datetime
+    period_end: datetime
+    status: str
+    scheduled_for: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    delivery_id: Optional[UUID] = None
+    created_at: datetime
+    metadata_json: Dict[str, Any] = {}
     model_config = ConfigDict(from_attributes=True)
 
 class NotificationPreferenceUpdate(BaseModel):

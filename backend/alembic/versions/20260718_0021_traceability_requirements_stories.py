@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260718_0021"
-down_revision = "20260718_0018"
+down_revision = "20260718_0020"
 branch_labels = None
 depends_on = None
 
@@ -19,6 +19,19 @@ uuid = postgresql.UUID(as_uuid=True)
 
 
 def upgrade():
+    target_tables = {
+        "requisitos",
+        "requisito_componentes",
+        "requisito_historial",
+        "historias_usuario",
+        "historia_historial",
+        "caso_historias",
+    }
+    existing = set(sa.inspect(op.get_bind()).get_table_names()) & target_tables
+    if existing == target_tables:
+        return
+    if existing:
+        raise RuntimeError("La migracion de trazabilidad encontro un schema parcial: " + ", ".join(sorted(existing)))
     op.create_table(
         "requisitos",
         sa.Column("id", uuid, primary_key=True),

@@ -1,4 +1,4 @@
-from .legacy_common import reexport_modules
+from .repository_context import reexport_modules
 
 reexport_modules(globals(), [
     "app.repositories.metrics_ai_helpers",
@@ -6,4 +6,5 @@ reexport_modules(globals(), [
     "app.repositories.dashboard_ai_execution",
     "app.repositories.shared_report_payloads",
     "app.repositories.shared_reports_bugs_helpers",
+    "app.repositories.shared_report_operations",
 ])

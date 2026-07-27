@@ -1,175 +1,60 @@
-﻿# Architecture - Treseko Platform
+# Arquitectura de Treseko
 
-Fecha de revision: 2026-06-14.
+Esta guía ofrece una vista técnica de la instalación self-hosted. Sirve para
+administradores que necesitan identificar qué componente revisar ante un
+problema, hacer una copia de seguridad o integrar un servicio externo.
 
-## Estado
+## Componentes principales
 
-- [x] Arquitectura base documentada.
-- [x] Detalle de base de datos movido a `docs/DATABASE.md`.
-- [ ] Mantener este documento como resumen arquitectonico y evitar duplicar el modelo completo.
-
-## Referencias
-
-- Modelo de datos detallado: [`DATABASE.md`](DATABASE.md)
-- API vigente: [`API_SPEC.md`](API_SPEC.md)
-- Estado real: [`STATUS.md`](STATUS.md)
-- Configuracion del Motor IA: [`AI_ENGINE_CONFIG.md`](AI_ENGINE_CONFIG.md)
-
-La plataforma esta compuesta por tres capas que todavía estan en proceso de integracion completa.
-
-```mermaid
-graph TD
-    FE["Frontend React/Vite"]
-    API["Backend FastAPI"]
-    DB["SQLite local o PostgreSQL"]
-    ENG["Engine Node/Playwright/IA"]
-    AI["LM Studio/Ollama API"]
-    RM["Redmine"]
-
-    FE -->|"HTTP JSON pendiente/parcial"| API
-    FE -->|"WS client-sync"| API
-    API -->|"SQLAlchemy async"| DB
-    API -->|"POST /run-task"| ENG
-    ENG -->|"WS engine-sync"| API
-    ENG -->|"Chat completions compatible"| AI
-    API -->|"issues.json"| RM
+```text
+Navegador → Frontend → Backend → Base de datos
+                         ├→ Motor IA
+                         └→ Worker de automatización
 ```
 
-## Capas
+| Componente | Función | Cuándo revisarlo |
+|---|---|---|
+| Frontend | Muestra la plataforma en el navegador. | La página no carga o una pantalla no responde. |
+| Backend | Aplica permisos, reglas de negocio y expone la API. | Una acción devuelve un error o no guarda datos. |
+| Base de datos | Conserva proyectos, casos, ejecuciones, usuarios y configuración. | Antes de restaurar o migrar información. |
+| Motor IA | Ejecuta los flujos asistidos por IA. | Una generación o ejecución IA no inicia. |
+| Worker | Ejecuta scripts automatizados en una máquina compatible. | Un job no se toma o falla en el entorno de prueba. |
 
-### Frontend
+## Cómo se relacionan
 
-Ubicacion: `frontend/`
+- El navegador se comunica con el backend mediante la aplicación web.
+- El backend persiste la información y valida permisos antes de cada acción.
+- El Motor IA y los workers reportan resultados al backend; no escriben
+  directamente en la base de datos.
+- Los adjuntos se almacenan como archivos y quedan vinculados a casos,
+  ejecuciones o bugs mediante sus metadatos.
 
-Stack:
+## Datos y trazabilidad
 
-- React 19.
-- Vite 6.
-- Bootstrap / React-Bootstrap.
-- Lucide React.
-- Recharts.
+La información operativa sigue esta relación principal:
 
-Estado:
+```text
+Solución → Proyecto → Componente → Build → Caso → Ejecución → Evidencia
+```
 
-- UI avanzada y navegable.
-- La mayor parte del estado vive en `frontend/src/App.tsx` como datos mock/locales.
-- Integracion real con backend pendiente por módulos.
+Los requisitos e historias se vinculan con los casos para medir cobertura. Las
+ejecuciones conservan una instantánea de los pasos y datos usados, de modo que
+un cambio posterior al caso no altera el resultado histórico.
 
-### Backend
+## Seguridad y operación
 
-Ubicacion: `backend/`
+- Los permisos se validan en el backend, no solo en la interfaz.
+- Las API keys, credenciales de IA e integraciones deben guardarse como
+  secretos de despliegue o desde la configuración protegida de Treseko.
+- Realizá copias de seguridad de la base de datos y del almacenamiento de
+  adjuntos antes de actualizar o cambiar infraestructura.
+- No expongas el backend, la base de datos ni el Motor IA directamente a
+  Internet sin un proxy y controles de acceso apropiados.
 
-Stack:
+## Dónde continuar
 
-- FastAPI.
-- SQLAlchemy async.
-- Pydantic v2.
-- JWT local con `python-jose`.
-- Passlib.
-- HTTPX.
-
-Estado:
-
-- API real implementada sin prefijo `/api/v1`.
-- Persistencia local recomendada en PostgreSQL: `postgresql+asyncpg://treseko:<DB_PASSWORD>@localhost:5432/treseko_db`.
-- SQLite queda solo para lectura puntual de bases legacy con `ALLOW_SQLITE_LEGACY=true`.
-- WebSocket relay implementado de forma básica.
-- Redmine worker implementado sin deduplicacion real previa.
-
-### Engine
-
-Ubicacion: `engine/`
-
-Stack:
-
-- Node.js.
-- Express.
-- Socket.io.
-- WebSocket `ws`.
-- Playwright.
-- TypeScript/tsx.
-
-Estado:
-
-- Expone `GET /health`.
-- Expone `POST /run-task`.
-- En desarrollo local usa `ENGINE_PORT=3010` desde `engine/.env`.
-- Recibe configuracion runtime desde backend: LLM, viewport, costos, headless, timeout y workflow activo.
-- Tiene CLI con `npm run test -- --help`.
-- Se comunica con backend por `BACKEND_WS_URL`.
-
-## Persistencia
-
-Modo local:
-
-- SQLite por default si no hay `DATABASE_URL`.
-
-Modo infraestructura:
-
-- Docker Compose levanta PostgreSQL y Redis.
-- Redis esta disponible pero no es dependencia critica documentada del flujo actual.
-
-## Contratos principales
-
-Backend a engine:
-
-- `POST {ENGINE_URL}/run-task`
-- Payload con `task`, `url`, `testId`, `suite`, `guidance`, `step_map`, configuracion LLM, viewport y `workflow_definition`.
-
-Engine a backend:
-
-- `WS {BACKEND_WS_URL}/{testId}`
-- Eventos actuales: `STREAM_DOM_LOG`, `STEP_RESULT`.
-
-Frontend a backend:
-
-- HTTP API definida en `docs/API_SPEC.md`.
-- WebSocket: `/ws/client-sync/{ejecucion_id}`.
-
-## Seguridad
-
-Implementado:
-
-- Login local con JWT.
-- Roles `ADMIN` y `TESTER`.
-- Algunas rutas protegidas por bearer o rol admin.
-
-Pendiente:
-
-- Proteger de forma consistente todas las rutas sensibles.
-- Revisar scopes por organizacion/proyecto.
-- No exponer tokens mock en frontend.
-- Cambiar `SECRET_KEY` default en entornos reales.
-
-## Módulos de negocio
-
-Implementados o parcialmente implementados:
-
-- Organizaciones.
-- Proyectos.
-- Componentes.
-- Suites jerarquicas.
-- Casos versionados.
-- Test runs.
-- Ejecuciones y snapshots.
-- Wiki.
-- Entornos/dispositivos/nodos.
-- Scheduler basico.
-- Redmine.
-- Export/import `.QAP`.
-
-Pendientes importantes:
-
-- Retry/historial por caso.
-- Deduplicacion real Redmine.
-- Integracion frontend/backend.
-- Migraciones Alembic.
-- Pruebas automatizadas de integracion.
-
-## Roadmap recomendado
-
-2. Decidir versionado API antes de conectar frontend.
-3. Conectar frontend por módulos: auth, proyectos, suites, casos.
-4. Implementar ejecucion manual persistida con bloqueo secuencial.
-5. Cerrar bridge backend-engine con pruebas de WebSocket.
-6. Completar Redmine preview + deduplicacion real.
+- [Instalación rápida](INSTALLATION.md)
+- [Guía Docker](DOCKER_GUIDE.md)
+- [Base de datos y respaldos](DATABASE.md)
+- [Worker de automatización](AUTOMATION_WORKER_V1.md)
+- [Configuración del Motor IA](AI_ENGINE_CONFIG.md)

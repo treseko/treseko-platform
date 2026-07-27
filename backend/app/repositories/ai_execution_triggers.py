@@ -1,7 +1,8 @@
 import logging
 
-from .legacy_common import *
+from .repository_context import *
 from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
+from .ai_provider_profiles import provider_payload_for_definition
 from .. import auth
 from ..services.edition.entitlement_service import ensure_feature_enabled
 from ..services.edition.usage_limits import enforce_weekly_ai_execution_limit
@@ -13,6 +14,64 @@ logger = logging.getLogger(__name__)
 
 def _safe_ai_error_detail(value: object) -> str:
     return sanitize_external_error(value)
+
+
+async def recover_stale_ai_executions(db: AsyncSession, *, timeout_seconds: int | None = None) -> int:
+    """Close orphaned IA executions left behind by a backend restart.
+
+    The in-process timeout watcher cannot survive a reload.  A record that is
+    older than the configured engine limit and has no terminal callback must
+    not keep the UI permanently in ``EJECUTANDO_AI`` or block later campaigns.
+    """
+    config = await get_ai_engine_config(db)
+    limit = max(60, int(timeout_seconds or config.get("timeout_seconds") or 900))
+    cutoff = utc_now() - timedelta(seconds=limit)
+    result = await db.execute(
+        select(models.EjecucionCaso).filter(
+            models.EjecucionCaso.estado_resultado == models.EstadoResultado.EJECUTANDO_AI,
+            models.EjecucionCaso.fecha_ejecucion < cutoff,
+        )
+    )
+    recovered = 0
+    for execution in result.scalars().all():
+        report = dict(execution.ai_report or {})
+        if report.get("report_complete") is True:
+            continue
+        execution.estado_resultado = models.EstadoResultado.FALLO
+        execution.execution_mode = models.ExecutionMode.IA
+        execution.ai_human_review_required = True
+        execution.ai_review_status = models.AiReviewStatus.REQUIERE_REVISION
+        execution.ai_failure_category = "timeout"
+        execution.observaciones = (
+            f"TIMEOUT DE EJECUCION RECUPERADO: la ejecucion supero {limit} segundos "
+            "sin callback terminal; fue cerrada para evitar un estado IA huerfano."
+        )
+        execution.ai_report = {
+            **report,
+            "error_code": "AI_TIMEOUT",
+            "failure_category": "timeout",
+            "human_review_required": True,
+            "stale_execution_recovered": True,
+            "stale_execution_timeout_seconds": limit,
+        }
+        recovered += 1
+    if recovered:
+        await db.commit()
+        logger.warning("Recovered %s stale AI execution(s) older than %ss", recovered, limit)
+    return recovered
+
+
+def _backend_callback_base_url() -> str:
+    configured = os.getenv("AI_ENGINE_CALLBACK_BASE_URL") or os.getenv("BACKEND_PUBLIC_URL")
+    if configured:
+        return configured.rstrip("/")
+    # BACKEND_PORT is retained by the former local runner (19101) and does not
+    # identify the running FastAPI listener.  Keep the callback on the API
+    # listener unless a public callback URL was explicitly configured.
+    # The Engine runs in a separate container. Loopback would point back to
+    # the Engine itself, so use Docker service discovery for the default
+    # callback path.
+    return "http://backend:8000"
 
 
 async def _require_ai_execution_entitlement(db: AsyncSession, execution: models.EjecucionCaso):
@@ -44,12 +103,13 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
     run, _project = await _require_ai_execution_entitlement(db, ejec)
     config = await get_ai_engine_config(db)
     workflow_definition = await get_active_ai_workflow_definition(db)
+    provider_payload = await provider_payload_for_definition(db, workflow_definition, config)
     engine_url = ENGINE_URL.rstrip("/")
-    callback_url = f"{os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8000').rstrip('/')}/ai-engine/executions/{ejecucion_id}/result"
+    callback_url = f"{_backend_callback_base_url()}/ai-engine/executions/{ejecucion_id}/result"
 
     # VALIDACION 1: Engine activo - si esta caido, devolver error claro
     # No marcar como BLOQUEADO silenciosamente, el usuario tiene que saber que el engine no funciona
-    health = await check_ai_engine_health(db)
+    health = await check_ai_engine_health(db, provider_payload)
     if health.get("status") != "ok":
         error_detail = _safe_ai_error_detail(health.get('detail', 'Motor IA no responde'))
         # Marcar como BLOQUEADO pero con mensaje claro y descriptivo
@@ -71,7 +131,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
     ejec.ai_review_status = models.AiReviewStatus.NO_REQUIERE_REVISION
     await db.commit()
 
-    snapshots = await get_snapshots_ejecucion(db, ejecucion_id)
+    snapshots = await get_snapshots_ejecucion(db, ejecucion_id, sanitize_output=False)
     dataset_resuelto = []
     variables_resueltas = {}
     if run:
@@ -82,13 +142,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
             dataset_resuelto = resolved_dataset["dataset_resuelto"]
             variables_resueltas = resolved_dataset["variables_resueltas"]
 
-    base_url = get_ai_base_url_from_context(variables_resueltas, snapshots)
-    if not base_url:
-        ejec.estado_resultado = models.EstadoResultado.BLOQUEADO
-        ejec.execution_mode = models.ExecutionMode.IA
-        ejec.observaciones = "Motor IA requiere una URL base en el ambiente/dataset o en los datos de un paso."
-        await db.commit()
-        return
+    base_url = get_ai_base_url_from_context(variables_resueltas, snapshots) or ""
     frozen_workflow = workflow_definition or {}
     frozen_workflow_meta = frozen_workflow.get("workflow") if isinstance(frozen_workflow, dict) else {}
     if isinstance(frozen_workflow_meta, dict):
@@ -96,6 +150,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
             **(ejec.ai_report or {}),
             "workflow_id": frozen_workflow_meta.get("id"),
             "workflow_version": frozen_workflow_meta.get("version"),
+            "workflow_format": frozen_workflow_meta.get("workflow_format") or "legacy_v1",
             "workflow_snapshot": frozen_workflow,
             "workflow_nodes": frozen_workflow.get("nodes", []) if isinstance(frozen_workflow, dict) else [],
             "workflow_edges": frozen_workflow.get("edges", []) if isinstance(frozen_workflow, dict) else [],
@@ -125,6 +180,12 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
             for step in steps
         ]
     )
+    model_capabilities = config.get("model_capabilities") or {}
+    active_model_capabilities = (
+        model_capabilities.get(config.get("model"), model_capabilities)
+        if isinstance(model_capabilities, dict)
+        else {}
+    )
     payload = {
         "execution_id": str(ejecucion_id),
         "case_id": str(case.id),
@@ -143,12 +204,16 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         "dataset": dataset_resuelto,
         "variables": variables_resueltas,
         "callback_url": callback_url,
-        "callback_token": auth.create_access_token(
+        # A configured internal token is stable across worker processes.  Use
+        # it for both terminal callbacks and the progress WebSocket; a JWT
+        # generated by another local process can be signed with a different
+        # development secret after a backend reload.
+        "callback_token": (shared_callback_token := (os.getenv("AI_ENGINE_CALLBACK_TOKEN") or "").strip()) or auth.create_access_token(
             data={"sub": "ai-engine", "scope": "ai-engine-callback", "execution_id": str(ejecucion_id)},
             expires_delta=timedelta(hours=6),
             token_type="engine_callback",
         ),
-        "engine_ws_token": auth.create_access_token(
+        "engine_ws_token": None if shared_callback_token else auth.create_access_token(
             data={"sub": "ai-engine", "scope": "ai-engine-ws", "execution_id": str(ejecucion_id)},
             expires_delta=timedelta(hours=6),
             token_type="engine_ws",
@@ -161,14 +226,19 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         "agent_workflow": config.get("agent_workflow") or _legacy_agent_workflow_from_definition(workflow_definition),
         "workflow_definition": frozen_workflow,
         "max_parallel_ai_runs": int(config.get("max_parallel_ai_runs") or 1),
-        "provider": config.get("provider"),
-        "llm_endpoint": config.get("llm_endpoint"),
-        "model": config.get("model"),
-        "provider_api_key": get_configured_ai_provider_api_key(config, config.get("provider")),
+        **provider_payload,
+        # Vision is opt-in per model. Unknown models must not receive screenshots.
+        "vision_enabled": bool(active_model_capabilities.get("vision")) if isinstance(active_model_capabilities, dict) else False,
         "temperature": config.get("temperature"),
         "token_cost_prompt_per_1k": config.get("token_cost_prompt_per_1k"),
         "token_cost_completion_per_1k": config.get("token_cost_completion_per_1k"),
         "token_cost_per_1k": config.get("token_cost_per_1k"),
+        "ai_execution_driver": config.get("ai_execution_driver", "treseko_engine"),
+        "opencode_url": os.getenv("OPENCODE_URL", "http://127.0.0.1:4096"),
+        "opencode_username": os.getenv("OPENCODE_USERNAME", "treseko"),
+        "opencode_model": config.get("opencode_model"),
+        "opencode_agent": config.get("opencode_agent"),
+        "opencode_timeout_seconds": config.get("opencode_timeout_seconds", 30),
     }
     write_trace("backend", "ai_request", {
         "request_id": str(ejecucion_id),

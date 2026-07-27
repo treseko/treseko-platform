@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from urllib.parse import urlparse
 
@@ -115,6 +115,7 @@ class Componente(ComponenteBase):
 class BuildBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=MAX_BUILD_NAME_LENGTH)
     contexto_cambio: Optional[str] = Field(default=None, max_length=MAX_BUILD_CHANGE_CONTEXT_LENGTH)
+    estado: Literal["PREPARACION", "ACTIVA", "HISTORICA"] = "PREPARACION"
     activo: bool = False
     oculto: bool = False
     fecha_inicio: Optional[datetime] = None
@@ -132,6 +133,7 @@ class BuildCreate(BuildBase):
 class BuildUpdate(BaseModel):
     nombre: Optional[str] = Field(default=None, min_length=1, max_length=MAX_BUILD_NAME_LENGTH)
     contexto_cambio: Optional[str] = Field(default=None, max_length=MAX_BUILD_CHANGE_CONTEXT_LENGTH)
+    estado: Optional[Literal["PREPARACION", "ACTIVA", "HISTORICA"]] = None
     activo: Optional[bool] = None
     oculto: Optional[bool] = None
     componente_id: Optional[UUID] = None

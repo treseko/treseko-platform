@@ -1,4 +1,4 @@
-import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type Node, type OnConnect, type OnEdgesChange, type OnNodesChange } from '@xyflow/react'
+import { applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type Node, type OnConnect, type OnEdgesChange, type OnNodesChange } from '@xyflow/react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
 
@@ -13,6 +13,10 @@ type UseWorkflowLocalEditsParams = {
   setSelectedWorkflowElement: (element: { type: 'node' | 'edge', id: string } | null) => void
   syncFlowFromWorkflow: (workflow: AiWorkflow | null) => void
   showFeedback: (title: string, message: string, variant?: string) => void
+  enqueueDeleteNode: (nodeId: string) => boolean
+  enqueueDeleteEdge: (edgeId: string) => boolean
+  enqueueConnect: (edge: AiWorkflowEdge) => boolean
+  enqueueMoveNode: (nodeId: string, position: { x: number; y: number }) => boolean
 }
 
 export function useWorkflowLocalEdits({
@@ -26,6 +30,10 @@ export function useWorkflowLocalEdits({
   setSelectedWorkflowElement,
   syncFlowFromWorkflow,
   showFeedback,
+  enqueueDeleteNode,
+  enqueueDeleteEdge,
+  enqueueConnect,
+  enqueueMoveNode,
 }: UseWorkflowLocalEditsParams) {
   const updateWorkflowDraft = (patch: Partial<AiWorkflow>) => {
     if (!workflowDraft) return
@@ -67,27 +75,14 @@ export function useWorkflowLocalEdits({
       showFeedback('Workflow IA', 'Este nodo base esta bloqueado y no se puede eliminar.', 'warning')
       return
     }
-    const next = {
-      ...workflowDraft,
-      nodes: workflowDraft.nodes.filter(item => item.id !== nodeId),
-      edges: workflowDraft.edges.filter(edge => edge.source_node_id !== nodeId && edge.target_node_id !== nodeId),
-    }
     setSelectedWorkflowElement(null)
-    setWorkflowDraft(next)
-    setAiWorkflows(prev => prev.map(item => item.id === next.id ? next : item))
-    syncFlowFromWorkflow(next)
+    enqueueDeleteNode(nodeId)
   }
 
   const deleteWorkflowEdge = (edgeId: string) => {
     if (!workflowDraft || !canEditAi) return
-    const next = {
-      ...workflowDraft,
-      edges: workflowDraft.edges.filter(edge => edge.id !== edgeId),
-    }
     setSelectedWorkflowElement(null)
-    setWorkflowDraft(next)
-    setAiWorkflows(prev => prev.map(item => item.id === next.id ? next : item))
-    syncFlowFromWorkflow(next)
+    enqueueDeleteEdge(edgeId)
   }
 
   const onWorkflowNodeContextMenu = (event: any, node: Node) => {
@@ -111,14 +106,7 @@ export function useWorkflowLocalEdits({
   const onWorkflowNodeDragStop = (_event: any, node: Node) => {
     if (autoLayoutEnabled) return
     if (!workflowDraft) return
-    const next = {
-      ...workflowDraft,
-      nodes: workflowDraft.nodes.map(item => item.id === node.id
-        ? { ...item, position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) }
-        : item),
-    }
-    setWorkflowDraft(next)
-    setAiWorkflows(prev => prev.map(item => item.id === next.id ? next : item))
+    enqueueMoveNode(node.id, node.position)
     setFlowNodes(nodes => nodes.map(item => item.id === node.id ? { ...item, position: node.position } : item))
   }
 
@@ -135,17 +123,7 @@ export function useWorkflowLocalEdits({
       priority: 10,
       max_passes: 1,
     }
-    const next = { ...workflowDraft, edges: [...workflowDraft.edges, edge] }
-    setWorkflowDraft(next)
-    setFlowEdges(edges => addEdge({
-      id: edge.id,
-      source: edge.source_node_id,
-      target: edge.target_node_id,
-      sourceHandle: edge.source_handle || undefined,
-      targetHandle: edge.target_handle || undefined,
-      label: edge.condition_type,
-    }, edges))
-    syncFlowFromWorkflow(next)
+    enqueueConnect(edge)
   }
 
   return {

@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 
 
 async def get_roles_personalizados(db: AsyncSession, include_inactive: bool = False, skip: int = 0, limit: int = 100):
@@ -198,6 +198,7 @@ async def update_user(db: AsyncSession, user_id: UUID, user_update: schemas.Usua
         db_user.permisos_detallados = {}
     if hashed_password:
         db_user.hashed_password = hashed_password
+        db_user.session_version = int(db_user.session_version or 0) + 1
     await db.commit()
     return await get_user(db, db_user.id)
 
@@ -251,6 +252,7 @@ async def change_my_password(db: AsyncSession, user: models.Usuario, new_hashed_
     security["password_changed_at"] = datetime.utcnow().isoformat() + "Z"
     profile_settings["security"] = security
     user.hashed_password = new_hashed_password
+    user.session_version = int(user.session_version or 0) + 1
     user.profile_settings = profile_settings
     await db.commit()
     await db.refresh(user)

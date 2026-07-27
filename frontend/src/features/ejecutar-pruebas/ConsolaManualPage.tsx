@@ -114,7 +114,6 @@ export function ConsolaManualPage({
   const [linkComment, setLinkComment] = useState('')
   const [linkingBugId, setLinkingBugId] = useState<string | null>(null)
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
-  const [validationSequenceHeight, setValidationSequenceHeight] = useState<number | null>(null)
   const [collapsedLeftSections, setCollapsedLeftSections] = useState({
     details: false,
     bugs: false,
@@ -123,30 +122,19 @@ export function ConsolaManualPage({
   const validationSequenceRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    setCollapsedLeftSections({ details: false, bugs: false, history: false })
+    // El panel de detalle es la herramienta principal durante la ejecución.
+    // Las secciones sin contenido quedan compactas para no reducirlo a un área
+    // con scroll de pocas líneas; siguen disponibles desde su encabezado.
+    setCollapsedLeftSections({
+      details: false,
+      bugs: relatedCaseBugs.length === 0,
+      history: normalizeExecutionHistory(selectedTest).length === 0,
+    })
     const handle = window.setTimeout(() => {
       validationSequenceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 80)
     return () => window.clearTimeout(handle)
   }, [selectedTest?.id])
-
-  useEffect(() => {
-    const element = validationSequenceRef.current
-    if (!element) return
-    const updateHeight = () => setValidationSequenceHeight(Math.ceil(element.getBoundingClientRect().height))
-    updateHeight()
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateHeight)
-      return () => window.removeEventListener('resize', updateHeight)
-    }
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(element)
-    window.addEventListener('resize', updateHeight)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', updateHeight)
-    }
-  }, [selectedTest?.id, executionSnapshots.length])
 
   const resolvedDataset = currentExecutionRun?.datasets_resueltos?.[selectedTest?.id] || []
   const runVariables = currentExecutionRun?.variables_resueltas || {}
@@ -317,15 +305,9 @@ export function ConsolaManualPage({
   const executionHistory = normalizeExecutionHistory(selectedTest)
   const latestHistoryItem = executionHistory[0]
   const latestRelatedBug = relatedCaseBugs[0]
-  const leftColumnStyle: CSSProperties = {
-    maxHeight: validationSequenceHeight ? `${validationSequenceHeight}px` : undefined,
-    overflow: validationSequenceHeight ? 'hidden' : undefined,
-    minHeight: 0,
-  }
-  const leftSectionStyle = (collapsed: boolean, flexValue = '1 1 0px'): CSSProperties => ({
-    flex: collapsed ? '0 0 auto' : flexValue,
-    minHeight: collapsed ? undefined : 0,
-  })
+  // Las secciones laterales no comparten altura con la secuencia de pasos. Cada
+  // tarjeta conserva su alto natural; sólo su contenido interno hace scroll.
+  const leftSectionStyle = (): CSSProperties => ({})
   const expandedSectionBodyStyle: CSSProperties = {
     overflow: 'auto',
     minHeight: 0,
@@ -379,7 +361,7 @@ export function ConsolaManualPage({
                     <span className={`font-monospace fw-bold x-small ${isActive ? 'text-primary' : 'text-secondary'}`}>
                       {test.code || test.id.slice(0, 8).toUpperCase()}
                     </span>
-                    <Badge bg={currentStatus === 'EN CURSO' ? 'info' : getStatusColor(currentStatus)} className="x-small" style={{ fontSize: '9px' }}>
+                    <Badge bg={currentStatus === 'EN CURSO' ? 'info' : getStatusColor(currentStatus)} className="x-small" style={{ fontSize: 'var(--app-font-size-meta)' }}>
                       {currentStatus}
                     </Badge>
                   </div>
@@ -402,8 +384,8 @@ export function ConsolaManualPage({
 
         <div className="manual-console-content flex-grow-1 overflow-auto p-4">
           <Row className="g-4">
-            <Col xl={3} lg={4} className="d-flex flex-column gap-3" style={leftColumnStyle}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle(collapsedLeftSections.details, '1 1 0px')}>
+            <Col xl={3} lg={4} className="manual-console-details-column d-flex flex-column gap-3">
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><Info size={18} className="text-primary"/> Detalles del Caso</h6>
@@ -425,7 +407,7 @@ export function ConsolaManualPage({
                   </Button>
                 </Card.Header>
                 {!collapsedLeftSections.details && (
-                  <Card.Body className="p-3 flex-grow-1" style={expandedSectionBodyStyle}>
+                  <Card.Body className="manual-console-case-details-body p-3" style={expandedSectionBodyStyle}>
                     {renderTextBlock('Objetivo / descripcion', selectedTest.description || '', 'Sin objetivo documentado.')}
                     {renderTextBlock('Precondiciones', selectedTest.pre || '', 'Ninguna precondicion especificada.')}
                     {renderTextBlock('Postcondiciones', selectedTest.post || '', 'Ninguna postcondicion especificada.')}
@@ -441,7 +423,7 @@ export function ConsolaManualPage({
                 )}
               </Card>
 
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle(collapsedLeftSections.bugs, '1 1 0px')}>
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
@@ -504,13 +486,13 @@ export function ConsolaManualPage({
                                     {getBugDisplayBuild(bugItem)}
                                     {getBugDisplayComponent(bugItem) ? ` · ${getBugDisplayComponent(bugItem)}` : ''}
                                   </div>
+                                  {bugItem.external_issue_id && <Badge bg="light" text="primary" className="border x-small mt-1"><Bug size={10} className="me-1" />{bugItem.external_provider || 'Externo'} #{bugItem.external_issue_id}</Badge>}
                                 </div>
                                 <div className="d-flex align-items-center justify-content-end gap-1 flex-wrap flex-shrink-0">
                                   <Button
                                     variant="outline-secondary"
                                     size="sm"
                                     className="x-small fw-bold py-1 px-2"
-                                    disabled={!onViewRelatedBug}
                                     title="Ver detalle del bug"
                                     onClick={() => onViewRelatedBug?.(bugItem)}
                                   >
@@ -573,7 +555,7 @@ export function ConsolaManualPage({
                 )}
               </Card>
 
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle(collapsedLeftSections.history, '2 1 0px')}>
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><History size={18} className="text-secondary"/> Historial Detallado</h6>
@@ -908,12 +890,12 @@ export function ConsolaManualPage({
     </div>
     <EvidenceViewerModal evidence={viewerEvidence} onHide={() => setViewerEvidence(null)} />
     <Modal show={Boolean(linkingBug)} onHide={() => setLinkingBug(null)} centered>
-      <Modal.Header closeButton>
+      <Modal.Header closeButton className="border-0 pb-2">
         <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
           <RefreshCw size={18} className="text-danger" /> Actualizar seguimiento del bug
         </Modal.Title>
       </Modal.Header>
-      <Modal.Body>
+      <Modal.Body className="pt-0">
         {linkingBug && (
           <div className="border rounded-3 p-3 bg-light mb-3">
             <div className="fw-bold text-dark">{linkingBug.codigo} · {linkingBug.estado}</div>
@@ -932,7 +914,7 @@ export function ConsolaManualPage({
           Se adjuntará la evidencia de la ejecución fallida actual si existe. Si el bug estaba cerrado, se reabrirá.
         </div>
       </Modal.Body>
-      <Modal.Footer>
+      <Modal.Footer className="border-0 pt-0">
         <Button variant="outline-secondary" onClick={() => setLinkingBug(null)} disabled={Boolean(linkingBugId)}>
           Cancelar
         </Button>

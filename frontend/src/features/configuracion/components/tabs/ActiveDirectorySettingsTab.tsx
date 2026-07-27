@@ -95,7 +95,7 @@ export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAcc
         {canEdit && (
           <Col md={12} className="text-end">
             <Button size="sm" variant="outline-primary" onClick={testConfig} className="me-2"><ShieldCheck size={14} className="me-1" />Probar</Button>
-            <Button size="sm" onClick={save}><Save size={14} className="me-1" />Guardar</Button>
+            <Button size="sm" onClick={save} className="app-save-button"><Save size={14} />Guardar</Button>
           </Col>
         )}
       </Row>

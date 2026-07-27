@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-0.9.0--rc.1-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.0--rc.1-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -115,6 +115,10 @@ Los servicios comerciales privados de Treseko no forman parte de este repositori
 - Bug tracker interno con contexto QA.
 - Dashboard de calidad, tendencia, duracion y cobertura.
 - Reportes de build y trazabilidad.
+- Portabilidad de casos con paquete oficial `.tcases`, perfiles de importación
+  versionados y reversión auditable de lotes elegibles.
+- Requisitos, historias y criterios de aceptación vinculados con casos y su
+  cobertura de ejecución.
 - Workers de automatizacion aprobados por codigo.
 - Integracion con motor IA para ejecucion y analisis.
 - Roles, permisos y capacidades granulares.
@@ -123,12 +127,25 @@ Los servicios comerciales privados de Treseko no forman parte de este repositori
 
 ## Ediciones
 
-| Edicion | Objetivo | Estado |
-|---|---|---|
-| Community | Consola QA self-hosted para equipos pequenos y medianos | Incluida |
-| Premium | Capacidades avanzadas habilitadas para clientes | Preparada por gates |
+Treseko usa el mismo producto en todas las ediciones. Community es gratuito y
+self-hosted; Premium Team, Premium Pro y Enterprise amplían capacidades
+mediante una licencia firmada, sin obligar a reinstalar ni mover los datos.
 
-Community no llama endpoints Premium si no existe entitlement. Las funciones Premium se comunican como capacidades bloqueadas, no como errores tecnicos.
+| Edición | Pensada para | Incluye |
+|---|---|---|
+| Community | Equipos que quieren ordenar QA, automatizar y usar IA en su propia infraestructura. | Soluciones, proyectos, casos, builds, ejecuciones manuales, Bug Tracker básico con evidencias, reportes básicos, automatización local, API para resultados externos, Motor IA y actualizaciones Community. |
+| Premium Team | Equipos pequeños que ya operan Treseko todos los días y necesitan más capacidad y colaboración. | Todo Community, más capacidad para usuarios, proyectos, automatización e IA; reportes compartidos por build, integraciones principales, branding básico y soporte por email. |
+| Premium Pro | Equipos QA con un flujo de release activo que requieren más automatización, reportes e integraciones. | Todo Team, capacidad ampliada, reportes ejecutivo/desarrollo/interno, snapshots compartibles, workers múltiples, perfiles especializados, Jira, GitHub Issues, Redmine, email, actualizaciones Premium y soporte prioritario. |
+| Enterprise | Organizaciones reguladas, críticas o con necesidades de operación y seguridad a medida. | Todo Pro, SSO/Active Directory/OIDC, límites y capacidad de IA adaptados, branding completo, hardening e instalación asistida, SLA, canal dedicado, licencias offline y opción SaaS administrada. |
+
+Community, Team y Pro se operan en infraestructura propia. Enterprise también
+puede contratarse como SaaS administrado opcional. La disponibilidad final de
+cada función depende de las capacidades y límites firmados en la licencia, los
+permisos RBAC y la configuración de la instancia.
+
+Para instalar o revisar una licencia, abrí **Configuración → Licencia**. Las
+funciones no habilitadas se muestran como bloqueadas de forma clara, sin
+exponer errores técnicos al usuario.
 
 ## Descarga
 
@@ -296,16 +313,21 @@ Empieza por aqui:
 
 - [Instalacion rapida](docs/INSTALLATION.md)
 - [Guia Docker](docs/DOCKER_GUIDE.md)
-- [Instalacion Linux](docs/LINUX_SETUP.md)
+- [Desarrollo local en Linux (solo contribución)](docs/LINUX_SETUP.md)
+- [Guía de proyectos](docs/PROJECTS_GUIDE.md)
+- [Guías de uso de la plataforma](docs/README.md#usar-treseko)
 - [Arquitectura](docs/ARCHITECTURE.md)
-- [API](docs/API_SPEC.md)
-- [Uso de API](docs/API_USAGE_GUIDE.md)
+- [Automatización externa](docs/API_USAGE_GUIDE.md)
 - [Auth y RBAC](docs/AUTH_RBAC_GUIDE.md)
 - [Estrategia de ediciones](docs/EDITION_STRATEGY.md)
 - [Automation Worker V1](docs/AUTOMATION_WORKER_V1.md)
-- [API de automatizacion externa](docs/EXTERNAL_AUTOMATION_API.md)
+- [Contrato de automatización externa](docs/EXTERNAL_AUTOMATION_API.md)
 - [Evidencias y adjuntos](docs/ATTACHMENTS_EVIDENCE.md)
 - [Bug Tracker](docs/BUG_TRACKER.md)
+- [Portabilidad de casos](docs/CASE_PORTABILITY.md)
+- [Compatibilidad de importación](docs/CASE_IMPORT_COMPATIBILITY.md)
+- [Trazabilidad y generación asistida](docs/TRACEABILITY.md)
+- [Configuración del Motor IA](docs/AI_ENGINE_CONFIG.md)
 - [Publicacion](PUBLISHING.md)
 
 ## Higiene Del Repositorio
@@ -321,11 +343,12 @@ Este arbol publico excluye intencionalmente:
 - evidencias adversariales de laboratorio;
 - notas de desarrollo y planes temporales.
 
-## Version
+## Versión
 
-Version actual: `0.9.0-rc.1`
+Versión publicada: `1.0.0-rc.1`
 
-Este es un release candidate de Community. Usalo para evaluacion, demos e instalaciones controladas antes de una version estable `1.0.0`.
+Esta es la versión estable de Community para uso productivo. Consultá el
+changelog incluido para conocer su alcance y los cambios incorporados.
 
 ## Licencia Del Repositorio
 

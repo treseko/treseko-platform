@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import Editor, { OnMount } from '@monaco-editor/react'
 import { Badge, Button } from 'react-bootstrap'
 import { Info } from 'lucide-react'
+import { APP_EDITOR_FONT_SIZE } from './shared/ui/typography'
 
 type ScriptEditorProps = {
   value: string
@@ -299,7 +300,7 @@ def test_caso():
           options={{
             readOnly,
             minimap: { enabled: false },
-            fontSize: 13,
+            fontSize: APP_EDITOR_FONT_SIZE,
             lineNumbers: 'on',
             scrollBeyondLastLine: false,
             automaticLayout: true,

@@ -34,6 +34,8 @@ class Proyecto(Base):
     builds = relationship("Build", back_populates="proyecto", cascade="all, delete-orphan")
     miembros = relationship("ProyectoMiembro", back_populates="proyecto", cascade="all, delete-orphan")
     scheduled_runs = relationship("ScheduledRun", back_populates="proyecto", cascade="all, delete-orphan")
+    requisitos = relationship("Requisito", back_populates="proyecto", cascade="all, delete-orphan")
+    historias_usuario = relationship("HistoriaUsuario", back_populates="proyecto", cascade="all, delete-orphan")
 
 class ProyectoMiembro(Base):
     __tablename__ = "proyecto_miembros"
@@ -75,6 +77,7 @@ class Build(Base):
     componente_id = Column(UUID(as_uuid=True), ForeignKey("componentes.id", ondelete="CASCADE"), nullable=True, index=True)
     nombre = Column(String(150), nullable=False)
     contexto_cambio = Column(Text)
+    estado = Column(String(20), default="PREPARACION", nullable=False, index=True)
     activo = Column(Boolean, default=False, nullable=False)
     oculto = Column(Boolean, default=False, nullable=False)
     fecha_inicio = Column(UTCDateTime(), nullable=True)

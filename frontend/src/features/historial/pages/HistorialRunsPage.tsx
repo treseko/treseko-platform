@@ -6,11 +6,14 @@ import { HistorialRunsTable } from '../components/HistorialRunsTable'
 import { RunDetailModal } from '../RunDetailModal'
 import { emptyHistorialFilters } from '../mappers/historialMappers'
 import type { HistorialFilters as HistorialFiltersState } from '../types/historial'
+import { WorkspaceContextEmptyState } from '../../../shared/components/WorkspaceContextEmptyState'
 
 type HistorialRunsPageProps = {
+  currentProjectId?: string | null
   currentProjectRunHistory: any[]
   getStatusColor: (status: string) => string
   onOpenEvidence: (attachment: any) => void
+  isEvidenceViewerOpen?: boolean
   buildsList: any[]
   componentsList: any[]
   environments: any[]
@@ -30,9 +33,11 @@ type HistorialRunsPageProps = {
 }
 
 export function HistorialRunsPage({
+  currentProjectId,
   currentProjectRunHistory,
   getStatusColor,
   onOpenEvidence,
+  isEvidenceViewerOpen = false,
   buildsList,
   componentsList,
   environments,
@@ -116,6 +121,15 @@ export function HistorialRunsPage({
     applyFilters(emptyHistorialFilters)
   }
 
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="El historial de ejecuciones aparecerá cuando tengas un proyecto seleccionado."
+      />
+    )
+  }
+
   return (
     <div className="p-4 animate__animated animate__fadeIn text-dark text-start">
       <div className="d-flex align-items-center justify-content-between mb-4 gap-3 flex-wrap">
@@ -154,6 +168,7 @@ export function HistorialRunsPage({
         getStatusColor={getStatusColor}
         onHide={() => { setDetail(null); setDetailError('') }}
         onOpenEvidence={onOpenEvidence}
+        isExternalChildModalOpen={isEvidenceViewerOpen}
         onMarkAiReviewed={handleMarkAiReviewed}
         canViewEvidence={canViewEvidence}
         fetchWithAuth={fetchWithAuth}

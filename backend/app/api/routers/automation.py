@@ -299,11 +299,12 @@ async def approve_automation_runner_pairing_request(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("automatizacion.workers", "edit")),
 ):
+    normalized_code = _normalize_pairing_code(code)
     try:
         pending = (
             await db.execute(
                 select(models.AutomationRunnerPairingRequest).filter(
-                    models.AutomationRunnerPairingRequest.code == _normalize_pairing_code(code)
+                    models.AutomationRunnerPairingRequest.code == normalized_code
                 )
             )
         ).scalar_one_or_none()
@@ -318,7 +319,7 @@ async def approve_automation_runner_pairing_request(
             .filter(models.AutomationRunner.organizacion_id == pending.organizacion_id)
         )
         await enforce_limit(db, "max_workers", int(count_result.scalar() or 0), tenant_id=str(pending.organizacion_id))
-        pairing_request, runner, _ = await crud.approve_automation_runner_pairing_request(db, _normalize_pairing_code(code), current_user.id)
+        pairing_request, runner, _ = await crud.approve_automation_runner_pairing_request(db, normalized_code, current_user.id)
         await crud.create_audit_log(
             db=db,
             usuario_id=current_user.id,

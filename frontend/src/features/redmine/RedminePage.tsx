@@ -42,6 +42,8 @@ const KIND_LABEL: Record<ExtensionKind, string> = {
   plugin: 'Plugin',
 }
 
+const kindLabel = (item: ExtensionItem) => item.id === 'ai_case_generator' ? 'Función nativa' : KIND_LABEL[item.kind]
+
 const STATUS_LABELS: Record<string, string> = {
   planned: 'Proximamente',
   installed: 'Instalado',
@@ -131,6 +133,18 @@ export function RedminePage({
 
   const renderAction = (item: ExtensionItem) => {
     if (item.installed) {
+      if (item.id === 'ai_case_generator') {
+        return (
+          <Button
+            variant="outline-dark"
+            size="sm"
+            className="mt-auto fw-bold rounded-pill shadow-none"
+            onClick={() => setActiveTab?.('proyectos')}
+          >
+            Abrir Historias
+          </Button>
+        )
+      }
       const targetConfigTab = item.id === 'notification_email'
         ? 'notifications'
         : item.id === 'bug_tracker'
@@ -230,14 +244,14 @@ export function RedminePage({
                       </div>
                       <div className="d-flex flex-column align-items-end gap-1">
                         <Badge bg={statusVariant(status)} className="px-2 py-1 shadow-sm">
-                          {item.builtin ? 'Incluido' : item.installed ? STATUS_LABELS[status] || status : STATUS_LABELS[item.status] || item.status}
+                          {item.builtin ? 'Instalado' : item.installed ? STATUS_LABELS[status] || status : STATUS_LABELS[item.status] || item.status}
                         </Badge>
                         {locked && <Badge bg="warning" text="dark" className="border"><Lock size={10} /> Premium</Badge>}
                       </div>
                     </div>
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <h6 className="fw-bold text-dark mb-0 text-truncate" title={item.display_name}>{item.display_name}</h6>
-                      <Badge bg="light" text="dark" className="border">{KIND_LABEL[item.kind]}</Badge>
+                      <Badge bg="light" text="dark" className="border">{kindLabel(item)}</Badge>
                     </div>
                     <p className="small text-muted mb-4">{extensionDescription(item)}</p>
                     <div className="d-flex flex-wrap gap-1 mb-3">

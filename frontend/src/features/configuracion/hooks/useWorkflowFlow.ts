@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import ELK from 'elkjs/lib/elk.bundled.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkerType, useReactFlow, useUpdateNodeInternals, type Edge, type Node } from '@xyflow/react'
 import { WorkflowNodeCard } from '../components/workflow/WorkflowNodeCard'
 import {
@@ -15,7 +14,12 @@ import type { AiWorkflow, AiWorkflowNode } from '../types/configuracion'
 import { useWorkflowDebugTrace } from './useWorkflowDebugTrace'
 import type { Dispatch, SetStateAction } from 'react'
 
-const elk = new ELK()
+let elkInstance: Promise<InstanceType<typeof import('elkjs/lib/elk.bundled.js')['default']>> | null = null
+
+function getElkInstance() {
+  elkInstance ??= import('elkjs/lib/elk.bundled.js').then(({ default: ELK }) => new ELK())
+  return elkInstance
+}
 
 const workflowDebugAllowed = Boolean((import.meta as any).env?.DEV)
 const workflowEdgeDebugEnabled = workflowDebugAllowed && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workflowEdgeDebug') === '1'
@@ -51,6 +55,7 @@ export function useWorkflowFlow({
   const [workflowPropertiesTab, setWorkflowPropertiesTab] = useState('general')
   const [autoLayoutEnabled, setAutoLayoutEnabled] = useState(false)
   const [workflowBuilderOpen, setWorkflowBuilderOpen] = useState(false)
+  const syncRevisionRef = useRef(0)
   const updateNodeInternals = useUpdateNodeInternals()
   const reactFlowInstance = useReactFlow()
   const workflowNodeTypes = useMemo(() => ({ workflowNode: WorkflowNodeCard }), [])
@@ -87,7 +92,7 @@ export function useWorkflowFlow({
         reactFlowInstance.fitView({
           padding: 0.18,
           includeHiddenNodes: false,
-          duration: 300,
+          duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 300,
         })
         if (workflowDebug) {
           workflowDebugLog('workflow refit', reason, 'nodes', nodes.length, 'edge paths', document.querySelectorAll('.react-flow__edge-path').length)
@@ -99,17 +104,14 @@ export function useWorkflowFlow({
   const openWorkflowBuilder = () => {
     setSelectedWorkflowElement(null)
     setWorkflowBuilderOpen(true)
-    refitWorkflow('open builder')
   }
 
   const closeWorkflowProperties = () => {
     setSelectedWorkflowElement(null)
-    refitWorkflow('close properties')
   }
 
   const selectWorkflowElement = (element: { type: 'node' | 'edge', id: string }) => {
     setSelectedWorkflowElement(element)
-    refitWorkflow(`open ${element.type} properties`)
   }
 
   const persistWorkflowNodePositions = (workflow: AiWorkflow, layoutedNodes: Node[]) => {
@@ -134,22 +136,41 @@ export function useWorkflowFlow({
     setAutoLayoutEnabled(false)
   }
 
+  const prepareManualPlacement = () => {
+    // A palette drop intentionally changes the interaction mode, but never
+    // triggers a layout or a viewport adjustment.
+    setAutoLayoutEnabled(false)
+    setFlowNodes(nodes => nodes.map(node => ({ ...node, draggable: true })))
+  }
+
   const switchToAutoLayoutMode = () => {
     setAutoLayoutEnabled(true)
+    if (workflowDraft) {
+      syncFlowFromWorkflow(workflowDraft, {
+        forceLayout: true,
+        persistPositions: true,
+        autoLayout: true,
+        reason: 'auto layout requested',
+      })
+    }
   }
 
   const syncFlowFromWorkflow = (
     workflow: AiWorkflow | null,
-    options: { forceLayout?: boolean, persistPositions?: boolean, reason?: string } = {},
+    options: { forceLayout?: boolean, manual?: boolean, persistPositions?: boolean, autoLayout?: boolean, reason?: string } = {},
   ) => {
+    const syncRevision = ++syncRevisionRef.current
     if (!workflow) {
       setFlowNodes([])
       setFlowEdges([])
       return
     }
-    const shouldLayout = autoLayoutEnabled || Boolean(options.forceLayout)
+    const layoutMode = options.manual ? false : (options.autoLayout ?? autoLayoutEnabled)
+    // Layout is an explicit command. Synchronizing a saved or remotely updated
+    // workflow must preserve the user's graph positions and viewport.
+    const shouldLayout = !options.manual && Boolean(options.forceLayout)
     const nodesByIdForEdges = createWorkflowNodesById(workflow)
-    const rawNodes = mapWorkflowNodesToFlowNodes(workflow, autoLayoutEnabled)
+    const rawNodes = mapWorkflowNodesToFlowNodes(workflow, layoutMode)
     if (workflowDebug) workflowDebugLog('raw edges', (workflow.edges || []).length, workflow.edges || [])
     const mappedEdges = mapWorkflowEdgesToFlowEdges(workflow, nodesByIdForEdges)
     if (workflowDebug) workflowDebugLog('reactflow edges', mappedEdges.length, mappedEdges)
@@ -165,7 +186,6 @@ export function useWorkflowFlow({
         ))
       }
       setFlowNodes(rawNodes as Node[])
-      refitWorkflow('layout disabled', rawNodes as Node[])
       return
     }
     if (hasDefaultWorkflowTypes(workflow.nodes || [])) {
@@ -176,12 +196,13 @@ export function useWorkflowFlow({
       }
       setFlowNodes(layoutedNodes)
       if (options.persistPositions) persistWorkflowNodePositions(workflow, layoutedNodes)
-      refitWorkflow(options.reason || 'canonical default layout', layoutedNodes)
       return
     }
     const graph = createWorkflowElkGraph(rawNodes, mappedEdges, nodesByIdForEdges)
-    elk.layout(graph as any)
+    getElkInstance()
+      .then(elk => elk.layout(graph as any))
       .then(layouted => {
+        if (syncRevision !== syncRevisionRef.current) return
         const layoutedNodes = applyElkWorkflowLayout(rawNodes, layouted)
         if (workflowDebug) {
           workflowDebugLog('after layout nodes/edges')
@@ -194,24 +215,16 @@ export function useWorkflowFlow({
         }
         setFlowNodes(layoutedNodes)
         if (options.persistPositions) persistWorkflowNodePositions(workflow, layoutedNodes)
-        refitWorkflow(options.reason || 'elk layout', layoutedNodes)
       })
       .catch(() => {
+        if (syncRevision !== syncRevisionRef.current) return
         setFlowNodes(rawNodes as Node[])
-        refitWorkflow('elk fallback', rawNodes as Node[])
       })
   }
 
   useEffect(() => {
     if (workflowDraft) {
-      if (!autoLayoutEnabled) {
-        setFlowNodes(nodes => nodes.map(node => ({ ...node, draggable: true })))
-        if (flowNodes.length > 0) persistWorkflowNodePositions(workflowDraft, flowNodes)
-        refitWorkflow('manual mode enabled')
-        return
-      }
-      syncFlowFromWorkflow(workflowDraft)
-      refitWorkflow('auto layout changed')
+      setFlowNodes(nodes => nodes.map(node => ({ ...node, draggable: !autoLayoutEnabled })))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLayoutEnabled])
@@ -238,6 +251,7 @@ export function useWorkflowFlow({
     closeWorkflowProperties,
     selectWorkflowElement,
     switchToManualMode,
+    prepareManualPlacement,
     switchToAutoLayoutMode,
     syncFlowFromWorkflow,
   }

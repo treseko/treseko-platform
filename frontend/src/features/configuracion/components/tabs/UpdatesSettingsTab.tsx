@@ -11,6 +11,7 @@ import {
   fetchSystemUpdateStatus,
   fetchSystemVersion,
   reportSystemUpdateFailure,
+  restartPreparedSystemUpdate,
   rollbackSystemUpdate,
   syncPremiumSystemUpdate,
   type FetchWithAuth,
@@ -36,6 +37,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   const [checkingPremium, setCheckingPremium] = useState(false)
   const [applyingPremium, setApplyingPremium] = useState(false)
   const [rollingBack, setRollingBack] = useState(false)
+  const [restartingPrepared, setRestartingPrepared] = useState(false)
   const [reportingFailure, setReportingFailure] = useState(false)
   const [applyConfirmation, setApplyConfirmation] = useState(false)
 
@@ -159,6 +161,21 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
     }
   }
 
+  const restartPreparedUpdate = async () => {
+    if (!status?.task_id) return
+    setRestartingPrepared(true)
+    try {
+      const payload = await restartPreparedSystemUpdate(fetchWithAuth, status.task_id)
+      setStatus(payload)
+      announceUpdateMaintenance(undefined, payload.pending_version)
+      showFeedback('Reinicio confirmado', 'Treseko aplicará el paquete y reconectará al finalizar las migraciones.', 'info')
+    } catch (error: any) {
+      showFeedback('Actualizaciones', error?.message || 'No se pudo reiniciar la actualización preparada.', 'danger')
+    } finally {
+      setRestartingPrepared(false)
+    }
+  }
+
   const reportFailure = async () => {
     if (!status?.task_id || status.status !== 'failed') return
     setReportingFailure(true)
@@ -205,6 +222,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   )
   const isPremiumUpdateMode = premiumUpdatesAllowed && (latestUpdate?.edition !== 'community')
   const activeTask = status && status.status !== 'idle'
+  const isPrepared = status?.stage === 'prepared'
   const confirmationVersion = latestUpdate?.latest_version || latestUpdate?.version
   const confirmationChannel = latestUpdate?.channel || latestUpdate?.update_channel || 'premium-stable'
   const updateEvents = Array.isArray(status?.events) ? status.events.slice(-8).reverse() : []
@@ -388,11 +406,11 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                 <Button
                   variant="primary"
                   className="fw-bold"
-                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium}
+                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium || isPrepared}
                   onClick={() => setApplyConfirmation(true)}
                 >
                   {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
-                  Preparar actualización
+                  {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
                 </Button>
                 {!canApplyUpdates && <div className="x-small text-muted mt-2">Necesitas permiso para gestionar actualizaciones.</div>}
               </Card.Body>
@@ -447,8 +465,12 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                 {status?.stage === 'prepared' && status?.task_id && (
                   <div className="d-flex flex-wrap gap-2 align-items-center mt-3">
                     <Alert variant="success" className="small mb-0 flex-grow-1">
-                      El paquete quedó preparado. Reinicia los servicios para aplicar el update con backup y migraciones desde el entrypoint.
+                      Preparada — reinicio requerido. El paquete y sus backups están listos; confirmá el reinicio para aplicar migraciones.
                     </Alert>
+                    <Button variant="primary" size="sm" className="fw-bold" onClick={restartPreparedUpdate} disabled={restartingPrepared}>
+                      {restartingPrepared ? <Spinner size="sm" className="me-2" /> : null}
+                      Aplicar ahora y reiniciar
+                    </Button>
                     <Button
                       variant="outline-secondary"
                       size="sm"
@@ -554,11 +576,11 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                 <Button
                   variant="primary"
                   className="fw-bold"
-                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium}
+                  disabled={!canApplyUpdates || !latestUpdate?.available || applyingPremium || isPrepared}
                   onClick={() => setApplyConfirmation(true)}
                 >
                   {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
-                  Aplicar actualización
+                  {isPrepared ? 'Actualización preparada' : 'Preparar actualización'}
                 </Button>
                 {!canApplyUpdates && <div className="x-small text-muted mt-2">Necesitas permiso para gestionar actualizaciones.</div>}
               </Card.Body>
@@ -609,8 +631,12 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
                 {status?.stage === 'prepared' && status?.task_id && (
                   <div className="d-flex flex-wrap gap-2 align-items-center mt-3">
                     <Alert variant="success" className="small mb-0 flex-grow-1">
-                      El paquete quedó preparado. Reinicia los servicios para aplicar el update con backup y migraciones desde el entrypoint.
+                      Preparada — reinicio requerido. El paquete y sus backups están listos; confirmá el reinicio para aplicar migraciones.
                     </Alert>
+                    <Button variant="primary" size="sm" className="fw-bold" onClick={restartPreparedUpdate} disabled={restartingPrepared}>
+                      {restartingPrepared ? <Spinner size="sm" className="me-2" /> : null}
+                      Aplicar ahora y reiniciar
+                    </Button>
                     <Button
                       variant="outline-secondary"
                       size="sm"

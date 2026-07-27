@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..services.execution_output_sanitizer import sanitize_execution_snapshot_item
 
 

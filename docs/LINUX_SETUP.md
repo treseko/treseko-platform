@@ -1,6 +1,13 @@
-# Guia Linux Para Desarrollo Local
+# Desarrollo local en Linux
 
-Esta guia levanta todos los componentes en Linux usando entorno virtual Python para backend y Selenium del worker. Los ejemplos asumen Ubuntu/Debian.
+Esta guía está destinada exclusivamente a quienes contribuyen al proyecto o
+necesitan ejecutar los componentes por separado en Linux. Para instalar
+Treseko para uso normal o productivo, usá [Instalación rápida](INSTALLATION.md)
+o [Guía Docker](DOCKER_GUIDE.md). Los ejemplos asumen Ubuntu o Debian.
+
+> Puertos de desarrollo: backend `8000`, frontend Vite `5173` y Motor IA
+> `3010`. Una instalación normal se abre en `http://localhost:9095`; no
+> expongas estos puertos de desarrollo como puertos públicos.
 
 ## Requisitos Del Sistema
 
@@ -27,7 +34,7 @@ node --version
 npm --version
 ```
 
-## Estructura Recomendada
+## Preparar los entornos locales
 
 Usa un `venv` separado para Python y `node_modules` locales por componente:
 
@@ -39,7 +46,7 @@ Usa un `venv` separado para Python y `node_modules` locales por componente:
 
 No compartas un virtualenv global. Evita instalar paquetes Python con `sudo pip`.
 
-## Backend FastAPI
+## Iniciar el backend
 
 ```bash
 cd backend
@@ -69,12 +76,11 @@ Inicia backend:
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Docs:
+El backend queda disponible solo para el entorno de desarrollo local. La guía
+de API que se publica para integraciones está en
+[Automatización externa](API_USAGE_GUIDE.md).
 
-- `http://localhost:8000/docs`
-- `http://localhost:8000/redoc`
-
-## Frontend Vite
+## Iniciar el frontend
 
 En otra terminal:
 
@@ -88,7 +94,7 @@ URL esperada:
 
 - `http://localhost:5173`
 
-## Engine IA
+## Iniciar el Motor IA
 
 En otra terminal:
 
@@ -119,7 +125,7 @@ Healthcheck:
 curl http://localhost:3010/health
 ```
 
-## Automation Worker Multi-Framework
+## Iniciar un worker de automatización
 
 En otra terminal:
 
@@ -169,7 +175,7 @@ npm start
 
 La primera vez mostrara un código `WK-xxxxxx`. Apruebalo desde `Automatizacion > Workers`. El token real queda en `automation-worker/.runner-token`.
 
-## PostgreSQL Y Redis Con Docker
+## Usar PostgreSQL y Redis con Docker
 
 Opcionalmente puedes levantar infraestructura:
 
@@ -185,20 +191,20 @@ SECRET_KEY=<SECRET_KEY_DE_64_CARACTERES_O_MAS>
 ENGINE_URL=http://localhost:3010
 ```
 
-## Orden De Arranque
+## Orden de arranque
 
 1. `docker compose up -d` si usas PostgreSQL/Redis.
-2. Backend en puerto `8000`.
-3. Frontend en puerto `5173`.
-4. Engine en puerto `3000`, si vas a usar IA.
+2. Backend de desarrollo en puerto `8000`.
+3. Frontend de desarrollo en puerto `5173`.
+4. Motor IA en puerto `3010`, si vas a usar IA.
 5. Automation worker, si vas a ejecutar automatizadas.
 
-## Verificaciones Rápidas
+## Verificaciones rápidas
 
-Backend:
+Backend de desarrollo:
 
 ```bash
-curl http://localhost:8000/docs
+curl http://localhost:8000/health
 ```
 
 Frontend:
@@ -219,7 +225,7 @@ Worker:
 - Debe reportar frameworks `playwright, puppeteer, cypress, selenium`.
 - Si no hay token, debe mostrar código `WK-xxxxxx`.
 
-## Troubleshooting Linux
+## Resolver problemas en Linux
 
 ### Playwright/Cypress fallan por librerias del sistema
 
@@ -250,7 +256,7 @@ Y revisa `QA_PYTHON_BIN`.
 ### Puertos ocupados
 
 ```bash
-ss -ltnp | grep -E ':8000|:5173|:3000'
+ss -ltnp | grep -E ':8000|:5173|:3010'
 ```
 
 ### Reinstalar navegadores del worker
@@ -270,7 +276,7 @@ rm -f automation-worker/.runner-token
 
 Luego ejecuta `npm start` y aprueba el nuevo código en la UI.
 
-## Por Que Usar Virtualenv
+## Por qué usar entornos virtuales
 
 Conviene usar `venv` para todo lo Python porque:
 

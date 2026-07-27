@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..services.edition.entitlement_service import enforce_limit
 
 
@@ -206,7 +206,7 @@ async def create_automation_runner_pairing_request(
 ):
     if not payload.organizacion_id:
         raise ValueError("Debe indicar la solucion para vincular el worker")
-    ttl = max(2, min(int(payload.ttl_minutes or 10), 60))
+    ttl = max(2, min(int(payload.ttl_minutes or 120), 120))
     code = await _generate_pairing_code(db)
     pairing_token = f"qpair_{secrets.token_urlsafe(32)}"
     request = models.AutomationRunnerPairingRequest(

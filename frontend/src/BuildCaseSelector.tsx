@@ -119,7 +119,7 @@ const SuiteNode = memo(({
         />
 
         <Folders size={16} className="flex-shrink-0 text-warning" />
-        <span className="small text-truncate flex-grow-1 text-dark" style={{ fontSize: '0.85rem' }}>{suite.nombre}</span>
+        <span className="app-small text-truncate flex-grow-1 text-dark">{suite.nombre}</span>
         {lockCount > 0 && (
           <span className="badge bg-success-subtle text-success border border-success-subtle x-small fw-semibold flex-shrink-0">
             {lockCount} ejecutados

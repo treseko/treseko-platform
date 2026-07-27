@@ -6,7 +6,7 @@ Worker dedicado para ejecutar pruebas automatizadas. La plataforma principal con
 
 - Node.js 18 o superior.
 - Python 3.10 o superior solo si vas a ejecutar Selenium Python.
-- Backend Treseko iniciado, normalmente en `http://localhost:8000`.
+- Treseko accesible para el worker, normalmente en `http://localhost:9095/api`.
 - Acceso a la UI con permiso `automatizacion:edit` para aprobar el worker.
 
 ## Instalacion Rapida
@@ -39,7 +39,7 @@ Selenium 4 usa Selenium Manager para resolver drivers cuando el navegador local 
 Copia `.env.example` a `.env` y ajusta lo necesario:
 
 ```env
-QA_API_BASE=http://localhost:8000
+QA_API_BASE=http://localhost:9095/api
 QA_RUNNER_NAME=Local Multi-Framework Worker
 QA_ORGANIZACION_ID=uuid-de-la-solucion
 QA_HEADLESS=true

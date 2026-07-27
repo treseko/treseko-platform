@@ -13,6 +13,7 @@ AUTH_AD_OIDC_CONFIG_KEY = "auth_ad_oidc_config"
 
 DEFAULT_EMAIL_SMTP_CONFIG: dict[str, Any] = {
     "enabled": False,
+    "provider": "smtp",
     "host": "",
     "port": 587,
     "use_starttls": True,
@@ -25,6 +26,8 @@ DEFAULT_EMAIL_SMTP_CONFIG: dict[str, Any] = {
     "max_attempts": 5,
     "default_locale": "es",
     "base_url": os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL", "http://localhost:5173"),
+    "daily_send_limit": 500,
+    "test_mode": False,
 }
 
 DEFAULT_AD_OIDC_CONFIG: dict[str, Any] = {
@@ -75,16 +78,33 @@ async def _upsert_setting(db: AsyncSession, key: str, value: dict[str, Any]) -> 
     return value
 
 
+def _notification_smtp_password() -> str:
+    """Return only the platform-notification secret.
+
+    It intentionally does not fall back to a generic SMTP_PASSWORD: that
+    value may belong to the license/verification server. The returned value
+    is never persisted or returned from an API.
+    """
+    path = str(os.getenv("NOTIFICATIONS_SMTP_PASSWORD_FILE") or "").strip()
+    if path:
+        try:
+            return open(path, "r", encoding="utf-8").read().strip()
+        except OSError:
+            return ""
+    return str(os.getenv("NOTIFICATIONS_SMTP_PASSWORD") or "")
+
+
 def _with_smtp_secret_state(config: dict[str, Any]) -> dict[str, Any]:
     public = dict(config)
-    public["password_configured"] = bool(os.getenv("SMTP_PASSWORD"))
+    public["password_configured"] = bool(_notification_smtp_password())
+    public["credential_source"] = "configured" if public["password_configured"] else "missing"
     public.pop("password", None)
     return public
 
 
 def smtp_config_with_secret(config: dict[str, Any]) -> dict[str, Any]:
     merged = {**DEFAULT_EMAIL_SMTP_CONFIG, **(config or {})}
-    merged["password"] = os.getenv("SMTP_PASSWORD", "")
+    merged["password"] = _notification_smtp_password()
     return merged
 
 
@@ -96,6 +116,9 @@ async def update_email_smtp_config(db: AsyncSession, payload: schemas.EmailSmtpC
     current = {**DEFAULT_EMAIL_SMTP_CONFIG, **await _get_setting(db, EMAIL_SMTP_CONFIG_KEY)}
     updates = payload.model_dump(exclude_unset=True)
     value = {**current, **updates}
+    # Validate the merged configuration too: an update that only turns on SSL
+    # must still be checked against a previously stored STARTTLS setting.
+    value = schemas.EmailSmtpConfig(**value).model_dump(exclude={"password_configured"})
     await _upsert_setting(db, EMAIL_SMTP_CONFIG_KEY, value)
     return _with_smtp_secret_state(value)
 

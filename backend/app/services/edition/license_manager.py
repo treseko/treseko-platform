@@ -11,16 +11,12 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ... import models
 from ...time_utils import utc_now
 from .catalog import COMMUNITY_LIMITS, accepted_feature_ids, all_limit_ids, community_feature_ids, normalize_feature_ids, premium_feature_ids
 
 
-LICENSE_SETTING_KEY = "treseko_license"
-LICENSE_ONLINE_STATE_SETTING_KEY = "treseko_license_online_state"
 VALID_EDITIONS = {"community", "premium"}
 COMMUNITY_UPDATE_CHANNELS = {"community-stable", "community-beta", "community-smoke"}
 PREMIUM_UPDATE_CHANNELS = {"premium-stable", "premium-beta"}
@@ -507,26 +503,21 @@ def evaluate_license(license_data: dict[str, Any] | None) -> dict[str, Any]:
 
 
 async def get_installed_license(db: AsyncSession) -> dict[str, Any] | None:
-    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == LICENSE_SETTING_KEY))
-    setting = result.scalar_one_or_none()
-    return setting.value if setting else None
+    from .license_storage import get_installed_license as read_installed_license
+
+    return await read_installed_license(db)
 
 
 async def get_online_license_state(db: AsyncSession) -> dict[str, Any] | None:
-    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == LICENSE_ONLINE_STATE_SETTING_KEY))
-    setting = result.scalar_one_or_none()
-    return setting.value if setting else None
+    from .license_storage import get_online_license_state as read_online_license_state
+
+    return await read_online_license_state(db)
 
 
 async def save_online_license_state(db: AsyncSession, state: dict[str, Any]) -> dict[str, Any]:
-    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == LICENSE_ONLINE_STATE_SETTING_KEY))
-    setting = result.scalar_one_or_none()
-    if setting:
-        setting.value = state
-    else:
-        db.add(models.AppSetting(key=LICENSE_ONLINE_STATE_SETTING_KEY, value=state))
-    await db.commit()
-    return state
+    from .license_storage import save_online_license_state as persist_online_license_state
+
+    return await persist_online_license_state(db, state)
 
 
 async def get_license_state(db: AsyncSession) -> dict[str, Any]:
@@ -536,22 +527,24 @@ async def get_license_state(db: AsyncSession) -> dict[str, Any]:
         online_license_id = (online_state.get("license") or {}).get("license_id")
         local_license_id = (local_state.get("license") or {}).get("license_id")
         if online_license_id and online_license_id == local_license_id:
-            return online_state
+            # An online verification snapshot can outlive a product update.
+            # Community capabilities are always additive, so keep Premium
+            # licenses compatible with newly shipped Community features without
+            # granting any Premium capability or changing signed limits.
+            return {
+                **online_state,
+                "online_status": "verified",
+                "enabled_features": sorted(
+                    set(online_state.get("enabled_features") or []) | community_feature_ids()
+                ),
+            }
+    if local_state.get("edition") == "premium" and (local_state.get("license") or {}).get("verification_server"):
+        return {**local_state, "online_status": "pending", "online_reason": "La licencia está validada localmente; falta confirmar la activación con el servidor Premium."}
     return local_state
 
 
 async def install_license(db: AsyncSession, license_data: dict[str, Any]) -> dict[str, Any]:
-    normalized = normalize_license_payload(license_data)
-    if normalized["edition"] != "premium":
-        raise LicenseError("Solo se pueden instalar licencias Premium firmadas; Community no requiere archivo de licencia")
-    state = evaluate_license(normalized)
-    if normalized["edition"] == "premium" and state["state"] not in {"active", "revoked"}:
-        raise LicenseError(state["reason"] or "La licencia Premium no es valida")
-    result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == LICENSE_SETTING_KEY))
-    setting = result.scalar_one_or_none()
-    if setting:
-        setting.value = normalized
-    else:
-        db.add(models.AppSetting(key=LICENSE_SETTING_KEY, value=normalized))
-    await db.commit()
-    return evaluate_license(normalized)
+    """Install a Premium document; Community no requiere archivo de licencia."""
+    from .license_storage import install_license as persist_license
+
+    return await persist_license(db, license_data)

@@ -5,7 +5,10 @@ export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Resp
 async function readJsonOrThrow(response: Response, fallback: string) {
   if (response.ok) return response.json()
   const error = await response.json().catch(() => null)
-  throw new Error(error?.detail || error?.message || fallback)
+  const detail = Array.isArray(error?.detail)
+    ? error.detail.map((item: any) => item?.msg || item?.message || JSON.stringify(item)).join('; ')
+    : error?.detail || error?.message
+  throw new Error(typeof detail === 'string' ? detail : fallback)
 }
 
 export async function fetchAttachmentConfig(fetchWithAuth: FetchWithAuth) {
@@ -68,6 +71,54 @@ export async function updateAiEngineConfig(fetchWithAuth: FetchWithAuth, config:
 export async function fetchAiEngineHealth(fetchWithAuth: FetchWithAuth) {
   const response = await fetchWithAuth(`${API_BASE}/ai-engine/health`)
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
+export async function fetchAiProviderProfiles(fetchWithAuth: FetchWithAuth) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/`), 'No se pudieron cargar los perfiles IA')
+}
+
+export async function fetchAiProviderCredentials(fetchWithAuth: FetchWithAuth) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/`), 'No se pudieron cargar las credenciales IA')
+}
+
+export async function createAiProviderCredential(fetchWithAuth: FetchWithAuth, payload: any) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/`, { method: 'POST', body: JSON.stringify(payload) }), 'No se pudo guardar la credencial IA')
+}
+
+export async function replaceAiProviderCredential(fetchWithAuth: FetchWithAuth, credentialId: string, secret: string) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/${credentialId}`, { method: 'PUT', body: JSON.stringify({ secret }) }), 'No se pudo actualizar la credencial IA')
+}
+
+export async function updateAiProviderCredential(fetchWithAuth: FetchWithAuth, credentialId: string, payload: { label: string }) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/${credentialId}`, { method: 'PATCH', body: JSON.stringify(payload) }), 'No se pudo actualizar la etiqueta de la credencial IA')
+}
+
+export async function disableAiProviderCredential(fetchWithAuth: FetchWithAuth, credentialId: string) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/${credentialId}`, { method: 'DELETE' }), 'No se pudo deshabilitar la credencial IA')
+}
+
+export async function createAiProviderProfile(fetchWithAuth: FetchWithAuth, payload: any) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/`, { method: 'POST', body: JSON.stringify(payload) }), 'No se pudo crear el perfil IA')
+}
+
+export async function disableAiProviderProfile(fetchWithAuth: FetchWithAuth, profileId: string) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/${profileId}`, { method: 'DELETE' }), 'No se pudo deshabilitar el perfil IA')
+}
+
+export async function updateAiProviderProfile(fetchWithAuth: FetchWithAuth, profileId: string, payload: any) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/${profileId}`, { method: 'PATCH', body: JSON.stringify(payload) }), 'No se pudo actualizar el perfil IA')
+}
+
+export async function activateAiProviderProfile(fetchWithAuth: FetchWithAuth, profileId: string) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/${profileId}/activate`, { method: 'POST' }), 'No se pudo activar el perfil IA')
+}
+
+export async function testAiProviderProfile(fetchWithAuth: FetchWithAuth, profileId: string) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-profiles/${profileId}/test`, { method: 'POST' }), 'La prueba del perfil IA falló')
+}
+
+export async function migrateLegacyAiProviderCredentials(fetchWithAuth: FetchWithAuth) {
+  return readJsonOrThrow(await fetchWithAuth(`${API_BASE}/ai-provider-credentials/migrate-legacy`, { method: 'POST' }), 'No se pudieron migrar las claves antiguas')
 }
 
 export type SystemMonitorComponent = {
@@ -167,6 +218,13 @@ export async function applySystemUpdate(fetchWithAuth: FetchWithAuth, payload: {
   const response = await fetchWithAuth(`${API_BASE}/system/updates/apply`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
+export async function restartPreparedSystemUpdate(fetchWithAuth: FetchWithAuth, taskId: string) {
+  const response = await fetchWithAuth(`${API_BASE}/system/updates/restart/${encodeURIComponent(taskId)}`, {
+    method: 'POST',
   })
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }

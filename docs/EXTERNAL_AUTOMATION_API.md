@@ -1,6 +1,8 @@
 # API externa para reportar ejecuciones automatizadas
 
-Este documento define el contrato propuesto para que runners externos, como Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al sistema.
+Este documento define el contrato Premium para que runners externos, como
+Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al
+sistema. Confirmá que la licencia incluya la API externa antes de integrarla.
 
 El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero adaptado a la jerarquia real del sistema:
 
@@ -8,16 +10,13 @@ El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero 
 solucion -> proyecto -> componente -> build -> caso -> pasos
 ```
 
-## Principios
+## Qué hace esta integración
 
-- Los identificadores externos deben ser cortos, estables y opacos.
-- Los códigos no deben depender del nombre visible del recurso.
-- Un cambio de nombre de build, componente o proyecto no debe romper integraciones.
-- Una build define el alcance ejecutable y reportable.
-- Solo se pueden reportar casos asignados a la build indicada.
-- Se debe poder reportar un caso o multiples casos en una sola llamada.
-- Los pasos son opcionales.
-- El resultado externo debe quedar guardado en el mismo modelo que una ejecucion manual.
+- Usa identificadores cortos y estables para solución, proyecto, componente,
+  build y caso.
+- Permite reportar uno o varios casos asignados a una build activa.
+- Acepta resultados generales y, cuando corresponde, resultados por paso.
+- Conserva el resultado externo junto al historial de ejecuciones de Treseko.
 
 ## Códigos cortos
 
@@ -33,7 +32,7 @@ Build:      BLD-3f91ad44
 Caso:       TC-0005
 ```
 
-Reglas recomendadas:
+Usá estos criterios al configurar el runner:
 
 - `SOL-xxxxxxxx`, `PRJ-xxxxxxxx`, `CMP-xxxxxxxx`, `BLD-xxxxxxxx`.
 - El sufijo debe generarse aleatoriamente o con un identificador compacto no semantico.
@@ -50,9 +49,19 @@ Alcance sugerido:
 | Build | `codigo` | Dentro del componente |
 | Caso | `codigo` | Dentro del proyecto o componente, segun regla final del sistema |
 
-## Autenticacion
+## API key de automatización externa
 
-Cada usuario puede crear una API key desde su perfil.
+La API key se genera y administra desde la interfaz de Treseko, no mediante
+endpoints de API:
+
+1. Ingresá con el usuario que utilizará el runner.
+2. Abrí **Configuración → Preferencias → API keys de automatización externa**.
+3. Creá una clave identificable para el pipeline o runner.
+4. Copiala en el momento de crearla y guardala como secreto de CI.
+
+La clave hereda los permisos de ese usuario. Para reportar ejecuciones, el
+usuario debe tener permiso de ejecución y acceso de edición al proyecto y a la
+build. Revocá la clave desde la misma sección si deja de usarse o se expone.
 
 Formato recomendado:
 
@@ -66,49 +75,20 @@ Tambien se acepta:
 X-QA-API-Key: treseko_xxxxxxxxxxxxxxxxx
 ```
 
-La API key debe:
+La API key:
 
 - pertenecer a un usuario activo,
 - estar activa,
 - heredar permisos del usuario,
 - validar permiso de ejecucion,
 - registrar ultimo uso,
-- guardarse hasheada en base de datos.
-
-### Endpoints para API keys
-
-Crear una API key. Devuelve la key completa solo una vez.
-
-```http
-POST /users/me/api-keys/
-Authorization: Bearer <jwt>
-Content-Type: application/json
-```
-
-```json
-{
-  "nombre": "CI Playwright"
-}
-```
-
-Listar API keys propias. No devuelve el secreto completo, solo el prefijo.
-
-```http
-GET /users/me/api-keys/
-Authorization: Bearer <jwt>
-```
-
-Revocar una API key propia.
-
-```http
-DELETE /users/me/api-keys/{api_key_id}/
-Authorization: Bearer <jwt>
-```
+- se guarda hasheada en base de datos.
+- no reemplaza ni requiere un login por API.
 
 ## Endpoint principal
 
 ```http
-POST /external/executions/report
+POST /api/external/executions/report
 Authorization: Bearer treseko_xxxxxxxxxxxxxxxxx
 Content-Type: application/json
 ```
@@ -248,9 +228,9 @@ El endpoint debe poder procesar los casos validos y rechazar los invalidos.
 }
 ```
 
-## Validaciones obligatorias
+## Qué valida Treseko
 
-El backend debe validar:
+Antes de guardar un reporte, Treseko valida:
 
 1. API key valida, activa y no expirada.
 2. Usuario activo.
@@ -294,7 +274,7 @@ No se recomienda aceptar abreviaturas tipo `p`, `f`, `b` en el contrato principa
 import os
 import requests
 
-BASE_URL = os.getenv("TRESEKO_API_URL", "http://localhost:8000")
+BASE_URL = os.getenv("TRESEKO_API_URL", "http://localhost:9095/api")
 API_KEY = os.getenv("TRESEKO_EXTERNAL_API_KEY", "treseko_xxxxxxxxxxxxxxxxx")
 
 payload = {
@@ -366,15 +346,12 @@ print("Rechazados:", data.get("rejected"))
 }
 ```
 
-## Recomendacion de implementacion
+## Checklist antes de activar el runner
 
-Implementar en este orden:
-
-1. Agregar `codigo` corto opaco a solucion, proyecto, componente y build.
-2. Agregar API keys por usuario.
-3. Crear servicio interno `record_external_execution_batch`.
-4. Crear endpoint `POST /external/executions/report`.
-5. Soportar primero resultado general por caso.
-6. Agregar soporte para pasos opcionales.
-7. Agregar deduplicacion por `external_run_id`.
-8. Documentar ejemplos para Pytest, Playwright y Postman.
+1. Generá la API key desde **Configuración → Preferencias → API keys de
+   automatización externa**.
+2. Confirmá que el usuario de esa clave tenga permiso de ejecución y acceso al
+   proyecto y la build.
+3. Probá el ejemplo mínimo con un caso de prueba no crítico.
+4. Configurá un `external_run_id` estable para que los reintentos sean seguros.
+5. Guardá la API key únicamente en el almacén de secretos del CI.

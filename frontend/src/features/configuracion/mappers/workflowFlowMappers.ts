@@ -1,6 +1,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { getEdgeUiMeta } from '../../../modules/ai-workflow/config/edge-ui.config'
 import { WORKFLOW_LAYOUT_CONFIG } from '../../../modules/ai-workflow/config/workflow-layout.config'
+import { APP_META_FONT_SIZE } from '../../../shared/ui/typography'
 import type { AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
 import {
   defaultWorkflowPositions,
@@ -51,7 +52,7 @@ export const mapWorkflowEdgesToFlowEdges = (
         strokeWidth: feedbackEdge ? 2 : meta.strokeWidth,
         ...(feedbackEdge ? { strokeDasharray: '6 6' } : {}),
       },
-      labelStyle: { fill: meta.color, fontWeight: 800, fontSize: 12 },
+      labelStyle: { fill: meta.color, fontWeight: 800, fontSize: APP_META_FONT_SIZE },
       labelBgStyle: { fill: '#fff', fillOpacity: 0.95 },
       labelBgPadding: [8, 4] as [number, number],
       labelBgBorderRadius: 8,

@@ -1,15 +1,15 @@
-# Guia Docker Self-Hosted Community
+# Ejecutar Treseko con Docker
 
-Esta guia describe una instalacion self-hosted de Treseko Community con
-`docker-compose.prod.yml`. El paquete distribuible no incluye archivos ni
-comandos de desarrollo; todo lo sensible debe vivir fuera del repositorio y
-referenciarse mediante archivos de secreto.
+Esta guía acompaña una instalación self-hosted con `docker-compose.prod.yml`.
+Seguí los pasos en orden: preparar secretos, validar la configuración,
+inicializar servicios y verificar el primer acceso. Conservá los secretos fuera
+del repositorio y referencialos mediante archivos protegidos.
 
 ## Requisitos
 
 - Docker Engine con soporte para `docker compose`.
 - Acceso de shell al servidor.
-- Puerto HTTP libre, por defecto `8080`.
+- Puerto HTTP libre, por defecto `9095`.
 - Un directorio externo para secretos, por ejemplo `/opt/treseko/secrets`.
 
 Docker es el camino recomendado si el host es Windows, macOS, Ubuntu 20.04,
@@ -52,7 +52,7 @@ Editar como minimo:
 TRESEKO_DB_PASSWORD_FILE=/opt/treseko/secrets/db-password
 TRESEKO_DATABASE_URL_FILE=/opt/treseko/secrets/database-url
 TRESEKO_SECRET_KEY_FILE=/opt/treseko/secrets/secret-key
-TRESEKO_HTTP_PORT=8080
+TRESEKO_HTTP_PORT=9095
 ```
 
 Ejemplo correcto:
@@ -66,10 +66,11 @@ Ejemplo incorrecto:
 guardar `SECRET_KEY` o cualquier password directamente dentro de
 `compose.production.env`.
 
-Si el puerto `8080` esta ocupado, usar otro puerto libre:
+Si el puerto `9095` esta ocupado, elegir otro puerto libre y usar ese mismo
+valor en todos los comandos y URLs de esta instalación:
 
 ```env
-TRESEKO_HTTP_PORT=8090
+TRESEKO_HTTP_PORT=PUERTO_ELEGIDO
 ```
 
 Validar la configuracion sin imprimir secretos:
@@ -128,21 +129,21 @@ docker compose -f docker-compose.prod.yml --env-file compose.production.env up -
 
 Abrir:
 
-- `http://localhost:8080` si `TRESEKO_HTTP_PORT=8080`
-- `http://localhost:8090` si se uso `TRESEKO_HTTP_PORT=8090`
+- `http://localhost:9095` con la configuración predeterminada.
+- `http://localhost:PUERTO_ELEGIDO` si se cambió `TRESEKO_HTTP_PORT`.
 
 Validar:
 
 ```bash
-curl http://localhost:8080/api/health
-curl http://localhost:8080/api/system/version
+curl http://localhost:9095/api/health
+curl http://localhost:9095/api/system/version
 docker compose -f docker-compose.prod.yml --env-file compose.production.env ps
 ```
 
-Una instalacion Community limpia no crea soluciones ni proyectos demo. El
-administrador debe crear la primera solucion desde la UI.
+Una instalación Community limpia no crea soluciones ni proyectos demo. Después
+del primer acceso, creá la primera solución desde la interfaz.
 
-## Demo showcase para desarrollo
+## Datos demo para desarrollo
 
 El producto self-hosted productivo arranca en blanco. Para un entorno de
 desarrollo o una demo comercial controlada, Treseko incluye un seed opcional que
@@ -280,7 +281,7 @@ No soportado para bare-metal:
 - Debian 11 o anterior.
 - Windows/macOS; usar Docker.
 
-## Reglas de produccion
+## Reglas de producción
 
 - No habilitar variables `TRESEKO_ALLOW_DEV_*`.
 - No guardar secretos en `compose.production.env`.

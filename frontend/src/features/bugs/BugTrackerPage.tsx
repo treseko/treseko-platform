@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap'
+import { Badge, Button, Card, Col, Form, Modal, OverlayTrigger, Row, Spinner, Table, Tooltip } from 'react-bootstrap'
 import { Bug, Clipboard, ExternalLink, Info, Link as LinkIcon, MessageSquare, Plus, RefreshCw, Save, X } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { EvidenceUpload, type AttachmentMeta } from '../../EvidenceUpload'
 import { EvidenceViewerModal, type EvidenceViewerItem } from '../../shared/components/EvidenceViewerModal'
 import { isEvidenceAvailable } from '../../shared/utils/evidenceAvailability'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import {
   BUG_PRIORITY_OPTIONS,
   formatBugPriorityOption,
@@ -12,6 +13,8 @@ import {
   getBugPriorityPresentation,
   getBugSeverityPresentation,
 } from './bugPresentation'
+import { BugTransitionModal } from './BugTransitionModal'
+import { useBugTransitions } from './useBugTransitions'
 
 type BugTrackerPageProps = {
   currentProjectId?: string
@@ -28,6 +31,8 @@ type BugTrackerPageProps = {
   onBugsChanged?: () => void
   deepLinkBugId?: string
   onDeepLinkConsumed?: () => void
+  modalOnly?: boolean
+  onDetailClosed?: () => void
 }
 
 const severityVariant: Record<string, string> = {
@@ -63,6 +68,19 @@ const bugStatusHelp = [
 ]
 const severityOptions = ['CRITICA','ALTA','MEDIA','BAJA','COSMETICA']
 const priorityOptions = BUG_PRIORITY_OPTIONS
+const EXTERNAL_ISSUE_PROVIDERS = [
+  { id: 'redmine', label: 'Redmine' },
+  { id: 'jira', label: 'Jira' },
+  { id: 'github_issues', label: 'GitHub Issues' },
+  { id: 'gitlab_issues', label: 'GitLab Issues' },
+  { id: 'azure_devops', label: 'Azure DevOps' },
+  { id: 'youtrack', label: 'YouTrack' },
+  { id: 'linear', label: 'Linear' },
+  { id: 'servicenow', label: 'ServiceNow' },
+]
+const externalIssueLabel = (bug: any) => bug?.external_issue_id
+  ? `${EXTERNAL_ISSUE_PROVIDERS.find(item => item.id === bug.external_provider)?.label || bug.external_provider || 'Externo'} #${bug.external_issue_id}`
+  : ''
 const compactUnique = (items: string[]) => Array.from(new Set(items.map(item => String(item || '').trim()).filter(Boolean)))
 const bugBuildOriginLabel = (bug: any) => (
   bug?.metadata_json?.build_name ||
@@ -117,6 +135,8 @@ export function BugTrackerPage({
   onBugsChanged,
   deepLinkBugId = '',
   onDeepLinkConsumed,
+  modalOnly = false,
+  onDetailClosed,
 }: BugTrackerPageProps) {
   const canUse = canAccessCapability || (() => true)
   const canView = canUse('bugs.ver', 'read')
@@ -146,7 +166,6 @@ export function BugTrackerPage({
   const [additionalContextRows, setAdditionalContextRows] = useState<{ key: string; value: string }[]>([])
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
   const [savingDetail, setSavingDetail] = useState(false)
-  const [quickTransitioningBugId, setQuickTransitioningBugId] = useState<string | null>(null)
   const [showStatusHelp, setShowStatusHelp] = useState(false)
   const hasLoadedBugsRef = useRef(false)
   const loadedProjectIdRef = useRef<string | undefined>(undefined)
@@ -231,6 +250,7 @@ export function BugTrackerPage({
       setMarkdown('')
       setComment('')
       setCommentAttachments([])
+      setExternalForm({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
       setDetailOpen(true)
     } catch (error: any) {
       showFeedback('Bug Tracker', error?.message || 'No se pudo abrir el detalle.', 'danger')
@@ -249,46 +269,18 @@ export function BugTrackerPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkBugId, canView])
 
+  const { quickTransitioningBugId, transitionTarget, transitionForm, setTransitionForm, setTransitionTarget,
+    compatibleBuilds, requestTransition, confirmTransition, isCorrected } = useBugTransitions({ buildsList,
+    currentBuildId, selectedBug, fetchWithAuth, showFeedback, setBugs, setSelectedBug,
+    hydrateDetailEditState, loadBugs, onBugsChanged })
+
   const transitionBug = async (estado: string) => {
-    if (!selectedBug) return
-    const response = await fetchWithAuth(`${API_BASE}/bugs/${selectedBug.id}/transition/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ estado }),
-    })
-    if (response.ok) {
-      const updated = await response.json()
-      setSelectedBug(updated)
-      hydrateDetailEditState(updated)
-      await loadBugs()
-      onBugsChanged?.()
-    }
+    if (selectedBug) requestTransition(selectedBug, estado)
   }
 
   const transitionBugInline = async (bug: any, estado: string) => {
     if (!bug?.id || !canTriage || estado === bug.estado) return
-    setQuickTransitioningBugId(bug.id)
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/bugs/${bug.id}/transition/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado }),
-      })
-      if (!response.ok) throw new Error(await apiErrorMessage(response))
-      const updated = await response.json()
-      setBugs((current) => current.map((item) => item.id === bug.id ? { ...item, ...updated } : item))
-      if (selectedBug?.id === bug.id) {
-        setSelectedBug(updated)
-        hydrateDetailEditState(updated)
-      }
-      showFeedback('Estado actualizado', `${updated.codigo || bug.codigo} quedo en ${updated.estado || estado}.`, 'success')
-      onBugsChanged?.()
-      void loadBugs({ silent: true })
-    } catch (error: any) {
-      showFeedback('Bug Tracker', error?.message || 'No se pudo cambiar el estado del bug.', 'danger')
-    } finally {
-      setQuickTransitioningBugId(null)
-    }
+    requestTransition(bug, estado)
   }
 
   const updateSelectedBug = async (changes: Record<string, any>) => {
@@ -377,15 +369,31 @@ export function BugTrackerPage({
   }
 
   const createExternalLink = async () => {
-    if (!selectedBug || !externalForm.external_issue_id.trim()) return
-    const response = await fetchWithAuth(`${API_BASE}/bugs/${selectedBug.id}/external-links/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(externalForm),
-    })
-    if (response.ok) {
+    const externalIssueId = externalForm.external_issue_id.trim()
+    if (!selectedBug || !externalIssueId) {
+      showFeedback('Vínculo externo', 'Indica el identificador del ticket externo.', 'warning')
+      return
+    }
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/bugs/${selectedBug.id}/external-links/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...externalForm,
+          external_issue_id: externalIssueId,
+          // La URL es opcional; una cadena vacía no es válida para la API.
+          external_issue_url: externalForm.external_issue_url.trim() || null,
+        }),
+      })
+      if (!response.ok) throw new Error(await apiErrorMessage(response))
+      const createdLink = await response.json()
       setExternalForm({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
       await openDetail(selectedBug)
+      await loadBugs({ silent: true })
+      const provider = EXTERNAL_ISSUE_PROVIDERS.find(item => item.id === createdLink.provider_id)?.label || createdLink.provider_id
+      showFeedback('Vínculo externo', `${provider} #${createdLink.external_issue_id} quedó vinculado a ${selectedBug.codigo}.`, 'success')
+    } catch (error: any) {
+      showFeedback('Vínculo externo', error?.message || 'No se pudo vincular el ticket externo.', 'danger')
     }
   }
 
@@ -433,11 +441,16 @@ export function BugTrackerPage({
   }
 
   if (!currentProjectId && !deepLinkBugId && !detailOpen) {
-    return <div className="p-4 text-muted">Selecciona un proyecto para consultar bugs.</div>
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="El Bug Tracker aparecerá cuando tengas un proyecto seleccionado."
+      />
+    )
   }
 
   return (
-    <div className="p-4 bug-tracker-page">
+    <div className="p-4 bug-tracker-page" style={modalOnly ? { display: 'none' } : undefined}>
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <div>
           <h2 className="h4 fw-bold text-dark mb-1">Bug Tracker</h2>
@@ -494,7 +507,7 @@ export function BugTrackerPage({
                         const priority = getBugPriorityPresentation(bug.prioridad)
                         return (
                         <tr key={bug.id}>
-                          <td><strong>{bug.codigo}</strong><div className="small text-muted">{bug.titulo}</div></td>
+                          <td><strong>{bug.codigo}</strong><div className="small text-muted">{bug.titulo}</div>{externalIssueLabel(bug) && <Badge bg="light" text="primary" className="border mt-1"><ExternalLink size={11} className="me-1" />{externalIssueLabel(bug)}</Badge>}</td>
                           <td><Badge bg={closedStates.has(bug.estado) ? 'secondary' : 'success'}>{bug.estado}</Badge></td>
                           <td><Badge bg={severityVariant[bug.severidad] || 'secondary'} text={bug.severidad === 'COSMETICA' ? 'dark' : undefined}>{severity?.shortLabel || bug.severidad}</Badge></td>
                           <td>
@@ -535,6 +548,12 @@ export function BugTrackerPage({
         </Col>
 
       </Row>
+
+      <BugTransitionModal target={transitionTarget} form={transitionForm}
+        builds={transitionTarget ? compatibleBuilds(transitionTarget.bug) : []}
+        busy={Boolean(transitionTarget && quickTransitioningBugId === transitionTarget.bug.id)}
+        isCorrected={isCorrected} onChange={setTransitionForm}
+        onClose={() => setTransitionTarget(null)} onConfirm={confirmTransition} />
 
       <Modal show={showStatusHelp} onHide={() => setShowStatusHelp(false)} centered size="lg">
         <Modal.Header closeButton>
@@ -581,7 +600,7 @@ export function BugTrackerPage({
         </Modal.Footer>
       </Modal>
 
-      <Modal show={detailOpen} onHide={() => setDetailOpen(false)} size="xl" centered dialogClassName="bug-detail-modal">
+      <Modal show={detailOpen} onHide={() => { setDetailOpen(false); onDetailClosed?.() }} size="xl" centered dialogClassName="bug-detail-modal">
         <Modal.Header closeButton>
           <Modal.Title className="w-100 pe-3">
             <div className="small text-muted">{selectedBug?.codigo}</div>
@@ -833,19 +852,14 @@ export function BugTrackerPage({
                     </Row>
                   ))}
                 </div>
-                {canEdit && (
-                  <Button size="sm" variant="success" className="w-100 mb-3 fw-bold" onClick={saveSelectedBugDetails} disabled={savingDetail}>
-                    <Save size={14} className="me-1" /> {savingDetail ? 'Guardando...' : 'Guardar cambios del bug'}
-                  </Button>
-                )}
                 <h6>Vinculos externos</h6>
                 {(selectedBug.external_links || []).map((item: any) => <div key={item.id} className="small border rounded p-2 mb-2"><ExternalLink size={13} className="me-1" />{item.provider_id}: {item.external_issue_id}</div>)}
                 {canLinkExternal && <Row className="g-2 mb-2">
-                  <Col md={4}><Form.Select size="sm" value={externalForm.provider_id} onChange={(e) => setExternalForm({ ...externalForm, provider_id: e.target.value })}>{['redmine','jira','github_issues'].map(item => <option key={item}>{item}</option>)}</Form.Select></Col>
+                  <Col md={4}><Form.Select size="sm" value={externalForm.provider_id} onChange={(e) => setExternalForm({ ...externalForm, provider_id: e.target.value })}>{EXTERNAL_ISSUE_PROVIDERS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Form.Select></Col>
                   <Col md={4}><Form.Control size="sm" placeholder="ID externo" value={externalForm.external_issue_id} onChange={(e) => setExternalForm({ ...externalForm, external_issue_id: e.target.value })} /></Col>
-                  <Col md={4}><Button size="sm" variant="outline-primary" onClick={createExternalLink}><LinkIcon size={14} /></Button></Col>
+                  <Col md={4}><Button size="sm" variant="outline-primary" title="Vincular ticket externo a este bug" aria-label="Vincular ticket externo a este bug" onClick={createExternalLink}><LinkIcon size={14} className="me-1" />Vincular ticket</Button></Col>
                 </Row>}
-                {canExport && <div className="d-flex gap-2 mb-2"><Button size="sm" variant="outline-dark" onClick={generatePreview}>Generar preview</Button><Button size="sm" variant="outline-secondary" onClick={copyMarkdown}><Clipboard size={14} /></Button></div>}
+                {canExport && <div className="d-flex align-items-center gap-2 mb-2"><Button size="sm" variant="outline-dark" onClick={generatePreview}>Generar preview</Button><Button size="sm" variant="outline-secondary" title="Copiar Markdown" aria-label="Copiar Markdown" onClick={copyMarkdown}><Clipboard size={14} /></Button><OverlayTrigger trigger={['hover', 'focus', 'click']} placement="right" overlay={<Tooltip>Genera texto Markdown para copiar y pegar manualmente. No crea ni sincroniza tickets externos.</Tooltip>}><Button size="sm" variant="link" className="p-0 text-primary" aria-label="Información sobre la vista previa"><Info size={15} /></Button></OverlayTrigger></div>}
                 {markdown && <Form.Control as="textarea" rows={8} value={markdown} readOnly className="small font-monospace" />}
                 <h6 className="mt-3">Evidencias</h6>
                 {canUse('bugs.adjuntos', 'edit') ? (
@@ -865,7 +879,7 @@ export function BugTrackerPage({
           </Modal.Body>
         )}
         <Modal.Footer className="d-flex justify-content-between">
-          <Button variant="secondary" onClick={() => setDetailOpen(false)}>Cerrar</Button>
+          <Button variant="secondary" onClick={() => { setDetailOpen(false); onDetailClosed?.() }}>Cerrar</Button>
           {canEdit && selectedBug && (
             <Button variant="success" className="fw-bold" onClick={saveSelectedBugDetails} disabled={savingDetail}>
               <Save size={14} className="me-1" /> {savingDetail ? 'Guardando...' : 'Guardar cambios del bug'}

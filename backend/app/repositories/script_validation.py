@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 
 
 async def validate_script(
@@ -367,7 +367,10 @@ async def validate_script(
         except subprocess.TimeoutExpired:
             return {"valid": False, "error": "Timeout al validar script", "warnings": warnings, "checks": checks}
         except FileNotFoundError:
-            return {"valid": False, "error": "Node.js no disponible para validacion", "warnings": warnings, "checks": checks}
+            warnings.append(
+                "No se verifico la sintaxis JavaScript localmente porque el backend no incluye Node.js. "
+                "El script conserva las validaciones estaticas realizadas; usa Dry-run con un worker para validarlo en ejecucion."
+            )
         except Exception as e:
             return {"valid": False, "error": str(e), "warnings": warnings, "checks": checks}
         finally:

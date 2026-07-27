@@ -1,13 +1,11 @@
 import type { AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
 import { formatDateTime } from '../../../shared/utils/dateTime'
 
-const aiAgentEvidenceRule = 'Regla de evidencia: decide solo con DOM, screenshot, datos del caso, variables, historial o respuestas verificables. No inventes informacion; si falta evidencia, baja confianza o bloquea indicando el dato faltante.'
-
 export const defaultAgentWorkflow = [
-  { id: 'AI_AGENT', name: 'Agente IA', enabled: true, locked: true, action: 'plan_action', retry_limit: 0, prompt: `Sos un agente QA que controla un navegador real. Ejecuta solo el paso actual. Responde solo JSON con action, target_ref, value, reason, expected, confidence y step_number. No inventes target_ref ni copies ejemplos. ${aiAgentEvidenceRule}` },
-  { id: 'QA_GUARD', name: 'QA Guard', enabled: true, locked: true, action: 'validate_action', retry_limit: 0, prompt: `Rol: Agente QA Guard de seguridad de ejecución. Evita alucinaciones, acciones irrelevantes, navegación externa accidental y waits inútiles. Aprueba solo acciones coherentes con el objetivo y el DOM. ${aiAgentEvidenceRule}` },
-  { id: 'SENTINEL', name: 'Sentinel', enabled: true, locked: true, action: 'execute_action', retry_limit: 2, prompt: `Rol: Agente centinela. Ejecuta acciones validadas, detecta estados de carga, errores visibles y valida estabilidad despues de cada accion antes de continuar. ${aiAgentEvidenceRule}` },
-  { id: 'AUDITOR', name: 'Auditor', enabled: true, locked: true, action: 'final_audit', retry_limit: 0, prompt: `Auditoria de QA Senior final. Evalua historial, screenshot final y resultado esperado. Responde solo JSON con status, reason y confidence. Usa PASSED, FAILED, BLOCKED o SKIPPED. ${aiAgentEvidenceRule}` },
+  { id: 'AI_AGENT', name: 'Agente IA', enabled: true, locked: true, action: 'plan_action', retry_limit: 0, prompt: 'Sos un agente QA que controla un navegador real. Ejecuta solo el paso actual. Responde solo JSON con action, target_ref, value, reason, expected, confidence y step_number. No inventes target_ref ni copies ejemplos.' },
+  { id: 'QA_GUARD', name: 'QA Guard', enabled: true, locked: true, action: 'validate_action', retry_limit: 0, prompt: 'Rol: Agente QA Guard de seguridad de ejecución. Evita alucinaciones, acciones irrelevantes, navegación externa accidental y waits inútiles. Aprueba solo acciones coherentes con el objetivo y el DOM.' },
+  { id: 'SENTINEL', name: 'Sentinel', enabled: true, locked: true, action: 'execute_action', retry_limit: 2, prompt: 'Rol: Agente centinela. Ejecuta acciones validadas, detecta estados de carga, errores visibles y valida estabilidad despues de cada accion antes de continuar.' },
+  { id: 'AUDITOR', name: 'Auditor', enabled: true, locked: true, action: 'final_audit', retry_limit: 0, prompt: 'Auditoria final de QA basada en evidencia. Contrasta cada resultado esperado con validaciones, DOM, URL y capturas identificadas por paso e intento. No inventes hechos ni declares FAILED por evidencia ambigua: usa BLOCKED y solicita la evidencia faltante. Toda conclusion debe citar evidence_refs. Responde solo JSON con status, reason, confidence, evidence_refs, failed_expectations, missing_evidence y contradictions.' },
 ]
 
 export const normalizeAiAgentWorkflow = (workflow: any[] = []) => {
@@ -28,6 +26,8 @@ export const defaultAiEngineConfig = {
   viewport_width: 1920,
   viewport_height: 1080,
   timeout_seconds: 900,
+  context_window_tokens: 8192,
+  max_completion_tokens: 4096,
   max_parallel_ai_runs: 1,
   token_cost_prompt_per_1k: 0,
   token_cost_completion_per_1k: 0,
@@ -43,8 +43,10 @@ export const defaultAiEngineConfig = {
   last_model_scan_requires_api_key: false,
   last_model_scan_api_key_env: null,
   last_model_scan_api_key_configured: false,
+  active_provider_profile_id: null,
   agent_workflow: defaultAgentWorkflow,
   active_workflow_id: null,
+  active_workflow_ids: {},
 }
 
 export const defaultAttachmentConfig = {
@@ -99,6 +101,7 @@ export type AiProviderOption = {
 }
 
 export const aiProviderOptions: AiProviderOption[] = [
+  { value: 'opencode', label: 'OpenCode', kind: 'compatible', defaultEndpoint: 'http://127.0.0.1:4096', defaultModel: '', scan: 'Catalogo OpenCode de la cuenta (incluye Zen/Go autorizados)', requiresApiKey: true, apiKeyEnv: undefined },
   { value: 'lm-studio', label: 'LM Studio', kind: 'local', defaultEndpoint: 'http://127.0.0.1:1234/v1', defaultModel: 'lm-studio', scan: 'Auto-scan local OpenAI /models', requiresApiKey: false },
   { value: 'ollama', label: 'Ollama', kind: 'local', defaultEndpoint: 'http://127.0.0.1:11434/v1', defaultModel: 'llama3', scan: 'Auto-scan local Ollama /api/tags', requiresApiKey: false },
   { value: 'openai-compatible', label: 'OpenAI Compatible', kind: 'compatible', defaultEndpoint: 'http://127.0.0.1:1234/v1', defaultModel: 'gpt-4o-mini', scan: 'Auto-scan /models si el endpoint lo permite', requiresApiKey: false },
@@ -128,6 +131,7 @@ export const defaultModelCapabilities = {
 }
 
 export const inferAiRuntimeProvider = (config: any) => {
+  if (config?.provider === 'opencode' || config?.ai_execution_driver === 'opencode') return 'opencode'
   const endpoint = String(config?.llm_endpoint || '').toLowerCase()
   if (endpoint.includes(':1234')) return 'lm-studio'
   if (endpoint.includes('11434')) return 'ollama'

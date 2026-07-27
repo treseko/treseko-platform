@@ -94,30 +94,6 @@ export const RBAC_CAPABILITIES: RbacCapabilityGroup[] = [
     { id: 'integraciones.webhooks', label: 'Webhooks' },
     { id: 'integraciones.auditoria', label: 'Auditoria' }
   ] },
-  { module: 'integraciones', moduleLabel: 'Integraciones / Redmine', capabilities: [
-    { id: 'integraciones.provider.redmine.ver', label: 'Ver configuracion Redmine' },
-    { id: 'integraciones.provider.redmine.configurar', label: 'Configurar Redmine' },
-    { id: 'integraciones.provider.redmine.test_conexion', label: 'Probar conexion Redmine' },
-    { id: 'integraciones.provider.redmine.gestionar_secretos', label: 'Gestionar secretos Redmine' },
-    { id: 'integraciones.provider.redmine.reportar', label: 'Reportar defectos' },
-    { id: 'integraciones.provider.redmine.vincular', label: 'Vincular issue/snapshot' },
-    { id: 'integraciones.provider.redmine.deduplicar', label: 'Buscar duplicados' },
-    { id: 'integraciones.provider.redmine.webhooks', label: 'Webhooks Redmine' },
-    { id: 'integraciones.provider.redmine.auditoria', label: 'Auditoria Redmine' }
-  ] },
-  { module: 'integraciones', moduleLabel: 'Integraciones / Jira', capabilities: [
-    { id: 'integraciones.provider.jira.ver', label: 'Ver configuracion Jira' },
-    { id: 'integraciones.provider.jira.configurar', label: 'Configurar Jira' },
-    { id: 'integraciones.provider.jira.reportar', label: 'Reportar defectos' },
-    { id: 'integraciones.provider.jira.vincular', label: 'Vincular issue/snapshot' },
-    { id: 'integraciones.provider.jira.deduplicar', label: 'Buscar duplicados' }
-  ] },
-  { module: 'integraciones', moduleLabel: 'Integraciones / GitHub Issues', capabilities: [
-    { id: 'integraciones.provider.github_issues.ver', label: 'Ver configuracion GitHub Issues' },
-    { id: 'integraciones.provider.github_issues.configurar', label: 'Configurar GitHub Issues' },
-    { id: 'integraciones.provider.github_issues.reportar', label: 'Reportar issues' },
-    { id: 'integraciones.provider.github_issues.vincular', label: 'Vincular issue/snapshot' }
-  ] },
   { module: 'plugins', moduleLabel: 'Plugins', capabilities: [
     { id: 'plugins.catalogo', label: 'Catálogo' },
     { id: 'plugins.instalar', label: 'Instalar plugins' },
@@ -128,10 +104,8 @@ export const RBAC_CAPABILITIES: RbacCapabilityGroup[] = [
     { id: 'plugins.auditoria', label: 'Auditoria plugins' }
   ] },
   { module: 'plugins', moduleLabel: 'Plugins / Providers planificados', capabilities: [
-    { id: 'plugins.provider.junit_importer.importar_resultados', label: 'Importar resultados JUnit/XML' },
-    { id: 'plugins.provider.excel_importer.importar_casos', label: 'Importar casos desde Excel' },
-    { id: 'plugins.provider.custom_dashboard.agregar_widget', label: 'Agregar widget de Dashboard' },
     { id: 'plugins.provider.ai_case_generator.generar_casos', label: 'Generar casos con IA' }
+    ,{ id: 'plugins.provider.case_portability.importar_casos', label: 'Exportar, importar y revertir casos' }
   ] },
   { module: 'notificaciones', moduleLabel: 'Correo del sistema', capabilities: [
     { id: 'notificaciones.ver', label: 'Ver correo del sistema' },

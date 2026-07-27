@@ -6,7 +6,9 @@ Motor de ejecucion IA/Playwright de Treseko. Recibe tareas desde el backend, eje
 
 - HTTP: `POST /run-task` y `POST /run-task-sync`.
 - Health: `GET /health`, expone `version` y estado del motor.
-- Progreso: `BACKEND_WS_URL`, por defecto `ws://localhost:8000/ws/engine-sync`.
+- Progreso: `BACKEND_WS_URL`. En Docker usa la red interna, por ejemplo
+  `ws://backend:8000/ws/engine-sync`; `localhost:8000` solo corresponde al
+  desarrollo local. Los usuarios acceden a Treseko por el puerto público `9095`.
 - Resultado final: el backend pasa `callback_url`; el engine responde con estado, pasos, logs, capturas base64 y reporte IA compacto.
 
 ## Diferencia Con Automation Worker

@@ -5,13 +5,15 @@ import os
 import secrets
 
 from fastapi import APIRouter
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 from starlette.websockets import WebSocketState
 
 from ...main_context import *
 from ... import access_control, auth
 from ...services.error_sanitizer import sanitize_external_error
 from ...services.realtime_events import realtime_event_bus
+from ...services.ai_dry_run_stream import ai_dry_run_stream
 
 
 router = APIRouter(tags=["websocket_sync"])
@@ -37,6 +39,19 @@ ALLOWED_ENGINE_WS_EVENT_TYPES = {
     "WARNING",
     "EXECUTION_FINISHED",
 }
+ALLOWED_AI_DRY_RUN_EVENT_TYPES = {
+    "STREAM_DOM_LOG",
+    "STEP_RESULT",
+    "RUN_STATUS",
+    "ENGINE_STATUS",
+    "ENGINE_LOG",
+    "AGENT_LOG",
+    "PROGRESS",
+    "ERROR",
+    "WARNING",
+    "EXECUTION_FINISHED",
+    "DRY_RUN_RESULT",
+}
 SAFE_ENGINE_WS_BROADCAST_FIELDS = {
     "type",
     "event",
@@ -58,6 +73,7 @@ SAFE_ENGINE_WS_BROADCAST_FIELDS = {
     "duration_seconds",
     "error_message",
     "ai_report_summary",
+    "report_pending",
 }
 
 # --- WEBSOCKET SYNC ---
@@ -313,6 +329,23 @@ def _sanitize_engine_broadcast_event(event: dict) -> dict | None:
     return sanitized
 
 
+def _sanitize_ai_dry_run_event(event: dict) -> dict | None:
+    event_type = event.get("type")
+    if event_type not in ALLOWED_AI_DRY_RUN_EVENT_TYPES:
+        return None
+    safe: dict[str, object] = {"type": event_type}
+    for field in ("step", "step_number", "attempt", "status", "agent", "level", "source", "message", "text", "error_message", "observations", "reason", "failure_category", "action_summary", "action_executed", "url", "duration_seconds", "confidence", "ai_report_summary"):
+        if field in event:
+            safe[field] = _sanitize_ws_metadata(event[field]) if field in {"step", "step_number", "attempt", "duration_seconds", "confidence", "ai_report_summary"} else _sanitize_ws_text(event[field])
+    if isinstance(event.get("screenshot"), str) and len(event["screenshot"]) <= MAX_ENGINE_WS_MESSAGE_LENGTH:
+        safe["screenshot"] = event["screenshot"]
+    if event_type == "DRY_RUN_RESULT":
+        for field in ("status", "observations", "error_message", "metadata", "ai_report", "steps", "final_screenshot_base64"):
+            if field in event:
+                safe[field] = _sanitize_ws_metadata(event[field]) if field != "final_screenshot_base64" else event[field]
+    return safe
+
+
 def _log_engine_ws_error(exc: Exception) -> None:
     logger.warning("WS Engine error: %s", sanitize_external_error(exc))
 
@@ -358,6 +391,62 @@ async def sync_project_events(websocket: WebSocket, project_id: UUID):
                 })
     except WebSocketDisconnect:
         await realtime_event_bus.disconnect(project_id, websocket)
+
+
+@router.websocket("/ws/ai-dry-run/{run_id}")
+async def sync_ai_dry_run_client(websocket: WebSocket, run_id: str):
+    context = await ai_dry_run_stream.run_context(run_id)
+    if not context:
+        await websocket.close(code=1008)
+        return
+    async with AsyncSessionLocal() as session:
+        current_user = await _authenticate_websocket_user(websocket, session)
+        if not current_user or not current_user.activo:
+            await websocket.close(code=1008)
+            return
+        try:
+            await access_control.require_project_access(session, current_user, UUID(context["project_id"]), "read")
+        except (HTTPException, ValueError):
+            await websocket.close(code=1008)
+            return
+    replay = await ai_dry_run_stream.connect(run_id, websocket)
+    try:
+        for event in replay:
+            await websocket.send_json(event)
+        while True:
+            message = await websocket.receive_text()
+            if message == "ping":
+                await websocket.send_json({"type": "PROGRESS", "message": "conectado"})
+    except WebSocketDisconnect:
+        await ai_dry_run_stream.disconnect(run_id, websocket)
+
+
+@router.websocket("/ws/ai-dry-run-engine/{run_id}")
+async def sync_ai_dry_run_engine(websocket: WebSocket, run_id: str):
+    context = await ai_dry_run_stream.run_context(run_id)
+    callback_token = _normalize_ws_token(websocket.query_params.get("callback_token"), max_length=MAX_WS_CALLBACK_TOKEN_LENGTH)
+    token_matches = bool(context and callback_token and secrets.compare_digest(callback_token, context["callback_token"]))
+    if not token_matches:
+        logger.warning(
+            "AI dry-run Engine WS rejected run=%s context=%s token_present=%s token_matches=%s",
+            run_id,
+            bool(context),
+            bool(callback_token),
+            token_matches,
+        )
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    try:
+        while True:
+            event = await _read_engine_event(websocket)
+            if event is None:
+                break
+            safe_event = _sanitize_ai_dry_run_event(event)
+            if safe_event:
+                await ai_dry_run_stream.publish(run_id, safe_event)
+    except WebSocketDisconnect:
+        return
 
 @router.websocket("/ws/client-sync/{ejecucion_id}")
 async def sync_frontend_client(websocket: WebSocket, ejecucion_id: UUID):
@@ -510,7 +599,17 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                         await _send_engine_error(websocket, "Ejecucion no encontrada.")
                         continue
 
-                    if execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI:
+                    report_pending = event.get("report_pending") is True
+                    if execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI and report_pending:
+                        current_report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
+                        execution.ai_report = {
+                            **current_report,
+                            "report_delivery_status": "pending",
+                            "engine_status": estado.value,
+                            "duration_seconds": duration_seconds,
+                        }
+                        await session.commit()
+                    elif execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI:
                         now = utc_now()
                         execution.estado_resultado = estado
                         execution.execution_mode = models.ExecutionMode.IA
@@ -578,7 +677,7 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
 
                     await realtime_event_bus.publish(
                         context.proyecto_id,
-                        "execution.ai.finished",
+                        "execution.ai.report_pending" if report_pending else "execution.ai.finished",
                         component_id=context.componente_id,
                         build_id=context.build_id,
                         case_id=context.caso_id,
@@ -588,6 +687,7 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                             "status": estado.value,
                             "duration_seconds": duration_seconds,
                             "source": "ai.engine.websocket",
+                            "report_pending": report_pending,
                         },
                     )
 

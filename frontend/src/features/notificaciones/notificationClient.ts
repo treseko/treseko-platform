@@ -22,6 +22,8 @@ export const notificationClient = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to }),
     })),
+  testEmailConnection: async (fetchWithAuth: FetchWithAuth) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/email/connection-test/`, { method: 'POST' })),
   listTemplates: async (fetchWithAuth: FetchWithAuth) =>
     jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/templates/`)),
   saveTemplate: async (fetchWithAuth: FetchWithAuth, templateId: string, payload: any) =>
@@ -29,6 +31,10 @@ export const notificationClient = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+    })),
+  previewTemplate: async (fetchWithAuth: FetchWithAuth, templateId: string, context: any = {}) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/templates/${templateId}/preview/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context }),
     })),
   listRules: async (fetchWithAuth: FetchWithAuth) =>
     jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/rules/`)),
@@ -52,6 +58,30 @@ export const notificationClient = {
     jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/deliveries/${deliveryId}/retry/`, { method: 'POST' })),
   processOutbox: async (fetchWithAuth: FetchWithAuth) =>
     jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/process/`, { method: 'POST' })),
+  listDigests: async (fetchWithAuth: FetchWithAuth, projectId?: string) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/digests/${projectId ? `?proyecto_id=${encodeURIComponent(projectId)}` : ''}`)),
+  processDigests: async (fetchWithAuth: FetchWithAuth, force = false) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notifications/digests/process/?force=${force}`, { method: 'POST' })),
+  listStakeholders: async (fetchWithAuth: FetchWithAuth, projectId: string) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/proyectos/${encodeURIComponent(projectId)}/notification-stakeholders/`)),
+  createStakeholder: async (fetchWithAuth: FetchWithAuth, projectId: string, payload: any) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/proyectos/${encodeURIComponent(projectId)}/notification-stakeholders/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })),
+  updateStakeholder: async (fetchWithAuth: FetchWithAuth, stakeholderId: string, payload: any) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notification-stakeholders/${encodeURIComponent(stakeholderId)}/`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })),
+  saveStakeholderSubscription: async (fetchWithAuth: FetchWithAuth, stakeholderId: string, payload: any) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/notification-stakeholders/${encodeURIComponent(stakeholderId)}/subscription/`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })),
+  listMySubscriptions: async (fetchWithAuth: FetchWithAuth, projectId?: string) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/users/me/notification-subscriptions/${projectId ? `?proyecto_id=${encodeURIComponent(projectId)}` : ''}`)),
+  saveMySubscription: async (fetchWithAuth: FetchWithAuth, payload: any, projectId?: string) =>
+    jsonOrThrow(await fetchWithAuth(`${API_BASE}/users/me/notification-subscriptions/${projectId ? `?proyecto_id=${encodeURIComponent(projectId)}` : ''}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })),
   listPreferences: async (fetchWithAuth: FetchWithAuth) =>
     jsonOrThrow(await fetchWithAuth(`${API_BASE}/users/me/notification-preferences/`)),
   savePreferences: async (fetchWithAuth: FetchWithAuth, preferences: any[]) =>

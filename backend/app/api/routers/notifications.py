@@ -4,9 +4,40 @@ from typing import Annotated
 from ...main_context import *
 from ...services.error_sanitizer import sanitize_external_error
 from ...services.edition.entitlement_service import require_feature
+from ...services.notifications import digest_service
+from ...services.notifications.email_sender import test_smtp_connection
 
 
 router = APIRouter(tags=["Notificaciones"], dependencies=[Depends(require_feature("notifications.email"))])
+
+
+def _inbox_response(item: models.NotificationInbox, event: models.NotificationEvent | None = None, actor: models.Usuario | None = None) -> dict:
+    """Expose only presentation-safe metadata for the signed-in recipient."""
+    metadata = dict(item.metadata_json or {})
+    actor_name = metadata.get("actor_name") or getattr(actor, "display_name", None) or getattr(actor, "nombre_completo", None)
+    title, message, link_url, notification_type = (
+        notification_event_service.inbox_presentation_from_event(
+            event,
+            actor_name=actor_name,
+            fallback_title=item.title,
+            fallback_message=item.message,
+        )
+        if event else (item.title, item.message, item.link_url, metadata.get("notification_type") or "GENERAL")
+    )
+    return {
+        "id": item.id,
+        "event_id": item.event_id,
+        "proyecto_id": item.proyecto_id,
+        "title": title,
+        "message": message,
+        "link_url": link_url or item.link_url,
+        "severity": item.severity,
+        "read_at": item.read_at,
+        "created_at": item.created_at,
+        "notification_type": notification_type,
+        "actor_name": actor_name,
+        "metadata_json": metadata,
+    }
 
 
 def _client_ip(request: Request) -> str:
@@ -121,6 +152,8 @@ async def send_test_email(
 ):
     config_public = await notification_config_service.get_email_smtp_config(db)
     config = notification_config_service.smtp_config_with_secret(config_public)
+    if config.get("test_mode") and payload.to.strip().lower() != str(current_user.email or "").strip().lower():
+        raise HTTPException(status_code=422, detail="En modo de prueba el correo sólo puede enviarse al email verificado del administrador")
     delivery = models.NotificationDelivery(
         channel="email",
         recipient_user_id=current_user.id,
@@ -146,6 +179,219 @@ async def send_test_email(
         delivery.attempt_count = 1
         await db.commit()
         raise HTTPException(status_code=422, detail=safe_error)
+
+
+@router.post("/notifications/email/connection-test/")
+async def test_email_connection(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.configuracion", "edit")),
+):
+    """Check the configured SMTP transport without sending any email."""
+    config = notification_config_service.smtp_config_with_secret(await notification_config_service.get_email_smtp_config(db))
+    try:
+        await test_smtp_connection(config)
+    except Exception as exc:
+        safe_error = sanitize_external_error(exc)
+        await crud.create_audit_log(
+            db=db, usuario_id=current_user.id, accion="TEST_FAILED", recurso="notification_email_connection",
+            detalles={"success": False, "error": safe_error}, ip_address=_client_ip(request),
+        )
+        raise HTTPException(status_code=422, detail=safe_error)
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="TEST", recurso="notification_email_connection",
+        detalles={"success": True}, ip_address=_client_ip(request),
+    )
+    return {"ok": True}
+
+
+@router.get("/proyectos/{proyecto_id}/notification-stakeholders/", response_model=List[schemas.NotificationStakeholderResponse])
+async def list_notification_stakeholders(
+    proyecto_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.destinatarios", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    result = await db.execute(
+        select(models.NotificationStakeholder)
+        .filter(models.NotificationStakeholder.proyecto_id == proyecto_id)
+        .order_by(models.NotificationStakeholder.active.desc(), models.NotificationStakeholder.nombre.asc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/proyectos/{proyecto_id}/notification-stakeholders/", response_model=schemas.NotificationStakeholderResponse)
+async def create_notification_stakeholder(
+    request: Request,
+    proyecto_id: UUID,
+    payload: schemas.NotificationStakeholderCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.destinatarios", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    existing = await db.execute(
+        select(models.NotificationStakeholder).filter(
+            models.NotificationStakeholder.proyecto_id == proyecto_id,
+            models.NotificationStakeholder.email == payload.email.lower(),
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="El destinatario externo ya existe para este proyecto")
+    stakeholder = models.NotificationStakeholder(
+        proyecto_id=proyecto_id,
+        nombre=payload.nombre.strip(),
+        email=payload.email.lower(),
+        allowed_event_types=payload.allowed_event_types,
+        consent_source=payload.consent_source.strip(),
+        created_by=current_user.id,
+    )
+    db.add(stakeholder)
+    await db.commit()
+    await db.refresh(stakeholder)
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="CREATE", recurso="notification_stakeholder", recurso_id=stakeholder.id,
+        detalles={"proyecto_id": str(proyecto_id), "email": stakeholder.email, "event_types": stakeholder.allowed_event_types}, ip_address=_client_ip(request),
+    )
+    return stakeholder
+
+
+@router.patch("/notification-stakeholders/{stakeholder_id}/", response_model=schemas.NotificationStakeholderResponse)
+async def update_notification_stakeholder(
+    request: Request,
+    stakeholder_id: UUID,
+    payload: schemas.NotificationStakeholderUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.destinatarios", "edit")),
+):
+    stakeholder = (await db.execute(select(models.NotificationStakeholder).filter(models.NotificationStakeholder.id == stakeholder_id))).scalar_one_or_none()
+    if not stakeholder:
+        raise HTTPException(status_code=404, detail="Destinatario externo no encontrado")
+    await access_control.require_project_access(db, current_user, stakeholder.proyecto_id, "edit")
+    previous = {"active": stakeholder.active, "event_types": list(stakeholder.allowed_event_types or [])}
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(stakeholder, key, value)
+    if payload.active is False:
+        stakeholder.deactivated_at = utc_now()
+    elif payload.active is True:
+        stakeholder.deactivated_at = None
+    await db.commit()
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="UPDATE", recurso="notification_stakeholder", recurso_id=stakeholder.id,
+        detalles={"old_value": previous, "new_active": stakeholder.active, "event_types": stakeholder.allowed_event_types}, ip_address=_client_ip(request),
+    )
+    return stakeholder
+
+
+@router.put("/notification-stakeholders/{stakeholder_id}/subscription/", response_model=schemas.NotificationSubscriptionResponse)
+async def save_stakeholder_subscription(
+    request: Request,
+    stakeholder_id: UUID,
+    payload: schemas.NotificationSubscriptionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.destinatarios", "edit")),
+):
+    stakeholder = (await db.execute(select(models.NotificationStakeholder).filter(models.NotificationStakeholder.id == stakeholder_id))).scalar_one_or_none()
+    if not stakeholder:
+        raise HTTPException(status_code=404, detail="Destinatario externo no encontrado")
+    await access_control.require_project_access(db, current_user, stakeholder.proyecto_id, "edit")
+    result = await db.execute(
+        select(models.NotificationRecipientSubscription).filter(
+            models.NotificationRecipientSubscription.stakeholder_id == stakeholder_id,
+            models.NotificationRecipientSubscription.event_type == payload.event_type,
+            models.NotificationRecipientSubscription.channel == payload.channel,
+        )
+    )
+    subscription = result.scalar_one_or_none()
+    if not subscription:
+        subscription = models.NotificationRecipientSubscription(stakeholder_id=stakeholder_id, proyecto_id=stakeholder.proyecto_id, **payload.model_dump())
+        db.add(subscription)
+    else:
+        for key, value in payload.model_dump().items():
+            setattr(subscription, key, value)
+    await db.commit()
+    await db.refresh(subscription)
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="UPSERT", recurso="notification_subscription", recurso_id=subscription.id,
+        detalles={"stakeholder_id": str(stakeholder_id), "frequency": subscription.frequency}, ip_address=_client_ip(request),
+    )
+    return subscription
+
+
+@router.get("/users/me/notification-subscriptions/", response_model=List[schemas.NotificationSubscriptionResponse])
+async def list_my_notification_subscriptions(
+    proyecto_id: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.inbox", "read")),
+):
+    if proyecto_id:
+        await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    query = select(models.NotificationRecipientSubscription).filter(models.NotificationRecipientSubscription.user_id == current_user.id)
+    if proyecto_id:
+        query = query.filter(models.NotificationRecipientSubscription.proyecto_id == proyecto_id)
+    return (await db.execute(query.order_by(models.NotificationRecipientSubscription.updated_at.desc()))).scalars().all()
+
+
+@router.put("/users/me/notification-subscriptions/", response_model=schemas.NotificationSubscriptionResponse)
+async def save_my_notification_subscription(
+    request: Request,
+    proyecto_id: Optional[UUID],
+    payload: schemas.NotificationSubscriptionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.inbox", "edit")),
+):
+    if proyecto_id:
+        await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    result = await db.execute(select(models.NotificationRecipientSubscription).filter(
+        models.NotificationRecipientSubscription.user_id == current_user.id,
+        models.NotificationRecipientSubscription.proyecto_id == proyecto_id,
+        models.NotificationRecipientSubscription.event_type == payload.event_type,
+        models.NotificationRecipientSubscription.channel == payload.channel,
+    ))
+    subscription = result.scalar_one_or_none()
+    if not subscription:
+        subscription = models.NotificationRecipientSubscription(user_id=current_user.id, proyecto_id=proyecto_id, **payload.model_dump())
+        db.add(subscription)
+    else:
+        for key, value in payload.model_dump().items():
+            setattr(subscription, key, value)
+    await db.commit()
+    await db.refresh(subscription)
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="UPSERT", recurso="notification_subscription", recurso_id=subscription.id,
+        detalles={"self_service": True, "proyecto_id": str(proyecto_id) if proyecto_id else None, "frequency": subscription.frequency}, ip_address=_client_ip(request),
+    )
+    return subscription
+
+
+@router.get("/notifications/digests/", response_model=List[schemas.NotificationDigestResponse])
+async def list_notification_digests(
+    proyecto_id: Optional[UUID] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.resumenes", "read")),
+):
+    if proyecto_id:
+        await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    query = select(models.NotificationDigest)
+    if proyecto_id:
+        query = query.filter(models.NotificationDigest.proyecto_id == proyecto_id)
+    elif not access_control.is_global_admin(current_user):
+        query = query.join(
+            models.ProyectoMiembro,
+            models.ProyectoMiembro.proyecto_id == models.NotificationDigest.proyecto_id,
+        ).filter(models.ProyectoMiembro.usuario_id == current_user.id)
+    result = await db.execute(query.order_by(models.NotificationDigest.created_at.desc()).limit(limit))
+    return result.scalars().all()
+
+
+@router.post("/notifications/digests/process/")
+async def process_notification_digests(
+    force: bool = False,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("notificaciones.admin", "edit")),
+):
+    return await digest_service.materialize_due_digests(db, force=force, limit=limit)
 
 @router.get("/notifications/rules/", response_model=List[schemas.NotificationRuleResponse])
 async def list_notification_rules(db: AsyncSession = Depends(get_db), current_user: models.Usuario = Depends(auth.check_capability("notificaciones.reglas", "read"))):
@@ -271,11 +517,16 @@ async def preview_notification_template(template_id: UUID, payload: schemas.Noti
 
 @router.get("/notifications/inbox/", response_model=List[schemas.NotificationInboxResponse])
 async def list_notification_inbox(limit: Annotated[int, Query(ge=1, le=100)] = 20, unread_only: bool = False, db: AsyncSession = Depends(get_db), current_user: models.Usuario = Depends(auth.check_capability("notificaciones.inbox", "read"))):
-    query = select(models.NotificationInbox).filter(models.NotificationInbox.user_id == current_user.id)
+    query = (
+        select(models.NotificationInbox, models.NotificationEvent, models.Usuario)
+        .outerjoin(models.NotificationEvent, models.NotificationInbox.event_id == models.NotificationEvent.id)
+        .outerjoin(models.Usuario, models.NotificationEvent.actor_user_id == models.Usuario.id)
+        .filter(models.NotificationInbox.user_id == current_user.id)
+    )
     if unread_only:
         query = query.filter(models.NotificationInbox.read_at.is_(None))
     result = await db.execute(query.order_by(models.NotificationInbox.created_at.desc()).limit(limit))
-    return result.scalars().all()
+    return [_inbox_response(item, event, actor) for item, event, actor in result.all()]
 
 @router.post("/notifications/inbox/{item_id}/read/")
 async def mark_notification_read(item_id: UUID, db: AsyncSession = Depends(get_db), current_user: models.Usuario = Depends(auth.check_capability("notificaciones.inbox", "edit"))):

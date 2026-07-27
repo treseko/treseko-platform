@@ -2,51 +2,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Table } from 'react-bootstrap'
 import { Activity, CheckCircle2, Cpu, HardDrive, RefreshCw, Server, ShieldOff, XCircle } from 'lucide-react'
 import { isValidUUID } from '../../../app/validation'
-import { dateTimeMs, formatDateTime } from '../../../shared/utils/dateTime'
-import { languageLabel, normalizeAutomationLanguage } from '../../casos/caseUtils'
-
-type WorkerRunner = {
-  id: string
-  nombre: string
-  tipo: string
-  estado: string
-  capabilities: Record<string, any>
-  activo: boolean
-  ultimo_heartbeat?: string | null
-  fecha_creacion?: string | null
-}
-
-type PairingRequest = {
-  id: string
-  code: string
-  nombre: string
-  tipo: string
-  capabilities: Record<string, any>
-  estado: string
-  expires_at: string
-  fecha_creacion?: string | null
-}
-
-type AutomationJob = {
-  id: string
-  test_run_id: string
-  ejecucion_id: string
-  caso_id: string
-  build_id?: string | null
-  runner_id?: string | null
-  estado: string
-  required_framework: string
-  required_language?: string
-  required_runtime?: string | null
-  payload_congelado?: Record<string, any>
-  logs?: string | null
-  error_message?: string | null
-  metadata_resultado?: Record<string, any>
-  fecha_creacion?: string | null
-  fecha_claim?: string | null
-  fecha_inicio?: string | null
-  fecha_fin?: string | null
-}
+import { formatDateTime } from '../../../shared/utils/dateTime'
+import { languageLabel } from '../../casos/caseUtils'
+import {
+  effectiveStatus,
+  formatDuration,
+  formatLastSeen,
+  getFrameworkLanguageRows,
+  getFrameworks,
+  isOnlineStatus,
+  jobStatusVariant,
+  statusVariant,
+  type AutomationJob,
+  type PairingRequest,
+  type WorkerRunner,
+} from './workersPresentation'
 
 type WorkersManagerProps = {
   currentProjectId: string
@@ -55,88 +25,11 @@ type WorkersManagerProps = {
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: 'success' | 'danger' | 'warning' | 'info') => void
   canViewWorkers?: boolean
+  canPairWorkers?: boolean
   canManageWorkers: boolean
   canViewJobs?: boolean
   multiWorkerEnabled?: boolean
   schedulerEnabled?: boolean
-}
-
-const isOffline = (runner: WorkerRunner) => {
-  if (!runner.activo) return true
-  if (!runner.ultimo_heartbeat) return true
-  const lastSeen = dateTimeMs(runner.ultimo_heartbeat)
-  return !lastSeen || Date.now() - lastSeen > 60_000
-}
-
-const effectiveStatus = (runner: WorkerRunner) => {
-  if (!runner.activo) return 'DISABLED'
-  if (isOffline(runner)) return 'OFFLINE'
-  return runner.estado || 'ONLINE'
-}
-
-const statusVariant = (status: string) => {
-  if (status === 'ONLINE') return 'success'
-  if (status === 'BUSY' || status === 'RUNNING') return 'primary'
-  if (status === 'DEGRADED') return 'warning'
-  return 'secondary'
-}
-
-const isOnlineStatus = (status: string) => ['ONLINE', 'BUSY', 'RUNNING'].includes(status)
-
-const formatLastSeen = (value?: string | null) => {
-  if (!value) return 'Sin heartbeat'
-  return formatDateTime(value) || 'Sin heartbeat'
-}
-
-const getFrameworks = (capabilities: Record<string, any>) => {
-  const frameworks = capabilities.frameworks || capabilities.supported_frameworks || capabilities.framework
-  if (Array.isArray(frameworks)) return frameworks.join(', ')
-  return frameworks || 'No reportado'
-}
-
-const getFrameworkLanguageRows = (capabilities: Record<string, any>) => {
-  const frameworksRaw = capabilities.frameworks || capabilities.supported_frameworks || capabilities.framework
-  const frameworks = Array.isArray(frameworksRaw)
-    ? frameworksRaw.map(item => String(item).toLowerCase())
-    : frameworksRaw
-      ? [String(frameworksRaw).toLowerCase()]
-      : []
-  const matrix = capabilities.framework_languages || capabilities.languages || capabilities.supported_languages || {}
-  const fallback: Record<string, string[]> = {
-    playwright: ['javascript', 'typescript'],
-    puppeteer: ['javascript', 'typescript'],
-    cypress: ['javascript', 'typescript'],
-    selenium: ['python']
-  }
-  const keys = frameworks.length ? frameworks : Object.keys(matrix)
-  if (keys.length === 0) return [{ framework: 'No reportado', languages: 'No reportado' }]
-  return keys.map(framework => {
-    const languages = Array.isArray(matrix?.[framework]) ? matrix[framework] : fallback[framework] || []
-    return {
-      framework,
-      languages: languages.map((language: string) => languageLabel(normalizeAutomationLanguage(language))).join(', ') || 'No reportado'
-    }
-  })
-}
-
-const jobStatusVariant = (status: string) => {
-  if (status === 'PASSED') return 'success'
-  if (status === 'FAILED') return 'danger'
-  if (status === 'ERROR' || status === 'TIMEOUT') return 'warning'
-  if (status === 'RUNNING' || status === 'CLAIMED') return 'primary'
-  if (status === 'BLOCKED' || status === 'BLOCKED_BY_RUNNER') return 'secondary'
-  return 'light'
-}
-
-const formatDuration = (start?: string | null, end?: string | null) => {
-  if (!start) return 'n/d'
-  const startMs = dateTimeMs(start)
-  const endMs = end ? dateTimeMs(end) : Date.now()
-  if (!startMs || !endMs) return 'n/d'
-  const seconds = Math.max(0, Math.round((endMs - startMs) / 1000))
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}m ${seconds % 60}s`
 }
 
 export function WorkersManager({
@@ -146,6 +39,7 @@ export function WorkersManager({
   fetchWithAuth,
   showFeedback,
   canViewWorkers = true,
+  canPairWorkers = false,
   canManageWorkers,
   canViewJobs = true,
   multiWorkerEnabled = true,
@@ -190,13 +84,13 @@ export function WorkersManager({
   const refreshAll = async (options?: { silent?: boolean }) => {
     await Promise.all([
       canViewWorkers ? loadRunners(options) : Promise.resolve(),
-      canManageWorkers ? loadPairingRequests() : Promise.resolve(),
+      canPairWorkers ? loadPairingRequests() : Promise.resolve(),
       canViewJobs ? loadJobs() : Promise.resolve(),
     ])
   }
 
   const loadPairingRequests = async () => {
-    if (!canManageWorkers) return
+    if (!canPairWorkers) return
     try {
       const response = await fetchWithAuth('/api/automation-runners/pairing-requests/')
       if (!response.ok) throw new Error(await response.text())
@@ -212,7 +106,7 @@ export function WorkersManager({
       refreshAll({ silent: true })
     }, 10000)
     return () => window.clearInterval(timer)
-  }, [canViewWorkers, canManageWorkers, canViewJobs, currentProjectId, currentCompId, currentBuildId])
+  }, [canViewWorkers, canPairWorkers, canManageWorkers, canViewJobs, currentProjectId, currentCompId, currentBuildId])
 
   const totals = useMemo(() => {
     const online = runners.filter(runner => isOnlineStatus(effectiveStatus(runner))).length
@@ -286,17 +180,17 @@ export function WorkersManager({
 
       {canViewWorkers && !multiWorkerEnabled && (
         <Alert variant="info" className="border small">
-          Community incluye un worker local basico. Si existen workers heredados, Treseko los muestra en lectura segura; la vinculacion, revocacion y administracion multi-worker requieren Premium.
+          Community permite vincular y usar un worker local por solución. Premium habilita varios workers y su administración distribuida.
         </Alert>
       )}
 
-      {canViewWorkers && canManageWorkers ? (
+      {canViewWorkers && canPairWorkers ? (
         <div className="border rounded-3 p-3 mb-3">
           <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
             <div>
               <div className="fw-bold">Vinculacion asistida</div>
               <div className="small text-muted">
-                Ejecuta <code>npm start</code> en <code>automation-worker/</code>. El worker mostrara un codigo corto para aprobar aqui.
+                Ejecuta <code>npm start</code> en <code>automation-worker/</code>. El worker mostrara un codigo corto, vigente por dos horas, para aprobar aqui.
               </div>
             </div>
             <Button variant="outline-primary" size="sm" className="fw-bold" onClick={loadPairingRequests}>

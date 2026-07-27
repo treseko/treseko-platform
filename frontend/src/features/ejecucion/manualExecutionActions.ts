@@ -1,4 +1,4 @@
-import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import type { AttachmentMeta } from '../../EvidenceUpload'
@@ -202,7 +202,7 @@ export function createManualExecutionActions({
 
     if (backendFinalStatus === 'FALLO' || backendFinalStatus === 'BLOQUEADO') {
       if (currentExecutionCase?.id && redmineDecisionByExecution[currentExecutionCase.id]) {
-        showFeedback('Ejecución completada', `Resultado final: ${backendFinalStatus}. El reporte Redmine ya tiene una decisión registrada para esta ejecución.`, 'success')
+        showFeedback('Ejecución completada', `Resultado final: ${backendFinalStatus}. El reporte de bug interno ya tiene una decisión registrada para esta ejecución.`, 'success')
         await advanceToNextTest()
         return
       }
@@ -319,39 +319,10 @@ export function createManualExecutionActions({
     await finalizeExecutionResult(backendFinalStatus)
   }
 
-  const handlePushToRedmine = async (e: FormEvent) => {
-    e.preventDefault()
-    const target = e.target as any
-    const subject = target.subject.value
-
-    const bugId = `BUG-${Math.floor(Math.random() * 100) + 460}`
-    const mockHash = 'sha256_' + Math.random().toString(16).substring(2, 18)
-
-    const newBug = {
-      id: bugId,
-      projectId: currentProjectId,
-      title: subject,
-      status: 'Nuevo',
-      priority: 'Alta',
-      testId: selectedTest?.id || 'general',
-      hash: mockHash
-    }
-
-    setRedmineBugs(prev => [newBug, ...prev])
-    if (currentExecutionCase?.id) {
-      setRedmineDecisionByExecution(prev => ({ ...prev, [currentExecutionCase.id]: 'reported' }))
-    }
-    setShowRedmineDrawer(false)
-    setShowRedminePrompt(false)
-    showFeedback('Incidencia creada', `Incidencia ${bugId} creada con éxito en Redmine. Hash SHA-256: ${mockHash}`, 'success')
-    await advanceToNextTest()
-  }
-
   return {
     advanceToNextTest,
     deferRedmineReportAndContinue,
     openRedmineReportFromPrompt,
     handleCompleteCase,
-    handlePushToRedmine
   }
 }

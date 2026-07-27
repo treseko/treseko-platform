@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 import hashlib
 import re
 
@@ -317,6 +318,27 @@ async def list_snapshot_attachments(
 ):
     await _require_snapshot_access(db, current_user, snapshot_id, "read")
     return await crud.get_snapshot_attachments(db, snapshot_id)
+
+
+@router.get("/ejecuciones/{ejecucion_id}/snapshot-attachments/", response_model=dict[str, List[schemas.SnapshotAttachment]])
+async def list_execution_snapshot_attachments(
+    ejecucion_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("ejecutar.evidencias", "read")),
+):
+    """Carga las evidencias de una ejecución en una sola consulta HTTP."""
+    await _require_execution_access(db, current_user, ejecucion_id, "read")
+    result = await db.execute(
+        select(models.SnapshotAttachment)
+        .join(models.SnapshotPaso, models.SnapshotPaso.id == models.SnapshotAttachment.snapshot_id)
+        .options(selectinload(models.SnapshotAttachment.attachment))
+        .filter(models.SnapshotPaso.ejecucion_caso_id == ejecucion_id)
+        .order_by(models.SnapshotAttachment.created_at)
+    )
+    grouped: dict[str, list[models.SnapshotAttachment]] = {}
+    for link in result.scalars().all():
+        grouped.setdefault(str(link.snapshot_id), []).append(link)
+    return grouped
 
 @router.post("/ejecuciones/{ejecucion_id}/general-evidence-snapshot/", response_model=schemas.SnapshotPaso)
 async def ensure_general_evidence_snapshot(

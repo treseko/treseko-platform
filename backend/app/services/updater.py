@@ -23,6 +23,7 @@ import httpx
 from redis.asyncio import Redis
 
 from ..version import PRODUCT_VERSION
+from ..runtime_environment import IS_PRODUCTION
 
 
 UPDATE_SERVER_URL = (os.getenv("TRESEKO_UPDATE_SERVER_URL") or "https://updates.treseko.com").rstrip("/")
@@ -42,10 +43,7 @@ COMMUNITY_UPDATE_CHANNELS = {"community-stable", "community-beta", "community-sm
 
 
 def _is_production_env() -> bool:
-    return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "development").strip().lower() in {
-        "prod",
-        "production",
-    }
+    return IS_PRODUCTION
 
 
 UPDATE_DB_HISTORY_ENABLED = str(
@@ -355,6 +353,14 @@ class UpdateService:
         manifest = manifest or {}
         self.validate_update_request(channel=channel, manifest=manifest)
         async with self._lock:
+            requested_version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()
+            for existing in self._tasks.values():
+                if (
+                    existing.version == requested_version
+                    and existing.channel == channel
+                    and existing.stage in {"prepared", "restarting"}
+                ):
+                    return existing.task_id
             running = [task for task in self._tasks.values() if task.status in {"queued", "in_progress", "restarting"}]
             if running:
                 raise ValueError("Ya hay una actualizacion en curso.")
@@ -427,6 +433,25 @@ class UpdateService:
             reverse=True,
         )
         return [task.as_dict() for task in tasks[:limit]]
+
+    async def restart_prepared_update(self, task_id: str) -> dict[str, Any]:
+        state = self._tasks.get(task_id)
+        if not state or state.stage != "prepared":
+            raise ValueError("No hay una actualizacion preparada para reiniciar.")
+        if not ENABLE_SELF_UPDATE_APPLY:
+            raise ValueError("La aplicacion automatica esta deshabilitada por configuracion.")
+        state.status = "restarting"
+        state.stage = "restarting"
+        state.progress_pct = 95
+        state.message = "Reinicio confirmado. Aplicando paquete y migraciones."
+        self._append_event(state, "restarting", message=state.message, persist=False)
+        self._persist_history()
+        asyncio.create_task(self._restart_after_ack())
+        return state.as_dict()
+
+    async def _restart_after_ack(self) -> None:
+        await asyncio.sleep(1)
+        await self._restart_services()
 
     async def report_failure(self, task_id: str) -> bool:
         state = self._tasks.get(task_id)
@@ -551,8 +576,16 @@ class UpdateService:
             )
             state.extracted_path = str(extracted_dir)
 
+            await self._with_step_timeout(
+                self._stage_next_entrypoint(extracted_dir),
+                "preparacion del entrypoint",
+            )
+
             self._update_state(state, "ready_to_restart", 88, "Update preparado para aplicar en el proximo reinicio.")
-            await self._with_step_timeout(self._write_update_ready_flag(extracted_dir), "preparacion del reinicio")
+            await self._with_step_timeout(
+                self._write_update_ready_flag(extracted_dir, task_id=task_id, version=state.version),
+                "preparacion del reinicio",
+            )
 
             if ENABLE_SELF_UPDATE_APPLY and force:
                 state.status = "restarting"
@@ -723,6 +756,7 @@ class UpdateService:
             self._persist_history()
 
     def _load_history(self) -> None:
+        applied_task_id = self._read_applied_update_task_id()
         history_file = self.settings.history_file
         if not history_file.exists():
             return
@@ -743,7 +777,16 @@ class UpdateService:
                 state = UpdateTaskState(**data)
             except TypeError:
                 continue
-            if state.status in {"queued", "in_progress", "restarting"}:
+            if state.task_id == applied_task_id and state.status in {"queued", "in_progress", "restarting", "done"}:
+                state.status = "done"
+                state.stage = "applied"
+                state.progress_pct = 100
+                state.error = None
+                state.message = "Actualizacion aplicada y migraciones finalizadas tras el reinicio."
+                state.completed_at = state.completed_at or _utc_iso()
+                self._append_event(state, "applied", message=state.message, persist=False)
+                changed = True
+            elif state.status in {"queued", "in_progress", "restarting"}:
                 state.status = "failed"
                 state.stage = "interrupted"
                 state.progress_pct = min(state.progress_pct, 99)
@@ -760,6 +803,16 @@ class UpdateService:
             self._latest_task_id = latest.task_id
         if changed:
             self._persist_history()
+
+    def _read_applied_update_task_id(self) -> str:
+        marker = self.settings.updates_dir / "update-applied"
+        if not marker.exists():
+            return ""
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            return str(payload.get("task_id") or "").strip() if isinstance(payload, dict) else ""
+        except (OSError, json.JSONDecodeError):
+            return ""
 
     def _persist_history(self) -> None:
         history_file = self.settings.history_file
@@ -1025,6 +1078,7 @@ class UpdateService:
         def create_archive() -> None:
             with tarfile.open(backup_path, "w:gz") as tar:
                 for label, path in {
+                    "backend_entrypoint": self.settings.app_dir / "entrypoint.sh",
                     "backend_app": self.settings.app_dir / "app",
                     "backend_alembic": self.settings.app_dir / "alembic",
                     "frontend_html": self.settings.frontend_dir,
@@ -1032,7 +1086,15 @@ class UpdateService:
                     "worker": self.settings.worker_dir,
                 }.items():
                     if path.exists():
-                        tar.add(path, arcname=label, recursive=True)
+                        if label == "backend_app":
+                            tar.add(
+                                path,
+                                arcname=label,
+                                recursive=True,
+                                filter=lambda info: None if info.name == "backend_app/static" or info.name.startswith("backend_app/static/") else info,
+                            )
+                        else:
+                            tar.add(path, arcname=label, recursive=True)
 
         await asyncio.to_thread(create_archive)
         await asyncio.to_thread(self._rotate_backups, "pre-update-code-*.tar.gz")
@@ -1049,6 +1111,7 @@ class UpdateService:
                 self._safe_extract(tar, restore_dir)
 
             targets = {
+                "backend_entrypoint": self.settings.app_dir / "entrypoint.sh",
                 "backend_app": self.settings.app_dir / "app",
                 "backend_alembic": self.settings.app_dir / "alembic",
                 "frontend_html": self.settings.frontend_dir,
@@ -1059,13 +1122,32 @@ class UpdateService:
                 source = restore_dir / label
                 if not source.exists():
                     continue
-                if target.exists():
+                if target.exists() and not (label == "backend_app" and target.is_dir()):
                     if target.is_dir():
                         shutil.rmtree(target)
                     else:
                         target.unlink()
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(source, target)
+                if label == "backend_app":
+                    target.mkdir(parents=True, exist_ok=True)
+                    for child in target.iterdir():
+                        if child.name != "static":
+                            if child.is_dir():
+                                shutil.rmtree(child)
+                            else:
+                                child.unlink()
+                    for child in source.iterdir():
+                        if child.name == "static":
+                            continue
+                        destination = target / child.name
+                        if child.is_dir():
+                            shutil.copytree(child, destination)
+                        else:
+                            shutil.copy2(child, destination)
+                elif source.is_dir():
+                    shutil.copytree(source, target)
+                else:
+                    shutil.copy2(source, target)
 
         try:
             await asyncio.to_thread(restore)
@@ -1116,11 +1198,25 @@ class UpdateService:
             if expected and actual and expected != actual:
                 raise ValueError(f"El campo interno {field_name} no coincide con el manifest autorizado.")
 
-    async def _write_update_ready_flag(self, extracted_dir: Path) -> None:
+    async def _stage_next_entrypoint(self, extracted_dir: Path) -> None:
+        source = extracted_dir / "backend" / "entrypoint.sh"
+        if not source.is_file():
+            raise ValueError("El paquete no contiene backend/entrypoint.sh.")
+        target = self.settings.app_dir / "entrypoint.sh"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staged = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+        shutil.copy2(source, staged)
+        staged.chmod(0o755)
+        staged.replace(target)
+
+    async def _write_update_ready_flag(self, extracted_dir: Path, *, task_id: str, version: str | None) -> None:
         self.settings.updates_dir.mkdir(parents=True, exist_ok=True)
         flag_file = self.settings.updates_dir / "update-ready"
         tmp_file = self.settings.updates_dir / f"update-ready.{uuid.uuid4().hex}.tmp"
-        tmp_file.write_text(str(extracted_dir), encoding="utf-8")
+        tmp_file.write_text(
+            json.dumps({"path": str(extracted_dir), "task_id": task_id, "version": version or ""}, sort_keys=True),
+            encoding="utf-8",
+        )
         tmp_file.replace(flag_file)
 
     def _safe_extract(self, tar: tarfile.TarFile, target: Path) -> None:

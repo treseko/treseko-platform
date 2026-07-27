@@ -244,8 +244,6 @@ export function AppModals(props: AppModalsProps) {
         isOutdatedExecutionCase={props.isOutdatedExecutionCase}
         onShowDatasetHelp={() => props.showFeedback('Dataset por ambiente', 'El ambiente resuelve placeholders antes de ejecutar. Ejemplos: base_url={{ENV.BASE_URL}}, usuario={{ENV.USER}}, password={{ENV.PASSWORD}}, tenant={{ENV.TENANT}}. Inventario es solo catálogo operativo; el ambiente es el contexto de ejecución.', 'info')}
         onStart={props.handleStartExecution}
-        automationDebugMode={props.automationDebugMode}
-        setAutomationDebugMode={props.setAutomationDebugMode}
         canStartManualExecution={props.canStartManualExecution}
         canUseAutomatedExecution={props.canUseAutomatedExecution}
         canUseIaExecution={props.canUseIaExecution}

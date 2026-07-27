@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Code, History, Save } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import { isValidUUID } from '../../../app/validation'
 import { formatDateTime } from '../../../shared/utils/dateTime'
+import { APP_EDITOR_FONT_SIZE } from '../../../shared/ui/typography'
 
 type Funcion = {
   id: string
@@ -249,7 +250,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                     <td>
                       <strong>{funcion.nombre || 'Sin nombre'}</strong>
                       {funcion.suite_id && (
-                        <Badge bg="secondary" className="ms-2" style={{ fontSize: '0.7rem' }}>
+                        <Badge bg="secondary" className="ms-2 app-label">
                           Suite
                         </Badge>
                       )}
@@ -318,13 +319,14 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
       </Card>
 
       {/* Modal Crear/Editar */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>
+      <Modal show={showModal && !showVersionsModal} onHide={() => setShowModal(false)} size="xl" centered scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="d-flex align-items-center gap-2">
+            <Code size={20} className="text-primary" />
             {editingFuncion ? 'Editar Función' : 'Nueva Función'}
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="pt-0">
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Nombre de la función</Form.Label>
@@ -423,7 +425,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                   theme="vs-dark"
                   options={{
                     minimap: { enabled: false },
-                    fontSize: 13,
+                    fontSize: APP_EDITOR_FONT_SIZE,
                     lineNumbers: 'on',
                     scrollBeyondLastLine: false,
                     automaticLayout: true
@@ -433,7 +435,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
             </Form.Group>
           </Form>
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-0 pt-0">
           <Button variant="secondary" onClick={() => setShowModal(false)}>
             Cancelar
           </Button>
@@ -447,9 +449,9 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
       </Modal>
 
       {/* Modal Versiones */}
-      <Modal show={showVersionsModal} onHide={() => setShowVersionsModal(false)} size="lg" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>
+      <Modal show={showVersionsModal} onHide={() => setShowVersionsModal(false)} size="lg" centered scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="d-flex align-items-center gap-2">
             <History size={20} className="me-2" />
             Historial de Versiones
           </Modal.Title>
@@ -483,7 +485,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
             </Table>
           )}
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="border-0 pt-0">
           <Button variant="secondary" onClick={() => setShowVersionsModal(false)}>
             Cerrar
           </Button>

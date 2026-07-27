@@ -160,12 +160,15 @@ export function SuiteAndComponentModals({
         </Form>
       </Modal>
 
-      <Modal show={showSuiteModal} onHide={resetSuiteModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>{editingSuiteId ? 'Editar suite' : 'Nueva suite'}</Modal.Title>
+      <Modal show={showSuiteModal} onHide={resetSuiteModal} centered scrollable size="lg">
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
+            <FolderPlus size={20} className="text-primary" />
+            {editingSuiteId ? 'Editar suite' : 'Nueva suite'}
+          </Modal.Title>
         </Modal.Header>
         <Form onSubmit={editingSuiteId ? handleUpdateSuite : handleCreateSuite}>
-          <Modal.Body>
+          <Modal.Body className="pt-0">
             <Form.Group className="mb-3">
               <Form.Label><RequiredLabel required>Nombre</RequiredLabel></Form.Label>
               <Form.Control
@@ -257,7 +260,7 @@ export function SuiteAndComponentModals({
               </Form.Group>
             )}
           </Modal.Body>
-          <Modal.Footer>
+          <Modal.Footer className="border-0 pt-0">
             <Button variant="secondary" onClick={resetSuiteModal}>
               Cancelar
             </Button>
@@ -268,12 +271,15 @@ export function SuiteAndComponentModals({
         </Form>
       </Modal>
 
-      <Modal show={showMoveSuiteModal} onHide={resetMoveSuiteModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>Mover suite</Modal.Title>
+      <Modal show={showMoveSuiteModal} onHide={resetMoveSuiteModal} centered>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
+            <FolderCheck size={20} className="text-primary" />
+            Mover suite
+          </Modal.Title>
         </Modal.Header>
         <Form onSubmit={(event) => { event.preventDefault(); handleMoveSuite() }}>
-          <Modal.Body>
+          <Modal.Body className="pt-0">
             <Form.Group>
               <Form.Label>Nueva suite padre</Form.Label>
               <Form.Select
@@ -287,7 +293,7 @@ export function SuiteAndComponentModals({
               </Form.Select>
             </Form.Group>
           </Modal.Body>
-          <Modal.Footer>
+          <Modal.Footer className="border-0 pt-0">
             <Button variant="secondary" onClick={resetMoveSuiteModal}>
               Cancelar
             </Button>

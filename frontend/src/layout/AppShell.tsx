@@ -212,6 +212,31 @@ export function AppShell({
     }
   }
 
+  const notificationTypeLabel = (type?: string) => ({
+    ADMINISTRATIVA: 'Administrativa',
+    CALIDAD: 'Calidad',
+    IA: 'IA',
+    PROYECTO: 'Proyecto',
+    REPORTE: 'Reporte',
+    SEGURIDAD: 'Seguridad',
+  }[String(type || '').toUpperCase()] || 'General')
+
+  const notificationVariant = (type?: string) => ({
+    ADMINISTRATIVA: 'secondary',
+    CALIDAD: 'warning',
+    IA: 'primary',
+    PROYECTO: 'info',
+    REPORTE: 'success',
+    SEGURIDAD: 'danger',
+  }[String(type || '').toUpperCase()] || 'secondary') as any
+
+  const notificationTime = (value?: string) => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+  }
+
   const markAllNotificationsRead = async () => {
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
@@ -344,7 +369,7 @@ export function AppShell({
             <div className="text-white fw-bold small text-truncate">{loggedUser.name}</div>
             <div className="text-secondary x-small text-truncate">{loggedUser.roleLabel || loggedUser.role}</div>
           </div>
-          <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" onClick={onLogout}>
+          <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={onLogout}>
             <LogOut size={16} />
           </Button>
         </div>
@@ -437,7 +462,7 @@ export function AppShell({
             </div>
           )}
           {!sidebarCollapsed && (
-            <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" onClick={onLogout}>
+            <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={onLogout}>
               <LogOut size={16} />
             </Button>
           )}
@@ -452,7 +477,7 @@ export function AppShell({
               <span>{currentOrg?.name}</span>
               <span className="mx-2 text-muted opacity-50">/</span>
               <Folders size={14} className="text-primary me-1" />
-              <span className="text-dark fw-bold">{currentProject?.name || 'Sin Proyecto'}</span>
+              <span className="text-dark fw-bold text-truncate" title={currentProject?.name || 'Sin Proyecto'}>{currentProject?.name || 'Sin Proyecto'}</span>
             </div>
 
             <Dropdown className="ms-3">
@@ -487,9 +512,9 @@ export function AppShell({
 
           <div className="app-shell-actions d-flex align-items-center gap-2">
             <Dropdown>
-              <Dropdown.Toggle variant="light" size="sm" className="border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none">
+              <Dropdown.Toggle variant="light" size="sm" className="app-shell-project-toggle border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none" title={currentProject?.name || 'Ninguno'}>
                 <Folders size={14} className="text-primary" />
-                Proyecto: <span className="text-dark">{currentProject?.name || 'Ninguno'}</span>
+                Proyecto: <span className="text-dark text-truncate">{currentProject?.name || 'Ninguno'}</span>
               </Dropdown.Toggle>
               <Dropdown.Menu className="shadow-lg py-1 border text-start" align="end" style={{ minWidth: '220px' }}>
                 <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">CAMBIAR DE PROYECTO</div>
@@ -550,7 +575,7 @@ export function AppShell({
                     </Badge>
                   )}
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="shadow-lg border text-start p-0" align="end" style={{ minWidth: '360px', maxWidth: '420px' }}>
+                <Dropdown.Menu className="notification-inbox-menu shadow-lg border text-start p-0" align="end">
                   <div className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
                     <div>
                       <div className="fw-bold small">Notificaciones</div>
@@ -586,7 +611,7 @@ export function AppShell({
                       <div className="x-small text-muted mt-2">No se enviaran nuevas notificaciones internas hasta volver a activar.</div>
                     )}
                   </div>
-                  <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                  <div className="notification-inbox-list">
                     {notificationsLoading && (
                       <div className="px-3 py-3 small text-muted">Cargando notificaciones...</div>
                     )}
@@ -597,14 +622,19 @@ export function AppShell({
                       <button
                         key={notification.id}
                         type="button"
-                        className={`btn btn-link w-100 text-start text-decoration-none border-bottom rounded-0 px-3 py-2 ${notification.read_at ? 'bg-white text-muted' : 'bg-light text-dark'}`}
+                        className={`notification-inbox-item btn btn-link w-100 text-start text-decoration-none border-bottom rounded-0 px-3 py-2 ${notification.read_at ? 'bg-white text-muted' : 'bg-light text-dark'}`}
                         onClick={() => markNotificationRead(notification)}
                       >
                         <div className="d-flex justify-content-between gap-2">
-                          <span className="fw-semibold text-truncate">{notification.title}</span>
+                          <span className="fw-semibold notification-inbox-title">{notification.title}</span>
                           {!notification.read_at && <Badge bg="primary">Nueva</Badge>}
                         </div>
-                        <div className="small text-muted text-wrap">{notification.message}</div>
+                        <div className="small text-muted notification-inbox-message">{notification.message}</div>
+                        <div className="notification-inbox-meta">
+                          <Badge bg={notificationVariant(notification.notification_type)}>{notificationTypeLabel(notification.notification_type)}</Badge>
+                          {notification.actor_name && <span>Por {notification.actor_name}</span>}
+                          <time dateTime={notification.created_at}>{notificationTime(notification.created_at)}</time>
+                        </div>
                       </button>
                     ))}
                   </div>

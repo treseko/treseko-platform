@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..evidence_url_security import sanitize_evidence_url
 from ..services.error_sanitizer import sanitize_external_error
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit

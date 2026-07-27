@@ -1,71 +1,41 @@
-# Notificaciones y Email V1
+# Notificaciones y correo
 
-Treseko incluye una V1 event-driven para notificaciones internas y correo.
+Las notificaciones por correo están disponibles con la capacidad Premium
+correspondiente. Permiten avisar eventos importantes dentro de la plataforma y
+por email: bugs asignados, cambios de estado, fallos o bloqueos de ejecución,
+revisiones de IA y eventos de calidad.
 
-## Arquitectura
+## Configurar correo como administrador
 
-- Los módulos emiten eventos en `notification_events`.
-- Las reglas en `notification_rules` deciden canales y destinatarios.
-- Las entregas quedan en `notification_deliveries`.
-- El inbox de usuario vive en `notification_inbox`.
-- Las preferencias por usuario viven en `notification_preferences`.
-- El envío SMTP se procesa desde outbox; los endpoints funcionales no envían correo directo.
+1. Confirmá que la licencia incluya **Notificaciones y email**.
+2. Abrí **Configuración → Correo**.
+2. Completá el servidor SMTP, puerto, remitente y credenciales requeridas.
+3. Guardá la configuración.
+4. Enviá un correo de prueba antes de activar notificaciones para el equipo.
 
-## SMTP
+La contraseña SMTP queda protegida y no vuelve a mostrarse en la interfaz. Si
+la cambiás en el proveedor de correo, actualizala también en Treseko y repetí la
+prueba.
 
-La configuración no sensible se guarda en `AppSetting` con key `email_smtp_config`.
+## Administrar reglas y plantillas
 
-El password SMTP de V1 se lee desde `.env`:
+En la misma sección podés activar o desactivar reglas, elegir destinatarios y
+ajustar las plantillas. Revisá cada regla antes de habilitarla para evitar
+notificaciones innecesarias.
 
-```env
-SMTP_PASSWORD=...
-NOTIFICATIONS_PUBLIC_BASE_URL=http://localhost:5173
-NOTIFICATIONS_DEFAULT_FROM_EMAIL=qa@example.com
-```
+Las preferencias personales permiten que cada persona controle los avisos que
+recibe dentro de la plataforma cuando esa opción está habilitada.
 
-No se devuelve el password al frontend. La API solo devuelve `password_configured`.
+## Revisar entregas
 
-## Processor
+Las entregas se registran para auditoría. Desde **Configuración → Auditoría**
+podés revisar qué se intentó enviar, a quién y con qué resultado. Si una
+entrega falla, corregí la configuración SMTP o el destinatario antes de
+reintentarla.
 
-Ejecutar manualmente:
+## Ayuda rápida
 
-```bash
-cd backend
-python scripts/process_notification_outbox.py --limit 100
-```
-
-También existe endpoint admin:
-
-```http
-POST /notifications/process/
-```
-
-## Semillas V1
-
-En startup se aseguran reglas y plantillas base para bugs críticos, bug asignado, listo para retest, comentarios críticos, ejecuciones fallidas/bloqueadas, revisión IA requerida, motor IA no disponible, reportes/quality gate y usuario AD provisionado. Las preferencias personales se guardan en `notification_preferences`; el switch global de notificaciones internas usa una preferencia general `channel=in_app`.
-
-La UI de Configuración permite administrar SMTP, activar/desactivar reglas, editar plantillas base, ajustar preferencias personales y reintentar/procesar entregas desde auditoría.
-
-## Endpoints
-
-- `GET/PATCH /notifications/email/config/`
-- `POST /notifications/email/test/`
-- `GET/POST/PATCH/DELETE /notifications/rules/`
-- `GET/POST/PATCH /notifications/templates/`
-- `POST /notifications/templates/{template_id}/preview/`
-- `GET /notifications/inbox/`
-- `POST /notifications/inbox/{item_id}/read/`
-- `POST /notifications/inbox/read-all/`
-- `GET /notifications/inbox/unread-count/`
-- `GET/PATCH /users/me/notification-preferences/`
-- `GET /notifications/events/`
-- `GET /notifications/deliveries/`
-- `POST /notifications/deliveries/{delivery_id}/retry/`
-
-## Seguridad
-
-- SMTP usa `smtplib`, `ssl`, `EmailMessage` y `asyncio.to_thread`.
-- Las plantillas usan `string.Template.safe_substitute`.
-- HTML se escapa con `html.escape`.
-- No se ejecuta código en plantillas.
-- Las rutas admin usan RBAC `notificaciones.*`.
+- Si no llega un correo, enviá primero una prueba SMTP.
+- Revisá las reglas activas y las preferencias del destinatario.
+- Verificá que el servidor SMTP permita conexiones desde el host de Treseko.
+- No pongas contraseñas SMTP en plantillas, notas o capturas de pantalla.

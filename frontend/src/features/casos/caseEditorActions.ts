@@ -1,9 +1,10 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
-import type { AttachmentMeta } from '../../EvidenceUpload'
 import { API_BASE } from '../../app/constants'
 import { buildCaseEditorSnapshot } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
+import { getSuiteParentMap } from '../../testRepositoryUtils'
 import { backendTestTypeToEditor, composeFrameworkLanguage, editorTestTypeToBackend, formatDatasetForInput, normalizeCaseTags, parseDatasetInput, splitFrameworkLanguage } from './caseUtils'
+import { createCaseStepEditorActions } from './caseStepEditorActions'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -34,12 +35,15 @@ type CreateCaseEditorActionsParams = {
   currentCompId: string
   componentsList: any[]
   casosList: any[]
+  suitesTree: any[]
   currentCaseEditorSnapshot: any
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   handleCreateCaso: (payload: any) => Promise<any>
   handleUpdateCaso: (masterId: string, payload: any) => Promise<any>
   selectSuiteTarget: (suiteId: string) => void
   setExpandedSuites: Dispatch<SetStateAction<Record<string, boolean>>>
+  setNewTestSuite: (value: string) => void
+  setNewTestSuiteSub: (value: string) => void
   setNewTestSteps: Dispatch<SetStateAction<any[]>>
   setNewTestTitle: (value: string) => void
   setNewTestDescription: (value: string) => void
@@ -96,12 +100,15 @@ export function createCaseEditorActions({
   currentCompId,
   componentsList,
   casosList,
+  suitesTree,
   currentCaseEditorSnapshot,
   fetchWithAuth,
   handleCreateCaso,
   handleUpdateCaso,
   selectSuiteTarget,
   setExpandedSuites,
+  setNewTestSuite,
+  setNewTestSuiteSub,
   setNewTestSteps,
   setNewTestTitle,
   setNewTestDescription,
@@ -130,53 +137,7 @@ export function createCaseEditorActions({
   setCasosList,
   showFeedback
 }: CreateCaseEditorActionsParams) {
-  const addStepInput = () => {
-    setNewTestSteps([...newTestSteps, {
-      action: '', expected: '',
-      data: '',
-      actionImg: '',
-      expectedImg: ''
-    }])
-  }
-
-  const removeStepInput = (index: number) => {
-    setNewTestSteps(newTestSteps.filter((_, i) => i !== index))
-  }
-
-  const duplicateStepInput = (index: number) => {
-    const source = newTestSteps[index]
-    if (!source) return
-    const duplicated = {
-      ...source,
-      actionAttachments: [...(source.actionAttachments || [])],
-      expectedAttachments: [...(source.expectedAttachments || [])]
-    }
-    setNewTestSteps([
-      ...newTestSteps.slice(0, index + 1),
-      duplicated,
-      ...newTestSteps.slice(index + 1)
-    ])
-  }
-
-  const moveStepInput = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1
-    if (targetIndex < 0 || targetIndex >= newTestSteps.length) return
-    const updated = [...newTestSteps]
-    const current = updated[index]
-    updated[index] = updated[targetIndex]
-    updated[targetIndex] = current
-    setNewTestSteps(updated)
-  }
-
-  const handleStepInputChange = (index: number, field: 'action' | 'data' | 'expected' | 'actionImg' | 'expectedImg', value: string) => {
-    const updated = [...newTestSteps]
-    updated[index][field] = value
-    setNewTestSteps(updated)
-  }
-
-  const updateStepAttachments = (index: number, field: 'actionAttachments' | 'expectedAttachments', attachments: AttachmentMeta[]) => {
-    setNewTestSteps(prev => prev.map((step, idx) => idx === index ? { ...step, [field]: attachments } : step))
-  }
+  const stepActions = createCaseStepEditorActions(newTestSteps, setNewTestSteps)
 
   const openCreateCaseInSuite = (suiteId: string) => {
     const projectComponents = componentsList.filter(c => c.projectId === currentProjectId)
@@ -235,7 +196,22 @@ export function createCaseEditorActions({
       }
       const source = fullCase || test
       const suiteId = source.suite_id || test.suiteId
-      if (suiteId) selectSuiteTarget(suiteId)
+      if (suiteId) {
+        selectSuiteTarget(suiteId)
+        const parentMap = getSuiteParentMap(suitesTree)
+        const expandedPath: Record<string, boolean> = {}
+        let currentSuiteId: string | null = suiteId
+        while (currentSuiteId) {
+          expandedPath[currentSuiteId] = true
+          currentSuiteId = parentMap[currentSuiteId] || null
+        }
+        setExpandedSuites(previous => ({ ...previous, ...expandedPath }))
+      } else {
+        // El caso no tiene carpeta persistida. No conservar visualmente la última
+        // carpeta seleccionada, porque induciría a pensar que el caso vive allí.
+        setNewTestSuite('')
+        setNewTestSuiteSub('')
+      }
       const componentId = source.componente_id || test.componentId
       if (componentId) {
         setNewTestComponent(componentId)
@@ -499,12 +475,7 @@ export function createCaseEditorActions({
   }
 
   return {
-    addStepInput,
-    removeStepInput,
-    duplicateStepInput,
-    moveStepInput,
-    handleStepInputChange,
-    updateStepAttachments,
+    ...stepActions,
     openCreateCaseInSuite,
     openEditCase,
     handleSaveTest

@@ -81,6 +81,7 @@ class NotificationTemplate(Base):
 
 class NotificationInbox(Base):
     __tablename__ = "notification_inbox"
+    __table_args__ = (Index("ix_notification_inbox_user_read", "user_id", "read_at"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -125,6 +126,102 @@ class NotificationDelivery(Base):
 
     event = relationship("NotificationEvent")
     recipient_user = relationship("Usuario")
+
+
+class NotificationStakeholder(Base):
+    """External recipient explicitly scoped to one project.
+
+    Stakeholders are not Treseko accounts.  Keeping the project foreign key on
+    the record is the primary isolation boundary for outbound notifications.
+    """
+    __tablename__ = "notification_stakeholders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    nombre = Column(String(160), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    allowed_event_types = Column(JSON, default=list, nullable=False)
+    active = Column(Boolean, default=True, nullable=False, index=True)
+    consent_source = Column(String(255), nullable=False, default="manual")
+    created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False, index=True)
+    deactivated_at = Column(UTCDateTime(), nullable=True)
+
+    proyecto = relationship("Proyecto")
+    creator = relationship("Usuario", foreign_keys=[created_by])
+    __table_args__ = (UniqueConstraint("proyecto_id", "email", name="uq_notification_stakeholder_project_email"),)
+
+
+class NotificationRecipientSubscription(Base):
+    """Frequency and schedule for one internal or external recipient."""
+    __tablename__ = "notification_recipient_subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=True, index=True)
+    stakeholder_id = Column(UUID(as_uuid=True), ForeignKey("notification_stakeholders.id", ondelete="CASCADE"), nullable=True, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=True, index=True)
+    event_type = Column(String(120), nullable=True, index=True)
+    channel = Column(String(30), nullable=False, default="email")
+    frequency = Column(String(30), nullable=False, default="daily")
+    timezone = Column(String(80), nullable=False, default="UTC")
+    send_hour = Column(Integer, nullable=False, default=9)
+    send_day = Column(Integer, nullable=True)
+    muted_until = Column(UTCDateTime(), nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("Usuario")
+    stakeholder = relationship("NotificationStakeholder")
+    proyecto = relationship("Proyecto")
+
+
+class NotificationDigest(Base):
+    __tablename__ = "notification_digests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recipient_user_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    stakeholder_id = Column(UUID(as_uuid=True), ForeignKey("notification_stakeholders.id", ondelete="SET NULL"), nullable=True, index=True)
+    recipient_email = Column(String(255), nullable=False, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=True, index=True)
+    frequency = Column(String(30), nullable=False, index=True)
+    period_start = Column(UTCDateTime(), nullable=False, index=True)
+    period_end = Column(UTCDateTime(), nullable=False, index=True)
+    status = Column(String(30), nullable=False, default="PENDING", index=True)
+    scheduled_for = Column(UTCDateTime(), nullable=True, index=True)
+    sent_at = Column(UTCDateTime(), nullable=True)
+    delivery_id = Column(UUID(as_uuid=True), ForeignKey("notification_deliveries.id", ondelete="SET NULL"), nullable=True)
+    dedupe_key = Column(String(255), nullable=False, unique=True, index=True)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+
+class NotificationDigestItem(Base):
+    __tablename__ = "notification_digest_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    digest_id = Column(UUID(as_uuid=True), ForeignKey("notification_digests.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("notification_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+
+    __table_args__ = (UniqueConstraint("digest_id", "event_id", name="uq_notification_digest_item"),)
+
+
+class NotificationWelcomeInvitation(Base):
+    __tablename__ = "notification_welcome_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(128), nullable=False, unique=True, index=True)
+    auth_provider = Column(String(50), nullable=False)
+    expires_at = Column(UTCDateTime(), nullable=False, index=True)
+    used_at = Column(UTCDateTime(), nullable=True)
+    revoked_at = Column(UTCDateTime(), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+
+    user = relationship("Usuario", foreign_keys=[user_id])
 
 class NotificationPreference(Base):
     __tablename__ = "notification_preferences"

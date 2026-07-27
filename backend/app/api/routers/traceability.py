@@ -3,6 +3,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter
 
 from ...main_context import *
+from ...services.edition.entitlement_service import require_feature
 
 
 router = APIRouter(tags=["Trazabilidad"])
@@ -153,7 +154,7 @@ async def create_historia(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _audit(db, current_user, "CREATE", "historia", item.id, item.proyecto_id, {"codigo": item.codigo})
     await _publish_traceability_change(item, current_user, "story", "created")
-    return crud._story_payload(item)
+    return {**crud._story_payload(item), "criterios_estructurados_count": len(payload.acceptance_criteria)}
 
 
 @router.get("/historias/{historia_id}")
@@ -171,7 +172,10 @@ async def update_historia(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias", "edit")),
 ):
     item = await _require_story(db, current_user, historia_id, "edit")
-    updated = await crud.update_historia(db, item, payload, current_user.id)
+    try:
+        updated = await crud.update_historia(db, item, payload, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _audit(db, current_user, "UPDATE", "historia", historia_id, updated.proyecto_id)
     await _publish_traceability_change(updated, current_user, "story", "updated")
     return crud._story_payload(updated)
@@ -311,6 +315,59 @@ async def generate_story_candidates(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/generaciones-historias/{generation_id}")
+async def read_story_generation(
+    generation_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_ia", "read")),
+):
+    generation = await crud.get_story_generation(db, generation_id)
+    if not generation:
+        raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, generation.proyecto_id, "read")
+    return crud._generation_payload(generation)
+
+
+@router.post("/generaciones-historias/{generation_id}/reanalizar")
+async def reanalyze_story_generation(
+    generation_id: UUID, payload: schemas.HistoriaGeneracionGenerateRequest, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_ia", "edit")),
+):
+    generation = await crud.get_story_generation(db, generation_id)
+    if not generation:
+        raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, generation.proyecto_id, "edit")
+    try:
+        result = await crud.reanalyze_story_generation(db, generation, payload.question_answers)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "REANALYZE", "historia_generacion", generation.id, generation.proyecto_id, {"answered_questions": len(payload.question_answers)})
+    return result
+
+
+@router.post("/generaciones-historias/{generation_id}/supuestos")
+async def confirm_generation_assumptions(
+    generation_id: UUID, payload: schemas.AssumptionConfirmation, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_ia", "edit")),
+):
+    generation = await crud.get_story_generation(db, generation_id)
+    if not generation:
+        raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, generation.proyecto_id, "edit")
+    try:
+        result = await crud.confirm_generation_assumptions(
+            db,
+            generation,
+            payload.assumption_ids,
+            payload.question_answers,
+            payload.continuation_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "CONFIRM_ASSUMPTIONS", "historia_generacion", generation.id, generation.proyecto_id, {"assumption_ids": payload.assumption_ids, "answered_questions": len(payload.question_answers), "continuation_mode": payload.continuation_mode})
+    return result
+
+
 @router.post("/generaciones-historias/{generation_id}/aplicar")
 async def apply_generated_stories(
     generation_id: UUID, payload: schemas.HistoriaGeneracionApplyRequest, db: AsyncSession = Depends(get_db),
@@ -331,3 +388,96 @@ async def apply_generated_stories(
     for item in created:
         await realtime_event_bus.publish(generation.proyecto_id, "traceability.story.created", actor_id=current_user.id, payload={"resource": {"id": str(item["id"]), "codigo": item["codigo"]}, "source": "ai_generation"})
     return {"historias": created}
+
+
+@router.post("/historias/{historia_id}/generaciones-casos/estimar", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def estimate_generated_cases(
+    historia_id: UUID, payload: schemas.CasoGeneracionEstimateRequest, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_casos_ia", "edit")),
+):
+    if not auth.has_capability_permission(current_user, "motor_ia.workflow_execute", "edit"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para ejecutar workflows")
+    story = await _require_story(db, current_user, historia_id, "edit")
+    if not auth.has_capability_permission(current_user, "crear_pruebas.casos", "edit") or not auth.has_capability_permission(current_user, "crear_pruebas.trazabilidad", "edit"):
+        raise HTTPException(status_code=403, detail="Necesitas permisos para crear y trazar casos de prueba")
+    try:
+        result = await crud.estimate_case_generation(db, story.id, payload, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "ESTIMATE", "caso_generacion", result["id"], story.proyecto_id)
+    return result
+
+
+@router.get("/generaciones-casos/{generation_id}", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def read_case_generation(
+    generation_id: UUID, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_casos_ia", "read")),
+):
+    item = (await db.execute(select(models.CasoGeneracion).where(models.CasoGeneracion.id == generation_id))).scalar_one_or_none()
+    if not item: raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, item.proyecto_id, "read")
+    return crud.case_generation_payload(item)
+
+
+@router.post("/generaciones-casos/{generation_id}/supuestos", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def confirm_generated_case_assumptions(
+    generation_id: UUID, payload: schemas.AssumptionConfirmation, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_casos_ia", "edit")),
+):
+    item = (await db.execute(select(models.CasoGeneracion).where(models.CasoGeneracion.id == generation_id))).scalar_one_or_none()
+    if not item: raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, item.proyecto_id, "edit")
+    try:
+        result = await crud.confirm_case_generation_assumptions(db, item, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "CONFIRM_ASSUMPTIONS", "caso_generacion", item.id, item.proyecto_id, {"assumption_ids": payload.assumption_ids, "answered_questions": len(payload.question_answers)})
+    return result
+
+
+@router.post("/generaciones-casos/{generation_id}/planificar", dependencies=[Depends(require_feature("ai.case_generation"))])
+@router.post("/generaciones-casos/{generation_id}/generar", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def generate_case_proposals(
+    generation_id: UUID, payload: schemas.CasoGeneracionPlanRequest, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_casos_ia", "edit")),
+):
+    if not auth.has_capability_permission(current_user, "motor_ia.workflow_execute", "edit"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para ejecutar workflows")
+    item = (await db.execute(select(models.CasoGeneracion).where(models.CasoGeneracion.id == generation_id))).scalar_one_or_none()
+    if not item: raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, item.proyecto_id, "edit")
+    try:
+        result = await crud.generate_case_proposals(db, item, payload)
+    except ValueError as exc:
+        await db.rollback(); raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "GENERATE", "caso_generacion", item.id, item.proyecto_id, {"max_casos": payload.max_casos})
+    return result
+
+
+@router.get("/historias/{historia_id}/criterios-cobertura", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def read_story_criterion_coverage(
+    historia_id: UUID, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.trazabilidad", "read")),
+):
+    story = await _require_story(db, current_user, historia_id)
+    return await crud.get_acceptance_criterion_coverage(db, story.id)
+
+
+@router.post("/generaciones-casos/{generation_id}/aplicar", dependencies=[Depends(require_feature("ai.case_generation"))])
+async def apply_generated_cases(
+    generation_id: UUID, payload: schemas.CasoGeneracionApplyRequest, db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.historias.generar_casos_ia", "edit")),
+):
+    item = (await db.execute(select(models.CasoGeneracion).where(models.CasoGeneracion.id == generation_id))).scalar_one_or_none()
+    if not item: raise HTTPException(status_code=404, detail="Generación no encontrada")
+    await access_control.require_project_access(db, current_user, item.proyecto_id, "edit")
+    if not auth.has_capability_permission(current_user, "crear_pruebas.casos", "edit") or not auth.has_capability_permission(current_user, "crear_pruebas.trazabilidad", "edit"):
+        raise HTTPException(status_code=403, detail="Necesitas permisos para crear y trazar casos de prueba")
+    try:
+        created = await crud.apply_case_generation(db, item, payload, current_user.id)
+    except ValueError as exc:
+        await db.rollback(); raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _audit(db, current_user, "APPLY", "caso_generacion", item.id, item.proyecto_id, {"casos": [case["codigo"] for case in created]})
+    for case in created:
+        await realtime_event_bus.publish(item.proyecto_id, "traceability.case.created", actor_id=current_user.id, payload={"resource": {"id": str(case["id"]), "codigo": case["codigo"]}, "source": "ai_case_generation"})
+    return {"casos": created}

@@ -1,0 +1,55 @@
+{
+  "catalog_version": "treseko.builtin-workflow/v1",
+  "slug": "test-execution",
+  "workflow": {
+    "name": "Ejecución QA universal",
+    "version": 1,
+    "workflow_format": "universal_v2",
+    "workflow_purpose": "test_execution",
+    "decision_policy_json": {
+      "catalog_key": "test-execution",
+      "catalog_version": "1.0.0",
+      "compatibility_evidence": "universal-v1-fixed-50-cases"
+    }
+  },
+  "agents": [
+    {"ref": "context-resolver", "legacy_agent_key": "CONTEXT_RESOLVER", "name": "Context Resolver", "description": "Resuelve contexto, URL base, datos y variables disponibles para la prueba."},
+    {"ref": "pre-execution-analyst", "legacy_agent_key": "PRE_EXECUTION_ANALYST", "name": "Analista Previo", "description": "Interpreta acción, datos y resultado esperado como contratos temporales de validación."},
+    {"ref": "observer", "legacy_agent_key": "OBSERVER", "name": "Observer", "description": "Observa navegador, DOM visible, errores, URL y estado de carga."},
+    {"ref": "planner", "legacy_agent_key": "AI_AGENT", "name": "Planner", "description": "Planifica una acción segura para el paso actual usando el estado observado."},
+    {"ref": "security-guard", "legacy_agent_key": "QA_GUARD", "name": "Security Guard", "description": "Rechaza acciones irrelevantes, inseguras o no sustentadas por el contexto."},
+    {"ref": "executor", "legacy_agent_key": "SENTINEL", "name": "Executor", "description": "Ejecuta acciones validadas y captura evidencia del resultado."},
+    {"ref": "validator", "legacy_agent_key": "VALIDATOR", "name": "Validator", "description": "Valida que la acción produjo el resultado esperado del paso."},
+    {"ref": "recovery", "legacy_agent_key": "RECOVERY", "name": "Recovery", "description": "Decide reintento, cambio de estrategia o bloqueo con límite explícito."},
+    {"ref": "auditor", "legacy_agent_key": "AUDITOR", "name": "Auditor", "description": "Audita el resultado final exclusivamente contra evidencia trazable."},
+    {"ref": "reporter", "legacy_agent_key": "REPORTER", "name": "Reporter", "description": "Construye reporte, métricas y trazabilidad de la ejecución."}
+  ],
+  "nodes": [
+    {"key": "context-resolver", "type": "ContextResolver", "name": "Context Resolver", "agent_key": "UNIVERSAL_CONTEXT_RESOLVER", "agent_ref": "context-resolver", "prompt_template": "Resuelve contexto, URL base, datos y variables disponibles para la prueba.", "position_x": 80, "position_y": 120, "timeout_sec": 60},
+    {"key": "pre-execution-analyst", "type": "PreExecutionAnalyst", "name": "Analista Previo", "agent_key": "UNIVERSAL_PRE_EXECUTION_ANALYST", "agent_ref": "pre-execution-analyst", "prompt_template": "Interpreta Accion, Datos y Resultado Esperado como contratos temporales de validacion.", "position_x": 300, "position_y": 120, "timeout_sec": 60},
+    {"key": "observer", "type": "Observer", "name": "Observer", "agent_key": "UNIVERSAL_OBSERVER", "agent_ref": "observer", "prompt_template": "Observa el navegador, resume DOM visible, errores, URL actual y estado de carga.", "position_x": 520, "position_y": 120, "timeout_sec": 60},
+    {"key": "planner", "type": "Planner", "name": "Planner", "agent_key": "UNIVERSAL_AI_AGENT", "agent_ref": "planner", "prompt_template": "Sos un agente QA que controla un navegador real. Ejecuta solo el paso actual. Responde solo JSON con action, target_ref, value, reason, expected, confidence y step_number. No inventes target_ref ni copies ejemplos.", "position_x": 740, "position_y": 120, "timeout_sec": 60},
+    {"key": "security-guard", "type": "SecurityGuard", "name": "Security Guard", "agent_key": "UNIVERSAL_QA_GUARD", "agent_ref": "security-guard", "prompt_template": "Rol: Agente QA Guard de seguridad de ejecucion. Evita alucinaciones, acciones irrelevantes, navegacion externa accidental y waits inutiles. Aprueba solo acciones coherentes con el objetivo y el DOM.", "position_x": 960, "position_y": 120, "timeout_sec": 60},
+    {"key": "executor", "type": "Executor", "name": "Executor", "agent_key": "UNIVERSAL_SENTINEL", "agent_ref": "executor", "prompt_template": "Rol: Agente centinela. Ejecuta acciones validadas, detecta estados de carga, errores visibles y valida estabilidad despues de cada accion antes de continuar.", "position_x": 960, "position_y": 40, "timeout_sec": 900, "retry_policy": {"max_retries": 2}},
+    {"key": "validator", "type": "Validator", "name": "Validator", "agent_key": "UNIVERSAL_VALIDATOR", "agent_ref": "validator", "prompt_template": "Valida si la accion ejecutada produjo el resultado esperado del paso actual.", "position_x": 1180, "position_y": 40, "timeout_sec": 60},
+    {"key": "recovery", "type": "Recovery", "name": "Recovery", "agent_key": "UNIVERSAL_RECOVERY", "agent_ref": "recovery", "prompt_template": "Determina si se puede reintentar, ajustar la estrategia o bloquear la prueba.", "position_x": 960, "position_y": 220, "timeout_sec": 60},
+    {"key": "auditor", "type": "Auditor", "name": "Auditor", "agent_key": "UNIVERSAL_AUDITOR", "agent_ref": "auditor", "prompt_template": "Auditoria final de QA basada en evidencia. Contrasta cada resultado esperado con validaciones, DOM, URL y capturas identificadas por paso e intento. No inventes hechos ni declares FAILED por evidencia ambigua: usa BLOCKED y solicita la evidencia faltante. Toda conclusion debe citar evidence_refs. Responde solo JSON con status, reason, confidence, evidence_refs, failed_expectations, missing_evidence y contradictions.", "position_x": 1400, "position_y": 120, "timeout_sec": 60},
+    {"key": "reporter", "type": "Reporter", "name": "Reporter", "agent_key": "UNIVERSAL_REPORTER", "agent_ref": "reporter", "prompt_template": "Construye el reporte final, resumen, metricas y trazabilidad para la ejecucion.", "position_x": 1620, "position_y": 120, "timeout_sec": 60}
+  ],
+  "edges": [
+    {"source": "context-resolver", "target": "pre-execution-analyst", "condition_type": "always", "priority": 10, "max_passes": 1},
+    {"source": "pre-execution-analyst", "target": "observer", "condition_type": "always", "priority": 10, "max_passes": 1},
+    {"source": "observer", "target": "auditor", "condition_type": "on_blocked", "condition_json": {"reason": "no_more_steps"}, "priority": 5, "max_passes": 1},
+    {"source": "observer", "target": "planner", "condition_type": "always", "priority": 20, "max_passes": 100},
+    {"source": "planner", "target": "security-guard", "condition_type": "always", "priority": 10, "max_passes": 100},
+    {"source": "security-guard", "target": "executor", "condition_type": "on_success", "priority": 10, "max_passes": 100},
+    {"source": "security-guard", "target": "recovery", "condition_type": "on_rejected", "priority": 20, "max_passes": 100},
+    {"source": "executor", "target": "validator", "condition_type": "on_success", "priority": 10, "max_passes": 100},
+    {"source": "executor", "target": "recovery", "condition_type": "on_failed", "priority": 20, "max_passes": 100},
+    {"source": "validator", "target": "observer", "condition_type": "on_success", "priority": 10, "max_passes": 100},
+    {"source": "validator", "target": "recovery", "condition_type": "on_failed", "priority": 20, "max_passes": 100},
+    {"source": "recovery", "target": "observer", "condition_type": "retry_count_lt", "condition_json": {"max": 3}, "priority": 10, "max_passes": 100},
+    {"source": "recovery", "target": "auditor", "condition_type": "on_blocked", "priority": 20, "max_passes": 1},
+    {"source": "auditor", "target": "reporter", "condition_type": "always", "priority": 10, "max_passes": 1}
+  ]
+}

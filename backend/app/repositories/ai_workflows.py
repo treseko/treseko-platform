@@ -157,6 +157,8 @@ async def ensure_default_ai_workflow(db: AsyncSession, created_by: Optional[UUID
 
 async def list_ai_workflows(db: AsyncSession) -> List[models.AiWorkflow]:
     await ensure_default_ai_workflow(db)
+    from .ai_builtin_workflows import ensure_builtin_workflow_catalog
+    await ensure_builtin_workflow_catalog(db)
     result = await db.execute(
         select(models.AiWorkflow)
         .options(
@@ -288,6 +290,9 @@ async def create_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowCreate
         workflow_format=payload.workflow_format,
         workflow_purpose=payload.workflow_purpose,
         source_workflow_id=payload.source_workflow_id,
+        provider_profile_id=payload.provider_profile_id,
+        fallback_profile_ids=[str(item) for item in payload.fallback_profile_ids],
+        decision_policy_json=payload.decision_policy_json,
         created_by=user_id,
     )
     db.add(workflow)
@@ -321,6 +326,12 @@ async def update_ai_workflow(db: AsyncSession, workflow_id: UUID, payload: schem
         raise ValueError("El formato del workflow es inmutable; crea una copia para cambiar de generacion.")
     if payload.workflow_purpose is not None and payload.workflow_purpose != workflow.workflow_purpose:
         raise ValueError("El propósito del workflow es inmutable; crea un workflow dedicado.")
+    if "provider_profile_id" in payload.model_fields_set:
+        workflow.provider_profile_id = payload.provider_profile_id
+    if payload.fallback_profile_ids is not None:
+        workflow.fallback_profile_ids = [str(item) for item in payload.fallback_profile_ids]
+    if payload.decision_policy_json is not None:
+        workflow.decision_policy_json = payload.decision_policy_json
     if payload.nodes is not None or payload.edges is not None:
         await _replace_workflow_graph(db, workflow, payload.nodes or [], payload.edges or [], user_id, payload.changelog or "Guardado draft")
     await db.flush()
@@ -341,6 +352,9 @@ async def duplicate_ai_workflow(db: AsyncSession, workflow_id: UUID, user_id: Op
         workflow_format=source.workflow_format or "legacy_v1",
         workflow_purpose=source.workflow_purpose or "test_execution",
         source_workflow_id=source.source_workflow_id,
+        provider_profile_id=source.provider_profile_id,
+        fallback_profile_ids=source.fallback_profile_ids or [],
+        decision_policy_json=source.decision_policy_json or {},
         created_by=user_id,
     )
     db.add(workflow)
@@ -401,6 +415,9 @@ async def copy_ai_workflow_as_blocks(db: AsyncSession, workflow_id: UUID, user_i
         workflow_format="block_v2",
         workflow_purpose=source.workflow_purpose or "test_execution",
         source_workflow_id=source.id,
+        provider_profile_id=source.provider_profile_id,
+        fallback_profile_ids=list(source.fallback_profile_ids or []),
+        decision_policy_json=dict(source.decision_policy_json or {}),
         created_by=user_id,
     )
     db.add(workflow)
@@ -449,6 +466,9 @@ async def copy_ai_workflow_as_universal(db: AsyncSession, workflow_id: UUID, use
         workflow_format="universal_v2",
         workflow_purpose=source.workflow_purpose or "test_execution",
         source_workflow_id=source.id,
+        provider_profile_id=source.provider_profile_id,
+        fallback_profile_ids=list(source.fallback_profile_ids or []),
+        decision_policy_json=dict(source.decision_policy_json or {}),
         created_by=user_id,
     )
     db.add(workflow)
@@ -562,6 +582,7 @@ async def restore_default_ai_workflow(db: AsyncSession, workflow_id: UUID, user_
     active_workflows = (await db.execute(
         select(models.AiWorkflow).filter(
             models.AiWorkflow.status == "ACTIVE",
+            models.AiWorkflow.workflow_purpose == workflow.workflow_purpose,
             models.AiWorkflow.id != workflow.id,
         )
     )).scalars().all()
@@ -570,8 +591,12 @@ async def restore_default_ai_workflow(db: AsyncSession, workflow_id: UUID, user_
     workflow.status = "ACTIVE"
     await create_ai_workflow_version(db, workflow, "Restauracion de workflow default", user_id)
     config = await get_ai_engine_config(db)
-    config["active_workflow_id"] = workflow.id
-    config["agent_workflow"] = _legacy_agent_workflow_from_definition(_workflow_definition(await _load_workflow(db, workflow.id)))
+    active_workflow_ids = dict(config.get("active_workflow_ids") or {})
+    active_workflow_ids[workflow.workflow_purpose] = workflow.id
+    config["active_workflow_ids"] = active_workflow_ids
+    if workflow.workflow_purpose == "test_execution":
+        config["active_workflow_id"] = workflow.id
+        config["agent_workflow"] = _legacy_agent_workflow_from_definition(_workflow_definition(await _load_workflow(db, workflow.id)))
     setting = (await db.execute(select(models.AppSetting).filter(models.AppSetting.key == AI_ENGINE_CONFIG_KEY))).scalar_one_or_none()
     if setting:
         setting.value = _json_safe(config)

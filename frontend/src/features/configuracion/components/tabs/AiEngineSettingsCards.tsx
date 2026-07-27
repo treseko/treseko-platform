@@ -1,8 +1,11 @@
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
+import { useState } from 'react'
 import { Activity, Brain, Code2, Eye, GitBranch, KeyRound, Network, RefreshCw, Settings2, Terminal, Wrench } from 'lucide-react'
 import { formatDateTime } from '../../../../shared/utils/dateTime'
 import type { AiProviderOption } from '../../mappers/configuracionMappers'
 import type { AiWorkflow } from '../../types/configuracion'
+import type { FetchWithAuth } from '../../api/configuracionApi'
+import { AiProviderProfilesPanel } from './AiProviderProfilesPanel'
 
 type Props = {
   aiEngineConfig: any
@@ -20,14 +23,17 @@ type Props = {
   capabilityVariant: (enabled: boolean) => string
   updateActiveModelCapability: (key: string, value: any) => void
   aiEngineHealth: any
-  checkAiEngineHealth: () => void
-  workflowDraft: AiWorkflow | null
+  checkAiEngineHealth: (options?: { silent?: boolean }) => Promise<any>
+  aiWorkflows: AiWorkflow[]
+  onSelectWorkflow: (workflowId: string) => void
   workflowLoadError: string
   agentPresetsError: string
   workflowStatusColor: (status?: string) => string
   formatWorkflowDate: (value?: string) => string
   onOpenWorkflowBuilder: () => void
   onOpenLogs: () => void
+  fetchWithAuth: FetchWithAuth
+  showFeedback: (title: string, message: string, variant?: string) => void
 }
 
 const capabilityItems = [
@@ -105,49 +111,70 @@ export function AiEngineSettingsCards({
   updateActiveModelCapability,
   aiEngineHealth,
   checkAiEngineHealth,
-  workflowDraft,
+  aiWorkflows,
+  onSelectWorkflow,
   workflowLoadError,
   agentPresetsError,
   workflowStatusColor,
   formatWorkflowDate,
   onOpenWorkflowBuilder,
   onOpenLogs,
+  fetchWithAuth,
+  showFeedback,
 }: Props) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const providerRequiresKey = Boolean(aiEngineConfig.last_model_scan_requires_api_key ?? selectedProviderMeta.requiresApiKey)
   const providerKeyEnv = aiEngineConfig.last_model_scan_api_key_env || selectedProviderMeta.apiKeyEnv
   const providerKeyEntry = aiEngineConfig.provider_api_keys?.[selectedRuntimeProvider] || {}
-  const providerKeyValue = providerKeyEntry.api_key === '[redacted]' ? '' : (providerKeyEntry.api_key || '')
   const providerKeyConfigured = Boolean(aiEngineConfig.provider_api_key_configured || aiEngineConfig.last_model_scan_api_key_configured || providerKeyEntry.api_key)
   const providerKeySource = aiEngineConfig.provider_api_key_source === 'env' ? 'entorno' : providerKeyConfigured ? 'Treseko' : null
   const activeCatalogItem = modelCatalog.find((item: any) => item?.id === aiEngineConfig.model || item?.name === aiEngineConfig.model)
   const kindLabel = selectedProviderMeta.kind === 'local' ? 'Local' : selectedProviderMeta.kind === 'cloud' ? 'Cloud' : 'Compatible'
-  const engineOnline = aiEngineHealth?.status === 'ok'
-  const engineStatusLabel = aiEngineHealth?.status ? (engineOnline ? 'Online' : 'Offline') : 'Sin verificar'
-  const engineStatusTone = aiEngineHealth?.status ? (engineOnline ? 'success' : 'danger') : 'secondary'
-  const workflowAgents = workflowDraft?.nodes?.length || (Array.isArray(aiEngineConfig.agent_workflow) ? aiEngineConfig.agent_workflow.length : 0)
-  const workflowEdges = workflowDraft?.edges?.length || 0
+  const rawEngineStatus = String(aiEngineHealth?.status || '').toLowerCase()
+  const engineProcessStatus = String(aiEngineHealth?.engine?.engine?.status || aiEngineHealth?.engine?.status || '').toLowerCase()
+  const llmStatusCode = aiEngineHealth?.engine?.llm?.status_code
+  const engineProcessOnline = ['ok', 'online', 'healthy'].includes(engineProcessStatus) || Boolean(aiEngineHealth?.engine?.engine?.version)
+  const llmOnline = typeof llmStatusCode === 'number' ? llmStatusCode < 400 : rawEngineStatus === 'ok'
+  const engineOnline = rawEngineStatus === 'ok'
+  const engineDegraded = !engineOnline && engineProcessOnline
+  const engineStatusLabel = !aiEngineHealth
+    ? 'Verificando'
+    : engineOnline
+      ? 'Online'
+      : engineDegraded
+        ? 'Degradado'
+        : 'Offline'
+  const engineStatusTone = engineOnline
+    ? 'success'
+    : engineDegraded || !aiEngineHealth
+      ? 'warning'
+      : 'danger'
   const scanLabel = formatDateTime(aiEngineConfig.last_model_scan_at) || 'Sin auto-scan'
   const promptCost = Number(aiEngineConfig.token_cost_prompt_per_1k ?? 0)
   const completionCost = Number(aiEngineConfig.token_cost_completion_per_1k ?? 0)
   const totalCost = Number(aiEngineConfig.token_cost_per_1k ?? 0)
   const hasCostData = promptCost > 0 || completionCost > 0 || totalCost > 0
-
-  const updateProviderApiKey = (apiKey: string) => {
-    const providerApiKeys = aiEngineConfig.provider_api_keys || {}
+  const workflowUses = [
+    { purpose: 'test_execution', label: 'Ejecución de pruebas' },
+    { purpose: 'story_generation', label: 'Generación de historias' },
+    { purpose: 'test_case_generation', label: 'Generación de casos' },
+  ] as const
+  const activeWorkflowsByPurpose = (purpose: typeof workflowUses[number]['purpose']) => aiWorkflows.filter(
+    workflow => workflow.status === 'ACTIVE' && workflow.workflow_purpose === purpose,
+  )
+  const selectedWorkflowIdForPurpose = (purpose: typeof workflowUses[number]['purpose']) => (
+    aiEngineConfig.active_workflow_ids?.[purpose]
+    || (purpose === 'test_execution' ? aiEngineConfig.active_workflow_id : '')
+    || activeWorkflowsByPurpose(purpose)[0]?.id
+    || ''
+  )
+  const selectWorkflowForPurpose = (purpose: typeof workflowUses[number]['purpose'], workflowId: string) => {
     setAiEngineConfig({
       ...aiEngineConfig,
-      provider_api_keys: {
-        ...providerApiKeys,
-        [selectedRuntimeProvider]: {
-          ...(providerApiKeys[selectedRuntimeProvider] || {}),
-          api_key: apiKey,
-          updated_at: new Date().toISOString(),
-        },
-      },
-      provider_api_key_configured: Boolean(apiKey),
-      provider_api_key_source: apiKey ? 'stored' : null,
-      last_model_scan_api_key_configured: Boolean(apiKey),
+      active_workflow_ids: { ...(aiEngineConfig.active_workflow_ids || {}), [purpose]: workflowId },
+      ...(purpose === 'test_execution' ? { active_workflow_id: workflowId } : {}),
     })
+    onSelectWorkflow(workflowId)
   }
 
   return (
@@ -155,12 +182,14 @@ export function AiEngineSettingsCards({
       <div className="border rounded-3 bg-light px-3 py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div className="d-flex flex-wrap align-items-center gap-2">
           <StatusPill label="Motor IA" value={engineStatusLabel} tone={engineStatusTone as any} />
+          <StatusPill label="Ejecución" value={aiEngineConfig.ai_execution_driver === 'opencode' ? 'OpenCode' : 'Treseko'} tone="primary" />
           <StatusPill label="Proveedor" value={selectedProviderMeta.label} tone="primary" />
           <StatusPill label="Modelo" value={truncateMiddle(aiEngineConfig.model || 'Sin modelo')} />
           <StatusPill label="Scan" value={scanLabel} />
+          <StatusPill label="Estado" value={engineStatusLabel} tone={engineStatusTone as any} />
         </div>
         <div className="d-flex flex-wrap gap-2">
-          <Button variant="outline-primary" size="sm" className="fw-bold" type="button" onClick={checkAiEngineHealth}>
+          <Button variant="outline-primary" size="sm" className="fw-bold" type="button" onClick={() => checkAiEngineHealth()}>
             <Activity size={15} className="me-1" /> Verificar
           </Button>
           <Button variant="outline-secondary" size="sm" className="fw-bold" type="button" onClick={onOpenLogs}>
@@ -172,171 +201,99 @@ export function AiEngineSettingsCards({
       <SectionCard>
         <div className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
           <div>
-            <h6 className="fw-bold m-0">Proveedor y modelo</h6>
-            <div className="small text-muted">Configuracion usada por nuevas ejecuciones con IA.</div>
+            <h6 className="fw-bold m-0">Proveedor activo</h6>
+            <div className="small text-muted">Elegí el proveedor, modelo y credencial dentro de su perfil. Solo un perfil puede estar activo.</div>
           </div>
-          {canEditAi && (
-            <Button type="button" variant="outline-primary" size="sm" className="fw-bold" disabled={modelScanLoading} onClick={scanAiModels}>
-              <RefreshCw size={15} className="me-1" /> {modelScanLoading ? 'Escaneando...' : 'Auto-scan modelos'}
-            </Button>
-          )}
         </div>
+        <AiProviderProfilesPanel
+          fetchWithAuth={fetchWithAuth}
+          canEdit={canEditAi}
+          showFeedback={showFeedback}
+          activeConfig={aiEngineConfig}
+          onActiveConfig={setAiEngineConfig}
+        />
+      </SectionCard>
 
-        <Row className="g-3">
-          <Col lg={4}>
-            <Form.Label className="fw-bold small text-muted">Proveedor</Form.Label>
-            <Form.Select value={selectedRuntimeProvider} disabled={!canEditAi} onChange={(e) => updateAiRuntimeProvider(e.target.value)}>
-              {aiProviderOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Form.Select>
-            <div className="d-flex flex-wrap gap-1 mt-2">
-              <Badge bg={selectedProviderMeta.kind === 'local' ? 'success' : selectedProviderMeta.kind === 'cloud' ? 'primary' : 'secondary'}>{kindLabel}</Badge>
-              <Badge bg={providerRequiresKey ? (providerKeyConfigured ? 'success' : 'warning') : 'light'} text={providerRequiresKey ? undefined : 'dark'} className={providerRequiresKey ? '' : 'border'}>
-                <KeyRound size={12} className="me-1" />
-                {providerRequiresKey ? (providerKeyConfigured ? `Key configurada${providerKeySource ? ` (${providerKeySource})` : ''}` : `Requiere ${providerKeyEnv || 'API_KEY'}`) : 'Sin key'}
-              </Badge>
-            </div>
-          </Col>
-          <Col lg={8}>
-            <Form.Label className="fw-bold small text-muted">Endpoint</Form.Label>
-            <Form.Control
-              value={aiEngineConfig.llm_endpoint || ''}
-              disabled={!canEditAi}
-              onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, llm_endpoint: e.target.value })}
-              placeholder={selectedProviderMeta.defaultEndpoint}
-            />
-          </Col>
+      <SectionCard>
+        <button type="button" className="btn btn-link text-decoration-none p-0 w-100 text-start" onClick={() => setShowAdvanced(value => !value)} aria-expanded={showAdvanced}>
+          <span className="d-flex justify-content-between align-items-center">
+            <span><Settings2 size={17} className="text-primary me-2" /><span className="fw-bold">Opciones avanzadas</span><Badge bg="warning" text="dark" className="ms-2">Experimental</Badge><span className="d-block small text-muted ms-4">Workflows, límites, capacidades, costos y diagnóstico detallado.</span></span>
+            <span aria-hidden="true">{showAdvanced ? '▲' : '▼'}</span>
+          </span>
+        </button>
+      </SectionCard>
 
-          {providerRequiresKey && (
-            <Col xs={12}>
-              <Form.Label className="fw-bold small text-muted">API key del proveedor</Form.Label>
-              <div className="d-flex flex-column flex-lg-row gap-2">
-                <Form.Control
-                  type="password"
-                  autoComplete="off"
-                  value={providerKeyValue}
-                  disabled={!canEditAi}
-                  onChange={(event) => updateProviderApiKey(event.target.value)}
-                  placeholder={providerKeyConfigured ? 'Key guardada. Escribe una nueva para reemplazarla.' : `Pega ${providerKeyEnv || 'la API key'} de ${selectedProviderMeta.label}`}
-                />
-                <Button type="button" variant="outline-secondary" disabled={!canEditAi || !providerKeyConfigured} onClick={() => updateProviderApiKey('')}>
-                  Quitar
-                </Button>
-              </div>
-              <div className="small text-muted mt-1">Se guarda por proveedor en el backend y no se vuelve a mostrar completa.</div>
-            </Col>
-          )}
-
-          <Col lg={5}>
-            <Form.Label className="fw-bold small text-muted">Modelo</Form.Label>
-            {modelCatalog.length > 0 ? (
-              <Form.Select id="ai-model-control" value={aiEngineConfig.model || ''} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, model: e.target.value })}>
-                {!activeCatalogItem && aiEngineConfig.model && <option value={aiEngineConfig.model}>{aiEngineConfig.model} (manual)</option>}
-                {modelCatalog.map((item: any) => (
-                  <option key={item.id || item.name} value={item.id || item.name}>{item.name || item.id}</option>
-                ))}
-              </Form.Select>
-            ) : (
-              <Form.Control
-                id="ai-model-control"
-                value={aiEngineConfig.model || ''}
-                disabled={!canEditAi}
-                onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, model: e.target.value })}
-                placeholder={selectedProviderMeta.defaultModel}
-              />
-            )}
-            <div className="small text-muted mt-1">
-              {modelCatalog.length > 0 ? `${modelCatalog.length} modelos disponibles. Fuente: ${activeCatalogItem?.source === 'detected' ? 'detectado' : activeCatalogItem?.source || 'preset/manual'}.` : 'Ejecuta auto-scan o escribe el ID exacto del proveedor.'}
-            </div>
-          </Col>
-          <Col lg={2} md={4}>
-            <Form.Label className="fw-bold small text-muted">Temperatura</Form.Label>
-            <Form.Control type="number" min={0} max={2} step={0.1} value={aiEngineConfig.temperature} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, temperature: Number(e.target.value) })} />
-          </Col>
-          <Col lg={2} md={4}>
-            <Form.Label className="fw-bold small text-muted">Ventana contexto</Form.Label>
-            <Form.Control type="number" min={0} value={Number(activeModelCapabilities.context_window || 0)} disabled={!canEditAi} onChange={(event) => updateActiveModelCapability('context_window', Number(event.target.value))} />
-          </Col>
-          <Col lg={3} md={4}>
-            <Form.Label className="fw-bold small text-muted">Ultimo scan</Form.Label>
-            <div className="d-flex flex-column gap-1">
-              <Badge bg={aiEngineConfig.last_model_scan_status === 'ok' ? 'success' : aiEngineConfig.last_model_scan_status === 'error' ? 'danger' : aiEngineConfig.last_model_scan_status === 'empty' ? 'warning' : 'secondary'} className="align-self-start">
-                {aiEngineConfig.last_model_scan_status === 'ok' ? 'OK' : aiEngineConfig.last_model_scan_status === 'error' ? 'Error' : aiEngineConfig.last_model_scan_status === 'empty' ? 'Sin modelos' : 'Manual'}
-              </Badge>
-              <span className="small text-muted">{scanLabel}</span>
-            </div>
-          </Col>
-
-          <Col xs={12}>
-            <div className="border rounded-3 bg-light p-3">
-              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                <div>
-                  <div className="fw-bold small text-muted text-uppercase">Capacidades</div>
-                  <div className="small text-muted">Disponibilidad visible del modelo activo.</div>
+      {showAdvanced && workflowUses.map(({ purpose, label }) => {
+        const options = activeWorkflowsByPurpose(purpose)
+        const workflow = aiWorkflows.find(item => item.id === selectedWorkflowIdForPurpose(purpose)) || null
+        const workflowAgents = workflow?.nodes?.length || 0
+        const workflowEdges = workflow?.edges?.length || 0
+        return (
+          <SectionCard key={purpose}>
+            <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
+              <div>
+                <div className="small text-uppercase text-muted fw-bold mb-1">Workflow IA</div>
+                <Form.Label className="small fw-bold mb-1" htmlFor={`workflow-${purpose}`}>{label}</Form.Label>
+                <Form.Select id={`workflow-${purpose}`} className="mb-1" value={workflow?.id || ''} onChange={(event) => selectWorkflowForPurpose(purpose, event.target.value)} disabled={!canEditAi || options.length === 0}>
+                  {options.length === 0 && <option value="">Sin workflow activo</option>}
+                  {options.map(item => <option key={item.id} value={item.id}>{item.name} · v{item.version} · {item.status}</option>)}
+                </Form.Select>
+                <div className="small text-muted mb-2">Selecciona el workflow que se usará para {label.toLowerCase()} y guárdalo con la configuración.</div>
+                <div className="small text-muted">
+                  {workflowAgents} agentes, {workflowEdges} conexiones, version v{workflow?.version || 1}
+                  {workflow?.updated_at || workflow?.created_at ? `, actualizado ${formatWorkflowDate(workflow?.updated_at || workflow?.created_at)}` : ''}
                 </div>
-                <Badge bg="light" text="dark" className="border">{activeModelCapabilities.source === 'detected' ? 'Detectado' : activeModelCapabilities.source || 'Manual'}</Badge>
               </div>
               <div className="d-flex flex-wrap gap-2">
-                {capabilityItems.map(({ key, label, icon }) => (
-                  <CapabilityBadge
-                    key={key}
-                    label={label}
-                    icon={icon}
-                    enabled={Boolean((activeModelCapabilities as any)[key])}
-                    canEdit={canEditAi}
-                    variant={capabilityVariant(Boolean((activeModelCapabilities as any)[key]))}
-                    onToggle={() => updateActiveModelCapability(key, !Boolean((activeModelCapabilities as any)[key]))}
-                  />
-                ))}
+                <Badge bg={workflowStatusColor(workflow?.status)} className="align-self-center">{workflow?.status || 'SIN WORKFLOW'}</Badge>
+                {workflow?.status === 'ACTIVE' && <Badge bg="success" className="align-self-center">PUBLICADO</Badge>}
+                <Button size="sm" variant="outline-primary" className="fw-bold" type="button" disabled={!workflow} onClick={() => { if (workflow) onSelectWorkflow(workflow.id); onOpenWorkflowBuilder() }}>
+                  <Network size={15} className="me-1" /> {canEditAi ? 'Editar workflow' : 'Ver workflow'}
+                </Button>
+                <Button size="sm" variant="outline-secondary" className="fw-bold" type="button" disabled={!workflow} onClick={() => { if (workflow) onSelectWorkflow(workflow.id); onOpenWorkflowBuilder() }}>
+                  <GitBranch size={15} className="me-1" /> Ver diagrama
+                </Button>
               </div>
-              <Form.Control className="mt-3" value={activeModelCapabilities.notes || ''} disabled={!canEditAi} onChange={(event) => updateActiveModelCapability('notes', event.target.value)} placeholder="Notas de capacidades, validaciones manuales o limites del proveedor." />
-              {modelScanError && <div className="small text-danger mt-2">{modelScanError}</div>}
             </div>
-          </Col>
-        </Row>
-      </SectionCard>
-
-      <SectionCard>
-        <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
-          <div>
-            <div className="small text-uppercase text-muted fw-bold mb-1">Workflow IA</div>
-            <h6 className="fw-bold mb-1">{workflowDraft?.name || 'Sin workflow cargado'}</h6>
-            <div className="small text-muted">
-              {workflowAgents} agentes, {workflowEdges} conexiones, version v{workflowDraft?.version || 1}
-              {workflowDraft?.updated_at || workflowDraft?.created_at ? `, actualizado ${formatWorkflowDate(workflowDraft?.updated_at || workflowDraft?.created_at)}` : ''}
-            </div>
-          </div>
-          <div className="d-flex flex-wrap gap-2">
-            <Badge bg={workflowStatusColor(workflowDraft?.status)} className="align-self-center">{workflowDraft?.status || 'DRAFT'}</Badge>
-            <Button size="sm" variant="outline-primary" className="fw-bold" type="button" disabled={!workflowDraft} onClick={onOpenWorkflowBuilder}>
-              <Network size={15} className="me-1" /> {canEditAi ? 'Editar workflow' : 'Ver workflow'}
-            </Button>
-            <Button size="sm" variant="outline-secondary" className="fw-bold" type="button" disabled={!workflowDraft} onClick={onOpenWorkflowBuilder}>
-              <GitBranch size={15} className="me-1" /> Ver diagrama
-            </Button>
-          </div>
+          </SectionCard>
+        )
+      })}
+      {(workflowLoadError || agentPresetsError) && (
+        <div className="border rounded-3 bg-warning-subtle text-warning-emphasis small p-3">
+          {workflowLoadError && <div><span className="fw-bold">Workflows IA:</span> {workflowLoadError}</div>}
+          {agentPresetsError && <div><span className="fw-bold">Presets IA:</span> {agentPresetsError}</div>}
         </div>
-        {(workflowLoadError || agentPresetsError) && (
-          <div className="border rounded-3 bg-warning-subtle text-warning-emphasis small p-3 mt-3">
-            {workflowLoadError && <div><span className="fw-bold">Workflows IA:</span> {workflowLoadError}</div>}
-            {agentPresetsError && <div><span className="fw-bold">Presets IA:</span> {agentPresetsError}</div>}
-          </div>
-        )}
-      </SectionCard>
+      )}
 
-      <SectionCard>
+      {showAdvanced && <SectionCard>
+        <div className="d-flex flex-column gap-3 mb-4">
+          <div><h6 className="fw-bold mb-1">Motor de ejecución</h6><div className="small text-muted">Treseko conserva el control del navegador y valida todas las acciones.</div></div>
+          <Form.Select value={aiEngineConfig.ai_execution_driver || 'treseko_engine'} disabled={!canEditAi} onChange={e => setAiEngineConfig({ ...aiEngineConfig, ai_execution_driver: e.target.value })}>
+            <option value="treseko_engine">Motor Treseko</option><option value="opencode">OpenCode</option>
+          </Form.Select>
+          {aiEngineConfig.ai_execution_driver === 'opencode' && <div className="small text-info">OpenCode reutiliza automáticamente el proveedor, modelo y credencial configurados en “Pruebas con IA”.</div>}
+        </div>
         <details>
           <summary className="d-flex justify-content-between align-items-center gap-3" role="button">
             <span>
               <span className="d-flex align-items-center gap-2 fw-bold"><Settings2 size={18} className="text-primary" /> Configuracion avanzada</span>
-              <span className="d-block small text-muted mt-1">Viewport, timeout, paralelismo y modo de navegador.</span>
+              <span className="d-block small text-muted mt-1">Límites de generación, viewport, timeout, paralelismo y modo de navegador.</span>
             </span>
           </summary>
           <Row className="g-3 align-items-end mt-2">
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">Timeout seg</Form.Label>
               <Form.Control type="number" min={30} max={7200} value={aiEngineConfig.timeout_seconds} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, timeout_seconds: Number(e.target.value) })} />
+            </Col>
+            <Col md={3}>
+              <Form.Label className="fw-bold small text-muted">Contexto operativo</Form.Label>
+              <Form.Control type="number" min={1024} max={2000000} step={1024} value={Number(aiEngineConfig.context_window_tokens ?? 8192)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, context_window_tokens: Number(e.target.value) })} />
+              <div className="small text-muted mt-1">Tokens que el proveedor tiene configurados para atender solicitudes.</div>
+            </Col>
+            <Col md={3}>
+              <Form.Label className="fw-bold small text-muted">Salida máxima de historias</Form.Label>
+              <Form.Control type="number" min={256} max={20000} step={128} value={Number(aiEngineConfig.max_completion_tokens ?? 4096)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, max_completion_tokens: Number(e.target.value) })} />
+              <div className="small text-muted mt-1">Tokens reservados para cada respuesta estructurada de generación.</div>
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">Ancho viewport</Form.Label>
@@ -355,9 +312,9 @@ export function AiEngineSettingsCards({
             </Col>
           </Row>
         </details>
-      </SectionCard>
+      </SectionCard>}
 
-      <SectionCard>
+      {showAdvanced && <SectionCard>
         <details>
           <summary className="d-flex justify-content-between align-items-center gap-3" role="button">
             <span>
@@ -381,25 +338,29 @@ export function AiEngineSettingsCards({
             </Col>
           </Row>
         </details>
-      </SectionCard>
+      </SectionCard>}
 
-      <SectionCard>
+      {showAdvanced && <SectionCard>
         <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
             <div className="small text-uppercase text-muted fw-bold mb-1">Diagnostico</div>
             <h6 className="fw-bold mb-1">Estado: {engineStatusLabel}</h6>
-            <div className="small text-muted">{aiEngineHealth?.detail || 'Ejecuta una verificacion para confirmar conectividad, modelo y respuesta del motor.'}</div>
+            <div className="small text-muted">
+              {aiEngineHealth?.detail || (aiEngineHealth
+                ? `Engine ${aiEngineHealth?.engine?.engine?.version || 'activo'}${llmOnline ? ' y modelo disponible.' : '; revisa el proveedor/modelo configurado.'}`
+                : 'Verificando conectividad, modelo y respuesta del motor.')}
+            </div>
           </div>
           <div className="d-flex flex-wrap gap-2">
             <Button variant="outline-secondary" size="sm" className="fw-bold" type="button" onClick={onOpenLogs}>
               <Terminal size={15} className="me-1" /> Ver logs
             </Button>
-            <Button variant="primary" size="sm" className="fw-bold" type="button" onClick={checkAiEngineHealth}>
+            <Button variant="primary" size="sm" className="fw-bold" type="button" onClick={() => checkAiEngineHealth()}>
               <RefreshCw size={15} className="me-1" /> Reintentar
             </Button>
           </div>
         </div>
-      </SectionCard>
+      </SectionCard>}
     </div>
   )
 }

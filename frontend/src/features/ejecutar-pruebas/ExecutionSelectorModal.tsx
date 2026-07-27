@@ -18,8 +18,6 @@ type ExecutionSelectorModalProps = {
   isOutdatedExecutionCase: (test: any) => boolean
   onShowDatasetHelp: () => void
   onStart: (mode: 'manual' | 'automated' | 'ia') => void
-  automationDebugMode: boolean
-  setAutomationDebugMode: (value: boolean) => void
   canStartManualExecution: boolean
   canUseAutomatedExecution: boolean
   canUseIaExecution: boolean
@@ -44,8 +42,6 @@ export function ExecutionSelectorModal({
   isOutdatedExecutionCase,
   onShowDatasetHelp,
   onStart,
-  automationDebugMode,
-  setAutomationDebugMode,
   canStartManualExecution,
   canUseAutomatedExecution,
   canUseIaExecution,
@@ -185,7 +181,7 @@ export function ExecutionSelectorModal({
           )}
         </div>
 
-        <Button variant="outline-success" className="p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? 'No tienes permiso para iniciar ejecuciones manuales' : undefined} onClick={() => onStart('manual')}>
+        <Button variant="outline-success" className="execution-mode-option execution-mode-option--manual p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? 'No tienes permiso para iniciar ejecuciones manuales' : undefined} onClick={() => onStart('manual')}>
           <div className="d-flex align-items-center gap-3">
             <PlayCircle size={32} className="text-success" />
             <div>
@@ -202,19 +198,9 @@ export function ExecutionSelectorModal({
           </Alert>
         )}
 
-        <Form.Check
-          type="switch"
-          id="automation-debug-mode"
-          checked={automationDebugMode}
-          onChange={event => setAutomationDebugMode(event.target.checked)}
-          label="Modo debug visual: abrir navegador visible en la maquina del worker"
-          className="small text-muted"
-          disabled={executionLoading || !canUseAutomatedExecution}
-        />
-
         <Button
           variant="outline-secondary"
-          className="p-3 text-start border-2 shadow-sm shadow-none"
+          className="execution-mode-option execution-mode-option--automated p-3 text-start border-2 shadow-sm shadow-none"
           disabled={executionLoading || !canUseAutomatedExecution}
           title={!canUseAutomatedExecution ? 'No tienes permiso para usar workers automatizados' : undefined}
           onClick={() => onStart('automated')}
@@ -235,7 +221,7 @@ export function ExecutionSelectorModal({
           </Alert>
         )}
 
-        <Button variant="outline-primary" className="p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? 'Ejecucion IA no habilitada en esta instancia' : 'No tienes permiso para iniciar ejecuciones IA') : undefined} onClick={onScheduleIa}>
+        <Button variant="outline-primary" className="execution-mode-option execution-mode-option--ia p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? 'Ejecucion IA no habilitada en esta instancia' : 'No tienes permiso para iniciar ejecuciones IA') : undefined} onClick={onScheduleIa}>
           <div className="d-flex align-items-center gap-3 text-primary">
             <Cpu size={32} className="text-primary" />
             <div>

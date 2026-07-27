@@ -1,9 +1,9 @@
-import { Alert } from 'react-bootstrap'
 import { Code } from 'lucide-react'
 import { AutomationCodesPanel } from './components/AutomationCodesPanel'
 import { FuncionesManager } from './components/FuncionesManager'
 import { WorkersManager } from './components/WorkersManager'
 import { PremiumGate } from '../premium/PremiumGate'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { featureEnabled, type FeatureLookup } from '../premium/featureAccess'
 
 type AutomatizacionPageProps = {
@@ -53,11 +53,21 @@ export function AutomatizacionPage({
   const multiWorkerEnabled = featureEnabled(hasSystemFeature, 'automation.multi_worker')
   const schedulerEnabled = featureEnabled(hasSystemFeature, 'automation.scheduler')
   const canReadWorkers = canUseCapability('automatizacion.workers', 'read')
-  const canEditWorkers = canUseCapability('automatizacion.workers', 'edit') && multiWorkerEnabled
+  const canPairWorkers = canUseCapability('automatizacion.workers', 'edit')
+  const canEditWorkers = canPairWorkers && multiWorkerEnabled
   const canReadJobs = canUseCapability('automatizacion.jobs', 'read') && schedulerEnabled
   const canReadFunctions = canUseCapability('automatizacion.funciones', 'read')
   const canEditFunctions = canUseCapability('automatizacion.funciones', 'edit')
   const canReadValidation = canUseCapability('automatizacion.validacion_scripts', 'read')
+
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="Las opciones de automatización aparecerán cuando tengas un proyecto seleccionado. Para ejecutar jobs sobre una build, seleccioná también una build activa."
+      />
+    )
+  }
 
   return (
     <div className="p-4 animate__animated animate__fadeIn text-dark text-start">
@@ -67,12 +77,7 @@ export function AutomatizacionPage({
         </h4>
       </div>
 
-      {!currentProjectId ? (
-        <Alert variant="warning">
-          Selecciona un proyecto para gestionar workers y funciones de automatizacion.
-        </Alert>
-      ) : (
-        <>
+      <>
           {(canReadWorkers || canReadJobs) && (
             <WorkersManager
               currentProjectId={currentProjectId}
@@ -81,6 +86,7 @@ export function AutomatizacionPage({
               fetchWithAuth={fetchWithAuth}
               showFeedback={showFeedback}
               canViewWorkers={canReadWorkers}
+              canPairWorkers={canPairWorkers}
               canManageWorkers={canEditWorkers}
               canViewJobs={canReadJobs}
               multiWorkerEnabled={multiWorkerEnabled}
@@ -92,7 +98,7 @@ export function AutomatizacionPage({
               feature="automation.multi_worker"
               hasFeature={hasSystemFeature}
               title="Workers distribuidos Premium"
-              description="Community permite un worker local basico. Premium habilita vinculacion, revocacion y administracion de multiples workers."
+              description="Community permite vincular un worker local por solución. Premium habilita múltiples workers y su administración distribuida."
               mode="card"
               className="mb-4"
             />
@@ -136,8 +142,7 @@ export function AutomatizacionPage({
               copyToClipboard={copyToClipboard}
             />
           )}
-        </>
-      )}
+      </>
     </div>
   )
 }

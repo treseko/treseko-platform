@@ -1,161 +1,51 @@
-# Integraciones, Plugins y RBAC
+# Integraciones y complementos
 
-Fecha: 2026-06-29
+Una integración conecta Treseko con un sistema externo. Un complemento agrega
+una capacidad dentro de Treseko. La sección **Complementos** muestra qué está
+incluido, disponible o próximo para tu edición.
 
-## Concepto
+## Usar integraciones
 
-Una integracion conecta Treseko con un sistema externo: Redmine, Jira, GitHub Issues, GitLab, Slack, Teams, Azure DevOps o CI/CD.
+Las integraciones permiten relacionar el trabajo de QA con herramientas como
+Redmine, Jira, GitHub Issues, GitLab, Azure DevOps o un pipeline CI/CD cuando
+la capacidad esté habilitada para tu instalación.
 
-Un plugin extiende Treseko con una capacidad nueva: importadores, exportadores, widgets, motores de metricas o generadores IA.
+1. Abrí **Configuración → Complementos** o la sección de integración
+   correspondiente.
+2. Revisá si la integración figura como incluida, disponible o Premium.
+3. Configurá solo las credenciales y datos autorizados por tu organización.
+4. Probá la conexión antes de usarla en un proyecto.
 
-Regla operativa:
+Treseko no muestra secretos ya guardados. Si actualizás un token, guardalo en
+la configuración de la integración y evitá copiarlo en casos, comentarios o
+evidencias.
 
-- Si conecta con un sistema externo, es una integracion.
-- Si agrega capacidades nuevas al producto, es un plugin.
-- Un plugin puede usar integraciones, pero una integracion no implica plugin.
+## Vincular bugs con herramientas externas
 
-## Alcance V1
+Desde el detalle de un bug podés preparar un resumen para copiar y pegar en una
+herramienta externa y guardar el identificador o enlace del ticket creado. La
+vinculación es explícita: Treseko no publica issues externos automáticamente.
 
-Esta pasada no implementa bug tracker completo, marketplace, instalacion dinamica de plugins ni ejecucion de codigo de terceros.
+Cada vínculo pertenece a un bug concreto. Si dos defectos necesitan tickets
+distintos, registrá un vínculo para cada uno.
 
-Queda preparado:
+## Complementos
 
-- Namespaces de RBAC para integraciones y plugins.
-- Registry estatico V1 de providers planificados.
-- Compatibilidad con `redmine` legacy.
-- Tablas base para PostgreSQL/SQLite mediante Alembic.
-- Documentacion para V2/V3.
+Los complementos incluidos amplían funciones como portabilidad de casos, Bug
+Tracker interno, Motor IA y generación asistida. La tienda también puede mostrar
+capacidades futuras o Premium; esas tarjetas informan su disponibilidad, no
+instalan código de terceros en segundo plano.
 
-## Namespaces
+## Permisos
 
-Integraciones core:
+La configuración de integraciones, secretos y complementos está restringida a
+roles autorizados. Si podés ver una integración pero no configurarla, pedí al
+administrador que revise tus permisos en Configuración.
 
-```text
-integraciones.catalogo
-integraciones.ver_estado
-integraciones.test_conexion
-integraciones.configurar
-integraciones.secretos
-integraciones.webhooks
-integraciones.auditoria
-```
+## Ayuda rápida
 
-Integraciones por provider:
-
-```text
-integraciones.provider.<provider_id>.<accion>
-```
-
-Ejemplos registrados:
-
-```text
-integraciones.provider.redmine.ver
-integraciones.provider.redmine.configurar
-integraciones.provider.redmine.reportar
-integraciones.provider.jira.reportar
-integraciones.provider.github_issues.vincular
-```
-
-Plugins core:
-
-```text
-plugins.catalogo
-plugins.instalar
-plugins.desinstalar
-plugins.habilitar
-plugins.configurar
-plugins.gestionar_secretos
-plugins.auditoria
-```
-
-Plugins por provider:
-
-```text
-plugins.provider.<plugin_id>.<capability>
-```
-
-Ejemplos registrados:
-
-```text
-plugins.provider.junit_importer.importar_resultados
-plugins.provider.excel_importer.importar_casos
-plugins.provider.custom_dashboard.agregar_widget
-plugins.provider.ai_case_generator.generar_casos
-```
-
-## Registry
-
-Backend:
-
-- `backend/app/services/integrations/registry.py`
-- `backend/app/services/plugins/registry.py`
-
-Funciones:
-
-- `get_registered_integrations()`
-- `get_registered_plugins()`
-- `get_registered_capabilities()`
-- `is_registered_capability(capability_id)`
-
-Los manifests son estaticos en V1. En V2/V3 pueden pasar a DB o a manifests instalados.
-
-## Compatibilidad Redmine legacy
-
-No se elimina el modulo legacy `redmine`.
-
-Alias efectivo:
-
-```text
-redmine:read
-  -> integraciones.provider.redmine.ver
-
-redmine:edit
-  -> integraciones.provider.redmine.ver
-  -> integraciones.provider.redmine.configurar
-  -> integraciones.provider.redmine.test_conexion
-  -> integraciones.provider.redmine.gestionar_secretos
-  -> integraciones.provider.redmine.reportar
-  -> integraciones.provider.redmine.vincular
-```
-
-Implementacion:
-
-- Backend: `backend/app/rbac_compat.py`
-- Frontend: `frontend/src/app/rbac/rbacCompat.ts`
-
-## Persistencia
-
-Tablas agregadas por Alembic:
-
-- `integration_providers`
-- `plugin_providers`
-- `integration_instances`
-- `integration_secrets`
-- `external_issue_links`
-- `webhook_events`
-
-Reglas de secretos:
-
-- No se exponen secretos al frontend.
-- `integration_instances.config_json` no debe guardar tokens reales.
-- `integration_instances.secrets_configured` solo indica presencia/configuracion.
-- `integration_secrets.secret_value_encrypted` queda para valores cifrados. Si no hay cifrado operativo, no guardar tokens reales.
-
-## V2/V3
-
-V2:
-
-- Bug tracker externo real.
-- Redmine primero.
-- Jira y GitHub Issues despues.
-- Vinculacion snapshot -> issue.
-- Deduplicacion real.
-- Estado visible de reporte.
-
-V3:
-
-- Manifests instalables.
-- Plugins habilitables/deshabilitables.
-- Capabilities dinamicas instaladas.
-- Pantallas/widgets extensibles.
-- Sandbox y auditoria avanzada.
+- Verificá la conexión antes de usar una integración con datos reales.
+- Usá una cuenta técnica con el menor alcance posible en la herramienta externa.
+- Revocá y reemplazá un token si se expone.
+- Consultá el estado de la licencia si una integración o complemento aparece
+  como Premium.

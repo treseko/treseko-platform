@@ -85,11 +85,19 @@ export function HistorialFilters({
         <Col md={2}>
           <Form.Control size="sm" type="number" min={1} placeholder="Version ejecutada" value={filters.version_executed} onChange={event => onUpdateFilter('version_executed', event.target.value)} />
         </Col>
-        <Col md={2}>
-          <Form.Control size="sm" type="date" value={filters.date_from} onChange={event => onUpdateFilter('date_from', event.target.value)} />
-        </Col>
-        <Col md={2}>
-          <Form.Control size="sm" type="date" value={filters.date_to} onChange={event => onUpdateFilter('date_to', event.target.value)} />
+        <Col md={3}>
+          <fieldset className="history-date-range border-0 p-0 m-0">
+            <div className="row g-1">
+              <Col>
+                <Form.Label htmlFor="historial-date-from" className="app-label text-muted mb-1">Desde</Form.Label>
+                <Form.Control id="historial-date-from" size="sm" type="date" aria-label="Fecha de ejecución desde" value={filters.date_from} onChange={event => onUpdateFilter('date_from', event.target.value)} />
+              </Col>
+              <Col>
+                <Form.Label htmlFor="historial-date-to" className="app-label text-muted mb-1">Hasta</Form.Label>
+                <Form.Control id="historial-date-to" size="sm" type="date" aria-label="Fecha de ejecución hasta" value={filters.date_to} onChange={event => onUpdateFilter('date_to', event.target.value)} />
+              </Col>
+            </div>
+          </fieldset>
         </Col>
         <Col md={2}>
           <Form.Select size="sm" value={filters.has_evidence} onChange={event => onUpdateFilter('has_evidence', event.target.value)}>

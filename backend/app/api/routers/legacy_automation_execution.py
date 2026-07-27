@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from ...main_context import *
+from ...main_context import _emit_ai_engine_unavailable_event
 from ...services.edition.entitlement_service import ensure_feature_enabled
 from ...services.edition.usage_limits import enforce_weekly_ai_execution_limit
 
@@ -27,6 +28,7 @@ async def trigger_ai_run(
         .outerjoin(models.Build, models.Build.id == models.TestRun.build_id)
         .join(models.Proyecto, models.Proyecto.id == models.TestRun.proyecto_id)
         .filter(models.EjecucionCaso.id == ejecucion_id)
+        .with_for_update()
     )
     row = result.first()
     if not row:
@@ -42,10 +44,13 @@ async def trigger_ai_run(
         raise HTTPException(status_code=409, detail="Esta prueba IA ya está en ejecución.")
     if run.origen == "IA" or caso.tipo_prueba == models.TipoPrueba.AUTOMATIZADA_AI:
         await ensure_feature_enabled(db, "ai.basic_execution")
+        ai_config = await crud.get_ai_engine_config(db)
+        workflow_definition = await crud.get_active_ai_workflow_definition(db)
+        provider_payload = await crud.provider_payload_for_definition(db, workflow_definition, ai_config)
         # Validar engine ANTES de mandar a background
         # Si el engine esta caido, el usuario tiene que saber ahora, no despues
         try:
-            health = await crud.check_ai_engine_health(db)
+            health = await crud.check_ai_engine_health(db, provider_payload)
             if health.get("status") != "ok":
                 error_detail = health.get('detail', 'Motor IA no responde')
                 await _emit_ai_engine_unavailable_event(
@@ -152,8 +157,24 @@ async def trigger_ai_run(
             execution_id=ejecucion.id,
             payload={"status": "started"},
         )
-        background_tasks.add_task(crud.trigger_ai_execution_background, ejecucion_id=ejecucion_id)
-        return {"message": "Ejecucion por IA iniciada en segundo plano", "mode": "IA"}
+        from ...services.ai_execution_queue import enqueue_ai_execution
+        job = await enqueue_ai_execution(db, ejecucion, current_user.id)
+        await db.commit()
+        await realtime_event_bus.publish(
+            run.proyecto_id,
+            "ia.execution.queued",
+            actor_id=current_user.id,
+            component_id=build.componente_id if build else caso.componente_id,
+            build_id=run.build_id,
+            case_id=caso.id,
+            run_id=run.id,
+            execution_id=ejecucion.id,
+            payload={"ai_queue": {"job_id": str(job.id), "status": "PENDING"}},
+        )
+        # The scheduler owns dispatch and enforces the installation-wide limit.
+        from ...services.ai_execution_queue import drain_ai_execution_queue
+        await drain_ai_execution_queue()
+        return {"message": "Ejecucion por IA encolada", "mode": "IA", "job_id": str(job.id), "status": "PENDING"}
     try:
         job = await crud.create_automation_job_for_execution(
             db,

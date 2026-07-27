@@ -11,9 +11,11 @@ type RunDetailModalProps = {
   detail: any | null
   detailLoading: boolean
   detailError: string
+  focusedExecutionId?: string
   getStatusColor: (status: string) => string
   onHide: () => void
   onOpenEvidence: (attachment: any) => void
+  isExternalChildModalOpen?: boolean
   onMarkAiReviewed?: (executionId: string, note?: string) => Promise<void> | void
   canViewEvidence?: boolean
   fetchWithAuth?: (url: string, options?: any) => Promise<Response>
@@ -320,7 +322,7 @@ const buildHistoryAiReportPayload = (detail: any, caso: any) => {
   const executionId = getExecutionId(caso)
   const existingReport = caso.ai_report && typeof caso.ai_report === 'object' ? caso.ai_report : {}
   const snapshots = Array.isArray(caso.snapshots) ? caso.snapshots : []
-  const generatedReport = Object.keys(existingReport).length > 0 ? existingReport : {
+  const baseReport = Object.keys(existingReport).length > 0 ? existingReport : {
     schema_version: 1,
     legacy: true,
     execution_id: executionId,
@@ -338,6 +340,19 @@ const buildHistoryAiReportPayload = (detail: any, caso: any) => {
       failure_category: snapshot.estado_paso,
       attempts: [],
     })),
+  }
+  const snapshotsByStep = new Map<number, any>(snapshots.map((snapshot: any) => [Number(snapshot.numero_paso), snapshot]))
+  const generatedReport = {
+    ...baseReport,
+    steps: (Array.isArray(baseReport.steps) ? baseReport.steps : []).map((step: any) => {
+      const snapshot = snapshotsByStep.get(Number(step.number))
+      if (!snapshot) return step
+      return {
+        ...step,
+        evidence_url: step.evidence_url || snapshot.evidencia_url,
+        evidences: Array.isArray(step.evidences) && step.evidences.length ? step.evidences : (snapshot.evidencias || []),
+      }
+    }),
   }
   return {
     execution_id: executionId,
@@ -401,9 +416,11 @@ export function RunDetailModal({
   detail,
   detailLoading,
   detailError,
+  focusedExecutionId,
   getStatusColor,
   onHide,
   onOpenEvidence,
+  isExternalChildModalOpen = false,
   onMarkAiReviewed,
   canViewEvidence = true,
   fetchWithAuth,
@@ -420,10 +437,19 @@ export function RunDetailModal({
   const [showExecutionSnapshot, setShowExecutionSnapshot] = useState(false)
   const [showTechnicalVariables, setShowTechnicalVariables] = useState(false)
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({})
+  const isNestedModalOpen = Boolean(
+    aiReportCase || reviewConfirmCase || isExternalChildModalOpen,
+  )
+  const focusedCase = useMemo(() => {
+    if (!focusedExecutionId) return null
+    return (detail?.casos || []).find((caso: any) => getExecutionId(caso) === focusedExecutionId) || null
+  }, [detail?.casos, focusedExecutionId])
+  const focusError = Boolean(focusedExecutionId && detail && !focusedCase)
   const displayCases = useMemo(() => {
-    if (localCases.length > 0) return localCases
-    return detail?.casos || []
-  }, [detail, localCases])
+    const cases = localCases.length > 0 ? localCases : (detail?.casos || [])
+    if (!focusedExecutionId) return cases
+    return cases.filter((caso: any) => getExecutionId(caso) === focusedExecutionId)
+  }, [detail?.casos, focusedExecutionId, localCases])
   const frozenVariables = useMemo(
     () => buildFrozenVariableView(detail?.variables_resueltas, frozenSearch),
     [detail?.variables_resueltas, frozenSearch],
@@ -431,7 +457,8 @@ export function RunDetailModal({
   const canRevealSecrets = Boolean(canAccessCapability?.('configuracion.monitor', 'read'))
 
   useEffect(() => {
-    setLocalCases(detail?.casos || [])
+    const cases = detail?.casos || []
+    setLocalCases(focusedExecutionId ? cases.filter((caso: any) => getExecutionId(caso) === focusedExecutionId) : cases)
     setReviewActionError('')
     setReviewConfirmCase(null)
     setReviewNote('')
@@ -439,7 +466,7 @@ export function RunDetailModal({
     setShowExecutionSnapshot(false)
     setShowTechnicalVariables(false)
     setRevealedSecrets({})
-  }, [detail?.id, detail?.casos])
+  }, [detail?.id, detail?.casos, focusedExecutionId])
 
   const revealSecret = async (variable: string) => {
     if (!canRevealSecrets) return
@@ -503,7 +530,13 @@ export function RunDetailModal({
 
   return (
     <>
-      <Modal show={!!detail || detailLoading || !!detailError} onHide={onHide} size="xl" centered scrollable>
+      <Modal
+        show={!isNestedModalOpen && (!!detail || detailLoading || !!detailError)}
+        onHide={onHide}
+        size="xl"
+        centered
+        scrollable
+      >
         <Modal.Header closeButton>
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <History size={20} /> Detalle de ejecucion
@@ -515,6 +548,15 @@ export function RunDetailModal({
           {reviewActionError && <Alert variant="danger">{reviewActionError}</Alert>}
           {detail && (
             <div className="d-flex flex-column gap-3">
+            {focusError ? (
+              <Alert variant="danger" className="mb-0">
+                La ejecución seleccionada ya no está disponible dentro de este run. Vuelve al historial del caso y actualiza la página.
+              </Alert>
+            ) : focusedCase && (
+              <Alert variant="info" className="mb-0 py-2 small">
+                Mostrando ejecución de <strong>{focusedCase.codigo || focusedCase.caso_id?.slice(0, 8) || 'caso seleccionado'}</strong>.
+              </Alert>
+            )}
             <Card className="border p-3">
               <Row className="g-3 small">
                 <Col md={3}><div className="text-muted x-small text-uppercase fw-bold">Run</div><div className="fw-bold">{detail.nombre}</div></Col>
@@ -627,7 +669,7 @@ export function RunDetailModal({
               )}
             </Card>
 
-            {displayCases.map((caso: any) => {
+            {!focusError && displayCases.map((caso: any) => {
               const executionMode = effectiveExecutionMode(detail, caso)
               const executionLabel = effectiveExecutionModeLabel(executionMode, caso.execution_mode_label)
               const executionId = getExecutionId(caso)

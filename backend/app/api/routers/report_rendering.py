@@ -581,7 +581,7 @@ def _render_traceable_bugs(request: Request, bugs: list):
             f"<td>{html.escape(str(bug.get('case_code') or 'Sin caso'))}<br/><span class='muted-text'>{html.escape(str(bug.get('suite') or 'Sin suite'))}</span></td>"
             f"<td>{html.escape(str(bug.get('severidad') or ''))}<br/><span class='muted-text'>Prioridad {html.escape(str(bug.get('prioridad') or ''))}</span></td>"
             f"<td>{html.escape(str(bug.get('estado') or ''))}<br/><span class='muted-text'>{'Abierto' if bug.get('is_open') else 'Cerrado'}</span></td>"
-            f"<td>{html.escape(_fmt_report_hours(timing))}<br/><span class='muted-text'>Origen: {html.escape(str(bug.get('build_detectado') or 'N/D'))}</span></td>"
+            f"<td>{html.escape(_fmt_report_hours(timing))}<br/><span class='muted-text'>Origen: {html.escape(str(bug.get('build_detectado') or 'N/D'))}<br/>Corrección: {html.escape(str(bug.get('build_corregido') or 'N/D'))}</span></td>"
             f"<td>{html.escape(evidence)}<br/><span class='muted-text'>Resp.: {_report_html(bug.get('responsable'), fallback='Sin asignar', max_len=120)}</span></td>"
             "</tr>"
         )

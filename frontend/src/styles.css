@@ -1,5 +1,15 @@
 /* Theme tokens */
 :root {
+  /* Typography scale: use these tokens for all new or refactored UI. */
+  --app-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --app-font-size-body: 1rem;
+  --app-font-size-page-title: 1.5rem;
+  --app-font-size-section-title: 1.25rem;
+  --app-font-size-subsection-title: 1rem;
+  --app-font-size-small: 0.875rem;
+  --app-font-size-meta: 0.75rem;
+  --app-font-size-micro: 0.6875rem;
+  --app-line-height-body: 1.5;
   --app-bg: #f6f8fb;
   --app-surface: #ffffff;
   --app-surface-muted: #f8fafc;
@@ -29,12 +39,86 @@
   --app-header-height: 64px;
   --app-mobile-topbar-height: 58px;
   --app-sidebar-width: 260px;
+  --bs-font-sans-serif: var(--app-font-family);
+  --bs-body-font-family: var(--app-font-family);
+  --bs-body-font-size: var(--app-font-size-body);
+  --bs-body-line-height: var(--app-line-height-body);
   --bs-body-bg: var(--app-bg);
   --bs-body-color: var(--app-text);
   --bs-border-color: var(--app-border);
   --bs-primary: var(--app-primary);
   --bs-link-color: var(--app-primary);
   --bs-tertiary-bg: var(--app-surface-muted);
+}
+
+.notification-inbox-menu {
+  width: min(26.25rem, calc(100vw - 1rem));
+  min-width: min(22.5rem, calc(100vw - 1rem));
+}
+
+.notification-inbox-list {
+  max-height: 22.5rem;
+  overflow-y: auto;
+}
+
+.notification-inbox-item {
+  overflow: hidden;
+}
+
+.notification-inbox-title,
+.notification-inbox-message {
+  overflow-wrap: anywhere;
+}
+
+.notification-inbox-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  color: var(--app-muted);
+  font-size: var(--app-font-size-meta);
+}
+
+.notification-inbox-meta .badge {
+  font-size: var(--app-font-size-meta);
+}
+
+/* Primary persistence action used by configuration forms. */
+.app-save-button {
+  align-items: center;
+  border-radius: 999px !important;
+  display: inline-flex;
+  font-size: var(--app-font-size-small);
+  font-weight: 700;
+  gap: 0.35rem;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding-inline: 1rem;
+}
+
+.app-save-button.btn-sm {
+  min-height: 2rem;
+  padding-inline: 0.8rem;
+}
+
+/* Compatibility rule for existing save controls while features adopt
+   .app-save-button.  Primary submits are persistence actions, not destructive
+   or secondary commands, so they share the same visual hierarchy. */
+.app-shell .btn:has(svg.lucide-save),
+.app-shell .btn[type="submit"].btn-primary {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: var(--app-font-size-small);
+  font-weight: 700;
+  gap: 0.35rem;
+  justify-content: center;
+}
+
+.app-shell .btn:has(svg.lucide-save).btn-sm,
+.app-shell .btn[type="submit"].btn-primary.btn-sm {
+  font-size: var(--app-font-size-small);
 }
 
 .reportes-header-title {
@@ -102,7 +186,7 @@
   align-items: center;
   gap: 0.2rem;
   color: #7a5200;
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
   font-weight: 800;
   line-height: 1;
   padding-left: 0.05rem;
@@ -157,7 +241,7 @@
   min-width: 0;
   padding: 0.45rem 0.65rem;
   color: #536b8a;
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0;
@@ -255,7 +339,39 @@
 }
 
 .x-small {
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
+}
+
+/* Semantic helpers. Prefer them over ad-hoc font sizes in application UI. */
+.app-page-title {
+  font-size: var(--app-font-size-page-title);
+  line-height: 1.2;
+}
+
+.app-section-title {
+  font-size: var(--app-font-size-section-title);
+  line-height: 1.25;
+}
+
+.app-subsection-title {
+  font-size: var(--app-font-size-subsection-title);
+  line-height: 1.3;
+}
+
+.app-meta {
+  font-size: var(--app-font-size-small);
+}
+
+.app-small {
+  font-size: var(--app-font-size-small);
+}
+
+.app-label {
+  font-size: var(--app-font-size-meta);
+}
+
+.app-micro {
+  font-size: var(--app-font-size-micro);
 }
 
 .reportes-widget-body h5,
@@ -278,6 +394,33 @@
   background: rgba(13, 110, 253, 0.12);
   border: 1px dashed rgba(13, 110, 253, 0.45);
   border-radius: 8px;
+}
+
+.execution-mode-option {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.execution-mode-option:hover:not(:disabled),
+.execution-mode-option:focus-visible {
+  background-color: var(--app-surface) !important;
+  color: var(--app-text) !important;
+  box-shadow: 0 0 0 0.2rem var(--app-focus-ring) !important;
+  transform: translateY(-1px);
+}
+
+.execution-mode-option--manual:hover:not(:disabled),
+.execution-mode-option--manual:focus-visible {
+  border-color: #198754 !important;
+}
+
+.execution-mode-option--automated:hover:not(:disabled),
+.execution-mode-option--automated:focus-visible {
+  border-color: #6c757d !important;
+}
+
+.execution-mode-option--ia:hover:not(:disabled),
+.execution-mode-option--ia:focus-visible {
+  border-color: var(--app-primary) !important;
 }
 
 .reportes-page .react-resizable-handle {
@@ -753,7 +896,7 @@ button.theme-choice.is-selected,
 
 .app-edition-text {
   color: var(--app-sidebar-muted);
-  font-size: 0.68rem;
+  font-size: var(--app-font-size-meta);
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1.1;
@@ -847,8 +990,44 @@ button.theme-choice.is-selected,
   flex-wrap: wrap;
 }
 
+.app-shell-context {
+  flex: 1 1 auto;
+}
+
+.app-shell-context > :first-child,
+.app-shell-actions > :first-child {
+  min-width: 0;
+}
+
+.app-shell-project-toggle {
+  max-width: min(100%, 420px);
+}
+
+.app-shell-project-toggle .text-truncate {
+  min-width: 0;
+}
+
 .app-shell-header .dropdown-menu {
   z-index: 1040 !important;
+}
+
+.traceability-actions-menu {
+  position: relative;
+}
+
+.traceability-actions-menu .traceability-actions-dropdown {
+  position: absolute !important;
+  top: calc(100% + 0.25rem) !important;
+  right: 0 !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: 1060 !important;
+  margin: 0 !important;
+}
+
+.traceability-table-card,
+.traceability-table-card .table-responsive {
+  overflow: visible !important;
 }
 
 .app-shell-context > .small,
@@ -864,6 +1043,15 @@ button.theme-choice.is-selected,
 
 .app-shell-nav .btn {
   min-height: 38px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+/* Bootstrap .nav wraps by default. A vertical application menu must scroll,
+   never create a second column when the viewport height is limited. */
+.app-shell-nav {
+  flex-wrap: nowrap !important;
+  overflow-x: hidden !important;
 }
 
 .app-brand-mark {
@@ -1275,7 +1463,7 @@ button.theme-choice.is-selected,
   border-radius: 0.5rem;
   background: #fff;
   color: var(--app-muted);
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
   line-height: 1.1;
 }
 
@@ -1501,7 +1689,7 @@ button.theme-choice.is-selected,
 }
 
 .case-step-grid-header {
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   letter-spacing: 0.5px;
   align-items: center;
 }
@@ -1581,6 +1769,34 @@ button.theme-choice.is-selected,
 .manual-console-main,
 .manual-console-sidebar {
   min-width: 0;
+}
+
+/* El panel lateral no debe heredar la altura total de secuencias extensas. */
+.manual-console-details-column {
+  align-self: flex-start;
+  min-width: 0;
+}
+
+.manual-console-details-column > .card {
+  flex: 0 0 auto !important;
+}
+
+.manual-console-case-details-body {
+  max-height: min(42dvh, 30rem);
+  overflow-y: auto !important;
+}
+
+@media (max-width: 991.98px) {
+  .manual-console-details-column {
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .manual-console-case-details-body {
+    max-height: none;
+  }
 }
 
 /* Tables */
@@ -1740,7 +1956,7 @@ button.theme-choice.is-selected,
   align-items: center;
   gap: 0.35rem 0.75rem;
   color: var(--app-muted);
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
   line-height: 1.35;
 }
 
@@ -1750,7 +1966,7 @@ button.theme-choice.is-selected,
 
 .build-row-dates strong {
   color: #52657d;
-  font-size: 0.66rem;
+  font-size: var(--app-font-size-meta);
   margin-right: 0.2rem;
   text-transform: uppercase;
 }
@@ -1786,7 +2002,7 @@ button.theme-choice.is-selected,
 
 .build-row-actions .build-row-premium-report .premium-gate-toolbar-label {
   padding-left: 0.1rem;
-  font-size: 0.64rem;
+  font-size: var(--app-font-size-meta);
   white-space: nowrap;
 }
 
@@ -1854,7 +2070,7 @@ button.theme-choice.is-selected,
   border-radius: 999px;
   background: #0d6efd;
   color: #fff;
-  font-size: 0.72rem;
+  font-size: var(--app-font-size-meta);
   font-weight: 800;
 }
 
@@ -1873,14 +2089,14 @@ button.theme-choice.is-selected,
 .ai-agent-flow-id {
   margin-top: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.68rem;
+  font-size: var(--app-font-size-micro);
   color: #6c757d;
 }
 
 .ai-agent-flow-action {
   display: block;
   margin-top: 6px;
-  font-size: 0.68rem;
+  font-size: var(--app-font-size-meta);
   color: #334155;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.4);
@@ -2001,35 +2217,51 @@ button.theme-choice.is-selected,
 
 .workflow-summary-label {
   color: #64748B;
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.workflow-builder-modal {
-  margin: 0;
-  max-width: none;
+.modal.workflow-builder-modal-root {
+  padding: 0 !important;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.modal-dialog.workflow-builder-modal {
+  width: 100%;
+  height: 100%;
+  margin: 0 !important;
+  max-width: 100%;
 }
 
 .workflow-builder-content {
-  height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .workflow-builder-body {
+  width: 100%;
   height: 100dvh;
   overflow: hidden;
   background: #F7F9FC;
 }
 
 .workflow-builder {
+  width: 100%;
+  min-width: 0;
   height: 100dvh;
   border: 0;
   border-radius: 0;
   display: flex;
   flex-direction: column;
   padding: 10px;
+  overflow: hidden;
 }
 
 .workflow-engine-toolbar {
@@ -2042,6 +2274,19 @@ button.theme-choice.is-selected,
   border: 1px solid #E2E8F0;
   border-radius: 10px;
   padding: 10px 12px;
+  min-width: 0;
+}
+
+.workflow-engine-toolbar > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.workflow-main-actions {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .workflow-toolbar-meta,
@@ -2111,7 +2356,7 @@ button.theme-choice.is-selected,
 .workflow-engine-grid {
   position: relative;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: clamp(220px, 20vw, 280px) minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
   flex: 1 1 auto;
@@ -2123,6 +2368,65 @@ button.theme-choice.is-selected,
   display: grid;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.workflow-validation-summary {
+  border: 1px solid #FBBF24;
+  background: #FFFBEB;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  max-height: min(28dvh, 220px);
+  overflow: auto;
+}
+
+.workflow-validation-summary-header {
+  align-items: center;
+  background: #FEF3C7;
+  border-bottom: 1px solid #FDE68A;
+  color: #78350F;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.workflow-validation-summary-header span {
+  display: block;
+  font-size: 12px;
+}
+
+.workflow-validation-summary-items {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.workflow-validation-summary .workflow-load-warning {
+  padding: 7px 10px;
+}
+
+.workflow-validation-dismiss {
+  background: #fff;
+  border: 1px solid #D97706;
+  border-radius: 6px;
+  color: #92400E;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.workflow-validation-count {
+  color: #92400E;
+  font-size: var(--app-font-size-meta);
+  font-weight: 800;
+  margin-left: 8px;
+}
+
+.workflow-validation-more {
+  color: #78350F;
+  font-size: 12px;
+  padding: 2px 4px;
 }
 
 .workflow-load-warning {
@@ -2169,7 +2473,7 @@ button.theme-choice.is-selected,
 
 .workflow-panel-title {
   color: #334155;
-  font-size: 11px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -2203,6 +2507,7 @@ button.theme-choice.is-selected,
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: #FBFCFF;
 }
@@ -2236,12 +2541,13 @@ button.theme-choice.is-selected,
 .workflow-builder .workflow-canvas {
   flex: 1 1 auto;
   height: auto;
-  min-height: calc(100dvh - 190px);
+  min-height: 0;
 }
 
 .workflow-canvas {
   position: relative;
   width: 100%;
+  overflow: hidden;
 }
 
 .workflow-canvas .react-flow {
@@ -2382,7 +2688,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-agent-type {
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   color: #64748B;
   font-weight: 700;
 }
@@ -2548,7 +2854,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-node-type {
-  font-size: 11px;
+  font-size: var(--app-font-size-meta);
   color: #64748B;
   font-weight: 700;
   margin-top: 3px;
@@ -2556,7 +2862,7 @@ button.theme-choice.is-selected,
 
 .workflow-node-meta {
   margin-top: 10px;
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
 }
 
 .workflow-node-model {
@@ -2651,7 +2957,7 @@ button.theme-choice.is-selected,
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  font-size: 11px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   color: #334155;
   text-transform: uppercase;
@@ -2678,7 +2984,7 @@ button.theme-choice.is-selected,
 
 .workflow-property-tabs .nav-link,
 .workflow-runtime-tabs .nav-link {
-  font-size: 11px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   color: #64748B;
   border: 0;
@@ -2701,7 +3007,7 @@ button.theme-choice.is-selected,
 
 .workflow-tab-pane label {
   color: #64748B;
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   text-transform: uppercase;
   margin-bottom: -3px;
@@ -2732,6 +3038,21 @@ button.theme-choice.is-selected,
 .workflow-runtime-header {
   justify-content: space-between;
   margin-bottom: 10px;
+  min-width: 0;
+}
+
+.workflow-runtime-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 1 440px;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.workflow-runtime-actions .form-control {
+  flex: 1 1 220px;
+  min-width: 120px;
 }
 
 .workflow-runtime.is-collapsed {
@@ -2777,7 +3098,7 @@ button.theme-choice.is-selected,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
 }
 
@@ -2786,7 +3107,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-runtime-chip small {
-  font-size: 10px;
+  font-size: var(--app-font-size-meta);
   font-weight: 900;
   color: #64748B;
 }
@@ -2851,7 +3172,6 @@ button.theme-choice.is-selected,
     grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
 
-  .workflow-engine-toolbar,
   .workflow-canvas-header,
   .workflow-runtime-header {
     align-items: stretch;
@@ -2859,8 +3179,14 @@ button.theme-choice.is-selected,
   }
 
   .workflow-main-actions,
-  .workflow-canvas-controls {
+  .workflow-canvas-controls,
+  .workflow-runtime-actions {
     flex-wrap: wrap;
+  }
+
+  .workflow-runtime-actions {
+    flex: 0 1 auto;
+    width: 100%;
   }
 
   .workflow-engine-grid {
@@ -3166,8 +3492,8 @@ button.theme-choice.is-selected,
   .build-create-form,
   .build-create-form .form-control,
   .build-context-dates,
-  .project-create-form .form-select,
-  .project-create-form .form-control {
+.project-create-form .form-select,
+.project-create-form .form-control {
     min-width: 0 !important;
     width: 100% !important;
   }
@@ -3297,6 +3623,16 @@ button.theme-choice.is-selected,
   .table-responsive-soft > .table {
     min-width: 720px;
   }
+}
+
+.workspace-context-empty-state {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
 }
 
 @media (max-width: 575.98px) {
@@ -3873,6 +4209,116 @@ button.theme-choice.is-selected,
 
 .traceability-toolbar-actions .btn {
   white-space: nowrap;
+}
+
+.traceability-actions-menu .dropdown-menu {
+  min-width: 190px;
+  max-width: min(220px, calc(100vw - 1rem));
+}
+
+.traceability-actions-menu .dropdown-item {
+  white-space: nowrap;
+}
+
+.traceability-history-modal {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  box-shadow: 0 0.75rem 2rem rgb(15 23 42 / 14%);
+}
+
+.traceability-history-modal .modal-header {
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.traceability-history-modal .modal-body {
+  padding: 0 1.25rem 1.25rem;
+}
+
+.traceability-history-subtitle {
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.traceability-history-entry {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  background: var(--bs-body-bg);
+}
+
+.traceability-history-entry .btn {
+  white-space: nowrap;
+}
+
+.traceability-diff-meta {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  background: var(--bs-light-bg-subtle);
+}
+
+.traceability-diff-entry {
+  background: var(--bs-body-bg);
+}
+
+.traceability-diff-value {
+  min-height: 3rem;
+  max-height: 180px;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  overflow: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 0.8125rem;
+}
+
+.traceability-diff-value-previous {
+  background: var(--bs-light-bg-subtle);
+}
+
+.traceability-diff-value-current {
+  border-color: rgb(var(--bs-primary-rgb) / 35%);
+  background: rgb(var(--bs-primary-rgb) / 5%);
+}
+
+/* Desktop widths where both application sidebars are visible. Keep the
+   project workspace usable instead of compressing headers and tables. */
+@media (min-width: 992px) and (max-width: 1399.98px) {
+  .project-admin-nav {
+    width: 212px !important;
+    min-width: 212px !important;
+    padding: 1rem !important;
+  }
+
+  .project-admin-nav .btn {
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+  }
+
+  .project-admin-layout > .flex-grow-1 {
+    padding: 1.25rem !important;
+  }
+
+  .traceability-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .traceability-toolbar-actions {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+  }
+
+  .traceability-toolbar-actions .form-select {
+    flex: 1 1 150px;
+    min-width: 0;
+    width: auto;
+  }
 }
 
 .traceability-component-picker {

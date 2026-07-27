@@ -11,12 +11,14 @@ from .enums import *
 
 class BugIssue(Base):
     __tablename__ = "bug_issues"
+    __table_args__ = (Index("ix_bug_issues_proyecto_estado", "proyecto_id", "estado"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     codigo = Column(String(30), unique=True, nullable=False, index=True)
     proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
     componente_id = Column(UUID(as_uuid=True), ForeignKey("componentes.id", ondelete="SET NULL"), nullable=True, index=True)
     build_id = Column(UUID(as_uuid=True), ForeignKey("builds.id", ondelete="SET NULL"), nullable=True, index=True)
+    resolved_build_id = Column(UUID(as_uuid=True), ForeignKey("builds.id", ondelete="SET NULL"), nullable=True, index=True)
     caso_id = Column(UUID(as_uuid=True), ForeignKey("casos_prueba.id", ondelete="SET NULL"), nullable=True, index=True)
     test_run_id = Column(UUID(as_uuid=True), ForeignKey("test_runs.id", ondelete="SET NULL"), nullable=True, index=True)
     ejecucion_id = Column(UUID(as_uuid=True), ForeignKey("ejecuciones_casos.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -73,7 +75,6 @@ class BugIssue(Base):
     motivo_cierre = Column(Text)
     duplicate_of_id = Column(UUID(as_uuid=True), ForeignKey("bug_issues.id", ondelete="SET NULL"), nullable=True, index=True)
     reopened_count = Column(Integer, default=0, nullable=False)
-    retest_status = Column(String(30), default="pendiente", nullable=False)
     closed_at = Column(UTCDateTime(), nullable=True)
     metadata_json = Column(JSON, default=dict)
     created_at = Column(UTCDateTime(), server_default=func.now())
@@ -81,7 +82,8 @@ class BugIssue(Base):
 
     proyecto = relationship("Proyecto")
     componente = relationship("Componente")
-    build = relationship("Build")
+    build = relationship("Build", foreign_keys=[build_id])
+    resolved_build = relationship("Build", foreign_keys=[resolved_build_id])
     caso = relationship("CasoPrueba")
     test_run = relationship("TestRun")
     ejecucion = relationship("EjecucionCaso")
@@ -95,6 +97,48 @@ class BugIssue(Base):
     comments = relationship("BugComment", back_populates="bug", cascade="all, delete-orphan")
     attachments = relationship("BugAttachment", back_populates="bug", cascade="all, delete-orphan")
     external_links = relationship("ExternalIssueLink", back_populates="bug", cascade="all, delete-orphan")
+    status_history = relationship("BugStatusHistory", back_populates="bug", cascade="all, delete-orphan", order_by="BugStatusHistory.occurred_at")
+
+    @property
+    def resolved_build_name(self):
+        return self.resolved_build.nombre if self.resolved_build else None
+
+    @property
+    def resolved_build_code(self):
+        return self.resolved_build.codigo if self.resolved_build else None
+
+
+class BugStatusHistory(Base):
+    __tablename__ = "bug_status_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bug_id = Column(UUID(as_uuid=True), ForeignKey("bug_issues.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=False, index=True)
+    build_id = Column(UUID(as_uuid=True), ForeignKey("builds.id", ondelete="SET NULL"), nullable=True, index=True)
+    actor_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    resolution = Column(Text, nullable=True)
+    close_reason = Column(Text, nullable=True)
+    source = Column(String(50), default="manual", nullable=False, index=True)
+    occurred_at = Column(UTCDateTime(), server_default=func.now(), nullable=False, index=True)
+
+    bug = relationship("BugIssue", back_populates="status_history")
+    build = relationship("Build")
+    actor = relationship("Usuario")
+
+    @property
+    def build_name(self):
+        return self.build.nombre if self.build else None
+
+    @property
+    def build_code(self):
+        return self.build.codigo if self.build else None
+
+    __table_args__ = (
+        Index("ix_bug_status_history_project_build_date", "project_id", "build_id", "occurred_at"),
+        Index("ix_bug_status_history_bug_date", "bug_id", "occurred_at"),
+    )
 
 class BugComment(Base):
     __tablename__ = "bug_comments"

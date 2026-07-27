@@ -13,6 +13,12 @@ const ELEMENT_SELECTOR = [
   '[contenteditable="true"]',
   '[tabindex]:not([tabindex="-1"])',
   'summary',
+  'img',
+  '[class*="badge"]',
+  'pre',
+  '.row',
+  '.product',
+  '.inventory_item',
 ].join(',');
 
 export async function observeBrowser(page: Page, executionId?: string, stepNumber?: number): Promise<BrowserObservation> {
@@ -65,6 +71,8 @@ export async function observeBrowser(page: Page, executionId?: string, stepNumbe
       .map((el, index) => {
         const htmlEl = el as HTMLElement;
         const inputEl = el as HTMLInputElement;
+        const selectEl = el as HTMLSelectElement;
+        const imageEl = el as HTMLImageElement;
         const rect = el.getBoundingClientRect();
         const ref = `el-${index}`;
         htmlEl.setAttribute('data-ai-ref', ref);
@@ -72,11 +80,15 @@ export async function observeBrowser(page: Page, executionId?: string, stepNumbe
         const text = compact(htmlEl.innerText || inputEl.value || htmlEl.textContent, 220);
         const role = htmlEl.getAttribute('role') || undefined;
         const label = labelFor(el);
+        // Controls inside a repeated product card need their product context;
+        // otherwise every "Add to cart" button is indistinguishable to the
+        // deterministic planner.
+        const cardContext = compact((el.closest('.inventory_item, [data-testid*="inventory-item"]') as HTMLElement | null)?.innerText, 220);
         return {
           ref,
           tag: el.tagName.toLowerCase(),
           role,
-          name: compact(htmlEl.getAttribute('name') || htmlEl.getAttribute('id') || undefined, 80),
+          name: compact([htmlEl.getAttribute('name'), htmlEl.getAttribute('id'), htmlEl.className, cardContext].filter(Boolean).join(' '), 220) || undefined,
           text,
           value: compact(inputEl.value, 120) || undefined,
           type: inputEl.type || undefined,
@@ -84,6 +96,16 @@ export async function observeBrowser(page: Page, executionId?: string, stepNumbe
           label,
           title: compact(htmlEl.getAttribute('title'), 120) || undefined,
           disabled: Boolean((inputEl as any).disabled || htmlEl.getAttribute('aria-disabled') === 'true'),
+          checked: inputEl.type === 'checkbox' || inputEl.type === 'radio' ? inputEl.checked : undefined,
+          required: 'required' in inputEl ? Boolean(inputEl.required) : undefined,
+          valid: typeof inputEl.checkValidity === 'function' ? inputEl.checkValidity() : undefined,
+          validationMessage: compact(inputEl.validationMessage, 180) || undefined,
+          selectedValues: el.tagName.toLowerCase() === 'select'
+            ? Array.from(selectEl.selectedOptions).map((option) => option.value)
+            : undefined,
+          imageComplete: el.tagName.toLowerCase() === 'img' ? imageEl.complete : undefined,
+          naturalWidth: el.tagName.toLowerCase() === 'img' ? imageEl.naturalWidth : undefined,
+          naturalHeight: el.tagName.toLowerCase() === 'img' ? imageEl.naturalHeight : undefined,
           visible: true,
           editable: isEditable(el),
           clickable: isClickable(el),
@@ -96,10 +118,12 @@ export async function observeBrowser(page: Page, executionId?: string, stepNumbe
         };
       });
 
-    const visibleText = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,label,li,td,th,[role="alert"],[role="status"]'))
+    const visibleText = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,label,li,td,th,[role="alert"],[role="status"],.flash,.alert,[class*="error"],[class*="invalid"]'))
       .map((el) => compact((el as HTMLElement).innerText, 180))
       .filter(Boolean)
       .slice(0, 60);
+
+    const bodyText = compact(document.body?.innerText, 20000);
 
     const loadingSignals = Array.from(document.querySelectorAll('[aria-busy="true"],[role="progressbar"],.spinner,.loading,.skeleton'))
       .filter((el) => isVisible(el))
@@ -119,6 +143,7 @@ export async function observeBrowser(page: Page, executionId?: string, stepNumbe
       loadingSignals,
       dialogs: [],
       visibleText,
+      bodyText,
       elements,
       forms,
     };
@@ -146,6 +171,11 @@ export function formatObservation(observation: BrowserObservation): string {
       el.value ? `value="${el.value}"` : '',
       el.type ? `type=${el.type}` : '',
       el.disabled ? 'disabled' : '',
+      el.checked === true ? 'checked' : '',
+      el.required ? 'required' : '',
+      el.valid === false ? 'invalid' : '',
+      el.selectedValues?.length ? `selected=${el.selectedValues.join(',')}` : '',
+      el.imageComplete !== undefined ? `image=${el.imageComplete && Number(el.naturalWidth || 0) > 0 ? 'loaded' : 'broken'}` : '',
       el.editable ? 'editable' : '',
       el.clickable ? 'clickable' : '',
       el.bbox ? `box=${el.bbox.x},${el.bbox.y},${el.bbox.width},${el.bbox.height}` : '',
@@ -164,6 +194,7 @@ export function formatObservation(observation: BrowserObservation): string {
     `Loading signals:\n${loading}`,
     `Forms:\n${forms || '- none'}`,
     `Visible text:\n${text || '- none'}`,
+    `Body text:\n${observation.bodyText || '- none'}`,
     `Actionable elements:\n${elements || '- none'}`,
   ].join('\n\n');
 }

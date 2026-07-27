@@ -36,6 +36,7 @@ type ProyectosRouteProps = {
   showFeedback: (title: string, message: string, variant?: string) => void
   confirmAction: (options: { title: string, message: string, variant?: 'danger' | 'warning' | 'info', confirmLabel?: string, cancelLabel?: string | null }) => Promise<boolean>
   onCreateCaseFromStory: (story: any, requirement: any) => void
+  onOpenLinkedCase: (masterId: string) => void
 }
 
 export function ProyectosRoute({
@@ -74,6 +75,7 @@ export function ProyectosRoute({
   showFeedback,
   confirmAction,
   onCreateCaseFromStory,
+  onOpenLinkedCase,
 }: ProyectosRouteProps) {
   return (
     <ProyectosPage
@@ -137,6 +139,7 @@ export function ProyectosRoute({
       showFeedback={showFeedback}
       confirmAction={confirmAction}
       onCreateCaseFromStory={onCreateCaseFromStory}
+      onOpenLinkedCase={onOpenLinkedCase}
     />
   )
 }

@@ -42,6 +42,10 @@ class IntegrationInstance(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider_id = Column(String(100), nullable=False, index=True)
+    # Canonical nullable-safe scope used to prevent duplicate installations.
+    # PostgreSQL UNIQUE constraints treat NULL values as distinct, so the
+    # organization/project columns cannot protect global installations alone.
+    scope_key = Column(String(180), nullable=False, default="global", index=True)
     organizacion_id = Column(UUID(as_uuid=True), ForeignKey("organizaciones.id", ondelete="SET NULL"), nullable=True, index=True)
     proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=True, index=True)
     enabled = Column(Boolean, default=False, nullable=False)
@@ -53,6 +57,10 @@ class IntegrationInstance(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
     updated_at = Column(UTCDateTime(), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "scope_key", name="uq_integration_instance_provider_scope"),
+    )
 
 class IntegrationSecret(Base):
     __tablename__ = "integration_secrets"

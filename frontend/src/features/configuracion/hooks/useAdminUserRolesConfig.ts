@@ -59,6 +59,7 @@ export function useAdminUserRolesConfig({
     modules: MODULE_PERMISSIONS.TESTER,
     permissions: ROLE_ACCESS.TESTER,
     capabilities: {},
+    sendWelcome: false,
     adLookupVerified: false,
     adLookupUsername: '',
     adLookupGroups: []

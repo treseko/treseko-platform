@@ -113,6 +113,7 @@ export function createAdminUserRoleActions({
         modules: stripClientAccessModule(modulesFromPermissionsAndCapabilities(userPermissions, user.capabilities || {})),
         permissions: userPermissions,
         capabilities: user.capabilities || {},
+        sendWelcome: false,
         adLookupVerified: user.auth === 'AD',
         adLookupUsername: '',
         adLookupGroups: [],
@@ -132,6 +133,7 @@ export function createAdminUserRoleActions({
         modules: stripClientAccessModule(modulesFromPermissionsAndCapabilities(defaultPermissions, {})),
         permissions: defaultPermissions,
         capabilities: {},
+        sendWelcome: false,
         adLookupVerified: false,
         adLookupUsername: '',
         adLookupGroups: [],
@@ -240,6 +242,7 @@ export function createAdminUserRoleActions({
           modulos: cleanModules,
           permisos: cleanPermissions,
           permisos_detallados: userForm.capabilities || {},
+          send_welcome: !editingUserId && !!userForm.sendWelcome,
           ...(userForm.password ? { password: userForm.password } : {})
         })
       })

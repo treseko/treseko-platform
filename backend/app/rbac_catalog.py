@@ -39,6 +39,13 @@ RBAC_CAPABILITIES = [
         ],
     },
     {
+        "module": "plugins",
+        "module_label": "Plugins / Portabilidad de casos",
+        "capabilities": [
+            {"id": "plugins.provider.case_portability.importar_casos", "label": "Exportar, importar y revertir casos"},
+        ],
+    },
+    {
         "module": "automatizacion",
         "module_label": "Automatizacion",
         "capabilities": [
@@ -63,6 +70,7 @@ RBAC_CAPABILITIES = [
             {"id": "proyectos.requisitos", "label": "Requisitos"},
             {"id": "proyectos.historias", "label": "Historias de usuario"},
             {"id": "proyectos.historias.generar_ia", "label": "Generar historias con IA"},
+            {"id": "proyectos.historias.generar_casos_ia", "label": "Generar casos con IA"},
         ],
     },
     {
@@ -166,6 +174,8 @@ RBAC_CAPABILITIES = [
             {"id": "notificaciones.configuracion", "label": "Configuracion SMTP"},
             {"id": "notificaciones.reglas", "label": "Reglas"},
             {"id": "notificaciones.plantillas", "label": "Plantillas"},
+            {"id": "notificaciones.destinatarios", "label": "Stakeholders y destinatarios externos"},
+            {"id": "notificaciones.resumenes", "label": "Resúmenes programados"},
             {"id": "notificaciones.auditoria", "label": "Auditoria"},
             {"id": "notificaciones.admin", "label": "Administracion"},
         ],

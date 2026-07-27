@@ -11,6 +11,7 @@ from .enums import *
 
 class Organizacion(Base):
     __tablename__ = "organizaciones"
+    __table_args__ = (Index("ix_organizaciones_activo", "activo"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     codigo = Column(String(20), unique=True, index=True, nullable=True)

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -85,11 +85,15 @@ class HistoriaUsuario(Base):
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
     ultima_actualizacion = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
     archivado = Column(Boolean, nullable=False, default=False, index=True)
+    ai_generation_id = Column(UUID(as_uuid=True), ForeignKey("historia_generaciones.id", ondelete="SET NULL"), nullable=True, index=True)
+    criterios_estructuracion_estado = Column(String(32), nullable=False, default="STRUCTURED")
 
     requisito = relationship("Requisito", back_populates="historias")
     proyecto = relationship("Proyecto", back_populates="historias_usuario")
     historial = relationship("HistoriaHistorial", back_populates="historia", cascade="all, delete-orphan")
     casos = relationship("CasoHistoria", back_populates="historia", cascade="all, delete-orphan")
+    criterios_aceptacion = relationship("AcceptanceCriterion", back_populates="historia", cascade="all, delete-orphan")
+    generaciones_casos = relationship("CasoGeneracion", back_populates="historia", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("proyecto_id", "codigo", name="uq_historias_proyecto_codigo"),)
 
@@ -149,9 +153,126 @@ class HistoriaGeneracion(Base):
     estimacion = Column(JSON, nullable=False, default=dict)
     propuestas = Column(JSON, nullable=False, default=list)
     error_detalle = Column(Text, nullable=True)
+    provider = Column(String(80), nullable=True)
+    model = Column(String(255), nullable=True)
+    temperature = Column(Float, nullable=True)
+    prompt_version = Column(String(80), nullable=True)
+    prompt_hash = Column(String(128), nullable=True)
+    workflow_snapshot = Column(JSON, nullable=True)
+    context_hash = Column(String(128), nullable=True)
+    analysis_json = Column(JSON, nullable=True)
+    propuestas_originales_json = Column(JSON, nullable=True)
+    propuestas_finales_json = Column(JSON, nullable=True)
+    decisiones_json = Column(JSON, nullable=True)
+    accepted_assumption_ids = Column(JSON, nullable=True)
+    warnings_json = Column(JSON, nullable=True)
+    workflow_traces_json = Column(JSON, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    estimated_cost = Column(Float, nullable=True)
+    sanitized_error = Column(Text, nullable=True)
+    completed_at = Column(UTCDateTime(), nullable=True)
     creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
     fecha_actualizacion = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
 
     requisito = relationship("Requisito")
     proyecto = relationship("Proyecto")
+
+
+class AcceptanceCriterion(Base):
+    __tablename__ = "acceptance_criteria"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    historia_id = Column(UUID(as_uuid=True), ForeignKey("historias_usuario.id", ondelete="CASCADE"), nullable=False, index=True)
+    codigo = Column(String(80), nullable=False)
+    tipo = Column(String(32), nullable=False)
+    titulo = Column(String(255), nullable=False)
+    given_text = Column(Text, nullable=False, default="")
+    when_text = Column(Text, nullable=False, default="")
+    then_items = Column(JSON, nullable=False, default=list)
+    observable_result = Column(Text, nullable=False, default="")
+    mandatory = Column(Boolean, nullable=False, default=True)
+    source_refs = Column(JSON, nullable=False, default=list)
+    assumption_refs = Column(JSON, nullable=False, default=list)
+    orden = Column(Integer, nullable=False, default=0)
+    activo = Column(Boolean, nullable=False, default=True)
+    structuring_status = Column(String(32), nullable=False, default="STRUCTURED")
+    fecha_creacion = Column(UTCDateTime(), server_default=func.now())
+    ultima_actualizacion = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    historia = relationship("HistoriaUsuario", back_populates="criterios_aceptacion")
+    casos = relationship("AcceptanceCriterionCase", back_populates="criterio", cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint("historia_id", "codigo", name="uq_acceptance_criteria_story_code"),)
+
+
+class AcceptanceCriterionCase(Base):
+    __tablename__ = "acceptance_criterion_cases"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    acceptance_criterion_id = Column(UUID(as_uuid=True), ForeignKey("acceptance_criteria.id", ondelete="CASCADE"), nullable=False, index=True)
+    caso_master_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    fecha_creacion = Column(UTCDateTime(), server_default=func.now())
+
+    criterio = relationship("AcceptanceCriterion", back_populates="casos")
+    __table_args__ = (UniqueConstraint("acceptance_criterion_id", "caso_master_id", name="uq_acceptance_criterion_case"),)
+
+
+class CasoGeneracion(Base):
+    """Auditable, review-first AI generation session for manual test cases."""
+    __tablename__ = "caso_generaciones"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    historia_id = Column(UUID(as_uuid=True), ForeignKey("historias_usuario.id", ondelete="CASCADE"), nullable=False, index=True)
+    requisito_id = Column(UUID(as_uuid=True), ForeignKey("requisitos.id", ondelete="CASCADE"), nullable=False, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey("ai_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
+    workflow_version = Column(Integer, nullable=True)
+    estado = Column(String(32), nullable=False, default="ESTIMANDO", index=True)
+    instrucciones = Column(Text, nullable=False, default="")
+    fuente_snapshot = Column(JSON, nullable=False, default=dict)
+    estimacion = Column(JSON, nullable=False, default=dict)
+    analysis_json = Column(JSON, nullable=True)
+    propuestas_originales_json = Column(JSON, nullable=True)
+    propuestas_finales_json = Column(JSON, nullable=True)
+    decisiones_json = Column(JSON, nullable=True)
+    accepted_assumption_ids = Column(JSON, nullable=True)
+    warnings_json = Column(JSON, nullable=True)
+    workflow_snapshot = Column(JSON, nullable=True)
+    workflow_traces_json = Column(JSON, nullable=True)
+    context_hash = Column(String(128), nullable=True)
+    prompt_hash = Column(String(128), nullable=True)
+    provider = Column(String(80), nullable=True)
+    model = Column(String(255), nullable=True)
+    temperature = Column(Float, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    estimated_cost = Column(Float, nullable=True)
+    sanitized_error = Column(Text, nullable=True)
+    completed_at = Column(UTCDateTime(), nullable=True)
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    fecha_creacion = Column(UTCDateTime(), server_default=func.now())
+    fecha_actualizacion = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    historia = relationship("HistoriaUsuario", back_populates="generaciones_casos")
+    requisito = relationship("Requisito")
+    proyecto = relationship("Proyecto")
+
+
+class TraceabilityWaiver(Base):
+    __tablename__ = "traceability_waivers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requisito_id = Column(UUID(as_uuid=True), ForeignKey("requisitos.id", ondelete="CASCADE"), nullable=False, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    motivo = Column(Text, nullable=False)
+    estado = Column(String(24), nullable=False, default="PENDING")
+    solicitado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    aprobado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    fecha_creacion = Column(UTCDateTime(), server_default=func.now())
+    fecha_aprobacion = Column(UTCDateTime(), nullable=True)

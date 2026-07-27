@@ -415,7 +415,9 @@ async function createPairingRequest() {
       tipo: "LOCAL",
       organizacion_id: ORGANIZACION_ID || null,
       capabilities: capabilities(),
-      ttl_minutes: 10,
+      // The code is still single-use and protected by its pairing token. A
+      // two-hour window gives the operator enough time to approve it in UI.
+      ttl_minutes: 120,
     }),
   });
 }
@@ -493,7 +495,7 @@ function capabilities() {
     selenium_version: versions.selenium,
     selenium_language: "python",
     python_bin: getPythonCommand(),
-    browsers: ["chromium"],
+    browsers: ["chromium", "firefox", "webkit", "chrome (puppeteer)", "cypress"],
     os: `${os.type()} ${os.release()}`,
     platform: process.platform,
     arch: process.arch,
@@ -573,6 +575,24 @@ function detectScriptFormat(script) {
     return "playwright_test";
   }
   return "worker_function";
+}
+
+const PLAYWRIGHT_BROWSER_NAMES = new Set(["chromium", "firefox", "webkit"]);
+
+function playwrightBrowserForJob(job, variables = {}) {
+  const payload = job.payload_congelado || {};
+  const requested = String(
+    payload.browser
+    || payload.browser_name
+    || variables.browser
+    || variables.BROWSER
+    || payload.variables?.browser
+    || payload.variables?.BROWSER
+    || "chromium"
+  ).trim().toLowerCase();
+  const aliases = { chrome: "chromium", "google-chrome": "chromium", safari: "webkit" };
+  const normalized = aliases[requested] || requested;
+  return PLAYWRIGHT_BROWSER_NAMES.has(normalized) ? normalized : "chromium";
 }
 
 function frameworkKey(job) {
@@ -971,6 +991,7 @@ function playwrightReportArtifact(report, job) {
 
 async function executePlaywrightTestJob(job, script, variables, started) {
   const payload = job.payload_congelado || {};
+  const browserName = playwrightBrowserForJob(job, variables);
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-"));
   const specFile = scriptFileForJob(job, script).endsWith(".ts") ? "job.spec.ts" : "job.spec.js";
   const specPath = path.join(workspace, specFile);
@@ -982,6 +1003,7 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       "module.exports = {",
       `  timeout: ${timeoutMs},`,
       "  use: {",
+      `    browserName: ${JSON.stringify(browserName)},`,
       `    headless: ${shouldRunHeadless(job) ? "true" : "false"},`,
       "    screenshot: 'only-on-failure'",
       "  }",
@@ -1037,6 +1059,7 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       metadata: {
         worker: RUNNER_NAME,
         framework: payload.framework || "playwright",
+        browser: browserName,
         framework_version: getPlaywrightVersion(),
         script_format: "playwright_test",
         playwright_report: report ? compactPlaywrightMetadata(report, summary?.tests || []) : null,
@@ -1190,11 +1213,12 @@ async function executeSeleniumPythonJob(job, script, variables, started) {
 async function executePlaywrightWorkerFunctionJob(job, script, variables, started) {
   const logs = [];
   const payload = job.payload_congelado || {};
+  const browserName = playwrightBrowserForJob(job, variables);
   let browser;
   let page;
   try {
-    const { chromium } = await import("playwright");
-    browser = await chromium.launch({ headless: shouldRunHeadless(job) });
+    const { chromium, firefox, webkit } = await import("playwright");
+    browser = await ({ chromium, firefox, webkit })[browserName].launch({ headless: shouldRunHeadless(job) });
     page = await browser.newPage();
     const fn = compileScript(script);
     const context = {
@@ -1218,6 +1242,7 @@ async function executePlaywrightWorkerFunctionJob(job, script, variables, starte
       metadata: {
         worker: RUNNER_NAME,
         framework: payload.framework || "playwright",
+        browser: browserName,
         framework_version: getPlaywrightVersion(),
         script_format: "worker_function",
         headless: shouldRunHeadless(job),
@@ -1250,6 +1275,7 @@ async function executePlaywrightWorkerFunctionJob(job, script, variables, starte
       metadata: {
         worker: RUNNER_NAME,
         framework: payload.framework || "playwright",
+        browser: browserName,
         framework_version: getPlaywrightVersion(),
         script_format: "worker_function",
         headless: shouldRunHeadless(job),
@@ -1377,4 +1403,29 @@ async function loop() {
   }
 }
 
-loop();
+export {
+  artifactFromBuffer,
+  classifyPlaywrightFailure,
+  classifyProcessFailure,
+  collectPlaywrightTests,
+  compactPlaywrightMetadata,
+  contentTypeForFile,
+  detectScriptFormat,
+  frameworkKey,
+  getValue,
+  isAssertionLike,
+  languageKey,
+  normalizeDataset,
+  normalizeJobStatus,
+  normalizeStepResult,
+  normalizeStepStatus,
+  parsePlaywrightJsonReport,
+  playwrightReportStatus,
+  redact,
+  replacePlaceholders,
+  safeJsonParse,
+};
+
+const invokedAsMain = process.argv[1]
+  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (invokedAsMain) loop();

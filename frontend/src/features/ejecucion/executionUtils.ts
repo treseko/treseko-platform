@@ -3,7 +3,7 @@ export const getStatusColor = (status: string) => {
     case 'passed': case 'ok': case 'paso': return 'success'
     case 'failed': case 'fallido': case 'fallo': return 'danger'
     case 'blocked': case 'bloqueado': return 'primary'
-    case 'skipped': return 'warning'
+    case 'skipped': return 'secondary'
     case 'ejecutando_ai': return 'info'
     default: return 'secondary'
   }

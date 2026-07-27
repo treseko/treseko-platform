@@ -29,7 +29,7 @@ export type ConfiguracionPageProps = {
   aiEngineConfigLoading: boolean
   aiEngineHealth: any
   saveAiEngineConfig: (config: any) => void
-  checkAiEngineHealth: () => void
+  checkAiEngineHealth: (options?: { silent?: boolean }) => Promise<any>
   organizations: any[]
   projectsList: any[]
   selectedOrganizationId: string | null
@@ -68,6 +68,14 @@ export type AiWorkflowNode = {
   type: string
   name: string
   agent_key: string
+  agent_definition_id?: string | null
+  universal_agent_version_id?: string | null
+  universal_agent?: {
+    version_id: string
+    version: string
+    contract: Record<string, any>
+    contract_hash?: string
+  }
   enabled: boolean
   locked?: boolean
   prompt_template?: string
@@ -92,6 +100,7 @@ export type AiWorkflowEdge = {
   condition_json?: Record<string, any>
   priority?: number
   max_passes?: number
+  data_mapping_json?: Array<{ source: string; target: string }>
 }
 
 export type AiWorkflow = {
@@ -100,6 +109,12 @@ export type AiWorkflow = {
   version: number
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | string
   is_default?: boolean
+  workflow_format?: 'legacy_v1' | 'block_v2' | 'universal_v2'
+  workflow_purpose?: 'test_execution' | 'story_generation' | 'test_case_generation'
+  source_workflow_id?: string | null
+  provider_profile_id?: string | null
+  fallback_profile_ids?: string[]
+  decision_policy_json?: Record<string, any>
   updated_at?: string
   created_at?: string
   nodes: AiWorkflowNode[]
@@ -118,6 +133,7 @@ export type AiWorkflowVersion = {
 
 export type AiAgentPreset = {
   id: string
+  key?: string
   name: string
   type: string
   category: string
@@ -126,4 +142,14 @@ export type AiAgentPreset = {
   config_json?: Record<string, any>
   input_mapping?: Record<string, any>
   output_schema?: Record<string, any>
+  agent_definition_id?: string
+  universal_agent_version_id?: string
+  universal_contract?: Record<string, any>
+  status?: 'operational' | 'experimental' | 'requires_configuration' | 'deprecated' | string
+  kind?: string
+  runtime_handler?: string | null
+  config_schema_json?: Record<string, any>
+  capabilities_json?: Record<string, any>
+  requires_secret_reference?: boolean
+  ui_metadata_json?: Record<string, any>
 }

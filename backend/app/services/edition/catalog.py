@@ -11,6 +11,7 @@ COMMUNITY_LIMITS: dict[str, int] = {
     "max_workers": 1,
     "max_automated_runs_per_week": 50,
     "max_ai_runs_per_week": 10,
+    "max_ai_case_generations_per_week": 20,
     "max_storage_mb": 1024,
 }
 
@@ -22,6 +23,7 @@ LIMIT_CATALOG: dict[str, dict[str, str]] = {
     "max_workers": {"label": "Workers", "category": "automation"},
     "max_automated_runs_per_week": {"label": "Ejecuciones automatizadas por semana", "category": "automation"},
     "max_ai_runs_per_week": {"label": "Ejecuciones IA por semana", "category": "ai"},
+    "max_ai_case_generations_per_week": {"label": "Generaciones de casos IA por semana", "category": "ai"},
     "max_storage_mb": {"label": "Almacenamiento MB", "category": "storage"},
 }
 
@@ -37,11 +39,12 @@ FEATURE_CATALOG: dict[str, dict[str, Any]] = {
     "rbac.simple": {"edition": "community", "label": "RBAC simple", "category": "security"},
     "automation.local_worker": {"edition": "community", "label": "Worker local o automatizacion basica", "category": "automation"},
     "external_api.basic_report": {"edition": "community", "label": "API externa basica para reportar ejecuciones", "category": "automation"},
-    "ai.basic_execution": {"edition": "community", "label": "Ejecucion IA basica con cuota semanal", "category": "ai"},
+    "ai.basic_execution": {"edition": "community", "label": "Ejecucion IA con cuota semanal", "category": "ai"},
+    "ai.engine": {"edition": "community", "label": "Motor IA completo", "category": "ai"},
+    "ai.case_generation": {"edition": "community", "label": "Generacion de casos con IA", "category": "ai"},
     "updates.community_stable": {"edition": "community", "label": "Canal community-stable", "category": "updates"},
     "rbac.granular": {"edition": "premium", "label": "RBAC granular por capacidades", "category": "security"},
     "auth.sso": {"edition": "premium", "label": "Active Directory, OIDC y SSO", "category": "auth"},
-    "ai.engine": {"edition": "premium", "label": "Motor IA completo", "category": "ai"},
     "automation.multi_worker": {"edition": "premium", "label": "Multi-worker", "category": "automation"},
     "automation.scheduler": {"edition": "premium", "label": "Scheduler avanzado", "category": "automation"},
     "automation.advanced": {"edition": "premium", "label": "Ejecucion automatizada avanzada", "category": "automation"},

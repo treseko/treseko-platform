@@ -1,4 +1,5 @@
-from .legacy_common import *
+from .repository_context import *
+from .ai_workflow_validation import is_valid_for_activation, validate_workflow_graph
 
 REDACTED_AI_EXPORT_SECRET = "[redacted]"
 AI_EXPORT_SECRET_KEYS = {
@@ -33,6 +34,13 @@ def _redact_ai_export_secrets(value: Any) -> Any:
 
 def _redact_ai_workflow_export_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _redact_ai_export_secrets(payload)
+
+
+def _apply_provider_snapshot(workflow: models.AiWorkflow, meta: Dict[str, Any]) -> None:
+    raw_primary = meta.get("provider_profile_id")
+    workflow.provider_profile_id = UUID(str(raw_primary)) if raw_primary else None
+    workflow.fallback_profile_ids = [str(UUID(str(item))) for item in (meta.get("fallback_profile_ids") or [])]
+    workflow.decision_policy_json = meta.get("decision_policy_json") if isinstance(meta.get("decision_policy_json"), dict) else {}
 
 
 async def export_ai_workflow(db: AsyncSession, workflow_id: UUID, include_versions: bool = True) -> Dict[str, Any]:
@@ -91,6 +99,17 @@ async def import_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowImport
         version=int(raw_workflow.get("version") or 1),
         status=str(raw_workflow.get("status") or "DRAFT"),
         is_default=False,
+        workflow_format=str(raw_workflow.get("workflow_format") or "legacy_v1"),
+        workflow_purpose=str(raw_workflow.get("workflow_purpose") or "test_execution"),
+        # An exported workflow can be imported into another tenant/database where
+        # its source does not exist. Keep imports self-contained rather than
+        # creating a dangling self-reference; local block copies retain origin.
+        source_workflow_id=None,
+        # Provider/credential identifiers are installation-local and must not
+        # cross the workflow package boundary.
+        provider_profile_id=None,
+        fallback_profile_ids=[],
+        decision_policy_json=raw_workflow.get("decision_policy_json") if isinstance(raw_workflow.get("decision_policy_json"), dict) else {},
         created_by=user_id,
     )
     db.add(workflow)
@@ -106,6 +125,8 @@ async def import_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowImport
             type=str(raw_node.get("type") or "llm_agent"),
             name=str(raw_node.get("name") or raw_node.get("type") or "Agente"),
             agent_key=str(raw_node.get("agent_key") or raw_node.get("type") or "CUSTOM"),
+            agent_definition_id=UUID(str(raw_node["agent_definition_id"])) if raw_node.get("agent_definition_id") else None,
+            universal_agent_version_id=UUID(str(raw_node["universal_agent_version_id"])) if raw_node.get("universal_agent_version_id") else None,
             enabled=bool(raw_node.get("enabled", True)),
             locked=bool(raw_node.get("locked", False)),
             prompt_template=str(raw_node.get("prompt_template") or raw_node.get("prompt") or ""),
@@ -133,6 +154,7 @@ async def import_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowImport
             condition_json=raw_edge.get("condition_json") if isinstance(raw_edge.get("condition_json"), dict) else {},
             priority=int(raw_edge.get("priority") or 0),
             max_passes=max(1, int(raw_edge.get("max_passes") or 1)),
+            data_mapping_json=raw_edge.get("data_mapping_json") if isinstance(raw_edge.get("data_mapping_json"), list) else [],
         ))
     await _replace_workflow_graph(db, workflow, node_payloads, edge_payloads, user_id, "Workflow importado")
     await db.flush()
@@ -169,6 +191,8 @@ def _workflow_payloads_from_snapshot(snapshot: Dict[str, Any]) -> tuple[List[sch
             type=str(raw_node.get("type") or "llm_agent"),
             name=str(raw_node.get("name") or "Agente"),
             agent_key=str(raw_node.get("agent_key") or raw_node.get("type") or "CUSTOM"),
+            agent_definition_id=UUID(str(raw_node["agent_definition_id"])) if raw_node.get("agent_definition_id") else None,
+            universal_agent_version_id=UUID(str(raw_node["universal_agent_version_id"])) if raw_node.get("universal_agent_version_id") else None,
             enabled=bool(raw_node.get("enabled", True)),
             locked=bool(raw_node.get("locked", False)),
             prompt_template=str(raw_node.get("prompt_template") or ""),
@@ -203,6 +227,7 @@ def _workflow_payloads_from_snapshot(snapshot: Dict[str, Any]) -> tuple[List[sch
             condition_json=raw_edge.get("condition_json") if isinstance(raw_edge.get("condition_json"), dict) else {},
             priority=int(raw_edge.get("priority") or 0),
             max_passes=max(1, int(raw_edge.get("max_passes") or 1)),
+            data_mapping_json=raw_edge.get("data_mapping_json") if isinstance(raw_edge.get("data_mapping_json"), list) else [],
         ))
     return node_payloads, edge_payloads
 
@@ -235,11 +260,33 @@ async def activate_ai_workflow_version(
     meta = snapshot.get("workflow") or {}
     workflow.name = str(meta.get("name") or workflow.name)
     workflow.version = target.version
-    workflow.status = "ACTIVE"
+    _apply_provider_snapshot(workflow, meta)
     await _replace_workflow_graph(db, workflow, node_payloads, edge_payloads, user_id, f"Activacion de version {version}")
+    await db.flush()
+    issues = await validate_workflow_graph(db, workflow)
+    if not is_valid_for_activation(issues):
+        await db.rollback()
+        raise ValueError("La version seleccionada tiene errores de validacion y no se puede activar")
+    if any(issue["code"] == "PROTECTED_AGENT_MISSING" for issue in issues) and not confirm_running:
+        await db.rollback()
+        raise ValueError("El workflow omite agentes de seguridad o validacion; requiere confirmacion administrativa")
+    active_workflows = (await db.execute(
+        select(models.AiWorkflow).filter(
+            models.AiWorkflow.status == "ACTIVE",
+            models.AiWorkflow.workflow_purpose == workflow.workflow_purpose,
+            models.AiWorkflow.id != workflow.id,
+        )
+    )).scalars().all()
+    for active_workflow in active_workflows:
+        active_workflow.status = "DRAFT"
+    workflow.status = "ACTIVE"
     config = await get_ai_engine_config(db)
-    config["active_workflow_id"] = workflow.id
-    config["agent_workflow"] = _legacy_agent_workflow_from_definition(_workflow_definition(await _load_workflow(db, workflow.id)))
+    active_workflow_ids = dict(config.get("active_workflow_ids") or {})
+    active_workflow_ids[workflow.workflow_purpose] = workflow.id
+    config["active_workflow_ids"] = active_workflow_ids
+    if workflow.workflow_purpose == "test_execution":
+        config["active_workflow_id"] = workflow.id
+        config["agent_workflow"] = _legacy_agent_workflow_from_definition(_workflow_definition(await _load_workflow(db, workflow.id)))
     result = await db.execute(select(models.AppSetting).filter(models.AppSetting.key == AI_ENGINE_CONFIG_KEY))
     setting = result.scalar_one_or_none()
     if setting:
@@ -265,8 +312,15 @@ async def restore_ai_workflow_version_as_draft(
         version=max(1, int(workflow_meta.get("version") or target.version)),
         status="DRAFT",
         is_default=False,
+        workflow_format=str(workflow_meta.get("workflow_format") or source_workflow.workflow_format or "legacy_v1"),
+        workflow_purpose=str(workflow_meta.get("workflow_purpose") or source_workflow.workflow_purpose or "test_execution"),
+        source_workflow_id=source_workflow.id,
+        provider_profile_id=None,
+        fallback_profile_ids=[],
+        decision_policy_json={},
         created_by=user_id,
     )
+    _apply_provider_snapshot(workflow, workflow_meta)
     db.add(workflow)
     await db.flush()
     node_payloads, edge_payloads = _workflow_payloads_from_snapshot(snapshot)
@@ -301,10 +355,27 @@ async def rollback_ai_workflow_and_activate(
         raise ValueError("Existen ejecuciones RUNNING con este workflow; no se puede activar rollback sin confirmacion admin")
     workflow = await get_ai_workflow(db, workflow_id)
     target = await get_ai_workflow_version(db, workflow_id, version)
-    node_payloads, edge_payloads = _workflow_payloads_from_snapshot(target.snapshot_json or {})
+    snapshot = target.snapshot_json or {}
+    node_payloads, edge_payloads = _workflow_payloads_from_snapshot(snapshot)
+    _apply_provider_snapshot(workflow, snapshot.get("workflow") or {})
     await _replace_workflow_graph(db, workflow, node_payloads, edge_payloads, user_id, f"Rollback desde version {version}")
-    workflow.status = "ACTIVE"
     await db.flush()
+    issues = await validate_workflow_graph(db, workflow)
+    if not is_valid_for_activation(issues):
+        await db.rollback()
+        raise ValueError("La version de rollback tiene errores de validacion y no se puede activar")
+    if any(issue["code"] == "PROTECTED_AGENT_MISSING" for issue in issues) and not confirm_running:
+        await db.rollback()
+        raise ValueError("El workflow omite agentes de seguridad o validacion; requiere confirmacion administrativa")
+    active_workflows = (await db.execute(
+        select(models.AiWorkflow).filter(
+            models.AiWorkflow.status == "ACTIVE",
+            models.AiWorkflow.id != workflow.id,
+        )
+    )).scalars().all()
+    for active_workflow in active_workflows:
+        active_workflow.status = "DRAFT"
+    workflow.status = "ACTIVE"
     await _create_official_prompt_versions(db, workflow, f"Rollback desde version {version}", user_id)
     await create_ai_workflow_version(db, workflow, f"Rollback desde version {version}", user_id, restored_from_version=version)
     config = await get_ai_engine_config(db)

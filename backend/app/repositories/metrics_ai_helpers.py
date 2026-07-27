@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from .ai_provider_catalog import AI_PROVIDER_KEY_ENV, AI_PROVIDER_NO_KEY, AI_PROVIDER_PRESET_MODELS
 
 
@@ -32,19 +32,21 @@ async def _emit_ai_engine_unavailable_event(
 AI_WORKFLOW_NAMESPACE = uuid.UUID("0c4d4546-4c4f-4f57-8f00-000000000001")
 
 DEFAULT_AI_WORKFLOW_NODES = [
-    {"key": "ContextResolver", "type": "ContextResolver", "name": "Context Resolver", "agent_key": "CONTEXT_RESOLVER", "position_x": 80, "position_y": 120, "prompt_template": f"Resuelve contexto, URL base, datos y variables disponibles para la prueba. {AI_AGENT_EVIDENCE_RULE}"},
-    {"key": "Observer", "type": "Observer", "name": "Observer", "agent_key": "OBSERVER", "position_x": 300, "position_y": 120, "prompt_template": f"Observa el navegador, resume DOM visible, errores, URL actual y estado de carga. {AI_AGENT_EVIDENCE_RULE}"},
-    {"key": "Planner", "type": "Planner", "name": "Planner", "agent_key": "AI_AGENT", "position_x": 520, "position_y": 120, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[0]["prompt"]},
-    {"key": "SecurityGuard", "type": "SecurityGuard", "name": "Security Guard", "agent_key": "QA_GUARD", "position_x": 740, "position_y": 120, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[1]["prompt"]},
+    {"key": "ContextResolver", "type": "ContextResolver", "name": "Context Resolver", "agent_key": "CONTEXT_RESOLVER", "position_x": 80, "position_y": 120, "prompt_template": "Resuelve contexto, URL base, datos y variables disponibles para la prueba."},
+    {"key": "PreExecutionAnalyst", "type": "PreExecutionAnalyst", "name": "Analista Previo", "agent_key": "PRE_EXECUTION_ANALYST", "position_x": 300, "position_y": 120, "prompt_template": "Interpreta Accion, Datos y Resultado Esperado como contratos temporales de validacion."},
+    {"key": "Observer", "type": "Observer", "name": "Observer", "agent_key": "OBSERVER", "position_x": 520, "position_y": 120, "prompt_template": "Observa el navegador, resume DOM visible, errores, URL actual y estado de carga."},
+    {"key": "Planner", "type": "Planner", "name": "Planner", "agent_key": "AI_AGENT", "position_x": 740, "position_y": 120, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[0]["prompt"]},
+    {"key": "SecurityGuard", "type": "SecurityGuard", "name": "Security Guard", "agent_key": "QA_GUARD", "position_x": 960, "position_y": 120, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[1]["prompt"]},
     {"key": "Executor", "type": "Executor", "name": "Executor", "agent_key": "SENTINEL", "position_x": 960, "position_y": 40, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[2]["prompt"], "retry_policy": {"max_retries": 2}, "timeout_sec": 900},
-    {"key": "Validator", "type": "Validator", "name": "Validator", "agent_key": "VALIDATOR", "position_x": 1180, "position_y": 40, "prompt_template": f"Valida si la accion ejecutada produjo el resultado esperado del paso actual. {AI_AGENT_EVIDENCE_RULE}"},
-    {"key": "Recovery", "type": "Recovery", "name": "Recovery", "agent_key": "RECOVERY", "position_x": 960, "position_y": 220, "prompt_template": f"Determina si se puede reintentar, ajustar la estrategia o bloquear la prueba. {AI_AGENT_EVIDENCE_RULE}"},
+    {"key": "Validator", "type": "Validator", "name": "Validator", "agent_key": "VALIDATOR", "position_x": 1180, "position_y": 40, "prompt_template": "Valida si la accion ejecutada produjo el resultado esperado del paso actual."},
+    {"key": "Recovery", "type": "Recovery", "name": "Recovery", "agent_key": "RECOVERY", "position_x": 960, "position_y": 220, "prompt_template": "Determina si se puede reintentar, ajustar la estrategia o bloquear la prueba."},
     {"key": "Auditor", "type": "Auditor", "name": "Auditor", "agent_key": "AUDITOR", "position_x": 1400, "position_y": 120, "prompt_template": DEFAULT_AI_AGENT_WORKFLOW[3]["prompt"]},
-    {"key": "Reporter", "type": "Reporter", "name": "Reporter", "agent_key": "REPORTER", "position_x": 1620, "position_y": 120, "prompt_template": f"Construye el reporte final, resumen, metricas y trazabilidad para la ejecucion. {AI_AGENT_EVIDENCE_RULE}"},
+    {"key": "Reporter", "type": "Reporter", "name": "Reporter", "agent_key": "REPORTER", "position_x": 1620, "position_y": 120, "prompt_template": "Construye el reporte final, resumen, metricas y trazabilidad para la ejecucion."},
 ]
 
 DEFAULT_AI_WORKFLOW_EDGES = [
-    ("ContextResolver", "Observer", "always", {}, 10, 1),
+    ("ContextResolver", "PreExecutionAnalyst", "always", {}, 10, 1),
+    ("PreExecutionAnalyst", "Observer", "always", {}, 10, 1),
     ("Observer", "Auditor", "on_blocked", {"reason": "no_more_steps"}, 5, 1),
     ("Observer", "Planner", "always", {}, 20, 100),
     ("Planner", "SecurityGuard", "always", {}, 10, 100),
@@ -140,6 +142,14 @@ def _empty_bug_metrics() -> Dict[str, Any]:
         "closed": 0,
         "by_status": {},
         "by_severity": {},
+        "resolved_in_build": 0,
+        "closed_in_build": 0,
+        "closed_without_fix_in_build": 0,
+        "reopened_in_build": 0,
+        "open_at_build_start": 0,
+        "open_at_build_end": 0,
+        "closure_attribution_unknown": 0,
+        "resolution_rate": 0.0,
     }
 
 

@@ -1,14 +1,28 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Link2 } from 'lucide-react'
-import { Button, Card, Form } from 'react-bootstrap'
+import { ChevronDown, Link2 } from 'lucide-react'
+import { Button, Card, Form, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { API_BASE } from '../../app/constants'
 
 export function CaseTraceabilitySection({
-  projectId, masterId, fetchWithAuth, storyIds, setStoryIds, editable = true,
+  projectId, masterId, fetchWithAuth, storyIds, setStoryIds, editable = true, canConfirmRevision = true, showFeedback,
 }: any) {
   const [stories, setStories] = useState<any[]>([])
   const [linked, setLinked] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [reviewingStoryId, setReviewingStoryId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const refreshMessage = (title: string, message: string, variant: 'success' | 'danger' = 'danger') => {
+    if (typeof showFeedback === 'function') {
+      showFeedback(title, message, variant)
+      return
+    }
+    setActionError(message)
+    if (variant === 'success') {
+      window.setTimeout(() => setActionError(null), 2500)
+    }
+  }
 
   useEffect(() => {
     if (!projectId || !fetchWithAuth) return
@@ -28,16 +42,47 @@ export function CaseTraceabilitySection({
 
   const linkedById = new Map(linked.map((item: any) => [String(item.historia_id), item]))
   const toggle = (id: string) => setStoryIds(storyIds.includes(id) ? storyIds.filter((item: string) => item !== id) : [...storyIds, id])
+  const pendingReviewCount = Array.from(linkedById.values()).filter((item: any) => item?.requiere_revision).length
+  const renderReviewIcon = (count?: number, contextId?: string) => {
+    const pending = Number.isFinite(count) && count > 0 ? count : 1
+    const message = pending === 1 ? 'Revisión pendiente' : `Revisiones pendientes: ${pending}`
+    const tooltipId = `story-review-indicator-${contextId ?? 'case'}`
+
+    return (
+      <OverlayTrigger placement="top" overlay={<Tooltip id={tooltipId}>{message}</Tooltip>}>
+        <span
+          className="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+          style={{ width: 16, height: 16, fontSize: 12, fontWeight: 700, lineHeight: 1 }}
+          role="img"
+          aria-label={message}
+          title={message}
+        >
+          !
+        </span>
+      </OverlayTrigger>
+    )
+  }
 
   return (
-    <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
-      <div className="bg-light border-bottom py-2 px-3 d-flex align-items-center gap-2">
+    <Card className="border rounded-2 bg-white text-start mb-2 overflow-hidden">
+      <button
+        type="button"
+        className="bg-light border-0 border-bottom w-100 py-1 px-2 d-flex align-items-center gap-2 text-start"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+      >
         <Link2 size={18} className="text-primary" />
-        <h6 className="fw-bold text-dark m-0">Trazabilidad</h6>
-      </div>
-      <Card.Body className="p-3">
+        <span className="small fw-semibold text-dark">Trazabilidad</span>
+        {pendingReviewCount > 0 && renderReviewIcon(pendingReviewCount, `traceability-${masterId ?? 'new'}`)}
+        <span className="ms-auto d-flex align-items-center gap-2">
+          {!loading && <span className="x-small text-muted">{storyIds.length} vinculada(s)</span>}
+          <ChevronDown size={15} className="text-muted" style={{ transform: expanded ? 'rotate(180deg)' : undefined, transition: 'transform 120ms ease' }} />
+        </span>
+      </button>
+      {expanded && <Card.Body className="p-2">
         {loading ? <span className="small text-muted">Cargando historias...</span> : stories.length === 0 ? <span className="small text-muted">No hay historias activas en este proyecto.</span> : (
           <div className="d-flex flex-column gap-2">
+            {actionError && <div className="small text-danger">{actionError}</div>}
             {stories.map((story) => {
               const id = String(story.id)
               const current = linkedById.get(id)
@@ -46,17 +91,39 @@ export function CaseTraceabilitySection({
                 <div className="flex-grow-1 min-w-0">
                   <div className="small fw-bold text-primary">{story.codigo} · {story.titulo}</div>
                   <div className="x-small text-muted">{story.requisito_codigo} · {story.requisito_titulo}</div>
-                  {current?.requiere_revision && <div className="x-small text-warning-emphasis mt-1 d-flex align-items-center gap-1"><AlertTriangle size={13} /> Requiere revisar este caso.</div>}
+                  {current?.requiere_revision && (
+                    <div className="x-small text-warning-emphasis mt-1 d-flex align-items-center gap-1">
+                      {renderReviewIcon(1, id)}
+                    </div>
+                  )}
                 </div>
-                {current?.requiere_revision && masterId && editable && <Button size="sm" variant="outline-warning" title="Confirmar revisión" onClick={async () => {
-                  const response = await fetchWithAuth(`${API_BASE}/casos/${masterId}/historias/${id}/confirmar-revision`, { method: 'POST' })
-                  if (response.ok) setLinked(await response.json())
-                }}>Revisado</Button>}
+                {current?.requiere_revision && masterId && editable && canConfirmRevision && <Button size="sm" variant="outline-warning" title="Confirmar revisión" disabled={reviewingStoryId === id} onClick={async () => {
+                  setReviewingStoryId(id)
+                  setActionError(null)
+                  try {
+                    const response = await fetchWithAuth(`${API_BASE}/casos/${masterId}/historias/${id}/confirmar-revision`, { method: 'POST' })
+                    if (!response.ok) {
+                      const error = await response.json().catch(() => null)
+                      throw new Error(error?.detail || `No se pudo confirmar la revisión (HTTP ${response.status}).`)
+                    }
+                    const body = await response.json()
+                    setLinked(Array.isArray(body) ? body : [])
+                    refreshMessage('Revisión confirmada', 'La historia quedó confirmada como revisada.', 'success')
+                  } catch (error: any) {
+                    setActionError(error?.message || 'No se pudo confirmar la revisión.')
+                    refreshMessage('No se pudo confirmar la revisión', error?.message || 'No se pudo confirmar la revisión.', 'danger')
+                  } finally {
+                    setReviewingStoryId(null)
+                  }
+                }}> {reviewingStoryId === id ? 'Confirmando...' : 'Revisado'}</Button>}
+                {current?.requiere_revision && masterId && editable && !canConfirmRevision && (
+                  <div className="small text-muted">Sin permiso para confirmar revisión.</div>
+                )}
               </div>
             })}
           </div>
         )}
-      </Card.Body>
+      </Card.Body>}
     </Card>
   )
 }

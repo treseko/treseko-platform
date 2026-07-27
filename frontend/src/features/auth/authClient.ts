@@ -55,6 +55,14 @@ export function createAuthClient({
   setIsAuthenticated,
   setLoginError
 }: CreateAuthClientParams) {
+  const persistAccessToken = (accessToken: string) => {
+    if (!accessToken) {
+      throw new Error('El backend no devolvió un token de sesión válido.')
+    }
+    localStorage.setItem('qa_access_token', accessToken)
+    localStorage.setItem('qa_session_expires_at', getJwtExpiresAt(accessToken))
+  }
+
   const loginWithPassword = async (email: string, password: string) => {
     const body = new URLSearchParams()
     body.set('username', email)
@@ -72,8 +80,7 @@ export function createAuthClient({
     }
 
     const data = await response.json()
-    localStorage.setItem('qa_access_token', data.access_token)
-    localStorage.setItem('qa_session_expires_at', getJwtExpiresAt(data.access_token))
+    persistAccessToken(data.access_token)
     return data.access_token as string
   }
 
@@ -90,8 +97,7 @@ export function createAuthClient({
     }
 
     const data = await response.json()
-    localStorage.setItem('qa_access_token', data.access_token)
-    localStorage.setItem('qa_session_expires_at', getJwtExpiresAt(data.access_token))
+    persistAccessToken(data.access_token)
     return data.access_token as string
   }
 
@@ -208,6 +214,7 @@ export function createAuthClient({
     loginWithAdPassword,
     authHeaders,
     fetchWithAuth,
+    persistAccessToken,
     persistSession,
     syncSessionFromBackend
   }

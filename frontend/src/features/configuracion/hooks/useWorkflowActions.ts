@@ -1,13 +1,15 @@
 import {
-  addAiWorkflowPresetNode,
   createAiWorkflow,
-  exportAiWorkflow,
-  importAiWorkflow,
+  copyAiWorkflowAsBlocks,
+  copyAiWorkflowAsUniversal,
+  createAiUniversalAgent,
+  exportAiUniversalWorkflowPackage,
+  importAiUniversalWorkflowPackage,
   postAiWorkflowAction,
   updateAiWorkflow,
 } from '../api/aiWorkflowApi'
 import { createWorkflowDraftFromSource } from '../mappers/workflowFlowMappers'
-import type { AiAgentPreset, AiWorkflow, AiWorkflowNode } from '../types/configuracion'
+import type { AiAgentPreset, AiWorkflow } from '../types/configuracion'
 import type { FetchWithAuth } from '../api/configuracionApi'
 import type { Dispatch, SetStateAction } from 'react'
 
@@ -15,17 +17,17 @@ type UseWorkflowActionsParams = {
   fetchWithAuth: FetchWithAuth
   workflowDraft: AiWorkflow | null
   aiWorkflows: AiWorkflow[]
-  selectedWorkflowNode: AiWorkflowNode | null
   canEditAi: boolean
   onOpenIaScheduler?: () => void
   setWorkflowDraft: (workflow: AiWorkflow) => void
   setAiWorkflows: Dispatch<SetStateAction<AiWorkflow[]>>
   setWorkflowLoading: (loading: boolean) => void
-  syncFlowFromWorkflow: (workflow: AiWorkflow | null) => void
+  syncFlowFromWorkflow: (workflow: AiWorkflow | null, options?: { forceLayout?: boolean; manual?: boolean; persistPositions?: boolean; autoLayout?: boolean; reason?: string }) => void
+  enqueueInsert: (preset: AiAgentPreset, position: { x: number; y: number }) => boolean
   loadWorkflowVersions: (workflowId: string) => Promise<void>
   loadAiWorkflows: () => Promise<void>
+  loadAgentPresets: () => Promise<void>
   selectWorkflow: (workflow: AiWorkflow) => void
-  refitWorkflow: (reason: string) => void
   showFeedback: (title: string, message: string, variant?: string) => void
 }
 
@@ -33,17 +35,17 @@ export function useWorkflowActions({
   fetchWithAuth,
   workflowDraft,
   aiWorkflows,
-  selectedWorkflowNode,
   canEditAi,
   onOpenIaScheduler,
   setWorkflowDraft,
   setAiWorkflows,
   setWorkflowLoading,
   syncFlowFromWorkflow,
+  enqueueInsert,
   loadWorkflowVersions,
   loadAiWorkflows,
+  loadAgentPresets,
   selectWorkflow,
-  refitWorkflow,
   showFeedback,
 }: UseWorkflowActionsParams) {
   const saveWorkflowDraft = async () => {
@@ -74,17 +76,9 @@ export function useWorkflowActions({
     onOpenIaScheduler()
   }
 
-  const addPresetToWorkflow = async (preset: AiAgentPreset) => {
-    if (!workflowDraft) return
-    try {
-      const saved = await addAiWorkflowPresetNode(fetchWithAuth, workflowDraft.id, preset, selectedWorkflowNode?.id || null)
-      setWorkflowDraft(saved)
-      setAiWorkflows(prev => prev.map(item => item.id === saved.id ? saved : item))
-      syncFlowFromWorkflow(saved)
-      await loadWorkflowVersions(saved.id)
-    } catch (error: any) {
-      showFeedback('Presets IA', error?.message || 'No se pudo insertar el preset.', 'danger')
-    }
+  const addPresetToWorkflow = async (preset: AiAgentPreset, position?: { x: number; y: number }): Promise<boolean> => {
+    if (!workflowDraft || !position) return false
+    return enqueueInsert(preset, position)
   }
 
   const createWorkflow = async () => {
@@ -110,28 +104,71 @@ export function useWorkflowActions({
     }
   }
 
-  const exportWorkflow = async () => {
+  const copyWorkflowAsBlocks = async () => {
     if (!workflowDraft) return
-    const payload = await exportAiWorkflow(fetchWithAuth, workflowDraft.id)
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${workflowDraft.name.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase()}-workflow.json`
-    link.click()
-    URL.revokeObjectURL(url)
+    try {
+      const created = await copyAiWorkflowAsBlocks(fetchWithAuth, workflowDraft.id)
+      setAiWorkflows(prev => [created, ...prev])
+      selectWorkflow(created)
+      showFeedback('Workflow por bloques', 'Se creó un borrador V2. El workflow clásico original no fue modificado.', 'success')
+    } catch (error: any) {
+      showFeedback('Workflow por bloques', error?.message || 'No se pudo crear la copia por bloques.', 'danger')
+    }
   }
 
-  const importWorkflow = async (file?: File) => {
+  const copyWorkflowAsUniversal = async () => {
+    if (!workflowDraft) return
+    try {
+      const created = await copyAiWorkflowAsUniversal(fetchWithAuth, workflowDraft.id)
+      setAiWorkflows(prev => [created, ...prev])
+      selectWorkflow(created)
+      showFeedback('Workflow universal', 'Se creó una copia universal. El workflow original no fue modificado.', 'success')
+    } catch (error: any) {
+      showFeedback('Workflow universal', error?.message || 'No se pudo crear la copia universal.', 'danger')
+    }
+  }
+
+  const exportUniversalWorkflow = async () => {
+    if (!workflowDraft) return
+    try {
+      const payload = await exportAiUniversalWorkflowPackage(fetchWithAuth, workflowDraft.id)
+      const binary = atob(String(payload.package_base64 || ''))
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = payload.filename || 'workflow.treseko-workflow.zip'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error: any) {
+      showFeedback('Workflow portable', error?.message || 'No se pudo exportar el workflow portable.', 'danger')
+    }
+  }
+
+  const importUniversalWorkflow = async (file?: File) => {
     if (!file) return
     try {
-      const payload = JSON.parse(await file.text())
-      const imported = await importAiWorkflow(fetchWithAuth, payload)
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      let binary = ''
+      for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+      const imported = await importAiUniversalWorkflowPackage(fetchWithAuth, btoa(binary))
       setAiWorkflows(prev => [imported, ...prev])
       selectWorkflow(imported)
-      refitWorkflow('import workflow')
+      showFeedback('Workflow portable', 'El workflow fue importado como borrador independiente.', 'success')
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'JSON de workflow invalido.', 'danger')
+      showFeedback('Workflow portable', error?.message || 'El archivo portable no es válido.', 'danger')
+    }
+  }
+
+  const createUniversalAgent = async (payload: Record<string, any>) => {
+    try {
+      const created = await createAiUniversalAgent(fetchWithAuth, payload)
+      await loadAgentPresets()
+      showFeedback('Agente universal', `Se creó ${created.name} como borrador. Podés insertarlo en un workflow universal.`, 'success')
+      return created
+    } catch (error: any) {
+      showFeedback('Agente universal', error?.message || 'No se pudo crear el agente.', 'danger')
+      throw error
     }
   }
 
@@ -141,7 +178,10 @@ export function useWorkflowActions({
     addPresetToWorkflow,
     createWorkflow,
     postWorkflowAction,
-    exportWorkflow,
-    importWorkflow,
+    copyWorkflowAsBlocks,
+    copyWorkflowAsUniversal,
+    exportUniversalWorkflow,
+    importUniversalWorkflow,
+    createUniversalAgent,
   }
 }

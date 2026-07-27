@@ -244,6 +244,8 @@ export function GeneralSettingsTab({
           brand_name: brandingDraft.brand_name || brandingDraft.effective_brand_name,
           logo_url: brandingDraft.logo_url || null,
           enabled: Boolean(brandingDraft.enabled),
+          primary_color: brandingDraft.primary_color || brandingDraft.effective_primary_color,
+          accent_color: brandingDraft.accent_color || brandingDraft.effective_accent_color,
         }),
       })
       const data = await response.json().catch(() => ({}))
@@ -310,6 +312,10 @@ export function GeneralSettingsTab({
                     className="bg-light border-0 shadow-sm text-dark font-sans"
                   />
                 </Form.Group>
+                <Row className="g-2 mb-3">
+                  <Col md={6}><Form.Label className="fw-bold small text-muted">Color principal</Form.Label><Form.Control type="color" value={brandingDraft.primary_color || brandingDraft.effective_primary_color || '#172033'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, primary_color: event.target.value, effective_primary_color: event.target.value }))} /></Col>
+                  <Col md={6}><Form.Label className="fw-bold small text-muted">Color de acento</Form.Label><Form.Control type="color" value={brandingDraft.accent_color || brandingDraft.effective_accent_color || '#1677ff'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, accent_color: event.target.value, effective_accent_color: event.target.value }))} /></Col>
+                </Row>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold small text-muted">Ícono / logo</Form.Label>
                   <div className="d-flex flex-wrap align-items-center gap-2">
@@ -415,12 +421,12 @@ export function GeneralSettingsTab({
               </Form.Select>
               <div className="small text-muted mt-1">Se guarda en el sistema. No depende del reloj del navegador.</div>
             </Col>
-            <Col lg={4}>
+            <Col lg={4} className="align-self-start">
               <Form.Label className="fw-bold small text-muted">Hora actual de referencia</Form.Label>
               <div className="border rounded-3 bg-light px-3 py-2 fw-semibold">{systemTimePreview}</div>
             </Col>
             {canEditPreferences && (
-              <Col lg={3} className="text-lg-end">
+              <Col lg={3} className="text-lg-end align-self-start pt-4">
                 <Button variant="primary" type="submit" className="px-4 fw-bold rounded-pill shadow-sm" disabled={timeSettingsLoading || timeSettingsSaving}>
                   <Save size={16} className="me-2" /> {timeSettingsSaving ? 'Guardando...' : 'Guardar hora'}
                 </Button>

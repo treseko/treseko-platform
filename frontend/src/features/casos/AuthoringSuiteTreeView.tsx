@@ -63,7 +63,7 @@ export function AuthoringSuiteTreeView({
       selectedSubSuiteId={selectedSubSuiteId}
       selectedTest={selectedTest}
       casosList={casosList}
-      currentCompId={currentCompId}
+      currentCompId=""
       testSearchQuery={testSearchQuery}
       onSelectSuite={selectSuiteTarget}
       onToggleSuite={(suiteId) => setExpandedSuites(prev => ({ ...prev, [suiteId]: !prev[suiteId] }))}

@@ -1,4 +1,7 @@
-from .legacy_common import *
+import copy
+
+from .repository_context import *
+from .suites_cases import clone_case_traceability
 
 
 async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] = None):
@@ -40,15 +43,17 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
         criticidad=original.criticidad,
         tipo_prueba=original.tipo_prueba,
         estado_caso=original.estado_caso,
-        dataset=original.dataset,
-        etiquetas=original.etiquetas or [],
+        dataset=copy.deepcopy(original.dataset),
+        etiquetas=copy.deepcopy(original.etiquetas or []),
         script_automatizado=original.script_automatizado,
         framework=original.framework,
         creado_por=original.creado_por
     )
     db.add(cloned)
     await db.flush()
+    await clone_case_traceability(db, original.master_id, cloned.master_id)
     
+    cloned_steps_by_original_id = {}
     for paso in original.pasos:
         new_paso = models.PasoPrueba(
             caso_id=cloned.id,
@@ -56,9 +61,24 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
             accion=paso.accion,
             datos=paso.datos,
             resultado_esperado=paso.resultado_esperado,
-            metadata_ai=paso.metadata_ai
+            metadata_ai=copy.deepcopy(paso.metadata_ai),
         )
         db.add(new_paso)
+        cloned_steps_by_original_id[paso.id] = new_paso
+
+    if cloned_steps_by_original_id:
+        await db.flush()
+        attachment_result = await db.execute(
+            select(models.PasoAttachment).filter(
+                models.PasoAttachment.paso_id.in_(cloned_steps_by_original_id)
+            )
+        )
+        for original_link in attachment_result.scalars().all():
+            db.add(models.PasoAttachment(
+                paso_id=cloned_steps_by_original_id[original_link.paso_id].id,
+                attachment_id=original_link.attachment_id,
+                tipo=original_link.tipo,
+            ))
     
     await db.commit()
     await db.refresh(cloned)

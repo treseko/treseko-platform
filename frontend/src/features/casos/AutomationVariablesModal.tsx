@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Col, Form, Modal, Row, Tab, Tabs, Table } from 'react-bootstrap'
-import { Copy, Plus, Save, Trash2 } from 'lucide-react'
+import { Database, Copy, Plus, Save, Trash2 } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 
 type AutomationVariablesModalProps = {
@@ -247,11 +247,14 @@ export function AutomationVariablesModal({
   }
 
   return (
-    <Modal show={show} onHide={onHide} size="xl" centered>
-      <Modal.Header closeButton>
-        <Modal.Title>Variables configuradas</Modal.Title>
+    <Modal show={show} onHide={onHide} size="xl" centered scrollable>
+      <Modal.Header closeButton className="border-0 pb-2">
+        <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+          <Database size={18} className="text-primary" />
+          Variables configuradas
+        </Modal.Title>
       </Modal.Header>
-      <Modal.Body>
+      <Modal.Body className="pt-0">
         <Tabs defaultActiveKey="datasets" className="mb-3">
           <Tab eventKey="datasets" title="Ambiente y datasets">
             <Row className="g-3">

@@ -1,4 +1,40 @@
-from .legacy_common import *
+import copy
+
+from .repository_context import *
+
+
+async def clone_case_traceability(
+    db: AsyncSession,
+    original_master_id: UUID,
+    cloned_master_id: UUID,
+) -> None:
+    story_result = await db.execute(
+        select(models.CasoHistoria).filter(
+            models.CasoHistoria.caso_master_id == original_master_id
+        )
+    )
+    for original_link in story_result.scalars().all():
+        db.add(models.CasoHistoria(
+            caso_master_id=cloned_master_id,
+            historia_id=original_link.historia_id,
+            creado_por=original_link.creado_por,
+            historia_actualizada_en_vinculo=original_link.historia_actualizada_en_vinculo,
+            requiere_revision=original_link.requiere_revision,
+            fecha_revision=original_link.fecha_revision,
+            revisado_por=original_link.revisado_por,
+        ))
+
+    criterion_result = await db.execute(
+        select(models.AcceptanceCriterionCase).filter(
+            models.AcceptanceCriterionCase.caso_master_id == original_master_id
+        )
+    )
+    for original_link in criterion_result.scalars().all():
+        db.add(models.AcceptanceCriterionCase(
+            acceptance_criterion_id=original_link.acceptance_criterion_id,
+            caso_master_id=cloned_master_id,
+            creado_por=original_link.creado_por,
+        ))
 
 
 async def _clone_cases_for_suite(db: AsyncSession, original_suite_id: UUID, cloned_suite_id: UUID) -> int:
@@ -11,6 +47,16 @@ async def _clone_cases_for_suite(db: AsyncSession, original_suite_id: UUID, clon
         )
     )
     originals = result.scalars().all()
+    original_step_ids = [step.id for original in originals for step in original.pasos]
+    attachment_links_by_step = {}
+    if original_step_ids:
+        attachment_result = await db.execute(
+            select(models.PasoAttachment).filter(
+                models.PasoAttachment.paso_id.in_(original_step_ids)
+            )
+        )
+        for link in attachment_result.scalars().all():
+            attachment_links_by_step.setdefault(link.paso_id, []).append(link)
     copied = 0
     for original in originals:
         cloned_case = models.CasoPrueba(
@@ -28,23 +74,36 @@ async def _clone_cases_for_suite(db: AsyncSession, original_suite_id: UUID, clon
             criticidad=original.criticidad,
             tipo_prueba=original.tipo_prueba,
             estado_caso=original.estado_caso,
-            dataset=original.dataset,
-            etiquetas=original.etiquetas or [],
+            dataset=copy.deepcopy(original.dataset),
+            etiquetas=copy.deepcopy(original.etiquetas or []),
             script_automatizado=original.script_automatizado,
             framework=original.framework,
             creado_por=original.creado_por
         )
         db.add(cloned_case)
         await db.flush()
+        await clone_case_traceability(db, original.master_id, cloned_case.master_id)
+        cloned_steps = []
         for paso in original.pasos:
-            db.add(models.PasoPrueba(
+            cloned_step = models.PasoPrueba(
                 caso_id=cloned_case.id,
                 numero_paso=paso.numero_paso,
                 accion=paso.accion,
                 datos=paso.datos,
                 resultado_esperado=paso.resultado_esperado,
-                metadata_ai=paso.metadata_ai
-            ))
+                metadata_ai=copy.deepcopy(paso.metadata_ai),
+            )
+            db.add(cloned_step)
+            cloned_steps.append((paso, cloned_step))
+        if cloned_steps:
+            await db.flush()
+            for original_step, cloned_step in cloned_steps:
+                for original_link in attachment_links_by_step.get(original_step.id, []):
+                    db.add(models.PasoAttachment(
+                        paso_id=cloned_step.id,
+                        attachment_id=original_link.attachment_id,
+                        tipo=original_link.tipo,
+                    ))
         copied += 1
     return copied
 

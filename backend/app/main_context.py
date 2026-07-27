@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError as JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -47,7 +48,7 @@ async def _issue_auth_tokens(db: AsyncSession, user: models.Usuario):
     session_timeout_minutes = int(session_config.get("session_timeout_minutes") or 480)
     access_minutes = max(1, session_timeout_minutes)
     access_token = auth.create_access_token(
-        data={"sub": user.email},
+        data={"sub": user.email, "sv": int(user.session_version or 0)},
         expires_delta=timedelta(minutes=access_minutes),
     )
     return {
@@ -129,6 +130,17 @@ async def _emit_bug_event(db: AsyncSession, event_type: str, bug: models.BugIssu
         bug_id=bug.id,
         payload={"source": realtime_event_type},
     )
+    if bug.resolved_build_id and bug.resolved_build_id != bug.build_id:
+        await realtime_event_bus.publish(
+            bug.proyecto_id,
+            "report.metrics.invalidated",
+            actor_id=actor.id,
+            component_id=bug.componente_id,
+            build_id=bug.resolved_build_id,
+            case_id=bug.caso_id,
+            bug_id=bug.id,
+            payload={"source": realtime_event_type, "scope": "resolution_build"},
+        )
 
 async def _emit_ai_engine_unavailable_event(
     db: AsyncSession,

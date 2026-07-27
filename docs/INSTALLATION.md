@@ -1,7 +1,8 @@
-# Instalacion de Treseko Community
+# Instalar Treseko Community
 
-Esta guia resume el camino recomendado para instalar Treseko Community en un servidor propio.
-Para produccion se recomienda Docker Compose, PostgreSQL y Nginx.
+Usá esta guía para elegir la forma de instalación y verificar que Treseko
+quede listo para el primer inicio de sesión. Para producción, Docker Compose es
+el camino recomendado.
 
 ## Requisitos
 
@@ -13,7 +14,7 @@ Para produccion se recomienda Docker Compose, PostgreSQL y Nginx.
 
 ## Instalacion rapida con Docker
 
-### Opcion A: probar en local
+### Opción A: probar en local
 
 Para probar Treseko en tu propia maquina con Docker:
 
@@ -50,7 +51,7 @@ El instalador local:
 - crea el usuario inicial `admin@qa.local`;
 - devuelve una contraseña temporal para el primer login.
 
-### Opcion B: instalacion automatica por SSH
+### Opción B: instalación automática por SSH
 
 Si tienes un servidor Linux accesible por SSH, puedes instalar Treseko desde tu equipo sin ejecutar cada paso manualmente.
 
@@ -92,7 +93,7 @@ Guarda esa contraseña en el momento. Treseko pedira cambiarla en el primer logi
 
 > Nota: Windows se usa como equipo cliente para lanzar la instalacion por SSH. El servidor destino debe ser Linux.
 
-### Opcion C: instalacion manual con Docker
+### Opción C: instalación manual con Docker
 
 ```bash
 cp .env.production.example compose.production.env
@@ -150,8 +151,9 @@ Abre Treseko desde el navegador en el puerto configurado para el frontend.
 
 ## Instalacion limpia
 
-Una instalacion productiva limpia no crea soluciones, proyectos, builds ni datos demo.
-Despues del primer login, el administrador debe crear la primera solucion desde la interfaz.
+Una instalación productiva limpia no crea soluciones, proyectos, builds ni datos
+demo. Después del primer inicio de sesión, creá la primera solución desde la
+interfaz.
 
 ## Datos demo
 

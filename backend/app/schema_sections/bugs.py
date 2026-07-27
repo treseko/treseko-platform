@@ -131,7 +131,6 @@ class BugIssueCreate(BaseModel):
     external_payload_snapshot: Dict[str, Any] = Field(default_factory=dict)
     dedupe_hash: Optional[str] = Field(default=None, max_length=MAX_BUG_DEDUPE_HASH_LENGTH)
     duplicate_of_id: Optional[UUID] = None
-    retest_status: str = Field(default="pendiente", max_length=MAX_BUG_STATUS_LENGTH)
     metadata_json: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("external_issue_url")
@@ -205,7 +204,6 @@ class BugIssueUpdate(BaseModel):
     motivo_cierre: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
     duplicate_of_id: Optional[UUID] = None
     reopened_count: Optional[int] = Field(default=None, ge=0, le=1000)
-    retest_status: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     metadata_json: Optional[Dict[str, Any]] = None
 
     @field_validator("external_issue_url")
@@ -225,9 +223,11 @@ class BugIssueUpdate(BaseModel):
 
 class BugTransitionRequest(BaseModel):
     estado: str = Field(..., min_length=1, max_length=MAX_BUG_STATUS_LENGTH)
+    resolution_build_id: Optional[UUID] = None
     resolucion: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
     motivo_cierre: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
-    retest_status: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
+
+    model_config = ConfigDict(extra="forbid")
 
 class BugExternalLinkCreate(BaseModel):
     provider_id: str = Field(..., min_length=1, max_length=MAX_BUG_EXTERNAL_PROVIDER_LENGTH)
@@ -359,6 +359,9 @@ class BugIssueResponse(BaseModel):
     proyecto_id: UUID
     componente_id: Optional[UUID] = None
     build_id: Optional[UUID] = None
+    resolved_build_id: Optional[UUID] = None
+    resolved_build_name: Optional[str] = None
+    resolved_build_code: Optional[str] = None
     caso_id: Optional[UUID] = None
     test_run_id: Optional[UUID] = None
     ejecucion_id: Optional[UUID] = None
@@ -415,7 +418,6 @@ class BugIssueResponse(BaseModel):
     motivo_cierre: Optional[str] = None
     duplicate_of_id: Optional[UUID] = None
     reopened_count: int = 0
-    retest_status: str = "pendiente"
     closed_at: Optional[datetime] = None
     metadata_json: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
@@ -423,6 +425,23 @@ class BugIssueResponse(BaseModel):
     comments: List[BugCommentResponse] = Field(default_factory=list)
     attachments: List[BugAttachmentResponse] = Field(default_factory=list)
     external_links: List[BugExternalLinkResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+class BugStatusHistoryResponse(BaseModel):
+    id: UUID
+    bug_id: UUID
+    project_id: UUID
+    from_status: Optional[str] = None
+    to_status: str
+    build_id: Optional[UUID] = None
+    build_name: Optional[str] = None
+    build_code: Optional[str] = None
+    actor_id: Optional[UUID] = None
+    resolution: Optional[str] = None
+    close_reason: Optional[str] = None
+    source: str
+    occurred_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -14,6 +14,9 @@ export class BrowserController {
       args: [`--window-size=${width},${height}`]
     });
     const context = await this.browser.newContext({ viewport: { width, height }, screen: { width, height } });
+    await context.addInitScript(() => {
+      (globalThis as any).__name = (globalThis as any).__name || ((fn: unknown) => fn);
+    });
     this.page = await context.newPage();
 
     // --- MANEJO AUTOMÁTICO DE DIÁLOGOS (Alerts, Prompts, Confirms) ---

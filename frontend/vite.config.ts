@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -35,6 +36,29 @@ export default defineConfig(({ mode }) => {
   const frontendPort = Number(env.FRONTEND_PORT || env.VITE_PORT || 5173)
   return {
     plugins: [react(), tresekoVersionPlugin()],
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+      include: ['src/**/*.ui.test.{ts,tsx}'],
+      clearMocks: true,
+      restoreMocks: true,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('monaco-editor') || id.includes('@monaco-editor')) return 'vendor-editor'
+            if (id.includes('recharts') || id.includes('/d3-')) return 'vendor-charts'
+            if (id.includes('elkjs')) return 'vendor-layout-engine'
+            if (id.includes('@xyflow')) return 'vendor-diagrams'
+            if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) return 'vendor-react'
+            if (/node_modules\/(bootstrap|@popperjs)\//.test(id)) return 'vendor-bootstrap'
+            return 'vendor'
+          },
+        },
+      },
+    },
     server: {
       host: env.FRONTEND_HOST || '127.0.0.1',
       port: Number.isFinite(frontendPort) ? frontendPort : 5173,

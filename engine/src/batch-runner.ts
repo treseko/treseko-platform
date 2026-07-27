@@ -36,9 +36,11 @@ async function runSuite() {
     try {
       console.log(`\n[${results.length + 1}/${smokeSuite.length}] Ejecutando ${test.id}: ${test.task.substring(0, 50)}...`);
       const summary = await runTask(test.task, test.url, 15, test.id, suiteName, test.expected, test.guidance);
-      results.push({ ...test, status: 'COMPLETED', tokens: summary.tokens, time: summary.time });
-      suiteTotalTokens += summary.tokens;
-      suiteTotalTime += summary.time;
+      const tokens = Number(summary.metadata?.metrics?.totalTokens || 0);
+      const time = Number(summary.duration_seconds || 0);
+      results.push({ ...test, status: 'COMPLETED', tokens, time });
+      suiteTotalTokens += tokens;
+      suiteTotalTime += time;
     } catch (e) {
       results.push({ ...test, status: 'FAILED', tokens: 0, time: 0 });
     }

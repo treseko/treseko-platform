@@ -39,7 +39,11 @@ async def get_external_api_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="El usuario no tiene permiso para ejecutar pruebas")
     return user
 
-@router.post("/external/executions/report", response_model=schemas.ExternalExecutionReportResponse)
+@router.post(
+    "/external/executions/report",
+    response_model=schemas.ExternalExecutionReportResponse,
+    dependencies=[Depends(require_feature("external_api.advanced"))],
+)
 async def report_external_execution(
     payload: schemas.ExternalExecutionReport,
     db: AsyncSession = Depends(get_db),

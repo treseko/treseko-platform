@@ -1,0 +1,29 @@
+{
+  "catalog_version": "treseko.builtin-workflow/v1",
+  "workflows": [
+    {
+      "filename": "test-execution.v1.treseko-workflow.zip",
+      "package_sha256": "1ce73c8347f6e69ea0cb461d5b04379d1dc42829eaeb7b90c9d8007313067ef1",
+      "slug": "test-execution",
+      "version": "1",
+      "workflow_purpose": "test_execution",
+      "workflow_sha256": "f44b98db4ce26349b87c35e8f61d5f9d0ad5e130a26c6bfcd68cf5e3e148de19"
+    },
+    {
+      "filename": "story-generation.v1.treseko-workflow.zip",
+      "package_sha256": "0325dcc98a1bc85e9a57434a05ee800aefc3122ac0914b0e6719ea9190fd2775",
+      "slug": "story-generation",
+      "version": "1",
+      "workflow_purpose": "story_generation",
+      "workflow_sha256": "c0f33d56af1f92435d99ae22a3965d4f7cde33c1ede0df40754d982a460d0569"
+    },
+    {
+      "filename": "test-case-generation.v1.treseko-workflow.zip",
+      "package_sha256": "ba90729df232435585b6c6e8c2312b229cc42032019f5765cbbcbe8a70c67995",
+      "slug": "test-case-generation",
+      "version": "1",
+      "workflow_purpose": "test_case_generation",
+      "workflow_sha256": "03237c25f5653fa3e579b0e4eb634b709063abb7aedda416296ec320d7ce4586"
+    }
+  ]
+}

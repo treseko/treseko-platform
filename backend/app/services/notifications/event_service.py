@@ -1,309 +1,102 @@
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import models
-from ...services.error_sanitizer import sanitize_external_error
 from ...time_utils import utc_now
-from .recipient_resolver import resolve_recipients, user_allows_channel
+from . import digest_service
+from .event_payload_and_seeds import (
+    ADMINISTRATIVE_EVENT_TYPES,
+    DEFAULT_TEMPLATE_VARIABLES,
+    REDACTED_NOTIFICATION_SECRET,
+    SECURITY_EVENT_TYPES,
+    SEED_RULES,
+    SEED_TEMPLATES,
+    ensure_notification_seeds,
+    sanitize_notification_payload,
+)
+from .recipient_resolver import recipient_frequency, recipient_schedule, resolve_recipients, user_allows_channel
 from .rules_engine import rule_matches
 from .template_renderer import render_html_template, render_text_template
 
 
-DEFAULT_TEMPLATE_VARIABLES = [
-    "bug.codigo", "bug.titulo", "bug.estado", "bug.severidad", "bug.prioridad", "bug.link_url",
-    "proyecto.nombre", "build.nombre", "caso.codigo", "caso.titulo", "actor.nombre", "actor.email",
-    "execution.id", "execution.estado", "execution.comentarios", "user.email", "user.nombre", "user.rol",
-    "user.auth_provider", "message",
-]
-
-NOTIFICATION_SECRET_KEY_MARKERS = {
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer",
-    "client_secret",
-    "credential",
-    "credentials",
-    "password",
-    "refresh_token",
-    "secret",
-    "token",
-}
-NOTIFICATION_URL_KEYS = {"link_url", "public_url", "url"}
-NOTIFICATION_SENSITIVE_URL_QUERY_KEYS = {
-    "access_token",
-    "api_key",
-    "apikey",
-    "asset_token",
-    "authorization",
-    "password",
-    "refresh_token",
-    "secret",
-    "token",
-    "x_qa_api_key",
-}
-REDACTED_NOTIFICATION_SECRET = "[redacted]"
+def _notification_type_for_event(event_type: str) -> str:
+    if event_type in ADMINISTRATIVE_EVENT_TYPES:
+        return "ADMINISTRATIVA"
+    if event_type in SECURITY_EVENT_TYPES:
+        return "SEGURIDAD"
+    if event_type.startswith("ai."):
+        return "IA"
+    if event_type.startswith("execution.") or event_type.startswith("bug."):
+        return "CALIDAD"
+    if event_type.startswith("report."):
+        return "REPORTE"
+    return "PROYECTO"
 
 
-def _is_sensitive_notification_key(key: Any) -> bool:
-    normalized = str(key or "").lower().replace("-", "_").replace(" ", "_")
-    return any(marker in normalized for marker in NOTIFICATION_SECRET_KEY_MARKERS)
+def _short_entity_name(value: Any, fallback: str = "") -> str:
+    if not isinstance(value, dict):
+        return fallback
+    return str(value.get("nombre") or value.get("titulo") or value.get("codigo") or fallback).strip()
 
 
-def _sanitize_notification_url(value: Any) -> str | None:
-    text = str(value or "").replace("\x00", "").strip()
-    if not text or any(char.isspace() for char in text) or any(char in text for char in "<>\"'"):
-        return None
-    parsed = urlparse(text)
-    try:
-        query = parse_qs(parsed.query, keep_blank_values=True, max_num_fields=50)
-    except ValueError:
-        return None
-    if any(str(key).strip().lower() in NOTIFICATION_SENSITIVE_URL_QUERY_KEYS for key in query):
-        return None
-    if parsed.scheme:
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
-            return None
-        if parsed.username or parsed.password:
-            return None
-        return text
-    if text.startswith("/") and not text.startswith("//"):
-        return text
-    return None
-
-
-def sanitize_notification_payload(value: Any, key: Any = None) -> Any:
-    if _is_sensitive_notification_key(key):
-        return REDACTED_NOTIFICATION_SECRET
-    if isinstance(value, dict):
-        return {
-            item_key: sanitize_notification_payload(item, item_key)
-            for item_key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [sanitize_notification_payload(item) for item in value]
-    if isinstance(value, str):
-        if str(key or "").lower() in NOTIFICATION_URL_KEYS:
-            return _sanitize_notification_url(value)
-        return sanitize_external_error(value, max_len=2000)
-    return value
-
-SEED_TEMPLATES = [
-    {
-        "key": "bug_created_email",
-        "nombre": "Bug critico creado",
-        "channel": "email",
-        "subject_template": "[QA] ${bug.codigo} ${bug.severidad}: ${bug.titulo}",
-        "text_template": "Se registro un bug en ${proyecto.nombre}.\n\nBug: ${bug.codigo}\nTitulo: ${bug.titulo}\nEstado: ${bug.estado}\nSeveridad: ${bug.severidad}\nPrioridad: ${bug.prioridad}\nBuild: ${build.nombre}\nCaso: ${caso.codigo} - ${caso.titulo}\nReportado por: ${actor.nombre} (${actor.email})\n\nAbrir: ${bug.link_url}",
-    },
-    {
-        "key": "bug_assigned_email",
-        "nombre": "Bug asignado",
-        "channel": "email",
-        "subject_template": "[QA] Te asignaron ${bug.codigo}: ${bug.titulo}",
-        "text_template": "Tienes un bug asignado.\n\nBug: ${bug.codigo}\nTitulo: ${bug.titulo}\nSeveridad: ${bug.severidad}\nPrioridad: ${bug.prioridad}\nProyecto: ${proyecto.nombre}\n\nAbrir: ${bug.link_url}",
-    },
-    {
-        "key": "ad_user_provisioned_email",
-        "nombre": "Usuario AD provisionado",
-        "channel": "email",
-        "subject_template": "[QA] Usuario AD provisionado: ${user.email}",
-        "text_template": "Se creo o habilito un usuario desde Active Directory/OIDC.\n\nUsuario: ${user.email}\nNombre: ${user.nombre}\nRol: ${user.rol}\nProveedor: ${user.auth_provider}",
-    },
-    {
-        "key": "bug_status_changed_email",
-        "nombre": "Cambio de estado de bug",
-        "channel": "email",
-        "subject_template": "[QA] ${bug.codigo} cambio a ${bug.estado}",
-        "text_template": "El bug ${bug.codigo} cambio de estado.\n\nTitulo: ${bug.titulo}\nEstado: ${bug.estado}\nProyecto: ${proyecto.nombre}\nActor: ${actor.nombre}\n\nAbrir: ${bug.link_url}",
-    },
-    {
-        "key": "bug_comment_added_email",
-        "nombre": "Comentario en bug",
-        "channel": "email",
-        "subject_template": "[QA] Nuevo comentario en ${bug.codigo}",
-        "text_template": "Se agrego un comentario en ${bug.codigo}.\n\nTitulo: ${bug.titulo}\nSeveridad: ${bug.severidad}\nPrioridad: ${bug.prioridad}\nActor: ${actor.nombre}\n\nAbrir: ${bug.link_url}",
-    },
-    {
-        "key": "execution_failed_email",
-        "nombre": "Ejecucion fallida o bloqueada",
-        "channel": "email",
-        "subject_template": "[QA] Ejecucion ${execution.estado}: ${caso.codigo}",
-        "text_template": "Una ejecucion requiere atencion.\n\nCaso: ${caso.codigo} - ${caso.titulo}\nEstado: ${execution.estado}\nObservaciones: ${execution.comentarios}\nActor: ${actor.nombre}",
-    },
-    {
-        "key": "ai_review_required_email",
-        "nombre": "Revision IA requerida",
-        "channel": "email",
-        "subject_template": "[QA] Revision IA requerida",
-        "text_template": "${message}\n\nCaso: ${caso.codigo} - ${caso.titulo}\nActor: ${actor.nombre}",
-    },
-    {
-        "key": "report_shared_email",
-        "nombre": "Reporte compartido",
-        "channel": "email",
-        "subject_template": "[QA] Reporte compartido",
-        "text_template": "${message}\n\nProyecto: ${proyecto.nombre}",
-    },
-    {
-        "key": "admin_event_email",
-        "nombre": "Evento administrativo",
-        "channel": "email",
-        "subject_template": "[QA] ${message}",
-        "text_template": "${message}\n\nActor: ${actor.email}",
-    },
-]
-
-SEED_RULES = [
-    {
-        "nombre": "Bug critico creado",
-        "event_types": ["bug.created", "bug.created_from_snapshot", "bug.created_from_execution"],
-        "conditions_json": {"any": [
-            {"field": "payload.bug.severidad", "op": "severity_at_least", "value": "ALTA"},
-            {"field": "payload.bug.prioridad", "op": "in", "value": ["P0", "P1"]},
-        ]},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"assignee": True, "creator": True, "global_roles": ["ADMIN", "QA_LEAD"]},
-        "template_key": "bug_created_email",
-        "priority": 10,
-    },
-    {
-        "nombre": "Bug asignado",
-        "event_types": ["bug.assigned"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"assignee": True},
-        "template_key": "bug_assigned_email",
-        "priority": 20,
-    },
-    {
-        "nombre": "Bug listo para retest",
-        "event_types": ["bug.ready_for_retest"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"creator": True, "assignee": True, "project_roles": ["TESTER", "QA_LEAD"]},
-        "template_key": "bug_status_changed_email",
-        "priority": 30,
-    },
-    {
-        "nombre": "Comentario en bug critico",
-        "event_types": ["bug.comment_added"],
-        "conditions_json": {"any": [
-            {"field": "payload.bug.severidad", "op": "severity_at_least", "value": "ALTA"},
-            {"field": "payload.bug.prioridad", "op": "in", "value": ["P0", "P1"]},
-        ]},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"creator": True, "assignee": True},
-        "template_key": "bug_comment_added_email",
-        "priority": 40,
-    },
-    {
-        "nombre": "Ejecucion fallida",
-        "event_types": ["execution.failed", "execution.blocked"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"project_roles": ["QA_LEAD"], "global_roles": ["ADMIN"]},
-        "template_key": "execution_failed_email",
-        "priority": 50,
-    },
-    {
-        "nombre": "Revision IA requerida",
-        "event_types": ["ai.execution.review_required", "ai.execution.failed", "ai.engine.unavailable"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"project_roles": ["QA_LEAD"], "global_roles": ["ADMIN"]},
-        "template_key": "ai_review_required_email",
-        "priority": 60,
-    },
-    {
-        "nombre": "Usuario AD provisionado",
-        "event_types": ["auth.ad_user_provisioned"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"global_roles": ["ADMIN"]},
-        "template_key": "ad_user_provisioned_email",
-        "priority": 70,
-    },
-    {
-        "nombre": "Eventos administrativos",
-        "event_types": [
-            "user.created",
-            "user.disabled",
-            "user.role_changed",
-            "role.permissions_changed",
-            "project.member_added",
-            "project.member_removed",
-            "build.activated",
-            "build.closed",
-            "auth.login_failed_many",
-            "evidence.required_missing",
-            "automation.runner.offline",
-        ],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app"]},
-        "recipient_strategy_json": {"global_roles": ["ADMIN"]},
-        "template_key": "admin_event_email",
-        "priority": 80,
-    },
-    {
-        "nombre": "Reporte compartido",
-        "event_types": ["report.shared", "report.generated", "report.quality_gate_failed"],
-        "conditions_json": {},
-        "actions_json": {"channels": ["in_app", "email"]},
-        "recipient_strategy_json": {"project_roles": ["QA_LEAD"], "global_roles": ["ADMIN"]},
-        "template_key": "report_shared_email",
-        "priority": 90,
-    },
-]
-
-
-async def ensure_notification_seeds(db: AsyncSession) -> None:
-    templates_by_key: dict[str, models.NotificationTemplate] = {}
-    for item in SEED_TEMPLATES:
-        result = await db.execute(select(models.NotificationTemplate).filter(models.NotificationTemplate.key == item["key"]))
-        template = result.scalar_one_or_none()
-        if not template:
-            template = models.NotificationTemplate(
-                **item,
-                allowed_variables=DEFAULT_TEMPLATE_VARIABLES,
-                enabled=True,
-            )
-            db.add(template)
-            await db.flush()
-        templates_by_key[item["key"]] = template
-    for item in SEED_RULES:
-        result = await db.execute(select(models.NotificationRule).filter(models.NotificationRule.nombre == item["nombre"]))
-        existing_rule = result.scalar_one_or_none()
-        if existing_rule:
-            existing_event_types = list(existing_rule.event_types or [])
-            merged_event_types = existing_event_types + [event_type for event_type in item["event_types"] if event_type not in existing_event_types]
-            if merged_event_types != existing_event_types:
-                existing_rule.event_types = merged_event_types
-                existing_rule.updated_at = utc_now()
-            continue
-        db.add(models.NotificationRule(
-            nombre=item["nombre"],
-            enabled=True,
-            scope="GLOBAL",
-            event_types=item["event_types"],
-            conditions_json=item["conditions_json"],
-            actions_json=item["actions_json"],
-            recipient_strategy_json=item["recipient_strategy_json"],
-            template_id=templates_by_key[item["template_key"]].id,
-            priority=item["priority"],
-        ))
-    await db.commit()
-
-
-def _inbox_text_from_event(event: models.NotificationEvent) -> tuple[str, str, str | None]:
+def inbox_presentation_from_event(
+    event: models.NotificationEvent,
+    *,
+    actor_name: str | None = None,
+    fallback_title: str | None = None,
+    fallback_message: str | None = None,
+) -> tuple[str, str, str | None, str]:
+    """Return safe, human-facing inbox text without leaking technical payloads."""
     payload = event.payload_json or {}
     bug = payload.get("bug") or {}
-    title = bug.get("codigo") or event.event_type
-    message = bug.get("titulo") or payload.get("message") or event.event_type
-    return str(title), str(message), bug.get("link_url") or payload.get("link_url")
+    user = payload.get("user") or {}
+    role = payload.get("role") or {}
+    build = payload.get("build") or {}
+    project = payload.get("proyecto") or {}
+    event_type = event.event_type
+    subject = _short_entity_name(user, "un usuario")
+    project_name = _short_entity_name(project)
+
+    # Existing domain events use heterogeneous payloads.  Keep this mapping
+    # centralized rather than exposing event identifiers in the UI.
+    mapping = {
+        "user.created": ("Usuario creado", f"Se creó la cuenta de {subject}."),
+        "user.disabled": ("Usuario desactivado", f"Se desactivó la cuenta de {subject}."),
+        "user.role_changed": ("Permisos de usuario actualizados", f"Se actualizaron el rol o los permisos de {subject}."),
+        "role.permissions_changed": ("Permisos de rol actualizados", f"Se actualizaron los permisos de {_short_entity_name(role, 'un rol')}."),
+        "project.member_added": ("Miembro agregado al proyecto", "Se actualizó el equipo del proyecto."),
+        "project.member_removed": ("Miembro removido del proyecto", "Se actualizó el equipo del proyecto."),
+        "build.activated": ("Build activada", f"{_short_entity_name(build, 'La build')} está disponible."),
+        "build.closed": ("Build cerrada", f"{_short_entity_name(build, 'La build')} fue cerrada."),
+        "auth.login_failed_many": ("Intentos de acceso detectados", "Se detectaron múltiples intentos de inicio de sesión fallidos."),
+        "evidence.required_missing": ("Falta evidencia requerida", "Una ejecución requiere evidencia antes de poder completarse."),
+        "automation.runner.offline": ("Runner de automatización sin conexión", "Un runner requiere atención."),
+        "ai.engine.unavailable": ("Motor de IA no disponible", "El motor de IA no pudo atender una solicitud."),
+        "ai.execution.review_required": ("Revisión de IA requerida", "Una ejecución asistida requiere revisión humana."),
+        "ai.execution.failed": ("Ejecución de IA con error", "Una ejecución asistida no pudo completarse."),
+        "report.shared": ("Reporte compartido", "Hay un reporte disponible para revisar."),
+        "report.generated": ("Reporte generado", "Un nuevo reporte está disponible."),
+        "report.quality_gate_failed": ("Control de calidad no aprobado", "Un reporte requiere revisión antes de continuar."),
+    }
+    if bug:
+        title = str(bug.get("codigo") or "Actualización de bug")
+        message = str(bug.get("titulo") or "Hay una actualización en un bug.")
+    elif event_type in mapping:
+        title, message = mapping[event_type]
+    else:
+        title = fallback_title or "Nueva notificación"
+        message = fallback_message or str(payload.get("message") or "Hay una actualización disponible.")
+    if project_name and event_type.startswith(("report.", "execution.")):
+        message = f"{message} Proyecto: {project_name}."
+    return title, message, bug.get("link_url") or payload.get("link_url"), _notification_type_for_event(event_type)
+
+
+def _actor_name(actor: models.Usuario | None) -> str | None:
+    if not actor:
+        return None
+    return str(actor.display_name or actor.nombre_completo or "Usuario del sistema").strip() or None
 
 
 async def emit_event(
@@ -358,12 +151,27 @@ async def apply_rules_for_event(db: AsyncSession, event: models.NotificationEven
         template = None
         if rule.template_id:
             template = (await db.execute(select(models.NotificationTemplate).filter(models.NotificationTemplate.id == rule.template_id))).scalar_one_or_none()
+        actor = await db.get(models.Usuario, event.actor_user_id) if event.actor_user_id else None
+        actor_name = _actor_name(actor)
         for recipient in recipients:
             for channel in channels:
                 user = recipient.get("user")
                 if not await user_allows_channel(db, user, event.event_type, channel):
                     continue
-                title, message, link_url = _inbox_text_from_event(event)
+                frequency = await recipient_frequency(
+                    db,
+                    recipient,
+                    event,
+                    channel,
+                    (rule.actions_json or {}).get("frequency"),
+                )
+                if frequency == "never":
+                    continue
+                if frequency != "immediate":
+                    schedule = await recipient_schedule(db, recipient, event, channel)
+                    await digest_service.queue_event(db, event=event, recipient=recipient, frequency=frequency, timezone_name=schedule["timezone"], send_hour=schedule["send_hour"], send_day=schedule["send_day"])
+                    continue
+                title, message, link_url, notification_type = inbox_presentation_from_event(event, actor_name=actor_name)
                 subject = title
                 body_text = message
                 body_html = None
@@ -387,5 +195,13 @@ async def apply_rules_for_event(db: AsyncSession, event: models.NotificationEven
                     body_html=body_html,
                     dedupe_key=dedupe,
                     max_attempts=5,
-                    metadata_json={"link_url": link_url, "title": title, "message": message, "severity": event.severity},
+                    metadata_json={
+                        "link_url": link_url,
+                        "title": title,
+                        "message": message,
+                        "severity": event.severity,
+                        "notification_type": notification_type,
+                        "event_type": event.event_type,
+                        "actor_name": actor_name,
+                    },
                 ))

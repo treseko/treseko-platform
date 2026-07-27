@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 
 type InventoryEndpoint = {
   id?: string
@@ -421,6 +422,15 @@ export function InventarioPage({
       return
     }
     await loadAssets()
+  }
+
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="Las opciones de inventario aparecerán cuando tengas un proyecto seleccionado."
+      />
+    )
   }
 
   return (

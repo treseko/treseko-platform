@@ -3,12 +3,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PLATFORM_LIB="${SCRIPT_DIR}/native_platform.sh"
+if [ ! -r "$PLATFORM_LIB" ]; then
+  echo "Falta ${PLATFORM_LIB}; el paquete de instalacion esta incompleto." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+. "$PLATFORM_LIB"
+
 INSTALL_DIR="${INSTALL_DIR:-/opt/treseko}"
 TRESEKO_USER="${TRESEKO_USER:-treseko}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
-FRONTEND_PORT="${FRONTEND_PORT:-80}"
+ENGINE_PORT="${ENGINE_PORT:-3010}"
+FRONTEND_PORT="${FRONTEND_PORT:-}"
 SECRETS_DIR="${TRESEKO_SECRETS_DIR:-/etc/treseko/secrets}"
 BUILD_WORK_DIR="${TRESEKO_BUILD_WORK_DIR:-}"
+PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-${INSTALL_DIR}/data/ms-playwright}"
+REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
 TRESEKO_UPDATE_SERVER_URL="${TRESEKO_UPDATE_SERVER_URL:-https://updates.treseko.com}"
 TRESEKO_ENABLE_SELF_UPDATE_APPLY="${TRESEKO_ENABLE_SELF_UPDATE_APPLY:-false}"
 TRESEKO_UPDATE_DB_HISTORY_ENABLED="${TRESEKO_UPDATE_DB_HISTORY_ENABLED:-true}"
@@ -47,6 +58,18 @@ if [ "$(uname -s)" != "Linux" ]; then
   exit 1
 fi
 
+treseko_detect_linux_platform
+if [ -z "$FRONTEND_PORT" ]; then
+  if [ "$TRESEKO_LINUX_FAMILY" = "rhel" ]; then
+    FRONTEND_PORT="8080"
+  else
+    FRONTEND_PORT="80"
+  fi
+fi
+export INSTALL_DIR FRONTEND_PORT
+treseko_select_python
+treseko_nginx_configure_paths
+
 if ! command -v systemctl >/dev/null 2>&1; then
   echo "systemd/systemctl es obligatorio para la instalacion bare-metal. Usa Docker si tu sistema no lo tiene." >&2
   exit 1
@@ -57,23 +80,13 @@ if [ "${#SECRET_KEY}" -lt 32 ]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 es obligatorio." >&2
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm es obligatorio para construir frontend/engine/worker." >&2
   exit 1
 fi
 
-python3 - <<'PY'
-import sys
-
-if sys.version_info < (3, 10):
-    raise SystemExit(
-        "Python 3.10 o superior es obligatorio para Treseko bare-metal. "
-        "Usa Ubuntu 22.04+, Debian 12+ o Docker."
-    )
-PY
-
-if ! command -v npm >/dev/null 2>&1; then
-  echo "npm es obligatorio para construir frontend/engine/worker." >&2
+if ! command -v node >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)'; then
+  echo "Node.js 20 o superior es obligatorio para construir frontend/engine/worker." >&2
   exit 1
 fi
 
@@ -114,15 +127,23 @@ copy_node_project_for_build() {
 }
 
 echo "Instalando Treseko en ${INSTALL_DIR}"
+echo "Plataforma: ${TRESEKO_DISTRO_ID} ${TRESEKO_DISTRO_VERSION} (${TRESEKO_LINUX_FAMILY})"
 echo "Raiz de codigo: ${REPO_ROOT}"
 echo "Workspace de build: ${BUILD_WORK_DIR}"
 
-useradd --system --no-create-home --shell /usr/sbin/nologin "${TRESEKO_USER}" 2>/dev/null || true
+NOLOGIN_SHELL="$(treseko_select_nologin_shell)"
+useradd --system --no-create-home --shell "$NOLOGIN_SHELL" "${TRESEKO_USER}" 2>/dev/null || true
 install -d -m 0750 -o root -g "${TRESEKO_USER}" "${SECRETS_DIR}"
 printf '%s' "$DATABASE_URL" > "${SECRETS_DIR}/database-url"
 printf '%s' "$SECRET_KEY" > "${SECRETS_DIR}/secret-key"
-chown root:"${TRESEKO_USER}" "${SECRETS_DIR}/database-url" "${SECRETS_DIR}/secret-key"
-chmod 0640 "${SECRETS_DIR}/database-url" "${SECRETS_DIR}/secret-key"
+if [ ! -s "${SECRETS_DIR}/ai-credentials-master-key" ]; then
+  openssl rand -hex 32 > "${SECRETS_DIR}/ai-credentials-master-key"
+fi
+if [ ! -s "${SECRETS_DIR}/ai-engine-internal-token" ]; then
+  openssl rand -hex 32 > "${SECRETS_DIR}/ai-engine-internal-token"
+fi
+chown root:"${TRESEKO_USER}" "${SECRETS_DIR}/database-url" "${SECRETS_DIR}/secret-key" "${SECRETS_DIR}/ai-credentials-master-key" "${SECRETS_DIR}/ai-engine-internal-token"
+chmod 0640 "${SECRETS_DIR}/database-url" "${SECRETS_DIR}/secret-key" "${SECRETS_DIR}/ai-credentials-master-key" "${SECRETS_DIR}/ai-engine-internal-token"
 
 mkdir -p \
   "${INSTALL_DIR}/backend" \
@@ -131,9 +152,10 @@ mkdir -p \
   "${INSTALL_DIR}/worker" \
   "${INSTALL_DIR}/data/updates" \
   "${INSTALL_DIR}/data/backups" \
+  "${PLAYWRIGHT_BROWSERS_PATH}" \
   "${INSTALL_DIR}/logs"
 
-python3 -m venv "${INSTALL_DIR}/backend/venv"
+"${TRESEKO_PYTHON_BIN}" -m venv "${INSTALL_DIR}/backend/venv"
 "${INSTALL_DIR}/backend/venv/bin/pip" install --upgrade pip
 "${INSTALL_DIR}/backend/venv/bin/pip" install -r "${REPO_ROOT}/backend/requirements.txt"
 
@@ -152,11 +174,11 @@ npm --prefix "${BUILD_WORK_DIR}/frontend" run build
 rsync -a --delete "${BUILD_WORK_DIR}/frontend/dist/" "${INSTALL_DIR}/frontend/html/"
 
 copy_node_project_for_build "${REPO_ROOT}/engine" "${BUILD_WORK_DIR}/engine"
-npm --prefix "${BUILD_WORK_DIR}/engine" ci
+PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" npm --prefix "${BUILD_WORK_DIR}/engine" ci
 rsync -a --delete "${BUILD_WORK_DIR}/engine/" "${INSTALL_DIR}/engine/"
 
 copy_node_project_for_build "${REPO_ROOT}/automation-worker" "${BUILD_WORK_DIR}/automation-worker"
-npm --prefix "${BUILD_WORK_DIR}/automation-worker" ci
+PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" npm --prefix "${BUILD_WORK_DIR}/automation-worker" ci
 rsync -a --delete "${BUILD_WORK_DIR}/automation-worker/" "${INSTALL_DIR}/worker/"
 
 cat > /etc/systemd/system/treseko-backend.service <<SYSTEMD
@@ -168,9 +190,10 @@ After=network.target
 Type=simple
 User=${TRESEKO_USER}
 WorkingDirectory=${INSTALL_DIR}/backend
-Environment=APP_ENV=production
 Environment=DATABASE_URL_FILE=${SECRETS_DIR}/database-url
 Environment=SECRET_KEY_FILE=${SECRETS_DIR}/secret-key
+Environment=AI_CREDENTIALS_MASTER_KEY_FILE=${SECRETS_DIR}/ai-credentials-master-key
+Environment=AI_ENGINE_INTERNAL_TOKEN_FILE=${SECRETS_DIR}/ai-engine-internal-token
 Environment=UPDATES_DIR=${INSTALL_DIR}/data/updates
 Environment=BACKUPS_DIR=${INSTALL_DIR}/data/backups
 Environment=DB_BACKUP_DIR=${INSTALL_DIR}/data/backups
@@ -190,6 +213,8 @@ Environment=AUTO_BACKUP_ENABLED=${AUTO_BACKUP_ENABLED}
 Environment=CHECK_PENDING_UPDATE=${CHECK_PENDING_UPDATE}
 Environment=LOG_LEVEL=${LOG_LEVEL}
 Environment=PORT=${BACKEND_PORT}
+Environment=ENGINE_URL=http://127.0.0.1:${ENGINE_PORT}
+Environment=REDIS_URL=${REDIS_URL}
 Environment=PATH=${INSTALL_DIR}/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${INSTALL_DIR}/backend/entrypoint.sh
 Restart=on-failure
@@ -199,7 +224,32 @@ RestartSec=5
 WantedBy=multi-user.target
 SYSTEMD
 
-cat > /etc/nginx/sites-available/treseko <<NGINX
+NPM_BIN="$(command -v npm)"
+cat > /etc/systemd/system/treseko-engine.service <<SYSTEMD
+[Unit]
+Description=Treseko Engine
+After=network.target treseko-backend.service
+Requires=treseko-backend.service
+
+[Service]
+Type=simple
+User=${TRESEKO_USER}
+WorkingDirectory=${INSTALL_DIR}/engine
+Environment=NODE_ENV=production
+Environment=ENGINE_PORT=${ENGINE_PORT}
+Environment=BACKEND_WS_URL=ws://127.0.0.1:${BACKEND_PORT}/ws/engine-sync
+Environment=AI_ENGINE_INTERNAL_TOKEN_FILE=${SECRETS_DIR}/ai-engine-internal-token
+Environment=PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
+ExecStart=${NPM_BIN} start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+mkdir -p "$(dirname "$TRESEKO_NGINX_CONFIG")"
+cat > "$TRESEKO_NGINX_CONFIG" <<NGINX
 server {
   listen ${FRONTEND_PORT};
   server_name _;
@@ -243,14 +293,22 @@ server {
 }
 NGINX
 
-ln -sf /etc/nginx/sites-available/treseko /etc/nginx/sites-enabled/treseko
+if [ -n "$TRESEKO_NGINX_ENABLED" ]; then
+  mkdir -p "$(dirname "$TRESEKO_NGINX_ENABLED")"
+  ln -sf "$TRESEKO_NGINX_CONFIG" "$TRESEKO_NGINX_ENABLED"
+  if [ -L /etc/nginx/sites-enabled/default ]; then
+    unlink /etc/nginx/sites-enabled/default
+  fi
+fi
 chown -R "${TRESEKO_USER}:${TRESEKO_USER}" "${INSTALL_DIR}"
+treseko_configure_selinux
 
 run_backend_env() {
   runuser -u "${TRESEKO_USER}" -- env \
-    APP_ENV=production \
     DATABASE_URL_FILE="${SECRETS_DIR}/database-url" \
     SECRET_KEY_FILE="${SECRETS_DIR}/secret-key" \
+    AI_CREDENTIALS_MASTER_KEY_FILE="${SECRETS_DIR}/ai-credentials-master-key" \
+    AI_ENGINE_INTERNAL_TOKEN_FILE="${SECRETS_DIR}/ai-engine-internal-token" \
     UPDATES_DIR="${INSTALL_DIR}/data/updates" \
     BACKUPS_DIR="${INSTALL_DIR}/data/backups" \
     DB_BACKUP_DIR="${INSTALL_DIR}/data/backups" \
@@ -270,6 +328,8 @@ run_backend_env() {
     CHECK_PENDING_UPDATE="${CHECK_PENDING_UPDATE}" \
     LOG_LEVEL="${LOG_LEVEL}" \
     PORT="${BACKEND_PORT}" \
+    ENGINE_URL="http://127.0.0.1:${ENGINE_PORT}" \
+    REDIS_URL="${REDIS_URL}" \
     PATH="${INSTALL_DIR}/backend/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     "$@"
 }
@@ -281,9 +341,10 @@ echo "Creando o asegurando admin inicial..."
 run_backend_env "${INSTALL_DIR}/backend/venv/bin/python" "${INSTALL_DIR}/backend/seed_admin.py"
 
 systemctl daemon-reload
-systemctl enable treseko-backend
+systemctl enable treseko-backend treseko-engine
 systemctl restart treseko-backend
+systemctl restart treseko-engine
 nginx -t
 systemctl reload nginx
 
-echo "Treseko instalado. Frontend: http://localhost:${FRONTEND_PORT}"
+echo "Treseko instalado. Frontend: http://localhost:${FRONTEND_PORT}; Engine: http://localhost:${ENGINE_PORT}"

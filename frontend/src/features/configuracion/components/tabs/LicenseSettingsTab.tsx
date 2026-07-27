@@ -31,6 +31,8 @@ type LicenseState = {
   grace_until?: string | null
   verification_interval_days?: number | null
   grace_period_days?: number | null
+  online_status?: 'verified' | 'pending' | null
+  online_reason?: string | null
   license?: Record<string, any> | null
 }
 
@@ -60,6 +62,7 @@ const COMMUNITY_LIMITS_BASE: Record<string, number> = {
   max_workers: 1,
   max_automated_runs_per_week: 50,
   max_ai_runs_per_week: 10,
+  max_ai_case_generations_per_week: 20,
   max_storage_mb: 1024,
 }
 
@@ -69,13 +72,15 @@ const LIMIT_LABELS: Record<string, string> = {
   max_projects: 'Proyectos',
   max_workers: 'Workers locales',
   max_automated_runs_per_week: 'Automatizadas por semana',
-  max_ai_runs_per_week: 'IA por semana',
+  max_ai_runs_per_week: 'Ejecuciones IA por semana',
+  max_ai_case_generations_per_week: 'Generaciones de casos IA por semana',
   max_storage_mb: 'Almacenamiento',
 }
 
 const LIMIT_NOTES: Record<string, string> = {
   max_automated_runs_per_week: 'Cuenta automatizadas externas y locales en los ultimos 7 dias.',
   max_ai_runs_per_week: 'Cuenta ejecuciones IA en los ultimos 7 dias.',
+  max_ai_case_generations_per_week: 'Cuenta sesiones de generacion de casos con IA en los ultimos 7 dias.',
   max_workers: 'Community permite un worker local.',
   max_storage_mb: 'Total de evidencias y adjuntos de la instancia.',
 }
@@ -117,6 +122,8 @@ const emptyLicenseState: LicenseState = {
   verification_interval_days: null,
   grace_period_days: null,
   license: null,
+  online_status: null,
+  online_reason: null,
 }
 
 const emptyTrustState: TrustState = {
@@ -329,7 +336,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
 
   const installLicense = async () => {
     if (!licenseJson.trim()) {
-      showFeedback('Licencia', 'Selecciona un archivo .treseko o pega el contenido de la licencia antes de instalar.', 'warning')
+      showFeedback('Licencia', 'Selecciona un archivo .treseko antes de instalar.', 'warning')
       return
     }
     setInstalling(true)
@@ -359,10 +366,14 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
         }
       }
       await loadLicense()
-      showFeedback('Licencia instalada', `Treseko actualizó la edición y los entitlements activos.${syncMessage}`, 'success')
+      window.dispatchEvent(new Event('treseko:license-updated'))
+      const verificationMessage = data?.online_status === 'pending'
+        ? ` La firma local fue validada, pero la activación online quedó pendiente: ${data.online_reason || 'reintenta desde esta sección.'}`
+        : ' La activación online fue confirmada.'
+      showFeedback('Licencia instalada', `Treseko actualizó la edición y los entitlements activos.${verificationMessage}${syncMessage}`, data?.online_status === 'pending' ? 'warning' : 'success')
     } catch (error: any) {
       const diagnostic = error instanceof SyntaxError
-        ? 'El contenido pegado no es JSON valido.'
+        ? 'El archivo seleccionado no contiene una licencia JSON valida.'
         : (error?.message || 'No se pudo instalar la licencia.')
       setInstallDiagnostic(diagnostic)
       showFeedback('Licencia invalida', humanizePremiumError('No se pudo validar la licencia Premium. Revisa que sea un license.treseko firmado y vigente.'), 'danger')
@@ -527,10 +538,15 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
                     El vencimiento define hasta cuando vale la licencia. El check online y la gracia controlan la continuidad Premium si el servidor no responde.
                   </div>
                 </div>
-                <Badge bg={license.edition === 'premium' ? 'success' : 'primary'}>
-                  {license.edition === 'premium' ? 'Premium verificado' : 'Community'}
+                <Badge bg={license.online_status === 'verified' ? 'success' : license.edition === 'premium' ? 'warning' : 'primary'}>
+                  {license.online_status === 'verified' ? 'Premium verificado online' : license.edition === 'premium' ? 'Premium: validación local' : 'Community'}
                 </Badge>
               </div>
+              {license.edition === 'premium' && license.online_status !== 'verified' && (
+                <Alert variant="warning" className="small mb-3">
+                  {license.online_reason || 'La firma de la licencia es válida localmente, pero todavía no hay una confirmación online de esta instancia.'}
+                </Alert>
+              )}
               <Row className="g-3">
                 <Col md={4}>
                   <div className="border rounded-3 p-3 h-100">
@@ -673,7 +689,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
               <div className="d-flex align-items-center justify-content-between gap-3 mb-3">
                 <div>
                   <h6 className="fw-bold m-0">Instalar licencia Premium</h6>
-                  <div className="small text-muted">Selecciona un archivo .treseko firmado o pega su contenido manualmente. Treseko valida firma Ed25519, key_id, vencimiento y features.</div>
+                  <div className="small text-muted">Selecciona un archivo .treseko firmado. Treseko valida firma Ed25519, key_id, vencimiento y features.</div>
                 </div>
                 <Button variant={licenseJson.trim() ? 'primary' : 'outline-primary'} className="fw-bold rounded-pill" disabled={!canEditLicense || installing || !licenseJson.trim()} onClick={installLicense}>
                   {installing ? <Spinner size="sm" className="me-2" /> : <Upload size={16} className="me-2" />}
@@ -698,18 +714,6 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
                   {licenseFileName ? `Archivo cargado: ${licenseFileName}` : 'Formato esperado: license.treseko o JSON firmado emitido para tu instalacion.'}
                 </div>
               </div>
-              <Form.Control
-                as="textarea"
-                rows={8}
-                value={licenseJson}
-                onChange={(event) => {
-                  setLicenseJson(event.target.value)
-                  setLicenseFileName('')
-                }}
-                disabled={!canEditLicense}
-                placeholder='{"edition":"premium","license_id":"lic_...","customer_id":"cus_...","key_id":"ed25519:sha256:...","issued_at":"2026-07-05T00:00:00Z","expires_at":"2027-07-05T00:00:00Z","max_users":50,"max_projects":10,"max_workers":2,"max_storage_mb":10240,"enabled_features":["ai.engine"],"update_channel":"premium-stable","signature":"ed25519:..."}'
-                className="font-monospace small"
-              />
               {installDiagnostic && (
                 <Alert variant="danger" className="small mt-3 mb-0">
                   No se pudo validar la licencia Premium. Asegurate de cargar el archivo .treseko completo y vigente.
@@ -719,15 +723,6 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
                   </details>
                 </Alert>
               )}
-              <div className="d-flex justify-content-end mt-3">
-                <Button
-                  variant={licenseJson.trim() ? 'outline-primary' : 'primary'}
-                  className="fw-bold rounded-pill"
-                  onClick={() => showFeedback('Treseko Premium', 'Solicita un archivo .treseko firmado para tu instalacion e instalalo desde esta pantalla.', 'info')}
-                >
-                  Solicitar Premium
-                </Button>
-              </div>
             </Card.Body>
           </Card>
         </>

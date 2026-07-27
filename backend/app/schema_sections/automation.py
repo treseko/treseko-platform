@@ -142,7 +142,10 @@ class AutomationRunnerPairingRequestCreate(BaseModel):
     tipo: str = Field(default="LOCAL", min_length=1, max_length=50)
     organizacion_id: Optional[UUID] = None
     capabilities: Dict[str, Any] = Field(default_factory=dict)
-    ttl_minutes: int = Field(default=10, ge=2, le=60)
+    # Pairing is an operator-approved local action. Two hours avoids losing a
+    # request while the operator navigates to Workers, without making the
+    # short-lived pairing credential persistent.
+    ttl_minutes: int = Field(default=120, ge=2, le=120)
 
     @field_validator("capabilities")
     @classmethod

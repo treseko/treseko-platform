@@ -400,6 +400,21 @@ async def create_shared_report(
         },
         dedupe_key=f"report.shared:{payload.proyecto_id}:{payload.build_id}:{utc_now().strftime('%Y%m%d%H%M')}",
     )
+    await notification_event_service.emit_event(
+        db=db,
+        event_type="report.exported",
+        actor_user_id=current_user.id,
+        proyecto_id=payload.proyecto_id,
+        entity_type="shared_report",
+        entity_id=primary_snapshot_id,
+        severity="info",
+        payload={
+            "report": {"title": report_title, "build_id": str(payload.build_id) if payload.build_id else None},
+            "actor": {"id": str(current_user.id), "email": current_user.email, "nombre": current_user.nombre_completo or current_user.email},
+            "message": f"Reporte exportado: {report_title}",
+        },
+        dedupe_key=f"report.exported:{payload.proyecto_id}:{payload.build_id}:{utc_now().strftime('%Y%m%d%H%M')}",
+    )
     quality_failed, quality_context = _shared_report_quality_gate_failed(primary_snapshot)
     if quality_failed:
         qa_summary = quality_context.get("qa_summary") or {}

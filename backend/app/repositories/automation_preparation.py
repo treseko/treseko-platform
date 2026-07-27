@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 
 
 async def revoke_automation_runner(db: AsyncSession, runner_id: UUID):
@@ -139,6 +139,19 @@ def _detect_automation_script_format(script: Optional[str], framework: Optional[
         return "playwright_test"
     return "worker_function"
 
+
+def normalize_playwright_test_import(script: str) -> str:
+    """Repair the known unquoted CommonJS package form before a job is frozen.
+
+    This is deliberately narrow: it only changes the literal Playwright Test
+    package token, never arbitrary JavaScript or user-supplied expressions.
+    """
+    return re.sub(
+        r"require\(\s*@playwright/test\s*\)",
+        "require('@playwright/test')",
+        script or "",
+    )
+
 async def _find_compatible_runner_for_job(db: AsyncSession, job: models.AutomationJob):
     runners_result = await db.execute(
         select(models.AutomationRunner).filter(
@@ -262,6 +275,7 @@ async def prepare_automation_script_for_context(
     componente_id: Optional[UUID],
     framework: Optional[str] = "playwright",
 ):
+    script = normalize_playwright_test_import(script)
     framework = (framework or "playwright").split(":", 1)[0].split("@", 1)[0].strip().lower()
     funciones = await get_funciones_proyecto(
         db,

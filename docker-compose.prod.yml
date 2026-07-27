@@ -29,15 +29,20 @@ services:
       dockerfile: backend/Dockerfile
     command: ["migrate-only"]
     environment:
-      APP_ENV: production
       DATABASE_URL_FILE: /run/secrets/treseko_database_url
+      DB_PASSWORD_FILE: /run/secrets/treseko_db_password
+      DB_USER: ${DB_USER:-treseko}
+      DB_NAME: ${DB_NAME:-treseko}
       SECRET_KEY_FILE: /run/secrets/treseko_secret_key
+      AI_CREDENTIALS_MASTER_KEY_FILE: /run/secrets/treseko_ai_credentials_key
+      AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
       AUTO_BACKUP_ENABLED: ${AUTO_BACKUP_ENABLED:-true}
       DB_BACKUP_DIR: /data/backups
       UPDATES_DIR: /data/updates
       MAX_BACKUPS: ${MAX_BACKUPS:-3}
       CHECK_PENDING_UPDATE: ${CHECK_PENDING_UPDATE:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TRESEKO_DEPLOY_MODE: docker
     volumes:
       - treseko_update_data:/data/updates
       - treseko_backend_backups:/data/backups
@@ -47,7 +52,10 @@ services:
       - treseko_worker_runtime:/worker
     secrets:
       - treseko_database_url
+      - treseko_db_password
       - treseko_secret_key
+      - treseko_ai_credentials_key
+      - treseko_ai_engine_internal_token
     depends_on:
       db:
         condition: service_healthy
@@ -58,9 +66,13 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
-      APP_ENV: production
       DATABASE_URL_FILE: /run/secrets/treseko_database_url
+      DB_PASSWORD_FILE: /run/secrets/treseko_db_password
+      DB_USER: ${DB_USER:-treseko}
+      DB_NAME: ${DB_NAME:-treseko}
       SECRET_KEY_FILE: /run/secrets/treseko_secret_key
+      AI_CREDENTIALS_MASTER_KEY_FILE: /run/secrets/treseko_ai_credentials_key
+      AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
@@ -68,6 +80,7 @@ services:
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENGINE_URL: http://engine:3010
+      TRESEKO_PLUGIN_RUNNER_URL: http://plugin-runner:3020
       REDIS_URL: redis://redis:6379/0
       UPDATES_DIR: /data/updates
       BACKUPS_DIR: /data/backups
@@ -78,7 +91,8 @@ services:
       TRESEKO_DEPLOY_MODE: docker
       TRESEKO_UPDATE_SERVER_URL: ${TRESEKO_UPDATE_SERVER_URL:-https://updates.treseko.com}
       TRESEKO_COMMUNITY_UPDATE_CHANNEL: ${TRESEKO_COMMUNITY_UPDATE_CHANNEL:-community-stable}
-      TRESEKO_ENABLE_SELF_UPDATE_APPLY: ${TRESEKO_ENABLE_SELF_UPDATE_APPLY:-false}
+      # Solo se usa tras una confirmacion explicita desde Configuracion > Actualizaciones.
+      TRESEKO_ENABLE_SELF_UPDATE_APPLY: ${TRESEKO_ENABLE_SELF_UPDATE_APPLY:-true}
       TRESEKO_UPDATE_DB_HISTORY_ENABLED: ${TRESEKO_UPDATE_DB_HISTORY_ENABLED:-true}
       TRESEKO_UPDATE_STEP_TIMEOUT_SECONDS: ${TRESEKO_UPDATE_STEP_TIMEOUT_SECONDS:-300}
       TRESEKO_FRONTEND_DIR: /usr/share/nginx/html
@@ -93,12 +107,18 @@ services:
       - treseko_worker_runtime:/worker
     secrets:
       - treseko_database_url
+      - treseko_db_password
       - treseko_secret_key
+      - treseko_ai_credentials_key
+      - treseko_ai_engine_internal_token
     depends_on:
       migrator:
         condition: service_completed_successfully
       redis:
         condition: service_started
+    networks:
+      - default
+      - plugin_internal
 
   engine:
     build:
@@ -107,10 +127,21 @@ services:
     restart: unless-stopped
     environment:
       ENGINE_PORT: 3010
+      OPENCODE_VERSION: ${OPENCODE_VERSION:-1.18.5}
+      OPENCODE_WORKDIR: /tmp/treseko-opencode
+      OPENCODE_BIN: /usr/local/bin/opencode
       BACKEND_WS_URL: ws://backend:8000/ws/engine-sync
+      AI_ALLOWED_LLM_HOSTS: ${AI_ALLOWED_LLM_HOSTS:-}
       AI_API_ENDPOINT: ${AI_API_ENDPOINT:-}
       AI_MODEL: ${AI_MODEL:-}
+      AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
       QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
+    mem_limit: ${ENGINE_MEM_LIMIT:-2g}
+    pids_limit: ${ENGINE_PIDS_LIMIT:-256}
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    secrets:
+      - treseko_ai_engine_internal_token
     volumes:
       - treseko_engine_runtime:/engine
     depends_on:
@@ -135,13 +166,33 @@ services:
       backend:
         condition: service_healthy
 
+  plugin-runner:
+    build:
+      context: plugin-runner
+      dockerfile: Dockerfile
+    profiles: ["plugins"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.50
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      PLUGIN_RUNNER_PORT: 3020
+    networks:
+      - plugin_internal
+    # No host mounts, Docker socket, database, Redis, credentials or public port.
+
   frontend:
     build:
       context: frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${TRESEKO_HTTP_PORT:-8080}:80"
+      - "${TRESEKO_HTTP_PORT:-9095}:80"
     volumes:
       - treseko_frontend_html:/usr/share/nginx/html
     depends_on:
@@ -158,6 +209,10 @@ volumes:
   treseko_engine_runtime:
   treseko_worker_runtime:
 
+networks:
+  plugin_internal:
+    internal: true
+
 secrets:
   treseko_db_password:
     file: ${TRESEKO_DB_PASSWORD_FILE:?TRESEKO_DB_PASSWORD_FILE es obligatorio}
@@ -165,3 +220,7 @@ secrets:
     file: ${TRESEKO_DATABASE_URL_FILE:?TRESEKO_DATABASE_URL_FILE es obligatorio}
   treseko_secret_key:
     file: ${TRESEKO_SECRET_KEY_FILE:?TRESEKO_SECRET_KEY_FILE es obligatorio}
+  treseko_ai_credentials_key:
+    file: ${TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE:?TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE es obligatorio}
+  treseko_ai_engine_internal_token:
+    file: ${TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE:?TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE es obligatorio}

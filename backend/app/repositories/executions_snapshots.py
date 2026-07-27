@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..evidence_url_security import sanitize_evidence_url
 from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload

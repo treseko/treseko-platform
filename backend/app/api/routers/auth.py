@@ -3,9 +3,25 @@ from fastapi import APIRouter
 from ...main_context import *
 from ...main_context import _issue_auth_tokens
 from ...schema_sections.auth import _normalize_email, _validate_password
+from ...services.notifications import welcome_service
 
 
 router = APIRouter(tags=["Auth"])
+
+
+@router.post("/auth/activate/")
+async def activate_welcome_access(payload: schemas.WelcomeActivationRequest, db: AsyncSession = Depends(get_db)):
+    """Consumes an expiring local-user welcome link without exposing identity."""
+    user = await welcome_service.consume_local_invitation(db, raw_token=payload.token, password=payload.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="El enlace de activación no es válido o ya venció")
+    await crud.create_audit_log(db=db, usuario_id=user.id, accion="ACTIVATE", recurso="notification_welcome", detalles={})
+    await notification_event_service.emit_event(
+        db=db, event_type="user.activated", actor_user_id=user.id, entity_type="user", entity_id=user.id,
+        severity="info", payload={"user": {"id": str(user.id), "email": user.email}, "message": "Usuario activó su acceso."},
+        dedupe_key=f"user.activated:{user.id}",
+    )
+    return {"ok": True}
 
 
 def _normalize_login_credentials(username: str, password: str) -> tuple[str, str]:

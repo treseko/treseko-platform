@@ -4,6 +4,7 @@ import { Cpu, LayoutList, PlugZap, Settings, X } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { AiExecutionReportModal } from './AiExecutionReportModal'
 import { formatTime } from '../../shared/utils/dateTime'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 
 type IaLogLevel = 'error' | 'warn' | 'engine' | 'ws' | 'run' | 'system' | 'queue' | 'info'
 type IaRunStatus = 'EN_ESPERA' | 'EN_EJECUCION' | 'PASO' | 'FALLO' | 'BLOQUEADO' | 'ERROR' | 'STREAM_CERRADO'
@@ -84,6 +85,7 @@ type AiEngineHealthState = {
 }
 
 type MotorIaPageProps = {
+  currentProjectId?: string | null
   iaStatus: 'idle' | 'running' | string
   iaLogs: Array<IaLogEntry | string>
   setIaLogs: (updater: any) => void
@@ -174,7 +176,7 @@ const statusMeta: Record<IaRunStatus, { label: string; bg: string; text?: string
   EN_EJECUCION: { label: 'En ejecucion', bg: 'primary' },
   PASO: { label: 'Paso', bg: 'success' },
   FALLO: { label: 'Fallo', bg: 'danger' },
-  BLOQUEADO: { label: 'Bloqueado', bg: 'warning', text: 'dark' },
+  BLOQUEADO: { label: 'Bloqueado', bg: 'primary' },
   ERROR: { label: 'Error', bg: 'danger' },
   STREAM_CERRADO: { label: 'Stream cerrado', bg: 'secondary' },
 }
@@ -303,6 +305,7 @@ const normalizeEngineStatus = (value?: string): IaRunStatus => {
 }
 
 export function MotorIaPage({
+  currentProjectId,
   iaStatus,
   iaLogs,
   setIaLogs,
@@ -324,8 +327,7 @@ export function MotorIaPage({
   const canEditConfig = canUseCapability('motor_ia.configuracion', 'edit')
   const canViewLogs = canUseCapability('motor_ia.logs', 'read')
   const canViewWorkflows = canUseCapability('motor_ia.workflows', 'read')
-  const hasAdvancedEngine = featureEnabled('ai.engine')
-  const hasBasicAiExecution = featureEnabled('ai.basic_execution')
+  const hasAiEngine = featureEnabled('ai.engine') || featureEnabled('ai.basic_execution')
 
   const [health, setHealth] = useState<AiEngineHealthState | null>(null)
   const [checking, setChecking] = useState(false)
@@ -376,12 +378,49 @@ export function MotorIaPage({
     consoleRef.current.scrollTop = consoleRef.current.scrollHeight
   }, [iaLogs.length])
 
+  // The operational monitor is server-backed. Every authorized project member
+  // sees the same queue after refresh; this replaces the launcher's local-only
+  // list as the source of truth.
   useEffect(() => {
-    if (!iaExecutionStreams.length) return
+    if (!currentProjectId || !canViewStatus) return
+    let cancelled = false
+    const loadSharedQueue = async () => {
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/ai-engine/queue?proyecto_id=${encodeURIComponent(currentProjectId)}`)
+        if (!response.ok) return
+        const items = await response.json()
+        if (cancelled || !Array.isArray(items)) return
+        setIaExecutionStreams(items.map((item: any) => ({
+          executionId: item.execution_id,
+          caseId: item.case_id,
+          runId: item.run_id,
+          caseCode: item.case_code,
+          caseTitle: item.case_title,
+          runName: item.run_name,
+          status: item.status,
+          startedAt: item.started_at || item.queued_at,
+          endedAt: item.ended_at,
+          lastMessage: item.message || (item.queue_position ? `Posicion global ${item.queue_position}.` : undefined),
+          confidence: item.confidence,
+          consensus: item.consensus,
+          humanReviewRequired: item.human_review_required,
+        })))
+      } catch {
+        // Existing per-execution streams and polling remain usable on a brief outage.
+      }
+    }
+    void loadSharedQueue()
+    const interval = window.setInterval(() => void loadSharedQueue(), 2500)
+    return () => { cancelled = true; window.clearInterval(interval) }
+  }, [canViewStatus, currentProjectId, fetchWithAuth, setIaExecutionStreams])
+
+  useEffect(() => {
+    const activeStreams = iaExecutionStreams.filter(stream => ['EN_ESPERA', 'EN_EJECUCION'].includes(stream.status || ''))
+    if (!activeStreams.length) return
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const sockets = iaExecutionStreams.map(stream => {
+    const sockets = activeStreams.map(stream => {
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws/client-sync/${stream.executionId}`)
       ws.onopen = () => {
         if (token) ws.send(JSON.stringify({ type: 'auth', token }))
@@ -483,7 +522,7 @@ export function MotorIaPage({
       return ws
     })
     return () => sockets.forEach(ws => ws.close())
-  }, [iaExecutionStreams.map(stream => stream.executionId).join('|')])
+  }, [iaExecutionStreams.filter(stream => ['EN_ESPERA', 'EN_EJECUCION'].includes(stream.status || '')).map(stream => stream.executionId).join('|')])
 
   useEffect(() => {
     const activeStreams = iaExecutionStreams.filter(stream => (
@@ -717,6 +756,15 @@ export function MotorIaPage({
         ? 'VERIFICANDO'
         : healthStatus.toUpperCase()
 
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="El motor IA aparecerá cuando tengas un proyecto seleccionado. Para ejecutar casos IA también necesitás una build activa."
+      />
+    )
+  }
+
   return (
     <div className="p-4 h-100 d-flex flex-column animate__animated animate__fadeIn text-dark text-start">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
@@ -725,9 +773,7 @@ export function MotorIaPage({
             <Cpu size={24} /> Motor IA
           </h4>
           <div className="small text-muted">
-            {hasAdvancedEngine
-              ? 'Motor IA completo con configuracion avanzada, workflows, cola y trazas.'
-              : 'Ejecucion IA basica incluida en Community, con cuota semanal y sin configuracion avanzada.'}
+            Motor IA completo con proveedores, workflows, cola y trazas. Community incluye 10 ejecuciones semanales.
           </div>
         </div>
         <div className="d-flex flex-wrap gap-2">
@@ -736,7 +782,7 @@ export function MotorIaPage({
               {checking ? <><Spinner size="sm" className="me-1" /> Verificando...</> : 'Verificar motor'}
             </Button>
           )}
-          {canEditConfig && hasAdvancedEngine && (
+          {canEditConfig && hasAiEngine && (
             <Button
               variant="outline-secondary"
               size="sm"
@@ -758,14 +804,6 @@ export function MotorIaPage({
       </div>
 
       <Row className="g-3 mb-3 flex-grow-1 overflow-hidden motor-ia-workspace" style={{ minHeight: 0 }}>
-        {!hasAdvancedEngine && hasBasicAiExecution && (
-          <Col xs={12}>
-            <Alert variant="info" className="small mb-0 border-0 shadow-sm">
-              Community permite ejecutar pruebas con IA basica desde <strong>Ejecutar Pruebas</strong> y probar casos con <strong>Dry-run IA</strong>.
-              La configuracion de proveedores, workflows, presets y trazas avanzadas se habilita con Treseko Premium.
-            </Alert>
-          </Col>
-        )}
         {canViewLogs && <Col md={8} lg={9} className="d-flex flex-column h-100">
           <Card className="border-0 shadow-sm bg-dark text-white rounded-3 flex-grow-1 d-flex flex-column overflow-hidden h-100">
             <Card.Header className="bg-black bg-opacity-50 border-0 py-2 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -892,7 +930,7 @@ export function MotorIaPage({
                       </div>
                       {item.humanReviewRequired && <Badge bg="danger" className="mt-2">Requiere revision humana</Badge>}
                       {item.lastMessage && <div className="x-small text-muted mt-2 text-truncate">{item.lastMessage}</div>}
-                      {item.executionId && canViewLogs && (
+                      {item.executionId && canViewStatus && (
                         <Button variant="outline-primary" size="sm" className="mt-2 rounded-pill x-small" onClick={() => openAiReport(item.executionId)}>
                           Ver reporte
                         </Button>

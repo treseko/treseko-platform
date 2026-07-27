@@ -20,6 +20,8 @@ ENTRYPOINT_CODE_BACKUP=""
 ENTRYPOINT_DB_BACKUP=""
 ENTRYPOINT_UPDATE_FAILED_FILE=""
 ENTRYPOINT_UPDATE_DIR=""
+ENTRYPOINT_UPDATE_TASK_ID=""
+ENTRYPOINT_UPDATE_VERSION=""
 AUTO_DB_ROLLBACK_ON_FAILURE="${TRESEKO_AUTO_DB_ROLLBACK_ON_MIGRATION_FAILURE:-false}"
 
 read_version() {
@@ -55,7 +57,16 @@ load_env_from_file() {
 }
 
 load_env_from_file DATABASE_URL
+load_env_from_file DB_PASSWORD
 load_env_from_file SECRET_KEY
+load_env_from_file AI_ENGINE_INTERNAL_TOKEN
+
+if [ "${TRESEKO_DEPLOY_MODE:-}" = "docker" ] && [ -n "${DB_PASSWORD:-}" ]; then
+  encoded_db_password="$(python -c \
+    'import os, urllib.parse; print(urllib.parse.quote(os.environ["DB_PASSWORD"], safe=""))')"
+  DATABASE_URL="postgresql+asyncpg://${DB_USER:-treseko}:${encoded_db_password}@${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-treseko}"
+  export DATABASE_URL
+fi
 
 maintenance_on() {
   if [ -d "$FRONTEND_HTML_DIR" ]; then
@@ -78,7 +89,10 @@ backup_runtime_code() {
   rm -rf "$backup_src"
   mkdir -p "$backup_src"
   echo "Creando backup de codigo pre-update: $ENTRYPOINT_CODE_BACKUP"
-  [ -d "$BACKEND_APP_DIR" ] && cp -a "$BACKEND_APP_DIR" "$backup_src/backend_app"
+  if [ -d "$BACKEND_APP_DIR" ]; then
+    mkdir -p "$backup_src/backend_app"
+    find "$BACKEND_APP_DIR" -mindepth 1 -maxdepth 1 ! -name static -exec cp -a {} "$backup_src/backend_app/" \;
+  fi
   [ -d "$ALEMBIC_DIR" ] && cp -a "$ALEMBIC_DIR" "$backup_src/backend_alembic"
   [ -d "$FRONTEND_HTML_DIR" ] && cp -a "$FRONTEND_HTML_DIR" "$backup_src/frontend_html"
   [ -d "$ENGINE_DIR" ] && cp -a "$ENGINE_DIR" "$backup_src/engine"
@@ -103,9 +117,9 @@ restore_runtime_code() {
   tar -xzf "$ENTRYPOINT_CODE_BACKUP" -C "$restore_dir"
 
   if [ -d "$restore_dir/backend_app" ]; then
-    rm -rf "$BACKEND_APP_DIR"
-    mkdir -p "$(dirname "$BACKEND_APP_DIR")"
-    cp -a "$restore_dir/backend_app" "$BACKEND_APP_DIR"
+    mkdir -p "$BACKEND_APP_DIR"
+    find "$BACKEND_APP_DIR" -mindepth 1 -maxdepth 1 ! -name static -exec rm -rf {} +
+    find "$restore_dir/backend_app" -mindepth 1 -maxdepth 1 ! -name static -exec cp -a {} "$BACKEND_APP_DIR/" \;
   fi
   if [ -d "$restore_dir/backend_alembic" ]; then
     rm -rf "$ALEMBIC_DIR"
@@ -202,7 +216,36 @@ apply_pending_update() {
     return 0
   fi
 
-  update_dir="$(cat "$flag_file" 2>/dev/null || true)"
+  update_payload="$(cat "$flag_file" 2>/dev/null || true)"
+  update_dir="$update_payload"
+  case "$update_payload" in
+    \{*)
+      update_dir="$(UPDATE_PAYLOAD="$update_payload" python - <<'PY'
+import json, os
+try:
+    print(json.loads(os.environ["UPDATE_PAYLOAD"]).get("path") or "")
+except Exception:
+    print("")
+PY
+)"
+      ENTRYPOINT_UPDATE_TASK_ID="$(UPDATE_PAYLOAD="$update_payload" python - <<'PY'
+import json, os
+try:
+    print(json.loads(os.environ["UPDATE_PAYLOAD"]).get("task_id") or "")
+except Exception:
+    print("")
+PY
+)"
+      ENTRYPOINT_UPDATE_VERSION="$(UPDATE_PAYLOAD="$update_payload" python - <<'PY'
+import json, os
+try:
+    print(json.loads(os.environ["UPDATE_PAYLOAD"]).get("version") or "")
+except Exception:
+    print("")
+PY
+)"
+      ;;
+  esac
   if [ -z "$update_dir" ] || [ ! -d "$update_dir" ]; then
     echo "Update pendiente invalido: $update_dir"
     rm -f "$flag_file"
@@ -219,9 +262,20 @@ apply_pending_update() {
 
   if [ -d "$update_dir/backend/app" ]; then
     echo "  Reemplazando backend..."
-    rm -rf "$BACKEND_APP_DIR"
-    mkdir -p "$(dirname "$BACKEND_APP_DIR")"
-    cp -a "$update_dir/backend/app" "$BACKEND_APP_DIR"
+    # static es un volumen persistente con adjuntos, evidencias y branding.
+    # Nunca debe eliminarse al reemplazar el codigo de la aplicacion.
+    mkdir -p "$BACKEND_APP_DIR"
+    find "$BACKEND_APP_DIR" -mindepth 1 -maxdepth 1 ! -name static -exec rm -rf {} +
+    find "$update_dir/backend/app" -mindepth 1 -maxdepth 1 ! -name static -exec cp -a {} "$BACKEND_APP_DIR/" \;
+    if [ -d "$update_dir/backend/app/static" ]; then
+      mkdir -p "$BACKEND_APP_DIR/static"
+      cp -a "$update_dir/backend/app/static/." "$BACKEND_APP_DIR/static/"
+    fi
+  fi
+
+  if [ -f "$update_dir/VERSION" ]; then
+    echo "  Actualizando version instalada..."
+    cp "$update_dir/VERSION" "$APP_DIR/VERSION"
   fi
 
   if [ -d "$update_dir/backend/alembic/versions" ]; then
@@ -247,6 +301,9 @@ apply_pending_update() {
     mkdir -p "$ENGINE_DIR"
     rm -rf "$ENGINE_DIR"/*
     cp -a "$update_dir/engine/." "$ENGINE_DIR/"
+    # El Engine detecta esta marca y se reinicia despues de que el backend
+    # termine de reemplazar sus fuentes. No se corta una ejecucion en curso.
+    : > "$ENGINE_DIR/.treseko-update-restart"
   fi
 
   if [ -d "$update_dir/automation-worker" ]; then
@@ -257,6 +314,12 @@ apply_pending_update() {
   fi
 
   rm -f "$flag_file"
+  if [ -n "$ENTRYPOINT_UPDATE_TASK_ID" ]; then
+    UPDATE_TASK_ID="$ENTRYPOINT_UPDATE_TASK_ID" UPDATE_VERSION="$ENTRYPOINT_UPDATE_VERSION" python - <<'PY' > "$UPDATES_DIR/update-applied"
+import json, os
+print(json.dumps({"task_id": os.environ["UPDATE_TASK_ID"], "version": os.environ.get("UPDATE_VERSION", "")}))
+PY
+  fi
   echo "Update pendiente aplicado."
 }
 

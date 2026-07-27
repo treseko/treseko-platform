@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..evidence_url_security import sanitize_evidence_url
 
 

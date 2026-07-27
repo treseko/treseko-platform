@@ -42,6 +42,7 @@ class Usuario(Base):
     profile_settings = Column(JSON, default=dict, nullable=False)
     personal_theme = Column(String(64), default="system", nullable=False)
     project_theme_overrides = Column(JSON, default=dict, nullable=False)
+    session_version = Column(Integer, default=0, nullable=False)
 
     rol_personalizado = relationship("RolPersonalizado", back_populates="usuarios")
     proyectos_asignados = relationship("ProyectoMiembro", back_populates="usuario", cascade="all, delete-orphan")

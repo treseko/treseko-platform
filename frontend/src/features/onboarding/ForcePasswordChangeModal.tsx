@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { Alert, Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { KeyRound, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
+import { applyPasswordChangeResult } from './passwordChangeResult'
 
 type ForcePasswordChangeModalProps = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
+  onAccessTokenRefreshed: (accessToken: string) => void
   onPreferencesUpdated: (preferences: any) => void
 }
 
@@ -13,7 +15,12 @@ export function needsForcedPasswordChange(profileSettings: any) {
   return profileSettings?.security?.force_password_change === true
 }
 
-export function ForcePasswordChangeModal({ loggedUser, fetchWithAuth, onPreferencesUpdated }: ForcePasswordChangeModalProps) {
+export function ForcePasswordChangeModal({
+  loggedUser,
+  fetchWithAuth,
+  onAccessTokenRefreshed,
+  onPreferencesUpdated
+}: ForcePasswordChangeModalProps) {
   const show = needsForcedPasswordChange(loggedUser?.profileSettings || {})
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -41,7 +48,7 @@ export function ForcePasswordChangeModal({ loggedUser, fetchWithAuth, onPreferen
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data?.detail || 'No se pudo cambiar la contraseña.')
-      onPreferencesUpdated(data)
+      applyPasswordChangeResult(data, onAccessTokenRefreshed, onPreferencesUpdated)
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')

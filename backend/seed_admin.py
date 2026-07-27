@@ -83,6 +83,7 @@ async def main() -> None:
                     temporary_password = generate_temporary_password()
                     generated_password = True
                 user.hashed_password = auth.get_password_hash(temporary_password)
+                user.session_version = int(user.session_version or 0) + 1
                 user.profile_settings = {
                     **(user.profile_settings or {}),
                     **INITIAL_PROFILE_SETTINGS,

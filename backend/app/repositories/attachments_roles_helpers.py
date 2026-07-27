@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from .core_settings_ai_workflow_helpers import (
     _create_artifact_attachment_no_commit,
     _project_context_for_automation_job,
@@ -98,11 +98,11 @@ async def get_system_monitor_summary(db: AsyncSession):
         "Backend FastAPI",
         "API",
         "ONLINE",
-        target="http://backend:8000" if IS_PRODUCTION_MONITOR else "http://127.0.0.1:8000",
+        target="http://backend:8000" if IS_CONTAINER_MONITOR else "http://127.0.0.1:8000",
         version=PRODUCT_VERSION,
         detail="API respondio esta solicitud",
     )
-    frontend_name = "Frontend Nginx" if IS_PRODUCTION_MONITOR else "Frontend Vite"
+    frontend_name = "Frontend Nginx" if IS_CONTAINER_MONITOR else "Frontend Vite"
     frontend_task = _probe_http_component("frontend", frontend_name, SYSTEM_MONITOR_FRONTEND_URL)
     database_task = _probe_database_component(db)
     redis_task = _probe_redis_component()

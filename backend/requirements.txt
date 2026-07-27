@@ -12,8 +12,12 @@ python-dotenv
 httpx
 requests
 redis
-python-jose[cryptography]
+PyJWT[crypto]>=2.10.1,<3
 cryptography
 passlib[bcrypt]
 python-multipart
+defusedxml
+gherkin-official
+openpyxl
+xlrd
 ldap3

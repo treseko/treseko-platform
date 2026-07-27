@@ -1,8 +1,9 @@
-import axios from 'axios';
 import dotenv from 'dotenv';
 import { traceEntry, traceRequestId } from '../test-trace.ts';
 import type { QAEngineStep, StrictAIAction, StructuredHistoryItem } from '../automation/action-types.ts';
 import type { AuditDecision, AuditEvidenceBundle, AuditImage } from '../audit/consensus.ts';
+import { generateWithProvider, normalizeProvider, ProviderRequestError } from './provider-adapters.ts';
+import type { AgentDriver } from './agent-driver.ts';
 
 dotenv.config({ override: false });
 
@@ -36,10 +37,11 @@ export interface AIResult<T> {
 }
 
 export class AIClient {
-  private readonly provider: string;
-  private readonly endpoint: string;
-  public readonly model: string;
-  private readonly apiKey: string | undefined;
+  private provider: string;
+  private endpoint: string;
+  public model: string;
+  private apiKey: string | undefined;
+  private readonly fallbackConfigs: Array<{ provider: string; endpoint: string; model: string; apiKey?: string; maxRetries?: number }>;
   private readonly maxContext: number;
   private readonly temperature: number;
   private readonly maxRetries: number;
@@ -53,15 +55,26 @@ export class AIClient {
   public readonly supportsVision: boolean;
   private readonly agentWorkflow: any[];
   private messageHistory: any[] = [];
+  private readonly agentDriver?: AgentDriver;
+  private readonly agentRunId?: string;
 
-  constructor(config: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxCompletionTokens?: number; disableThinking?: boolean } = {}) {
+  constructor(config: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxCompletionTokens?: number; disableThinking?: boolean; maxRetries?: number; fallbacks?: Array<{ provider?: string; llm_endpoint?: string; endpoint?: string; model?: string; provider_api_key?: string; apiKey?: string; max_retries?: number }>; agentDriver?: AgentDriver; agentRunId?: string } = {}) {
     this.provider = normalizeProvider(config.provider || process.env.AI_PROVIDER || 'openai-compatible');
     this.endpoint = config.endpoint || process.env.AI_API_ENDPOINT || 'http://172.16.10.4:1234/v1';
     this.model = config.model || process.env.AI_MODEL || 'google/gemma-4-e4b';
     this.apiKey = config.apiKey || resolveProviderApiKey(this.provider);
+    this.fallbackConfigs = (config.fallbacks || []).map((item) => ({
+      provider: normalizeProvider(item.provider || 'openai-compatible'),
+      endpoint: item.llm_endpoint || item.endpoint || '',
+      model: item.model || '',
+      apiKey: item.provider_api_key || item.apiKey,
+      maxRetries: item.max_retries,
+    })).filter((item) => item.endpoint && item.model);
     this.maxContext = parseInt(process.env.AI_MAX_CONTEXT || '32768');
     this.temperature = Number.isFinite(config.temperature) ? Number(config.temperature) : parseFloat(process.env.AI_TEMPERATURE || '0.1');
-    this.maxRetries = parseInt(process.env.AI_MAX_RETRIES || '5');
+    this.maxRetries = Number.isFinite(config.maxRetries)
+      ? Math.max(1, Math.min(5, Number(config.maxRetries)))
+      : parseInt(process.env.AI_MAX_RETRIES || '5');
     this.retryTemperature = parseFloat(process.env.AI_RETRY_TEMPERATURE || '0.3');
     this.tokenCostPer1K = Number.isFinite(config.tokenCostPer1K) ? Number(config.tokenCostPer1K) : parseFloat(process.env.AI_TOKEN_COST_PER_1K || '0.01');
     this.promptTokenCostPer1K = Number.isFinite(config.promptTokenCostPer1K) ? Number(config.promptTokenCostPer1K) : parseFloat(process.env.AI_PROMPT_TOKEN_COST_PER_1K || '0');
@@ -72,11 +85,16 @@ export class AIClient {
     const configuredMaxCompletionTokens = Number.isFinite(config.maxCompletionTokens)
       ? Number(config.maxCompletionTokens)
       : parseInt(process.env.AI_MAX_COMPLETION_TOKENS || '256');
-    this.maxCompletionTokens = Math.max(32, Math.min(2048, configuredMaxCompletionTokens));
+    // Authoring workflows can return several structured stories with
+    // acceptance criteria. Keep room for a complete JSON contract instead of
+    // silently accepting a response cut in the middle of a proposal.
+    this.maxCompletionTokens = Math.max(32, Math.min(20000, configuredMaxCompletionTokens));
     this.disableThinking = config.disableThinking === true;
     // Do not infer vision from a model name: providers differ and an image request can fail or add cost.
     this.supportsVision = config.visionEnabled === true;
     this.agentWorkflow = Array.isArray(config.agentWorkflow) ? config.agentWorkflow : [];
+    this.agentDriver = config.agentDriver;
+    this.agentRunId = config.agentRunId;
     
     this.messageHistory.push({
       role: 'system',
@@ -250,8 +268,9 @@ Responde JSON:
     }
   }
 
-  private async sendWithRetry<T>(messages: any[], temperature?: number): Promise<AIResult<T>> {
+  private async sendWithRetry<T>(messages: any[], temperature?: number, maxCompletionTokens?: number): Promise<AIResult<T>> {
     let attempts = 0;
+    let fallbackIndex = 0;
     const start = Date.now();
 
     while (attempts < this.maxRetries) {
@@ -261,41 +280,52 @@ Responde JSON:
           model: this.model,
           messages,
           temperature: temperature ?? (attempts > 0 ? this.retryTemperature : this.temperature),
-          max_tokens: this.maxCompletionTokens,
+          max_tokens: Math.max(32, Math.min(this.maxCompletionTokens, Number(maxCompletionTokens || this.maxCompletionTokens))),
+          // Do not force OpenAI JSON mode here. Some local servers advertise
+          // it but reject `response_format` at runtime. The governed prompt
+          // and parser preserve compatibility with those servers.
           ...(this.disableThinking ? {
             reasoning_effort: 'none',
             chat_template_kwargs: { enable_thinking: false },
           } : {}),
         };
         const attemptStarted = Date.now();
+        const providerEndpoint = `${this.endpoint}/${this.provider === 'anthropic' ? 'messages' : this.provider === 'gemini' ? 'models/:model:generateContent' : this.provider === 'openai' ? 'responses' : 'chat/completions'}`;
         traceEntry('ai_request', {
           request_id: requestId,
-          endpoint: `${this.endpoint}/chat/completions`,
+          endpoint: providerEndpoint,
           attempt: attempts + 1,
           body: aiPayload,
           provider: this.provider,
         });
-        const response = await axios.post(`${this.endpoint}/chat/completions`, aiPayload, {
-          headers: this.authHeaders(),
-          timeout: this.requestTimeoutMs,
+        const response = await generateWithProvider({
+          provider: this.provider,
+          endpoint: this.endpoint,
+          apiKey: this.apiKey,
+          timeoutMs: this.requestTimeoutMs,
+        }, {
+          model: this.model,
+          messages,
+          temperature: aiPayload.temperature,
+          maxTokens: aiPayload.max_tokens,
+          disableThinking: this.disableThinking,
         });
         traceEntry('ai_response', {
           request_id: requestId,
-          endpoint: `${this.endpoint}/chat/completions`,
+          endpoint: providerEndpoint,
           attempt: attempts + 1,
-          status: response.status,
-          headers: response.headers,
-          response_body: response.data,
+          status: 200,
+          response_body: response.raw,
           duration_ms: Date.now() - attemptStarted,
         });
 
         const latency = Date.now() - start;
-        const usage = response.data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-        const rawContent = response.data.choices[0].message.content.trim();
+        const usage = response.usage;
+        const rawContent = response.content;
         
         const cost = this.promptTokenCostPer1K || this.completionTokenCostPer1K
-          ? (usage.prompt_tokens / 1000) * this.promptTokenCostPer1K + (usage.completion_tokens / 1000) * this.completionTokenCostPer1K
-          : (usage.total_tokens / 1000) * this.tokenCostPer1K;
+          ? (usage.promptTokens / 1000) * this.promptTokenCostPer1K + (usage.completionTokens / 1000) * this.completionTokenCostPer1K
+          : (usage.totalTokens / 1000) * this.tokenCostPer1K;
 
         try {
             let parsed = this.safeJsonParse(rawContent);
@@ -304,13 +334,13 @@ Responde JSON:
                 data: parsed as T,
                 metrics: {
                     latencyMs: latency,
-                    promptTokens: usage.prompt_tokens,
-                    completionTokens: usage.completion_tokens,
-                    totalTokens: usage.total_tokens,
+                    promptTokens: usage.promptTokens,
+                    completionTokens: usage.completionTokens,
+                    totalTokens: usage.totalTokens,
                     estimatedCost: cost
                 },
                 prompt: messages,
-                rawResponse: response.data
+                rawResponse: response.raw
             };
         } catch (jsonError: any) {
             attempts++;
@@ -340,7 +370,7 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
             stack: error?.stack,
           },
         });
-        if (error.response?.status === 500 || error.code === 'ECONNRESET') {
+        if ((error instanceof ProviderRequestError && ['provider_unavailable', 'rate_limited', 'timeout', 'network_error'].includes(error.category)) || error.response?.status === 500 || error.code === 'ECONNRESET') {
           const textOnlyMessages = messages.map(m => {
             if (Array.isArray(m.content)) {
               const textPart = m.content.find((c: any) => c.type === 'text');
@@ -349,7 +379,16 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
             return m;
           });
           messages = textOnlyMessages;
-          attempts++; 
+          attempts++;
+          if (attempts >= this.maxRetries && fallbackIndex < this.fallbackConfigs.length) {
+            const fallback = this.fallbackConfigs[fallbackIndex++];
+            traceEntry('workflow_event', { event_detail: 'ai_provider_fallback', from_provider: this.provider, to_provider: fallback.provider, to_model: fallback.model, reason: error instanceof ProviderRequestError ? error.category : 'provider_unavailable' });
+            this.provider = fallback.provider;
+            this.endpoint = fallback.endpoint;
+            this.model = fallback.model;
+            this.apiKey = fallback.apiKey || resolveProviderApiKey(fallback.provider);
+            attempts = 0;
+          }
           continue;
         }
         throw error;
@@ -410,6 +449,15 @@ Responde JSON: { "loading": true/false, "reason": "Descripción técnica en ESPA
     screenshotBase64?: string;
     attempt: number;
   }): Promise<AIResult<StrictAIAction>> {
+    if (this.agentDriver && this.agentRunId) {
+      const started = Date.now();
+      try {
+        const data = await this.agentDriver.nextAction({ runId: this.agentRunId, stepNumber: args.step.number, prompt: `${args.goal}\n\nOBSERVACIÓN:\n${args.observationText}\n\nHISTORIAL:\n${args.historyText}` });
+        return { data: { ...data, step_number: args.step.number, reason: data.reason || 'Decisión OpenCode', confidence: Number(data.confidence ?? 0) }, metrics: { latencyMs: Date.now() - started, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 }, prompt: { driver: 'opencode' }, rawResponse: data };
+      } catch (error: any) {
+        return { data: { action: 'blocked', reason: `OpenCode no pudo decidir la acción: ${error?.message || error}`, confidence: 0, step_number: args.step.number }, metrics: { latencyMs: Date.now() - started, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 }, prompt: { driver: 'opencode' }, rawResponse: error?.message || String(error) };
+      }
+    }
     const agentPrompt = this.getAgentPrompt('AI_AGENT');
     const prompt = `${agentPrompt ? `${agentPrompt}\n\n` : ''}
 ### ROL
@@ -418,7 +466,7 @@ Sos un agente QA que controla un navegador real. Tenes que ejecutar SOLO el paso
 ### PASO ACTUAL
 Numero: ${args.step.number}
 Accion esperada: ${args.step.action || '-'}
-Datos disponibles: ${args.step.data || '-'}
+Datos normalizados disponibles: ${args.step.data || '-'}
 Resultado esperado: ${args.step.expected || '-'}
 
 ### OBJETIVO
@@ -441,7 +489,7 @@ ${args.historyText}
 8. step_number es informativo: el engine siempre lo fija en ${args.step.number}.
 9. Si faltan datos imprescindibles, usa blocked y explica que dato falta.
 10. No uses blocked para describir una accion que podes ejecutar. Si el paso dice "ingresar", "completar", "buscar", "abrir", "presionar" o "validar" y hay un elemento visible compatible en el snapshot, debes elegir una accion ejecutable.
-11. Si hay usuario, password, search_term, query, url o base_url en Datos disponibles, usa esos valores. Para un login, primero usa type sobre el campo usuario, luego type sobre password en el siguiente intento/paso, y finalmente click/press para enviar.
+11. Si hay usuario, password, email, search_term, query, url o base_url en los datos normalizados, usa exactamente esos valores. Identifica el campo por sus labels y atributos visibles; no dependas de un selector fijo.
 12. El campo reason es una explicacion breve de la decision; no es la accion. La accion real debe estar en action.
 13. No copies textos de ejemplo. El campo reason debe describir lo que ves o el dato tecnico que falta.
 14. No uses frases genericas como "Motivo breve en espanol", "N/A", "TODO" o "reason".
@@ -460,15 +508,7 @@ ${args.historyText}
   "step_number": ${args.step.number}
 }
 
-### EJEMPLOS VALIDOS
-Para completar usuario:
-{ "action": "type", "target_ref": "el-2", "value": "tomsmith", "reason": "Completar usuario disponible en datos sobre el campo username visible.", "expected": "Usuario ingresado", "confidence": 90, "step_number": ${args.step.number} }
-
-Para buscar texto:
-{ "action": "type", "target_ref": "el-5", "value": "Selenium software", "reason": "Escribir el termino de busqueda disponible en datos sobre el buscador visible.", "expected": "Busqueda ingresada", "confidence": 88, "step_number": ${args.step.number} }
-
-Para abrir una URL:
-{ "action": "navigate", "value": "https://example.com", "reason": "Navegar a la URL indicada por los datos del paso.", "expected": "Pagina cargada", "confidence": 95, "step_number": ${args.step.number} }
+Para navegar, usa navigate solamente con una URL absoluta que provenga de los datos reales del caso, del ambiente/inventario o del snapshot actual. Si no existe una URL real, usa blocked e indica que falta la URL inicial.
 
 Si devuelves reason o expected iguales al ejemplo, la accion sera rechazada y reintentada.
 `;
@@ -513,6 +553,11 @@ Si devuelves reason o expected iguales al ejemplo, la accion sera rechazada y re
     }
   }
 
+  async sendAgentExecutionResult(input: { ok: boolean; observation?: unknown; screenshotRef?: string }): Promise<void> {
+    if (!this.agentDriver || !this.agentRunId) return;
+    await this.agentDriver.sendExecutionResult({ runId: this.agentRunId, ...input }).catch(() => undefined);
+  }
+
   async guardAction(goal: string, action: AIAction, thought?: string, rawResponse?: any, metrics?: any): Promise<{ approved: boolean; reason: string }> {
     if (!action || action.action === 'error') {
       return { approved: false, reason: action?.reason || 'La IA no devolvió una acción ejecutable.' };
@@ -526,6 +571,7 @@ Si devuelves reason o expected iguales al ejemplo, la accion sera rechazada y re
     input: Record<string, any>;
     outputSchema?: Record<string, any>;
     temperature?: number;
+    maxCompletionTokens?: number;
   }): Promise<AIResult<any>> {
     const prompt = `${args.promptTemplate || 'Analiza el input del workflow y responde AgentOutput JSON.'}
 
@@ -538,6 +584,19 @@ ${JSON.stringify(args.input, null, 2).slice(0, 12000)}
 ### OUTPUT_SCHEMA
 ${JSON.stringify(args.outputSchema || { required: ['status', 'reason'] }, null, 2)}
 
+### CONTRATO DE CONTEXTO COMPARTIDO
+Si el input incluye resolved_context, úsalo como fuente de verdad para los
+datos del paso. No vuelvas a convertir clave=valor ni reemplaces un valor
+normalizado por ejemplos propios. Respeta source, confidence y
+ambiguities; si hay un candidato respaldado, úsalo y deja constancia de la
+interpretación. Si no existe ningún valor respaldado, informa el dato faltante
+en reason y no inventes una URL, credencial, selector ni resultado.
+
+Para cada decisión relevante, incluye en sharedMemoryPatch los campos
+resolved_context, input_mapping o failure_diagnosis sin incluir secretos
+en claro en mensajes, eventos o reportes. Los valores secretos deben aparecer
+enmascarados como ********.
+
 Responde SOLO JSON con esta forma minima:
 {
   "status": "SUCCESS|FAILED|BLOCKED|SKIPPED",
@@ -547,7 +606,11 @@ Responde SOLO JSON con esta forma minima:
   "events": [],
   "sharedMemoryPatch": {}
 }`;
-    return await this.sendWithRetry<any>([{ role: 'user', content: prompt }], args.temperature ?? this.temperature);
+    return await this.sendWithRetry<any>(
+      [{ role: 'user', content: prompt }],
+      args.temperature ?? this.temperature,
+      args.maxCompletionTokens,
+    );
   }
 
   async waitForStability(page: any): Promise<void> {
@@ -585,32 +648,14 @@ Responde SOLO JSON con esta forma minima:
   }
 
   async checkHealth(): Promise<boolean> {
+    const result = await this.checkHealthDetailed();
+    return result.ok;
+  }
+
+  async checkHealthDetailed(): Promise<{ ok: boolean; category?: string; status?: number }> {
     try {
-      const requestId = traceRequestId('engine-ai-health');
-      const payload = {
-        model: this.model,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 5
-      };
-      const started = Date.now();
-      traceEntry('ai_request', {
-        request_id: requestId,
-        endpoint: `${this.endpoint}/chat/completions`,
-        body: payload,
-        health_check: true,
-        provider: this.provider,
-      });
-      const response = await axios.post(`${this.endpoint}/chat/completions`, payload, { headers: this.authHeaders() });
-      traceEntry('ai_response', {
-        request_id: requestId,
-        endpoint: `${this.endpoint}/chat/completions`,
-        status: response.status,
-        headers: response.headers,
-        response_body: response.data,
-        duration_ms: Date.now() - started,
-        health_check: true,
-      });
-      return true;
+      await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16 });
+      return { ok: true };
     } catch (error: any) {
       traceEntry('error', {
         event_detail: 'ai_health_failed',
@@ -623,13 +668,12 @@ Responde SOLO JSON con esta forma minima:
           stack: error?.stack,
         },
       });
-      return false;
+      return {
+        ok: false,
+        category: error instanceof ProviderRequestError ? error.category : 'provider_error',
+        status: error instanceof ProviderRequestError ? error.status : undefined,
+      };
     }
-  }
-
-  private authHeaders(): Record<string, string> {
-    if (!this.apiKey) return {};
-    return { Authorization: `Bearer ${this.apiKey}` };
   }
 
   async validateGoal(
@@ -746,14 +790,6 @@ Responde JSON: { "approved": true/false, "reason": "Breve explicación en ESPAÑ
       };
     }
   }
-}
-
-function normalizeProvider(provider: string): string {
-  const value = String(provider || 'openai-compatible').toLowerCase().replace(/_/g, '-');
-  if (value === 'lmstudio') return 'lm-studio';
-  if (value === 'google') return 'gemini';
-  if (value === 'custom-http') return 'openai-compatible';
-  return value;
 }
 
 function resolveProviderApiKey(provider: string): string | undefined {

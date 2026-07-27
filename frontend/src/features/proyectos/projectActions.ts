@@ -114,6 +114,12 @@ export function createProjectActions({
     const pName = String(formData.get('projName') || '').trim()
     const orgSelect = String(formData.get('orgSelect') || currentOrgId)
     if (!pName) return
+    if (!orgSelect) {
+      const message = 'Debes seleccionar una solución antes de crear un proyecto.'
+      setProjectSyncMessage(message)
+      showFeedback('Solución requerida', message, 'warning')
+      return
+    }
 
     const createLocalProject = () => {
       const newProjId = `p${projectsList.length + 1}`

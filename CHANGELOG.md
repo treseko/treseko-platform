@@ -1,9 +1,14 @@
-# Treseko 0.9.0-rc.1
+# Treseko 1.0.0-rc.1
 
-- Publicacion inicial Community RC para despliegue self-hosted.
-- Compose productivo con backend, frontend, engine, PostgreSQL y Redis.
-- Sistema de actualizaciones con paquetes verificables, backups, entrypoint transaccional y auditoria.
-- Instalacion limpia con administrador inicial temporal y cambio obligatorio de contraseña.
-- Premium preparado mediante licencia y features, sin publicar claves privadas en el runtime.
-- Motor IA con selector ampliado de proveedores locales/cloud, catalogo de modelos y API keys por variable de entorno.
-- Adjuntos y evidencias incorporan politica global de sanitizacion con modo trazabilidad completa, administrable por RBAC y auditado.
+Esta versión incorpora mejoras principales respecto de la RC anterior:
+
+- Importación, exportación y reversión auditable de casos de prueba.
+- Trazabilidad entre requisitos, historias, casos, ejecuciones y evidencias.
+- Generación asistida de historias y casos de prueba con revisión humana.
+- Ejecución manual, automatizada y asistida por IA desde un mismo flujo QA.
+- Bug Tracker con contexto de ejecución, evidencias y vínculos externos.
+- Reportes y métricas de build con cobertura de trazabilidad.
+- Workers de automatización vinculados por código temporal.
+- Permisos granulares, configuraciones de IA y límites por edición.
+
+Esta es la versión estable de Treseko Community para uso productivo.

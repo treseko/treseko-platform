@@ -149,6 +149,7 @@ export function createIaMissionActions({
             return {
               executionId: item.id,
               caseId: item.caso_id,
+              runId: run.id,
               caseCode: test?.code || test?.codigo || '',
               caseTitle: test?.title || test?.titulo || 'Caso IA',
               runName: run.nombre,

@@ -1,12 +1,14 @@
 import type { Page } from 'playwright';
 import type { ActionExecutionResult, BrowserObservation, StrictAIAction } from './action-types.ts';
 
-const ACTIONS_WITH_TARGET = new Set(['click', 'type', 'select', 'assert_visible', 'assert_text']);
+const ACTIONS_WITH_TARGET = new Set(['click', 'type', 'select', 'assert_visible']);
 const ALLOWED_ACTIONS = new Set([
   'navigate',
   'click',
   'click_at',
   'type',
+  'fill_form',
+  'check',
   'select',
   'press',
   'wait',
@@ -82,10 +84,13 @@ export function normalizeAction(raw: any, fallbackStepNumber: number): StrictAIA
     x: Number.isFinite(Number(x)) ? Number(x) : undefined,
     y: Number.isFinite(Number(y)) ? Number(y) : undefined,
     value: raw?.value ?? raw?.text ?? raw?.url ?? undefined,
+    fields: Array.isArray(raw?.fields) ? raw.fields : undefined,
+    submit_after_type: Boolean(raw?.submit_after_type || raw?.submitAfterType || raw?.press_enter_after_type),
     reason: isPlaceholderReason(rawReason) ? 'La IA no informo un motivo util para esta accion.' : rawReason,
     expected: raw?.expected || raw?.expected_result || undefined,
     confidence: Number.isFinite(Number(raw?.confidence)) ? Number(raw.confidence) : 0,
-    step_number: Number.isFinite(Number(raw?.step_number)) ? Number(raw.step_number) : fallbackStepNumber,
+    // The engine owns the current step. A model cannot advance or rewind it.
+    step_number: fallbackStepNumber,
   };
 }
 
@@ -103,6 +108,28 @@ export function validateAction(action: StrictAIAction, observation: BrowserObser
     if (target.disabled) return { ok: false, reason: `El target ${action.target_ref} esta deshabilitado` };
     if (action.action === 'type' && !target.editable) return { ok: false, reason: `El target ${action.target_ref} no es editable` };
     if (action.action === 'click' && !target.clickable && !target.editable) return { ok: false, reason: `El target ${action.target_ref} no parece clickeable` };
+  }
+  if (action.action === 'fill_form') {
+    if (!Array.isArray(action.fields) || action.fields.length === 0) {
+      return { ok: false, reason: 'La accion fill_form requiere fields' };
+    }
+    for (const field of action.fields) {
+      if (!field?.target_ref || field.value === undefined || field.value === null) {
+        return { ok: false, reason: 'Cada field de fill_form requiere target_ref y value' };
+      }
+      const target = observation.elements.find((el) => el.ref === field.target_ref);
+      if (!target) return { ok: false, reason: `No existe el target ${field.target_ref} en el snapshot actual` };
+      if (!target.visible) return { ok: false, reason: `El target ${field.target_ref} no esta visible` };
+      if (target.disabled) return { ok: false, reason: `El target ${field.target_ref} esta deshabilitado` };
+      if (!target.editable) return { ok: false, reason: `El target ${field.target_ref} no es editable` };
+    }
+  }
+  if (action.action === 'check') {
+    if (!action.target_ref) return { ok: false, reason: 'La accion check requiere target_ref' };
+    const target = observation.elements.find((el) => el.ref === action.target_ref);
+    if (!target) return { ok: false, reason: `No existe el target ${action.target_ref} en el snapshot actual` };
+    if (target.disabled) return { ok: false, reason: `El target ${action.target_ref} esta deshabilitado` };
+    if (!['checkbox', 'radio'].includes(String(target.type || ''))) return { ok: false, reason: `El target ${action.target_ref} no es checkbox ni radio` };
   }
   if (action.action === 'click_at') {
     if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) return { ok: false, reason: 'La accion click_at requiere coordenadas x/y' };
@@ -170,12 +197,57 @@ export async function executeStrictAction(page: Page, action: StrictAIAction): P
       case 'type': {
         if (!target) throw new Error('type requiere target_ref');
         const previousUrl = page.url();
-        command = `locator(${action.target_ref}).pressSequentially(${JSON.stringify(action.value || '')})`;
+        command = `locator(${action.target_ref}).pressSequentially(${JSON.stringify(action.value || '')})${action.submit_after_type ? ' + Enter' : ''}`;
         await target.scrollIntoViewIfNeeded({ timeout: 5000 });
         await target.click({ timeout: 5000 });
         await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => undefined);
         await target.pressSequentially(String(action.value || ''), { delay: TYPE_KEY_DELAY_MS, timeout: 15000 });
+        if (action.submit_after_type) {
+          await page.keyboard.press('Enter');
+        }
         await waitForInteractionSettle(page, previousUrl);
+        break;
+      }
+      case 'fill_form': {
+        const previousUrl = page.url();
+        const fields = Array.isArray(action.fields) ? action.fields : [];
+        if (!fields.length) throw new Error('fill_form requiere fields');
+        command = `fill_form(${fields.map((field) => field.target_ref).join(',')})${action.submit_after_type ? ' + Enter' : ''}`;
+        for (const field of fields) {
+          const fieldTarget = page.locator(`[data-ai-ref="${field.target_ref}"]`);
+          const fieldTag = await fieldTarget.evaluate((element) => element.tagName.toLowerCase());
+          const fieldType = await fieldTarget.getAttribute('type');
+          await fieldTarget.scrollIntoViewIfNeeded({ timeout: 5000 });
+          if (fieldTag === 'select') {
+            await fieldTarget.selectOption(String(field.value));
+          } else if (fieldType === 'checkbox' || fieldType === 'radio') {
+            const shouldCheck = /^(1|true|yes|si|on)$/i.test(String(field.value));
+            if (shouldCheck) await fieldTarget.check();
+            else await fieldTarget.uncheck();
+          } else {
+            await fieldTarget.fill(String(field.value));
+          }
+        }
+        if (action.submit_after_type) {
+          const lastField = fields[fields.length - 1];
+          const lastTarget = lastField ? page.locator(`[data-ai-ref="${lastField.target_ref}"]`) : null;
+          const submitted = lastTarget ? await lastTarget.evaluate((element) => {
+            const form = element.closest('form') as HTMLFormElement | null;
+            if (!form) return false;
+            form.requestSubmit();
+            return true;
+          }).catch(() => false) : false;
+          if (!submitted) await page.keyboard.press('Enter');
+        }
+        await waitForInteractionSettle(page, previousUrl);
+        break;
+      }
+      case 'check': {
+        if (!target) throw new Error('check requiere target_ref');
+        command = `locator(${action.target_ref}).check()`;
+        await target.scrollIntoViewIfNeeded({ timeout: 5000 });
+        await target.check({ timeout: 8000 });
+        await waitForInteractionSettle(page, page.url());
         break;
       }
       case 'select': {
@@ -183,7 +255,12 @@ export async function executeStrictAction(page: Page, action: StrictAIAction): P
         const previousUrl = page.url();
         command = `locator(${action.target_ref}).selectOption(${JSON.stringify(action.value || '')})`;
         await target.scrollIntoViewIfNeeded({ timeout: 5000 });
-        await target.selectOption(String(action.value || ''), { timeout: 8000 });
+        const option = String(action.value || '');
+        // Case steps normally use the text a person sees. Prefer its label,
+        // then retain value-based selection for explicit technical cases.
+        await target.selectOption({ label: option }, { timeout: 8000 }).catch(async () => {
+          await target.selectOption(option, { timeout: 8000 });
+        });
         await waitForInteractionSettle(page, previousUrl);
         break;
       }
@@ -210,12 +287,14 @@ export async function executeStrictAction(page: Page, action: StrictAIAction): P
       case 'assert_text': {
         const text = String(action.value || '');
         command = `assert text visible ${JSON.stringify(text)}`;
+        const bodyText = await page.locator('body').innerText({ timeout: 5000 });
         if (target) {
           const content = await target.innerText({ timeout: 5000 }).catch(() => '');
-          if (!content.toLowerCase().includes(text.toLowerCase())) throw new Error(`Texto no encontrado en target: ${text}`);
-        } else {
-          const bodyText = await page.locator('body').innerText({ timeout: 5000 });
-          if (!bodyText.toLowerCase().includes(text.toLowerCase())) throw new Error(`Texto no visible: ${text}`);
+          const targetHasText = content.toLowerCase().includes(text.toLowerCase());
+          const pageHasText = bodyText.toLowerCase().includes(text.toLowerCase());
+          if (!targetHasText && !pageHasText) throw new Error(`Texto no encontrado en target ni pagina: ${text}`);
+        } else if (!bodyText.toLowerCase().includes(text.toLowerCase())) {
+          throw new Error(`Texto no visible: ${text}`);
         }
         break;
       }

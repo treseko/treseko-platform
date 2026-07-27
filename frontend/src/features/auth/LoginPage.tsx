@@ -212,13 +212,13 @@ export function LoginPage({
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
                         <div className="fw-bold small text-dark">{editionLabel} Edition</div>
-                        <div className="text-muted" style={{ fontSize: '0.78rem' }}>{branding.edition === 'premium' ? 'Licencia activa para capacidades avanzadas.' : 'Edicion abierta para adopcion inicial y operacion base.'}</div>
+                        <div className="text-muted app-label">{branding.edition === 'premium' ? 'Licencia activa para capacidades avanzadas.' : 'Edicion abierta para adopcion inicial y operacion base.'}</div>
                       </div>
                     </div>
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
                         <div className="fw-bold small text-dark">Capacidades incluidas</div>
-                        <div className="text-muted" style={{ fontSize: '0.78rem' }}>Gestion QA, ejecuciones, evidencia y metricas base.</div>
+                        <div className="text-muted app-label">Gestion QA, ejecuciones, evidencia y metricas base.</div>
                       </div>
                     </div>
                   </div>

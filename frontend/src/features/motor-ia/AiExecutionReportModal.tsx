@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Modal, Row, Tab, Table, Tabs } from 'react-bootstrap'
+import { Eye, Images } from 'lucide-react'
 import { resolveAssetUrl } from '../../shared/utils/assets'
 import { formatDateTime } from '../../shared/utils/dateTime'
 
@@ -63,22 +64,35 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
   const reviewStatus = report?.review_status ?? aiReport.human_review_status ?? (humanReview ? 'REQUIERE_REVISION' : 'NO_REQUIERE_REVISION')
   const executionMode = report?.execution_mode ?? aiReport.execution_mode ?? 'IA'
   const errorCode = report?.error_code ?? aiReport.error_code ?? aiReport.ai_error_code
+  const recoveredFromEngine = Boolean(report?.recovered ?? aiReport.recovered)
   const timeline = Array.isArray(aiReport.timeline) ? aiReport.timeline : []
   const agentConversation = Array.isArray(aiReport.agent_conversation) ? aiReport.agent_conversation : timeline
   const workflowSnapshot = aiReport.workflow_snapshot || aiReport.workflow_definition || aiReport.workflowDefinition || aiReport.snapshot_json || {}
   const workflowNodes = Array.isArray(workflowSnapshot.nodes) ? workflowSnapshot.nodes : []
+  const workflowMeta = workflowSnapshot.workflow || {}
+  const workflowName = workflowMeta.name || aiReport.workflow_name || 'No informado'
+  const workflowId = workflowMeta.id || aiReport.workflow_id
+  const workflowVersion = workflowMeta.version || aiReport.workflow_version
   const metrics = aiReport.metrics || {}
   const parameters = aiReport.parameters || {}
+  const visualAudit = aiReport.visual_audit || {}
+  const visualEvidenceRefs = new Set(Array.isArray(visualAudit.evidence_refs) ? visualAudit.evidence_refs.map(String) : [])
+  const visualAuditApplied = visualAudit.enabled === true
   const dataset = aiReport.dataset || aiReport.data || {}
   const hasMetricValue = (value: any) => value !== undefined && value !== null
   const formatMetricNumber = (value: any) => hasMetricValue(value) ? Number(value || 0).toLocaleString() : 'No informado'
   const formatMetricMs = (value: any) => hasMetricValue(value) ? `${Number(value || 0).toLocaleString()}ms` : 'No informado'
   const formatMetricMoney = (value: any) => hasMetricValue(value) ? `$${Number(value || 0).toFixed(5)}` : 'No informado'
 
+  const isPreviewOpen = Boolean(previewImage)
+
   return (
-    <Modal show={show} onHide={onHide} size="xl" centered scrollable>
+    <Modal show={show && !isPreviewOpen} onHide={onHide} size="xl" centered scrollable>
       <Modal.Header closeButton>
-        <Modal.Title className="fw-bold">Reporte IA de ejecucion</Modal.Title>
+        <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+          <Images size={18} className="text-primary" />
+          Reporte IA de ejecucion
+        </Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {loading && <div className="text-center text-muted py-5">Cargando reporte IA...</div>}
@@ -98,7 +112,11 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                   <Badge bg={statusColor(report.status || aiReport.status)}>{report.status || aiReport.status || '-'}</Badge>
                   <Badge bg={executionMode === 'IA' ? 'primary' : 'secondary'}>Ejecutado por {executionMode === 'IA' ? 'IA' : executionMode}</Badge>
                   <Badge bg={statusColor(consensus)}>Consenso: {consensus || '-'}</Badge>
+                  <Badge bg={visualAuditApplied ? 'info' : 'secondary'}>
+                    {visualAuditApplied ? 'Auditoria visual aplicada' : 'Auditoria visual no aplicada'}
+                  </Badge>
                   <Badge bg={confidence >= 70 ? 'success' : 'warning'} text={confidence >= 70 ? undefined : 'dark'}>Confianza: {confidence ?? 0}%</Badge>
+                  {recoveredFromEngine && <Badge bg="info" text="dark">Recuperado desde el Engine</Badge>}
                   {humanReview && <Badge bg="danger">Requiere revision humana</Badge>}
                   {reviewStatus === 'REVISADA' && <Badge bg="success">Revisado por humano</Badge>}
                   {errorCode && <Badge bg="dark">{errorCode}</Badge>}
@@ -110,6 +128,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                 <Col md={3}><span className="text-muted">Revision:</span> {reviewStatus}</Col>
                 <Col md={3}><span className="text-muted">Modelo:</span> {aiReport.model || '-'}</Col>
                 <Col md={3}><span className="text-muted">Codigo error:</span> {errorCode || '-'}</Col>
+                <Col md={6}><span className="text-muted">Workflow usado:</span> <strong>{workflowName}</strong>{workflowVersion ? ` · v${workflowVersion}` : ''}{workflowId ? ` · ${String(workflowId).slice(0, 8)}` : ''}</Col>
               </Row>
             </Card>
 
@@ -138,6 +157,10 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                     </Col>
                   )}
                   <Col md={12}>
+                    <Alert variant={visualAuditApplied ? 'info' : 'light'} className="border small mb-3">
+                      <span className="fw-bold">Auditoria visual: </span>
+                      {visualAudit.reason || (visualAuditApplied ? 'Se analizaron capturas como evidencia.' : 'Se uso validacion determinista.')}
+                    </Alert>
                     <Card className="border p-3">
                       <div className="x-small text-muted fw-bold text-uppercase mb-1">Motivo / diagnostico</div>
                       <div className="small">{aiReport.summary || report.observations || '-'}</div>
@@ -235,6 +258,8 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                           {(step.attempts || []).map((attempt: any) => {
                             const evidence = evidenceSrc(attempt, step)
                             const isFallbackEvidence = !screenshotSrc(attempt?.screenshot_base64) && Boolean(evidence)
+                            const visualEvidenceRef = `step-${step.number}-attempt-${attempt.attempt}-screenshot`
+                            const visuallyEvaluated = Boolean(screenshotSrc(attempt?.screenshot_base64)) && visualEvidenceRefs.has(visualEvidenceRef)
                             return (
                             <tr key={attempt.attempt}>
                               <td>{attempt.attempt}</td>
@@ -247,6 +272,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                                 <div className="text-muted">{attempt.action?.reason || '-'}</div>
                               </td>
                               <td style={{ minWidth: 150 }}>
+                                {visuallyEvaluated && <Badge bg="info" className="mb-1">Auditoria visual de este intento</Badge>}
                                 {evidence ? (
                                   <button
                                     type="button"
@@ -254,7 +280,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                                     onClick={() => setPreviewImage({
                                       src: evidence,
                                       title: `Paso ${step.number} - Intento ${attempt.attempt}`,
-                                      subtitle: isFallbackEvidence ? 'Captura final del paso' : 'Captura del intento',
+                                      subtitle: isFallbackEvidence ? 'Evidencia persistida del paso; no esta vinculada a un intento especifico.' : 'Captura del intento',
                                     })}
                                   >
                                     <img
@@ -263,7 +289,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                                       className="border rounded-2"
                                       style={{ width: 132, height: 76, objectFit: 'cover' }}
                                     />
-                                    {isFallbackEvidence && <div className="x-small text-muted mt-1">Captura final del paso</div>}
+                                    {isFallbackEvidence && <div className="x-small text-muted mt-1">Evidencia del paso</div>}
                                   </button>
                                 ) : (
                                   <span className="text-muted">Sin captura</span>
@@ -326,9 +352,12 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
       <Modal.Footer>
         <Button variant="outline-secondary" onClick={onHide}>Cerrar</Button>
       </Modal.Footer>
-      <Modal show={Boolean(previewImage)} onHide={() => setPreviewImage(null)} size="xl" centered>
+      <Modal show={isPreviewOpen} onHide={() => setPreviewImage(null)} size="xl" centered>
         <Modal.Header closeButton>
-          <Modal.Title className="fw-bold">{previewImage?.title || 'Evidencia'}</Modal.Title>
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <Eye size={18} className="text-primary" />
+            {previewImage?.title || 'Evidencia'}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body className="bg-dark p-2">
           {previewImage?.subtitle && <div className="text-light small px-2 pb-2">{previewImage.subtitle}</div>}

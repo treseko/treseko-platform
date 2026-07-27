@@ -1,4 +1,6 @@
 import type { BrowserObservation, QAEngineStep, StructuredHistoryItem } from '../automation/action-types.ts';
+import { runtimeManifestFor } from './agent-runtime-manifest.ts';
+import { finalizeUniversalAgentExecution, prepareUniversalAgentExecution, universalEnvelopeFor } from './universal-agent.ts';
 
 export type AgentStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'SKIPPED';
 export type NodeRunStatus = 'PENDING' | 'SKIPPED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'RETRYING' | 'BLOCKED';
@@ -42,16 +44,26 @@ export type WorkflowNode = {
   timeout_sec?: number;
   model_override?: string | null;
   temperature_override?: number | null;
+  universal_agent_version_id?: string | null;
+  universal_agent?: {
+    version_id: string;
+    version: string;
+    contract: Record<string, any>;
+    contract_hash?: string;
+  };
 };
 
 export type WorkflowEdge = {
   id: string;
   source_node_id: string;
   target_node_id: string;
+  source_handle?: string | null;
+  target_handle?: string | null;
   condition_type: string;
   condition_json?: Record<string, any>;
   priority?: number;
   max_passes?: number;
+  data_mapping_json?: Array<{ source: string; target: string }>;
 };
 
 export type WorkflowDefinition = {
@@ -61,6 +73,8 @@ export type WorkflowDefinition = {
     version: number;
     status?: string;
     is_default?: boolean;
+    workflow_format?: 'legacy_v1' | 'block_v2' | string;
+    source_workflow_id?: string | null;
   };
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
@@ -98,6 +112,10 @@ function mergePatch(base: Record<string, any>, patch?: Record<string, any>): Rec
   return { ...base, ...patch };
 }
 
+function valueAtPath(source: any, path: string): any {
+  return String(path || '').split('.').filter(Boolean).reduce((current, part) => current?.[part], source);
+}
+
 function startNode(definition: WorkflowDefinition): WorkflowNode | undefined {
   const targets = new Set(definition.edges.map((edge) => String(edge.target_node_id)));
   return definition.nodes.find((node) => node.enabled !== false && !targets.has(String(node.id)))
@@ -106,6 +124,11 @@ function startNode(definition: WorkflowDefinition): WorkflowNode | undefined {
 
 function conditionMatches(edge: WorkflowEdge, output: AgentOutput, sharedMemory: Record<string, any>, retryCount: number): boolean {
   const condition = String(edge.condition_type || 'always').toLowerCase();
+  const outputPort = String(output.decision?.universal_result?.route?.outputPort || output.decision?.route?.outputPort || '').toLowerCase();
+  if (condition === 'output_port' || condition === 'decision_is') {
+    const expected = String(edge.condition_json?.value || edge.condition_json?.output_port || edge.source_handle || '').toLowerCase();
+    return Boolean(expected) && outputPort === expected;
+  }
   if (condition === 'always') return true;
   if (condition === 'on_success') return output.status === 'SUCCESS';
   if (condition === 'on_failed') return output.status === 'FAILED';
@@ -135,7 +158,7 @@ export async function executeWorkflowGraph(
 
   let current = startNode(definition);
   let status: WorkflowRunStatus = 'RUNNING';
-  let sharedMemory = {
+  let sharedMemory: Record<string, any> = {
     base_url: '',
     current_step: null,
     last_action: null,
@@ -163,21 +186,33 @@ export async function executeWorkflowGraph(
       lastOutput = { status: 'SKIPPED', reason: 'Nodo deshabilitado', events: [] };
     } else {
       nodePasses[current.id] = (nodePasses[current.id] || 0) + 1;
-      const input: AgentInput = {
+      let input: AgentInput = {
         ...baseInput,
         history,
         sharedMemory,
       };
       const traceStarted = new Date();
+      const universalEnvelope = definition.workflow?.workflow_format === 'universal_v2' ? universalEnvelopeFor(current) : null;
+      let universalError: string | null = null;
+      if (definition.workflow?.workflow_format === 'universal_v2') {
+        try {
+          input = prepareUniversalAgentExecution(current, input).input;
+        } catch (error: any) {
+          universalError = error?.message || String(error);
+        }
+      }
       const handler = handlers[current.type] || handlers[current.agent_key] || handlers.default;
       const timeout = resolveNodeTimeoutMs(current, options.timeoutMs, startedAt);
-      const output = handler
+      let output: AgentOutput = universalError
+        ? { status: 'BLOCKED', reason: `Contrato universal invalido: ${universalError}`, events: [] }
+        : handler
         ? await withTimeout(handler(current, input), timeout, {
             status: 'BLOCKED',
             reason: `Timeout del nodo ${current.name}`,
             events: [],
           })
         : { status: 'SKIPPED', reason: `Sin handler para ${current.type}`, events: [] };
+      if (universalEnvelope) output = finalizeUniversalAgentExecution(universalEnvelope, output);
       lastOutput = output;
       sharedMemory = mergePatch(sharedMemory, output.sharedMemoryPatch);
       history.push(...(output.events || []), {
@@ -205,6 +240,21 @@ export async function executeWorkflowGraph(
         metrics_json: {
           ...(output.decision?.metrics || {}),
           timeout_ms: timeout,
+          ...(runtimeManifestFor(current.agent_key) ? {
+            implementation: runtimeManifestFor(current.agent_key)?.implementation,
+            implementation_version: runtimeManifestFor(current.agent_key)?.version,
+            source_module: runtimeManifestFor(current.agent_key)?.sourceModule,
+            editable_strategy: runtimeManifestFor(current.agent_key)?.editableStrategy,
+          } : {}),
+          ...(universalEnvelope ? {
+            workflow_format: 'universal_v2',
+            universal_agent_version_id: universalEnvelope.version_id,
+            universal_agent_version: universalEnvelope.version,
+            universal_agent_key: universalEnvelope.contract.key,
+            implementation: universalEnvelope.contract.implementation.native_adapter,
+            capabilities: universalEnvelope.contract.capabilities,
+            contract_hash: universalEnvelope.contract_hash,
+          } : {}),
         },
         started_at: traceStarted.toISOString(),
         ended_at: new Date().toISOString(),
@@ -214,17 +264,27 @@ export async function executeWorkflowGraph(
     }
 
     if (TERMINAL_TYPES.has(current.type)) {
-      status = lastOutput?.status === 'SUCCESS' || lastOutput?.status === 'SKIPPED' ? 'PASSED' : 'FAILED';
+      status = lastOutput?.status === 'SUCCESS' || lastOutput?.status === 'SKIPPED'
+        ? 'PASSED'
+        : lastOutput?.status === 'BLOCKED'
+          ? 'BLOCKED'
+          : 'FAILED';
       break;
     }
-    if (lastOutput?.next) {
+    if (lastOutput?.next && definition.workflow?.workflow_format !== 'universal_v2') {
       current = nodesById.get(String(lastOutput.next));
       continue;
     }
-    const nextEdge = (outgoing.get(current.id) || []).find((edge) => {
+    const currentNodeId = current.id;
+    const nextEdge = (outgoing.get(currentNodeId) || []).find((edge) => {
       edgePasses[edge.id] = edgePasses[edge.id] || 0;
       if (edgePasses[edge.id] >= Number(edge.max_passes || 1)) return false;
-      const retryCount = Number(sharedMemory.retry_count?.[current.id] || nodePasses[current.id] || 0);
+      const retryCount = Number(sharedMemory.retry_count?.[currentNodeId] || nodePasses[currentNodeId] || 0);
+      if (definition.workflow?.workflow_format === 'universal_v2') {
+        const port = String(lastOutput?.decision?.universal_result?.route?.outputPort || '').toLowerCase();
+        const sourceHandle = String(edge.source_handle || '').toLowerCase();
+        if (sourceHandle && port && sourceHandle !== port) return false;
+      }
       return conditionMatches(edge, lastOutput || { status: 'SKIPPED', events: [] }, sharedMemory, retryCount);
     });
     if (!nextEdge) {
@@ -232,6 +292,21 @@ export async function executeWorkflowGraph(
       break;
     }
     edgePasses[nextEdge.id] += 1;
+    if (definition.workflow?.workflow_format === 'universal_v2' && Array.isArray(nextEdge.data_mapping_json) && nextEdge.data_mapping_json.length) {
+      const targetInputs: Record<string, Record<string, any>> = { ...(sharedMemory.universal_inputs || {}) };
+      const currentInputs: Record<string, any> = { ...(targetInputs[String(nextEdge.target_node_id)] || {}) };
+      const source = {
+        outputs: lastOutput?.decision?.universal_result?.outputs || lastOutput?.decision?.outputs || {},
+        memory: sharedMemory,
+      };
+      for (const mapping of nextEdge.data_mapping_json) {
+        if (String(mapping.target || '').startsWith('inputs.')) {
+          currentInputs[String(mapping.target).slice('inputs.'.length)] = valueAtPath(source, String(mapping.source || ''));
+        }
+      }
+      targetInputs[String(nextEdge.target_node_id)] = currentInputs;
+      sharedMemory = { ...sharedMemory, universal_inputs: targetInputs };
+    }
     current = nodesById.get(String(nextEdge.target_node_id));
   }
 
@@ -248,7 +323,7 @@ function resolveNodeTimeoutMs(node: WorkflowNode, workflowTimeoutMs: number | un
   // The Executor runs the whole QA step runner. A fixed 60s cap is too short for
   // valid slow tests and for large-context local models, so let the global
   // execution timeout govern it unless the node has an explicit larger value.
-  if ((type === 'executor' || type === 'browser_action_agent') && configuredTimeoutMs <= 60000 && remainingWorkflowMs > 0) {
+  if ((type === 'executor' || type === 'browser_action_agent' || type === 'contextresolver' || type === 'auditor') && configuredTimeoutMs <= 60000 && remainingWorkflowMs > 0) {
     return remainingWorkflowMs;
   }
 

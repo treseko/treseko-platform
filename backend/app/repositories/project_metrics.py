@@ -1,21 +1,14 @@
-from .legacy_common import *
-
-
+from .repository_context import *
+from .bug_version_metrics import apply_bug_history_metrics, bug_history_version_fields, load_bug_history_context
 BUG_OPEN_STATES = {"ABIERTO", "TRIAGE", "ASIGNADO", "EN_PROGRESO", "LISTO_PARA_RETEST", "EN_RETEST", "REABIERTO", "BLOQUEADO"}
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 BUG_SLA_HOURS = {"CRITICA": 24, "ALTA": 48, "MEDIA": 120, "BAJA": 240, "COSMETICA": 240}
-
-
 def _safe_iso(value):
     return value.isoformat() if value else None
-
-
 def _hours_between(start, end):
     if not start or not end:
         return None
     return round(max((end - start).total_seconds(), 0) / 3600, 2)
-
-
 def _safe_percent(numerator: int, denominator: int) -> float:
     return round((numerator / denominator) * 100, 2) if denominator else 0.0
 
@@ -433,6 +426,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         .options(
             selectinload(models.BugIssue.caso),
             selectinload(models.BugIssue.build),
+            selectinload(models.BugIssue.resolved_build),
             selectinload(models.BugIssue.assignee),
             selectinload(models.BugIssue.creator),
             selectinload(models.BugIssue.comments).selectinload(models.BugComment.autor),
@@ -442,12 +436,14 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             models.BugIssue.proyecto_id == proyecto_id,
             or_(
                 models.BugIssue.build_id == build.id,
+                models.BugIssue.resolved_build_id == build.id,
                 models.BugIssue.caso_id.in_(related_case_ids) if related_case_ids else False,
             ),
         )
         .order_by(models.BugIssue.created_at.desc())
     )
     related_bugs = bug_result.scalars().all()
+    project_bug_history, history_metrics = await load_bug_history_context(db, proyecto_id, related_bugs, build)
 
     now = utc_now()
     bug_items = []
@@ -550,7 +546,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "tiempo_abierto_horas": age_hours if is_open else None,
             "tiempo_resolucion_horas": age_hours if not is_open and closed_at else None,
             "build_detectado": origin_build_label,
-            "build_corregido": (bug.metadata_json or {}).get("fixed_build") or (bug.metadata_json or {}).get("fixed_build_name"),
+            "build_corregido": bug.resolved_build.nombre if bug.resolved_build else None, "build_corregido_id": str(bug.resolved_build_id) if bug.resolved_build_id else None,
             "has_evidence": has_evidence,
             "evidence_count": len(bug.attachments or []),
             "responsable": (assignee.nombre_completo or assignee.email) if assignee else None,
@@ -585,6 +581,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "age_hours": _hours_between(oldest_open_bug.created_at, now),
         } if oldest_open_bug else None,
     })
+    apply_bug_history_metrics(bug_metrics, history_metrics, related_bugs, open_bugs, _safe_percent)
 
     failure_items = []
     evidence_items = []
@@ -1025,6 +1022,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "pasados": b_stats["pasados"],
             "fallados": b_stats["fallados"],
             "bloqueados": b_stats["bloqueados"],
+            **bug_history_version_fields(project_bug_history, b.id),
             "fecha": b.fecha_creacion.isoformat() if b.fecha_creacion else None
         })
 

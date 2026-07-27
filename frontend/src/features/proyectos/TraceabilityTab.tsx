@@ -5,11 +5,14 @@ import {
   Card,
   Col,
   Collapse,
+  Dropdown,
   Form,
   Modal,
   ProgressBar,
   Row,
   Spinner,
+  OverlayTrigger,
+  Tooltip,
   Table,
 } from "react-bootstrap";
 import {
@@ -17,16 +20,23 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  FileText,
   Eye,
   FilePlus2,
   History,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Sparkles,
 } from "lucide-react";
 import { API_BASE } from "../../app/constants";
+import { formatDateTime } from "../../shared/utils/dateTime";
+import { AcceptanceCriteriaEditor } from "./AcceptanceCriteriaEditor";
+import { CaseGenerationWizard } from "./CaseGenerationWizard";
+import { WikiMarkdownViewer } from "./WikiMarkdownViewer";
 
 type Props = {
   projectId: string;
@@ -43,7 +53,16 @@ type Props = {
     cancelLabel?: string | null;
   }) => Promise<boolean>;
   onCreateCaseFromStory: (story: any, requirement: any) => void;
+  onOpenLinkedCase: (masterId: string) => void;
   showFeedback: (title: string, message: string, variant?: any) => void;
+};
+
+type HistoryKind = "requisitos" | "historias";
+
+type HistoryDiffState = {
+  kind: HistoryKind;
+  current: any;
+  previous: any | null;
 };
 
 const EMPTY_REQUIREMENT = {
@@ -56,10 +75,42 @@ const EMPTY_REQUIREMENT = {
   external_reference: "",
   external_url: "",
 };
+
+const proposalQuality = (proposal: any) =>
+  String(proposal?.quality?.testability || "WARN").toUpperCase();
+
+const hasSimilarStory = (proposal: any) => Array.isArray(proposal?.similar_stories) && proposal.similar_stories.length > 0;
+
+const proposalQualityMeta = (proposal: any) => {
+  const quality = proposalQuality(proposal);
+  if (quality === "PASS") return { label: "Apta", variant: "success" };
+  if (quality === "FAIL") return { label: "Requiere revisión", variant: "danger" };
+  return { label: "Con advertencias", variant: "warning" };
+};
+
+const ReviewPendingIcon = ({ count, tooltipId }: { count: number; tooltipId: string }) => {
+  const pending = count > 0 ? count : 1;
+  const message = pending === 1 ? "Revisión pendiente" : `Revisiones pendientes: ${pending}`;
+
+  return (
+    <OverlayTrigger placement="top" overlay={<Tooltip id={tooltipId}>{message}</Tooltip>}>
+      <span
+        className="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+        style={{ width: 16, height: 16, fontSize: 12, fontWeight: 700, lineHeight: 1 }}
+        role="img"
+        aria-label={message}
+        title={message}
+      >
+        !
+      </span>
+    </OverlayTrigger>
+  );
+};
 const EMPTY_STORY = {
   titulo: "",
   descripcion_markdown: "",
   criterios_aceptacion_markdown: "",
+  acceptance_criteria: [],
   estado: "BORRADOR",
   prioridad: "MEDIA",
   external_provider: "",
@@ -83,6 +134,7 @@ export function TraceabilityTab({
   refreshToken,
   confirmAction,
   onCreateCaseFromStory,
+  onOpenLinkedCase,
   showFeedback,
 }: Props) {
   const [requirements, setRequirements] = useState<any[]>([]);
@@ -96,21 +148,28 @@ export function TraceabilityTab({
   const [storyRequirementId, setStoryRequirementId] = useState("");
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
+  const [caseGenerationStory, setCaseGenerationStory] = useState<any>(null);
   const [detailItem, setDetailItem] = useState<{
     kind: "requirement" | "story";
     item: any;
   } | null>(null);
+  const [linkedStoryCases, setLinkedStoryCases] = useState<any[]>([]);
+  const [linkedStoryCasesLoading, setLinkedStoryCasesLoading] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<any[] | null>(null);
+  const [historyKind, setHistoryKind] = useState<HistoryKind | null>(null);
   const [historyTitle, setHistoryTitle] = useState("");
+  const [historyCode, setHistoryCode] = useState("");
+  const [historyDiff, setHistoryDiff] = useState<HistoryDiffState | null>(null);
   const [requirementStateFilter, setRequirementStateFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [archiveVisibility, setArchiveVisibility] = useState<"active" | "archived" | "all">("active");
   const [storiesExpanded, setStoriesExpanded] = useState(false);
   const [storySearch, setStorySearch] = useState("");
   const [storyRequirementFilter, setStoryRequirementFilter] = useState("");
   const [storyStateFilter, setStoryStateFilter] = useState("");
   const [generationRequirement, setGenerationRequirement] = useState<any>(null);
   const [generationStep, setGenerationStep] = useState<
-    "context" | "estimate" | "review"
+    "context" | "analysis" | "configuration" | "review"
   >("context");
   const [generationRun, setGenerationRun] = useState<any>(null);
   const [generationInstructions, setGenerationInstructions] = useState("");
@@ -120,16 +179,36 @@ export function TraceabilityTab({
     string[]
   >([]);
   const [generationMaxStories, setGenerationMaxStories] = useState(1);
+  const [generationQuestionAnswers, setGenerationQuestionAnswers] = useState<
+    Record<string, string>
+  >({});
   const [generationCandidates, setGenerationCandidates] = useState<any[]>([]);
   const [generationBusy, setGenerationBusy] = useState(false);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [generationContextExpanded, setGenerationContextExpanded] =
     useState(true);
-  const [expandedCandidateIndex, setExpandedCandidateIndex] = useState<
-    number | null
-  >(null);
+  const [expandedCandidateIndexes, setExpandedCandidateIndexes] = useState<
+    Set<number>
+  >(() => new Set());
   const [estimateExplanationVisible, setEstimateExplanationVisible] =
     useState(false);
+  const [autoContinuePaused, setAutoContinuePaused] = useState(false);
+  const [autoContinueRemaining, setAutoContinueRemaining] = useState<number | null>(null);
+  const generationHasActionableReview = useMemo(() => {
+    const analysis = generationRun?.analysis || {};
+    return Boolean(
+      (analysis.questions || []).some((item: unknown) => String(item || "").trim()) ||
+        (analysis.proposed_assumptions || []).some(
+          (item: any) => String(item?.id || "").trim(),
+        ),
+    );
+  }, [generationRun]);
+  const generationHasCriticalAssumptions = useMemo(
+    () => (generationRun?.analysis?.proposed_assumptions || []).some(
+      (item: any) => String(item?.risk || "").toUpperCase() === "CRITICAL",
+    ),
+    [generationRun],
+  );
   const loadedProjectId = useRef<string | null>(null);
 
   const projectComponents = useMemo(
@@ -148,8 +227,26 @@ export function TraceabilityTab({
     () => generationCandidates.filter((item) => item.selected).length,
     [generationCandidates],
   );
+  const selectedCriticalCandidatesNeedDecision = useMemo(
+    () => generationCandidates.some(
+      (item) => item.selected && proposalQuality(item) === "FAIL" &&
+        (!item.quality_override_accepted || !String(item.quality_override_reason || "").trim()),
+    ),
+    [generationCandidates],
+  );
+  const generationProgress = generationRun?.generation_progress || {};
+  const generationRequestedCount = Number(generationProgress.requested || generationMaxStories || 1);
+  const generationCompletedCount = Number(generationProgress.completed || generationCandidates.length || 0);
+  const preflightDuplicateCheck = generationRun?.preflight_duplicate_check || {};
+  const preflightExcludedStories = Array.isArray(preflightDuplicateCheck.excluded_existing_intent)
+    ? preflightDuplicateCheck.excluded_existing_intent
+    : [];
 
-  const load = async (force = false) => {
+  const updateGenerationCandidate = (index: number, patch: Record<string, unknown>) => {
+    setGenerationCandidates((previous) => previous.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  };
+
+  const load = async (force = false, visibility = archiveVisibility) => {
     if (!projectId || (!force && loadedProjectId.current === projectId)) return;
     if (loadedProjectId.current !== projectId) {
       setRequirements([]);
@@ -157,13 +254,14 @@ export function TraceabilityTab({
     }
     setLoading(true);
     try {
+      const archiveQuery = visibility === "active" ? "" : "?include_archived=true";
       const requirementsRequest = fetchWithAuth(
-        `${API_BASE}/proyectos/${projectId}/requisitos/`,
+        `${API_BASE}/proyectos/${projectId}/requisitos/${archiveQuery}`,
       )
         .then(readJson)
         .then(setRequirements);
       const storiesRequest = fetchWithAuth(
-        `${API_BASE}/proyectos/${projectId}/historias/`,
+        `${API_BASE}/proyectos/${projectId}/historias/${archiveQuery}`,
       )
         .then(readJson)
         .then(setStories);
@@ -193,6 +291,18 @@ export function TraceabilityTab({
   }, [active, projectId, refreshToken]);
 
   useEffect(() => {
+    if (detailItem?.kind !== "story") { setLinkedStoryCases([]); return; }
+    let cancelled = false;
+    setLinkedStoryCasesLoading(true);
+    fetchWithAuth(`${API_BASE}/historias/${detailItem.item.id}/casos/`)
+      .then(readJson)
+      .then((items) => { if (!cancelled) setLinkedStoryCases(Array.isArray(items) ? items : []); })
+      .catch(() => { if (!cancelled) setLinkedStoryCases([]); })
+      .finally(() => { if (!cancelled) setLinkedStoryCasesLoading(false); });
+    return () => { cancelled = true; };
+  }, [detailItem?.item?.id, detailItem?.kind]);
+
+  useEffect(() => {
     if (!generationBusy) {
       setGenerationElapsedSeconds(0);
       return;
@@ -203,6 +313,35 @@ export function TraceabilityTab({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [generationBusy]);
+
+  useEffect(() => {
+    if (!generationBusy || !generationRun?.id || generationStep !== "configuration") return;
+    let cancelled = false;
+    const refreshProgress = async () => {
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationRun.id}`);
+        const run = await readJson(response);
+        if (cancelled) return;
+        setGenerationRun(run);
+        if (Array.isArray(run.propuestas) && run.propuestas.length) {
+          setGenerationCandidates((previous) => run.propuestas.map((item: any) => ({
+            ...item,
+            selected: previous.find((candidate) => candidate.local_id === item.local_id)?.selected
+              ?? (item.quality?.testability === "PASS" && !hasSimilarStory(item)),
+          })));
+        }
+      } catch {
+        // The final generation request surfaces errors to the user. Polling is
+        // best effort and must not create duplicate feedback messages.
+      }
+    };
+    void refreshProgress();
+    const timer = window.setInterval(() => void refreshProgress(), 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fetchWithAuth, generationBusy, generationRun?.id, generationStep]);
 
   const openRequirement = (item?: any) => {
     setEditingRequirement(item || null);
@@ -247,7 +386,7 @@ export function TraceabilityTab({
   const openStory = (item?: any, requirementId?: string) => {
     setEditingStory(item || null);
     setStoryRequirementId(item?.requisito_id || requirementId || "");
-    setStoryForm(item ? { ...item } : EMPTY_STORY);
+    setStoryForm(item ? { ...item } : { ...EMPTY_STORY, acceptance_criteria: [{ local_id: "AC-MANUAL-1", type: "FUNCTIONAL", title: "", given: "", when: "", then: [], observable_result: "", mandatory: true, source_refs: [], assumption_ids: [] }] });
     setShowStoryModal(true);
   };
   const saveStory = async (event: React.FormEvent) => {
@@ -286,8 +425,11 @@ export function TraceabilityTab({
     }
   };
   const openHistory = async (item: any, kind: "requisitos" | "historias") => {
+    setHistoryKind(kind);
+    setHistoryDiff(null);
     try {
       setHistoryTitle(item.titulo);
+      setHistoryCode(item.codigo || "");
       setHistoryEntries(
         await readJson(
           await fetchWithAuth(`${API_BASE}/${kind}/${item.id}/history/`),
@@ -297,33 +439,119 @@ export function TraceabilityTab({
       showFeedback("Historial", error.message, "danger");
     }
   };
+  const historyDisplayActor = (entry: any) => {
+    const fullName = String(entry?.editado_por_nombre || "").trim();
+    const email = String(entry?.editado_por_email || "").trim();
+    if (!fullName && !email) return "Usuario desconocido";
+    if (fullName && email && fullName.toLowerCase() !== email.toLowerCase()) {
+      return `${fullName} (${email})`;
+    }
+    return fullName || email;
+  };
+  const historyComparableFields = (kind: HistoryKind) => kind === "requisitos"
+    ? [
+      { key: "titulo", label: "Título" },
+      { key: "descripcion_markdown", label: "Descripción" },
+      { key: "estado", label: "Estado" },
+      { key: "prioridad", label: "Prioridad" },
+      { key: "external_provider", label: "Proveedor externo" },
+      { key: "external_reference", label: "Referencia externa" },
+      { key: "external_url", label: "URL externa" },
+    ]
+    : [
+      { key: "titulo", label: "Título" },
+      { key: "descripcion_markdown", label: "Descripción" },
+      { key: "criterios_aceptacion_markdown", label: "Criterios de aceptación" },
+      { key: "estado", label: "Estado" },
+      { key: "prioridad", label: "Prioridad" },
+      { key: "external_provider", label: "Proveedor externo" },
+      { key: "external_reference", label: "Referencia externa" },
+      { key: "external_url", label: "URL externa" },
+    ];
+  const normalizeHistoryValue = (value: any) => {
+    if (value === null || value === undefined) return "";
+    if (value === "") return "";
+    if (typeof value === "boolean") return value ? "sí" : "no";
+    return String(value).trim();
+  };
+  const openHistoryDiff = (index: number) => {
+    if (!historyEntries || !historyKind) return;
+    const current = historyEntries[index];
+    if (!current) return;
+    setHistoryDiff({
+      kind: historyKind,
+      current,
+      previous: historyEntries[index + 1] || null,
+    });
+  };
+  const historyDiffRows = useMemo(() => {
+    if (!historyDiff) return [];
+    const fields = historyComparableFields(historyDiff.kind);
+    const current = historyDiff.current || {};
+    const previous = historyDiff.previous || null;
+    return fields
+      .map(({ key, label }) => {
+        const currentValue = normalizeHistoryValue(current[key]);
+        const previousValue = previous ? normalizeHistoryValue(previous[key]) : "";
+        if (!previous || currentValue === previousValue) return null;
+        return { key, label, currentValue, previousValue };
+      })
+      .filter((entry): entry is {
+        key: string;
+        label: string;
+        currentValue: string;
+        previousValue: string;
+      } => entry !== null);
+  }, [historyDiff]);
   const openDetails = (kind: "requirement" | "story", item: any) =>
     setDetailItem({ kind, item });
   const storiesForRequirement = (requirementId: string) =>
     stories.filter((item) => item.requisito_id === requirementId);
-  const archive = async (item: any, kind: "requisitos" | "historias") => {
+  const setArchived = async (
+    item: any,
+    kind: "requisitos" | "historias",
+    archived: boolean,
+  ) => {
     const resourceLabel = kind === "requisitos" ? "requisito" : "historia";
     const confirmed = await confirmAction({
-      title: `Archivar ${resourceLabel}`,
-      message: `${item.codigo} dejará de aparecer en los listados activos, pero conservará su historial y vínculos existentes.`,
-      variant: "warning",
-      confirmLabel: `Archivar ${resourceLabel}`,
+      title: `${archived ? "Archivar" : "Restaurar"} ${resourceLabel}`,
+      message: archived
+        ? `${item.codigo} dejará de aparecer en los listados activos, pero conservará su historial y vínculos existentes.`
+        : `${item.codigo} volverá a los listados activos conservando su historial y vínculos existentes.`,
+      variant: archived ? "warning" : "info",
+      confirmLabel: `${archived ? "Archivar" : "Restaurar"} ${resourceLabel}`,
     });
     if (!confirmed) return;
     try {
       await readJson(
         await fetchWithAuth(`${API_BASE}/${kind}/${item.id}/archive`, {
           method: "POST",
-          body: JSON.stringify({ archivado: true }),
+          body: JSON.stringify({ archivado: archived }),
         }),
       );
       await load(true);
     } catch (error: any) {
-      showFeedback("No se pudo archivar", error.message, "danger");
+      showFeedback(`No se pudo ${archived ? "archivar" : "restaurar"}`, error.message, "danger");
+    }
+  };
+
+  const changeStoryState = async (story: any, estado: string) => {
+    if (estado === story.estado) return;
+    try {
+      const updated = await fetchWithAuth(`${API_BASE}/historias/${story.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ estado }),
+      }).then(readJson);
+      setStories((previous) => previous.map((item) => item.id === updated.id ? updated : item));
+      showFeedback("Estado actualizado", `${updated.codigo} ahora está ${updated.estado.replaceAll("_", " ")}.`, "success");
+    } catch (error: any) {
+      showFeedback("No se pudo actualizar el estado", error.message || "Intenta nuevamente.", "danger");
     }
   };
   const visibleRequirements = requirements.filter(
     (item) =>
+      (archiveVisibility === "all" ||
+        (archiveVisibility === "archived" ? item.archivado : !item.archivado)) &&
       (!requirementStateFilter || item.estado === requirementStateFilter) &&
       (!priorityFilter || item.prioridad === priorityFilter),
   );
@@ -331,6 +559,8 @@ export function TraceabilityTab({
     const search = storySearch.trim().toLocaleLowerCase();
     const requirement = requirementById.get(story.requisito_id);
     return (
+      (archiveVisibility === "all" ||
+        (archiveVisibility === "archived" ? story.archivado : !story.archivado)) &&
       (!storyRequirementFilter ||
         story.requisito_id === storyRequirementFilter) &&
       (!storyStateFilter || story.estado === storyStateFilter) &&
@@ -365,9 +595,12 @@ export function TraceabilityTab({
     setGenerationComponentIds(requirement.componente_ids || []);
     setGenerationCandidates([]);
     setGenerationMaxStories(1);
+    setGenerationQuestionAnswers({});
     setGenerationContextExpanded(true);
-    setExpandedCandidateIndex(null);
+    setExpandedCandidateIndexes(new Set());
     setEstimateExplanationVisible(false);
+    setAutoContinuePaused(false);
+    setAutoContinueRemaining(null);
     try {
       setGenerationWiki(
         await readJson(
@@ -399,33 +632,9 @@ export function TraceabilityTab({
       if (run.estado === "BLOQUEADA")
         throw new Error(run.error_detalle || "La estimación fue bloqueada.");
       setGenerationMaxStories(run.estimacion?.cantidad_recomendada || 1);
-      setGenerationStep("estimate");
+      setGenerationStep(run.estado === "ANALIZADA" ? "configuration" : "analysis");
       setGenerationContextExpanded(false);
-      setEstimateExplanationVisible(false);
-      const maxStories = run.estimacion?.cantidad_recomendada || 1;
-      const generatedRun = await readJson(
-        await fetchWithAuth(
-          `${API_BASE}/generaciones-historias/${run.id}/generar`,
-          {
-            method: "POST",
-            body: JSON.stringify({ max_historias: maxStories }),
-          },
-        ),
-      );
-      if (generatedRun.estado === "BLOQUEADA") {
-        throw new Error(
-          generatedRun.error_detalle || "La generación fue bloqueada.",
-        );
-      }
-      setGenerationRun(generatedRun);
-      setGenerationCandidates(
-        (generatedRun.propuestas || []).map((item: any) => ({
-          ...item,
-          selected: true,
-        })),
-      );
-      setGenerationStep("review");
-      setExpandedCandidateIndex(null);
+      setEstimateExplanationVisible(true);
     } catch (error: any) {
       showFeedback(
         "Generación de historias",
@@ -445,7 +654,12 @@ export function TraceabilityTab({
           `${API_BASE}/generaciones-historias/${generationRun.id}/generar`,
           {
             method: "POST",
-            body: JSON.stringify({ max_historias: generationMaxStories }),
+              body: JSON.stringify({
+                max_historias: generationMaxStories,
+                question_answers: Object.entries(generationQuestionAnswers)
+                  .filter(([, answer]) => answer.trim())
+                  .map(([question, answer]) => ({ question, answer: answer.trim() })),
+              }),
           },
         ),
       );
@@ -455,11 +669,11 @@ export function TraceabilityTab({
       setGenerationCandidates(
         (run.propuestas || []).map((item: any) => ({
           ...item,
-          selected: true,
+          selected: item.quality?.testability === "PASS" && !hasSimilarStory(item),
         })),
       );
       setGenerationStep("review");
-      setExpandedCandidateIndex(0);
+      setExpandedCandidateIndexes(new Set([0]));
     } catch (error: any) {
       showFeedback(
         "Generación de historias",
@@ -470,10 +684,109 @@ export function TraceabilityTab({
       setGenerationBusy(false);
     }
   };
+  const recalculateGenerationScope = async (
+    generationId = generationRun?.id,
+    usePersistedAnswers = false,
+  ) => {
+    if (!generationId) return;
+    setGenerationBusy(true);
+    try {
+      const run = await readJson(
+        await fetchWithAuth(
+          `${API_BASE}/generaciones-historias/${generationId}/reanalizar`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              max_historias: 1,
+              question_answers: usePersistedAnswers
+                ? []
+                : Object.entries(generationQuestionAnswers)
+                    .filter(([, answer]) => answer.trim())
+                    .map(([question, answer]) => ({
+                      question,
+                      answer: answer.trim(),
+                    })),
+            }),
+          },
+        ),
+      );
+      if (run.estado === "BLOQUEADA") {
+        throw new Error(run.error_detalle || "No se pudo actualizar el análisis.");
+      }
+      setGenerationRun(run);
+      setGenerationMaxStories(run.estimacion?.cantidad_recomendada || 1);
+      setGenerationStep(
+        run.estado === "ANALIZADA" ? "configuration" : "analysis",
+      );
+    } catch (error: any) {
+      showFeedback(
+        "Análisis del requisito",
+        error.message || "No se pudo actualizar la propuesta de alcance.",
+        "danger",
+      );
+    } finally {
+      setGenerationBusy(false);
+    }
+  };
+  const confirmAssumptions = async (continuationMode: "MANUAL" | "AUTO_TIMEOUT" = "MANUAL") => {
+    if (!generationRun) return;
+    const assumptions = generationRun.analysis?.proposed_assumptions || [];
+    setGenerationBusy(true);
+    try {
+      const run = await readJson(await fetchWithAuth(
+        `${API_BASE}/generaciones-historias/${generationRun.id}/supuestos`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            assumption_ids: assumptions.map((item: any) => item.id),
+            question_answers: Object.entries(generationQuestionAnswers)
+              .filter(([, answer]) => answer.trim())
+              .map(([question, answer]) => ({ question, answer: answer.trim() })),
+            continuation_mode: continuationMode,
+          }),
+        },
+      ));
+      setGenerationRun(run);
+      // Confirming assumptions is a user decision, not a request to analyze
+      // again. Reanalysis here could produce a different set of questions and
+      // trap the user in a loop even when QA has no additional information.
+      setGenerationStep("configuration");
+    } catch (error: any) {
+      showFeedback("Supuestos pendientes", error.message || "No se pudieron confirmar los supuestos.", "danger");
+    } finally {
+      setGenerationBusy(false);
+    }
+  };
+  const canAutoContinue = Boolean(
+    generationRun &&
+      generationStep === "analysis" &&
+      generationRun.estado === "ESPERANDO_SUPUESTOS" &&
+      generationHasActionableReview &&
+      !generationHasCriticalAssumptions &&
+      !generationBusy &&
+      !autoContinuePaused,
+  );
+  useEffect(() => {
+    if (!canAutoContinue) {
+      setAutoContinueRemaining(null);
+      return;
+    }
+    setAutoContinueRemaining(30);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, 30 - Math.floor((Date.now() - startedAt) / 1000));
+      setAutoContinueRemaining(remaining);
+      if (remaining === 0) {
+        window.clearInterval(timer);
+        void confirmAssumptions("AUTO_TIMEOUT");
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [canAutoContinue, generationRun?.id]);
   const applyCandidates = async () => {
     const historias = generationCandidates
       .filter((item) => item.selected)
-      .map(({ selected, ...item }) => item);
+      .map((item) => item);
     if (!generationRun || !historias.length) return;
     setGenerationBusy(true);
     try {
@@ -504,49 +817,6 @@ export function TraceabilityTab({
 
   return (
     <div className="traceability-tab animate__animated animate__fadeIn h-100 d-flex flex-column">
-      <Modal
-        show={generationBusy}
-        backdrop="static"
-        keyboard={false}
-        centered
-        contentClassName="shadow-lg border-0"
-      >
-        <Modal.Body className="p-4">
-          <div className="d-flex align-items-start gap-3">
-            <Spinner
-              animation="border"
-              variant="primary"
-              role="status"
-              className="flex-shrink-0 mt-1"
-            >
-              <span className="visually-hidden">Procesando</span>
-            </Spinner>
-            <div className="flex-grow-1">
-              <div className="fw-semibold fs-5">La IA está trabajando</div>
-              <p className="mb-1 mt-1">
-                {generationStep === "context"
-                  ? "Analizando el requisito y el contexto seleccionado."
-                  : generationStep === "estimate"
-                    ? "Generando propuestas de historias para tu revisión."
-                    : "Creando las historias seleccionadas."}
-              </p>
-              <div className="small text-muted">
-                {generationElapsedSeconds}s transcurridos
-                {generationElapsedSeconds >= 30
-                  ? ". El modelo sigue procesando la solicitud."
-                  : "."}
-              </div>
-            </div>
-          </div>
-          <ProgressBar
-            animated
-            now={100}
-            variant="primary"
-            className="mt-3"
-            style={{ height: "5px" }}
-          />
-        </Modal.Body>
-      </Modal>
       <div className="responsive-page-toolbar traceability-toolbar mb-4 flex-shrink-0">
         <div>
           <h5 className="fw-bold text-dark m-0">Requisitos e Historias</h5>
@@ -557,12 +827,26 @@ export function TraceabilityTab({
         <div className="traceability-toolbar-actions">
           <Form.Select
             size="sm"
+            value={archiveVisibility}
+            onChange={(event) => {
+              const visibility = event.target.value as "active" | "archived" | "all";
+              setArchiveVisibility(visibility);
+              void load(true, visibility);
+            }}
+            aria-label="Mostrar elementos archivados"
+          >
+            <option value="active">Activos</option>
+            <option value="archived">Archivados</option>
+            <option value="all">Todos</option>
+          </Form.Select>
+          <Form.Select
+            size="sm"
             value={requirementStateFilter}
             onChange={(event) => setRequirementStateFilter(event.target.value)}
             aria-label="Filtrar por estado"
           >
             <option value="">Estados</option>
-            {["BORRADOR", "ACTIVO", "EN_REVISION", "CUMPLIDO"].map((item) => (
+            {["BORRADOR", "ACTIVO", "EN_REVISION", "CUMPLIDO", "ARCHIVADO"].map((item) => (
               <option key={item}>{item}</option>
             ))}
           </Form.Select>
@@ -600,7 +884,7 @@ export function TraceabilityTab({
           )}
         </div>
       </div>
-      <Card className="border-0 shadow-sm mb-4 overflow-hidden">
+      <Card className="border-0 shadow-sm mb-4 traceability-table-card">
         <Table responsive hover className="align-middle mb-0">
           <thead className="bg-light">
             <tr>
@@ -652,13 +936,13 @@ export function TraceabilityTab({
                           projectComponents.find((item) => item.id === id)
                             ?.name || "Componente",
                       )
-                      .join(", ") || "Todos"}
+                      .join(", ") || "Sin componente definido"}
                   </td>
                   <td>
                     <div className="small fw-semibold">
-                      {relatedStories.length} historias
+                      {relatedStories.length} {relatedStories.length === 1 ? "historia" : "historias"}
                     </div>
-                    {relatedStories.map((story) => (
+                    {relatedStories.slice(0, 2).map((story) => (
                       <div
                         key={story.id}
                         className="small mt-1 d-flex gap-1 align-items-center"
@@ -678,76 +962,36 @@ export function TraceabilityTab({
                           {story.case_count} casos
                         </span>
                         {story.requiere_revision_count > 0 && (
-                          <Badge bg="warning" text="dark">
-                            Revision
-                          </Badge>
+                          <ReviewPendingIcon count={story.requiere_revision_count} tooltipId={`requirement-story-${story.id}-pending`} />
                         )}
                       </div>
                     ))}
-                  </td>
-                  <td className="text-end">
-                    <div className="d-inline-flex gap-1">
+                    {relatedStories.length > 2 && (
                       <Button
-                        variant="light"
-                        className="border"
+                        variant="link"
                         size="sm"
-                        title="Ver requisito"
-                        aria-label={`Ver requisito ${requirement.codigo}`}
+                        className="p-0 small text-decoration-none"
                         onClick={() => openDetails("requirement", requirement)}
                       >
-                        <Eye size={14} />
+                        Ver {relatedStories.length - 2} {relatedStories.length - 2 === 1 ? "historia más" : "historias más"}
                       </Button>
-                      <Button
-                        variant="light"
-                        className="border"
-                        size="sm"
-                        title="Historial"
-                        onClick={() => openHistory(requirement, "requisitos")}
-                      >
-                        <History size={14} />
-                      </Button>
-                      {canEdit && (
-                        <>
-                          <Button
-                            variant="light"
-                            className="border"
-                            size="sm"
-                            title="Editar requisito"
-                            aria-label={`Editar requisito ${requirement.codigo}`}
-                            onClick={() => openRequirement(requirement)}
-                          >
-                            <Pencil size={14} />
-                          </Button>
-                          <Button
-                            variant="light"
-                            className="border"
-                            size="sm"
-                            title="Archivar"
-                            onClick={() => archive(requirement, "requisitos")}
-                          >
-                            <Archive size={14} />
-                          </Button>
-                          <Button
-                            variant="light"
-                            className="border text-primary"
-                            size="sm"
-                            title="Generar historias con IA"
-                            aria-label={`Generar historias para ${requirement.codigo}`}
-                            onClick={() => openGeneration(requirement)}
-                          >
-                            <Sparkles size={14} />
-                          </Button>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            title="Nueva historia"
-                            onClick={() => openStory(undefined, requirement.id)}
-                          >
-                            <Plus size={14} />
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    )}
+                  </td>
+                  <td className="text-end">
+                    <Dropdown align="end" drop="down" className="traceability-actions-menu">
+                      <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`Acciones para ${requirement.codigo}`} title="Acciones">
+                        <MoreHorizontal size={15} />
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu className="traceability-actions-dropdown" popperConfig={{ strategy: "fixed", modifiers: [{ name: "flip", enabled: false }] }}>
+                        <Dropdown.Item onClick={() => openDetails("requirement", requirement)}><Eye size={14} className="me-2" />Ver requisito</Dropdown.Item>
+                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openGeneration(requirement)}><Sparkles size={14} className="me-2" />Generar con IA</Dropdown.Item>}
+                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openStory(undefined, requirement.id)}><FilePlus2 size={14} className="me-2" />Crear historia</Dropdown.Item>}
+                        <Dropdown.Item onClick={() => openHistory(requirement, "requisitos")}><History size={14} className="me-2" />Historial</Dropdown.Item>
+                        {canEdit && <Dropdown.Item onClick={() => openRequirement(requirement)}><Pencil size={14} className="me-2" />Editar requisito</Dropdown.Item>}
+                        {canEdit && <Dropdown.Divider />}
+                        {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(requirement, "requisitos", !requirement.archivado)}>{requirement.archivado ? "Restaurar requisito" : "Archivar requisito"}</Dropdown.Item>}
+                      </Dropdown.Menu>
+                    </Dropdown>
                   </td>
                 </tr>
               );
@@ -762,7 +1006,7 @@ export function TraceabilityTab({
           </tbody>
         </Table>
       </Card>
-      <Card className="border-0 shadow-sm overflow-hidden">
+      <Card className="border-0 shadow-sm traceability-table-card">
         <Card.Header className="bg-light border-bottom py-2 px-3 d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center gap-2">
             <Button
@@ -840,7 +1084,7 @@ export function TraceabilityTab({
                     aria-label="Filtrar historias por estado"
                   >
                     <option value="">Todos los estados</option>
-                    {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA"].map(
+                    {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA", "ARCHIVADA"].map(
                       (state) => (
                         <option key={state}>{state}</option>
                       ),
@@ -853,6 +1097,7 @@ export function TraceabilityTab({
               <thead>
                 <tr>
                   <th>Historia</th>
+                  <th>Creada</th>
                   <th>Requisito</th>
                   <th>Estado</th>
                   <th>Casos</th>
@@ -882,82 +1127,50 @@ export function TraceabilityTab({
                           </a>
                         )}
                       </td>
+                      <td className="small text-nowrap" title={formatDateTime(story.fecha_creacion)}>
+                        {formatDateTime(story.fecha_creacion) || "—"}
+                      </td>
                       <td className="small">
                         {requirement?.codigo || story.requisito_codigo}
                       </td>
                       <td>
-                        <Badge bg="secondary">{story.estado}</Badge>
+                        {canEdit && !story.archivado ? (
+                          <Form.Select
+                            size="sm"
+                            value={story.estado}
+                            onChange={(event) => void changeStoryState(story, event.target.value)}
+                            aria-label={`Cambiar estado de ${story.codigo}`}
+                          >
+                            {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA"].map((state) => <option key={state} value={state}>{state.replaceAll("_", " ")}</option>)}
+                          </Form.Select>
+                        ) : <Badge bg="secondary">{story.estado}</Badge>}
                       </td>
                       <td>
                         {story.case_count}{" "}
                         {story.requiere_revision_count > 0 && (
-                          <Badge bg="warning" text="dark">
-                            Revision
-                          </Badge>
+                          <ReviewPendingIcon count={story.requiere_revision_count} tooltipId={`story-${story.id}-pending`} />
                         )}
                       </td>
                       <td className="text-end">
-                        <Button
-                          variant="light"
-                          size="sm"
-                          className="border me-1"
-                          onClick={() => openDetails("story", story)}
-                          title="Ver historia"
-                          aria-label={`Ver historia ${story.codigo}`}
-                        >
-                          <Eye size={14} />
-                        </Button>
-                        <Button
-                          variant="light"
-                          size="sm"
-                          className="border me-1"
-                          onClick={() => openHistory(story, "historias")}
-                          title="Historial"
-                        >
-                          <History size={14} />
-                        </Button>
-                        {canEdit && (
-                          <>
-                            <Button
-                              variant="light"
-                              size="sm"
-                              className="border me-1"
-                              onClick={() => openStory(story)}
-                              title="Editar historia"
-                              aria-label={`Editar historia ${story.codigo}`}
-                            >
-                              <Pencil size={14} />
-                            </Button>
-                            <Button
-                              variant="light"
-                              size="sm"
-                              className="border me-1"
-                              onClick={() => archive(story, "historias")}
-                              title="Archivar"
-                            >
-                              <Archive size={14} />
-                            </Button>
-                          </>
-                        )}
-                        {canEdit && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            className="rounded-pill px-3"
-                            onClick={() =>
-                              onCreateCaseFromStory(story, requirement)
-                            }
-                          >
-                            <FilePlus2 size={14} className="me-1" /> Caso
-                          </Button>
-                        )}
+                        <Dropdown align="end" drop="down" className="traceability-actions-menu">
+                          <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`Acciones para ${story.codigo}`} title="Acciones"><MoreHorizontal size={15} /></Dropdown.Toggle>
+                          <Dropdown.Menu className="traceability-actions-dropdown" popperConfig={{ strategy: "fixed", modifiers: [{ name: "flip", enabled: false }] }}>
+                            <Dropdown.Item onClick={() => openDetails("story", story)}><Eye size={14} className="me-2" />Ver historia</Dropdown.Item>
+                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => onCreateCaseFromStory(story, requirement)}><FilePlus2 size={14} className="me-2" />Crear caso</Dropdown.Item>}
+                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => setCaseGenerationStory(story)}><Sparkles size={14} className="me-2" />Generar con IA</Dropdown.Item>}
+                            <Dropdown.Item onClick={() => openHistory(story, "historias")}><History size={14} className="me-2" />Historial</Dropdown.Item>
+                            {canEdit && <Dropdown.Item onClick={() => openStory(story)}><Pencil size={14} className="me-2" />Editar historia</Dropdown.Item>}
+                            {canEdit && <Dropdown.Divider />}
+                            {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(story, "historias", !story.archivado)}>{story.archivado ? "Restaurar historia" : "Archivar historia"}</Dropdown.Item>}
+                          </Dropdown.Menu>
+                        </Dropdown>
                       </td>
                     </tr>
                   );
                 })}
                 {visibleStories.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center text-muted py-3">
+                    <td colSpan={6} className="text-center text-muted py-3">
                       No hay historias para los filtros seleccionados.
                     </td>
                   </tr>
@@ -972,14 +1185,17 @@ export function TraceabilityTab({
         show={showRequirementModal}
         onHide={() => setShowRequirementModal(false)}
         size="lg"
+        centered
+        scrollable
       >
         <Form onSubmit={saveRequirement}>
-          <Modal.Header closeButton>
-            <Modal.Title>
+          <Modal.Header closeButton className="border-0 pb-2">
+            <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+              <FileText size={18} className="text-primary" />
               {editingRequirement ? "Editar requisito" : "Nuevo requisito"}
             </Modal.Title>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body className="pt-0">
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label>Titulo</Form.Label>
@@ -1107,18 +1323,22 @@ export function TraceabilityTab({
           </Modal.Footer>
         </Form>
       </Modal>
+      {caseGenerationStory && <CaseGenerationWizard story={caseGenerationStory} fetchWithAuth={fetchWithAuth} onClose={() => setCaseGenerationStory(null)} onApplied={(count) => { setCaseGenerationStory(null); showFeedback("Casos creados", `${count} casos manuales quedaron creados y trazados para revisión.`, "success"); }} />}
       <Modal
         show={showStoryModal}
         onHide={() => setShowStoryModal(false)}
         size="lg"
+        centered
+        scrollable
       >
         <Form onSubmit={saveStory}>
-          <Modal.Header closeButton>
-            <Modal.Title>
+          <Modal.Header closeButton className="border-0 pb-2">
+            <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+              <Pencil size={18} className="text-primary" />
               {editingStory ? "Editar historia" : "Nueva historia"}
             </Modal.Title>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body className="pt-0">
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label>Requisito</Form.Label>
@@ -1182,11 +1402,13 @@ export function TraceabilityTab({
                 />
               </Col>
               <Col xs={12}>
-                <Form.Label>Descripcion Markdown</Form.Label>
+                <Form.Label>{editingStory ? "Descripción Markdown" : "Historia de usuario"}</Form.Label>
+                {!editingStory && <div className="border-start border-primary border-3 ps-3 py-1 mb-2 small text-muted"><strong className="text-dark d-block">Formato recomendado</strong>Como <em>[rol o usuario]</em>, quiero <em>[acción o funcionalidad]</em>, para <em>[beneficio o valor]</em>.</div>}
                 <Form.Control
                   as="textarea"
                   rows={4}
                   value={storyForm.descripcion_markdown}
+                  placeholder={editingStory ? undefined : "Como analista de calidad, quiero consultar el resumen de ejecución, para identificar riesgos antes de liberar una build."}
                   onChange={(event) =>
                     setStoryForm({
                       ...storyForm,
@@ -1196,7 +1418,9 @@ export function TraceabilityTab({
                 />
               </Col>
               <Col xs={12}>
-                <Form.Label>Criterios de aceptacion Markdown</Form.Label>
+                <Form.Label>{editingStory ? "Criterios de aceptacion Markdown" : "Criterios de aceptación estructurados"}</Form.Label>
+                {!editingStory && <><p className="small text-muted mb-2">Definí el comportamiento verificable. Estos criterios quedan vinculados a los casos de prueba y habilitan la generación asistida.</p><AcceptanceCriteriaEditor criteria={storyForm.acceptance_criteria || []} onChange={(acceptance_criteria) => setStoryForm({ ...storyForm, acceptance_criteria })} /></>}
+                {editingStory &&
                 <Form.Control
                   as="textarea"
                   rows={4}
@@ -1207,7 +1431,7 @@ export function TraceabilityTab({
                       criterios_aceptacion_markdown: event.target.value,
                     })
                   }
-                />
+                />}
               </Col>
               <Col md={6}>
                 <Form.Label>Proveedor externo</Form.Label>
@@ -1252,9 +1476,13 @@ export function TraceabilityTab({
         onHide={() => !generationBusy && setGenerationRequirement(null)}
         size="xl"
         scrollable
+        centered
       >
-        <Modal.Header closeButton>
-          <Modal.Title>Generar historias con IA</Modal.Title>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <Sparkles size={18} className="text-primary" />
+            Generar historias con IA
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {generationRequirement && (
@@ -1269,6 +1497,53 @@ export function TraceabilityTab({
                   confirmes.
                 </div>
               </div>
+              <div className="d-flex flex-wrap gap-2 small" aria-label="Etapas de generación">
+                {[
+                  "1. Contexto",
+                  "2. Analizar requisito",
+                  "3. Generar propuestas",
+                  "4. Revisar borradores",
+                ].map((label, index) => {
+                  const currentStep = {
+                    context: 0,
+                    analysis: 1,
+                    configuration: 2,
+                    review: 3,
+                  }[generationStep];
+                  return (
+                    <span
+                      key={label}
+                      className={`border rounded px-2 py-1 ${index === currentStep ? "bg-primary text-white border-primary" : index < currentStep ? "bg-light text-muted" : "text-muted"}`}
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+              {generationBusy && (
+                <div className="border rounded bg-light px-3 py-2" aria-live="polite">
+                  <div className="d-flex align-items-center gap-2">
+                    <Spinner animation="border" variant="primary" size="sm" role="status">
+                      <span className="visually-hidden">Procesando</span>
+                    </Spinner>
+                    <div className="flex-grow-1">
+                      <span className="fw-semibold">La IA está trabajando</span>
+                      <span className="text-muted small ms-2">
+                        {generationStep === "context"
+                          ? "Analizando el requisito y el contexto seleccionado."
+                          : generationStep === "analysis"
+                            ? "Actualizando el análisis con las respuestas proporcionadas."
+                            : generationStep === "configuration"
+                            ? `Generando borrador ${Math.min(generationCompletedCount + 1, generationRequestedCount)} de ${generationRequestedCount}. Los resultados válidos aparecen a medida que se completan.`
+                            : "Creando los borradores seleccionados."}
+                      </span>
+                    </div>
+                    <span className="small text-muted">{generationElapsedSeconds}s</span>
+                  </div>
+                  <ProgressBar animated now={100} variant="primary" className="mt-2" style={{ height: "4px" }} />
+                </div>
+              )}
+              {generationStep === "context" && (
               <div className="border rounded overflow-hidden">
                 <div className="bg-light border-bottom px-3 py-2 d-flex align-items-center justify-content-between">
                   <div className="fw-semibold">Contexto para IA</div>
@@ -1297,7 +1572,7 @@ export function TraceabilityTab({
                     )}
                   </Button>
                 </div>
-                <Collapse in={generationContextExpanded}>
+                {generationContextExpanded && (
                   <div className="p-3 d-flex flex-column gap-3">
                     <Form.Group>
                       <Form.Label>Instrucciones opcionales</Form.Label>
@@ -1367,68 +1642,153 @@ export function TraceabilityTab({
                       )}
                     </Form.Group>
                   </div>
-                </Collapse>
+                )}
               </div>
-              {generationRun && (
+              )}
+              {generationRun && generationStep === "analysis" && (
                 <div className="border-start border-primary border-3 bg-light px-3 py-2">
-                  <Row className="align-items-center g-2">
-                    <Col md="auto">
+                  <div className="d-flex flex-wrap align-items-center gap-2">
+                    <div className="flex-grow-1">
                       <div className="small text-uppercase text-muted fw-semibold">
-                        Estimación
+                        Resultado del análisis
                       </div>
-                      <div className="fs-4 fw-bold lh-1">
-                        {generationRun.estimacion?.cantidad_recomendada}{" "}
-                        historias
+                      <div className="fw-semibold">
+                        {generationRun.analysis?.readiness === "READY"
+                          ? "Contexto listo para continuar"
+                          : generationRun.analysis?.readiness === "NEEDS_CLARIFICATION"
+                            ? "Contexto incompleto: podés continuar con supuestos"
+                            : "Análisis bloqueado"}
                       </div>
                       <div className="small text-muted">
-                        Rango: {generationRun.estimacion?.rango_min} a{" "}
-                        {generationRun.estimacion?.rango_max}
+                        {generationRun.analysis?.readiness === "READY"
+                          ? "Respondé solo lo que conozcas y continuá para definir cuántas propuestas querés revisar."
+                          : "Respondé solo lo que conozcas. Las preguntas sin respuesta quedarán registradas como pendientes y no impiden generar borradores."}
                       </div>
-                    </Col>
-                    <Col className="d-flex align-items-center">
-                      <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        className="d-inline-flex align-items-center gap-1"
-                        onClick={() =>
-                          setEstimateExplanationVisible((value) => !value)
-                        }
-                      >
-                        <Eye size={14} />
-                        {estimateExplanationVisible
-                          ? "Ocultar explicación"
-                          : "Ver explicación"}
-                      </Button>
-                    </Col>
-                    {generationCandidates.length === 0 && (
-                      <Col md={2}>
-                        <Form.Label className="small mb-1">Máximo</Form.Label>
-                        <Form.Control
-                          size="sm"
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={generationMaxStories}
-                          onChange={(event) =>
-                            setGenerationMaxStories(
-                              Math.max(
-                                1,
-                                Math.min(20, Number(event.target.value) || 1),
-                              ),
-                            )
-                          }
-                        />
-                      </Col>
-                    )}
-                  </Row>
+                    </div>
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      className="d-inline-flex align-items-center gap-1"
+                      onClick={() =>
+                        setEstimateExplanationVisible((value) => !value)
+                      }
+                    >
+                      <Eye size={14} />
+                      {estimateExplanationVisible
+                        ? "Ocultar explicación"
+                        : "Ver explicación"}
+                    </Button>
+                  </div>
                   {estimateExplanationVisible && (
-                    <div className="small border-top mt-2 pt-2">
-                      {generationRun.estimacion?.justificacion}
+                    <div className="small border-top mt-2 pt-2 d-flex flex-column gap-2">
+                      {!!generationRun.analysis?.ambiguities?.length && (
+                        <div><span className="fw-semibold">Ambigüedades:</span> {generationRun.analysis.ambiguities.join("; ")}</div>
+                      )}
+                      {!!generationRun.analysis?.proposed_assumptions?.length && (
+                        <div><span className="fw-semibold">Supuestos propuestos:</span> {generationRun.analysis.proposed_assumptions.map((item: any) => item.text).join("; ")}</div>
+                      )}
+                    </div>
+                  )}
+                  {!!generationRun.analysis?.questions?.length && (
+                    <div className="border-top mt-2 pt-2">
+                      <div className="fw-semibold">Respuestas para completar el contexto</div>
+                      <div className="small text-muted mb-2">
+                        Son opcionales. Se incluirán en la generación y quedarán asociadas a esta revisión.
+                      </div>
+                      <div className="d-flex flex-column gap-2">
+                        {generationRun.analysis.questions.map((question: string, index: number) => (
+                          <Form.Group key={question}>
+                            <Form.Label className="small mb-1">
+                              {index + 1}. {question}
+                            </Form.Label>
+                            <Form.Control
+                              as="textarea"
+                              rows={2}
+                              value={generationQuestionAnswers[question] || ""}
+                              disabled={generationBusy || generationCandidates.length > 0}
+                              onChange={(event) =>
+                                {
+                                  setAutoContinuePaused(true);
+                                  setGenerationQuestionAnswers((previous) => ({
+                                    ...previous,
+                                    [question]: event.target.value,
+                                  }));
+                                }
+                              }
+                              placeholder="Opcional: dejalo vacío si QA no cuenta con este dato."
+                            />
+                          </Form.Group>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               )}
-              {generationCandidates.length > 0 && (
+              {generationRun && generationStep === "configuration" && (
+                <div className="border-start border-primary border-3 bg-light px-3 py-3">
+                  <div className="small text-uppercase text-muted fw-semibold">
+                    Propuesta de alcance
+                  </div>
+                  <div className="fw-semibold">
+                    La IA propone {generationRun.estimacion?.cantidad_recomendada || 1} {generationRun.estimacion?.cantidad_recomendada === 1 ? "historia" : "historias"}
+                  </div>
+                  <div className="small text-muted mb-3">
+                    Antes de crear borradores, se compara la intención de estas propuestas con las historias activas del proyecto. Las ya cubiertas no consumen una generación.
+                  </div>
+                  {!!generationRun.analysis?.story_outline?.length && (
+                    <div className="border rounded bg-white overflow-hidden">
+                      <div className="px-3 py-2 border-bottom fw-semibold">Historias sugeridas</div>
+                      {generationRun.analysis.story_outline.map((item: any, index: number) => (
+                        <div key={`${item.title}-${index}`} className="px-3 py-2 border-bottom small">
+                          <div className="fw-semibold">Propuesta {index + 1}: {item.title}</div>
+                          {item.reason && <div className="text-muted">{item.reason}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {generationBusy && (
+                    <div className="border rounded bg-white mt-3 overflow-hidden" aria-live="polite">
+                      <div className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                        <span className="fw-semibold">Borradores generados</span>
+                        <span className="small text-muted">{generationCompletedCount} de {generationRequestedCount} completados</span>
+                      </div>
+                      {generationCandidates.length ? (
+                        generationCandidates.map((item, index) => (
+                          <div key={item.local_id || index} className="px-3 py-2 border-bottom small">
+                            <span className="fw-semibold">Borrador {index + 1}:</span> {item.title || item.titulo}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 small text-muted">Todavía no hay un borrador completo para mostrar.</div>
+                      )}
+                    </div>
+                  )}
+                  {preflightExcludedStories.length > 0 && (
+                    <div className="border border-warning rounded bg-warning-subtle mt-3 overflow-hidden">
+                      <div className="px-3 py-2 fw-semibold">
+                        {preflightExcludedStories.length} {preflightExcludedStories.length === 1 ? "propuesta ya está cubierta" : "propuestas ya están cubiertas"}
+                      </div>
+                      {preflightExcludedStories.map((item: any, index: number) => (
+                        <div key={`${item.title}-${index}`} className="px-3 py-2 border-top small">
+                          <span className="fw-semibold">{item.title}</span>
+                          {item.similar_stories?.length > 0 && (
+                            <span className="text-muted"> · existente: {item.similar_stories.map((story: any) => `${story.codigo} ${story.titulo}`).join(", ")}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {generationRun && generationStep === "review" && generationCandidates.length === 0 && preflightExcludedStories.length > 0 && (
+                <div className="border border-warning rounded bg-warning-subtle px-3 py-3">
+                  <div className="fw-semibold">No se generaron borradores nuevos</div>
+                  <div className="small">
+                    Todas las propuestas del alcance ya están cubiertas por historias activas. Podés volver al análisis si el requisito requiere una capacidad distinta.
+                  </div>
+                </div>
+              )}
+              {generationCandidates.length > 0 && generationStep === "review" && (
                 <div className="border rounded overflow-hidden">
                   <div className="bg-light border-bottom px-3 py-2 d-flex align-items-center justify-content-between">
                     <div className="fw-semibold">
@@ -1459,8 +1819,21 @@ export function TraceabilityTab({
                             className={candidate.selected ? "" : "text-muted"}
                           >
                             <td>
-                              <span className="fw-semibold">US-NUEVA</span>{" "}
-                              {candidate.titulo}
+                              <span className="fw-semibold">Propuesta {index + 1}</span>{" "}
+                              {candidate.title}
+                              <Badge bg={proposalQualityMeta(candidate).variant} className="ms-2">
+                                {proposalQualityMeta(candidate).label}
+                              </Badge>
+                              {hasSimilarStory(candidate) && (
+                                <Badge bg="warning" text="dark" className="ms-2">
+                                  {candidate.similarity_check?.mode === "AI_INTENT"
+                                    ? "Intención ya cubierta"
+                                    : "Historia similar existente"}
+                                </Badge>
+                              )}
+                              <span className="small text-muted ms-2">
+                                {candidate.story_type === "USER_STORY" ? "Historia de usuario" : candidate.story_type === "TECHNICAL_STORY" ? "Historia técnica" : candidate.story_type}
+                              </span>
                             </td>
                             <td className="small">
                               {generationRequirement.codigo}
@@ -1475,55 +1848,151 @@ export function TraceabilityTab({
                                 size="sm"
                                 className="border me-1"
                                 title={
-                                  expandedCandidateIndex === index
-                                    ? "Ocultar historia"
-                                    : "Ver y editar historia"
+                                  expandedCandidateIndexes.has(index)
+                                    ? "Ocultar detalle"
+                                    : "Ver y editar detalle"
                                 }
                                 aria-label={
-                                  expandedCandidateIndex === index
-                                    ? "Ocultar historia"
-                                    : "Ver y editar historia"
+                                  expandedCandidateIndexes.has(index)
+                                    ? "Ocultar detalle"
+                                    : "Ver y editar detalle"
                                 }
-                                onClick={() =>
-                                  setExpandedCandidateIndex((current) =>
-                                    current === index ? null : index,
-                                  )
-                                }
+                                onClick={() => setExpandedCandidateIndexes((previous) => {
+                                  const next = new Set(previous);
+                                  if (next.has(index)) next.delete(index);
+                                  else next.add(index);
+                                  return next;
+                                })}
                               >
                                 <Eye size={14} />
+                              </Button>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 me-2 align-baseline text-decoration-none"
+                                onClick={() => setExpandedCandidateIndexes((previous) => {
+                                  const next = new Set(previous);
+                                  if (next.has(index)) next.delete(index);
+                                  else next.add(index);
+                                  return next;
+                                })}
+                              >
+                                {expandedCandidateIndexes.has(index) ? "Ocultar detalle" : "Ver detalle"}
                               </Button>
                               <Form.Check
                                 inline
                                 className="d-inline-block align-middle mb-0"
                                 title={
-                                  candidate.selected
+                                  proposalQuality(candidate) === "FAIL"
+                                    ? candidate.selected
+                                      ? "Excluir de la creación"
+                                      : "Incluir y revisar observaciones críticas"
+                                    : candidate.selected
                                     ? "Incluir al crear"
                                     : "Excluir de la creación"
                                 }
                                 aria-label={
-                                  candidate.selected
+                                  proposalQuality(candidate) === "FAIL"
+                                    ? candidate.selected
+                                      ? "Excluir propuesta que requiere revisión"
+                                      : "Incluir propuesta que requiere revisión"
+                                    : candidate.selected
                                     ? "Incluir al crear"
                                     : "Excluir de la creación"
                                 }
-                                checked={candidate.selected}
-                                onChange={() =>
+                                checked={Boolean(candidate.selected)}
+                                onChange={() => {
+                                  const nextSelected = !candidate.selected;
                                   setGenerationCandidates((previous) =>
                                     previous.map((item, itemIndex) =>
                                       itemIndex === index
-                                        ? { ...item, selected: !item.selected }
+                                        ? {
+                                          ...item,
+                                          selected: nextSelected,
+                                          ...(nextSelected ? {} : {
+                                            quality_override_accepted: false,
+                                            quality_override_reason: "",
+                                          }),
+                                        }
                                         : item,
                                     ),
-                                  )
-                                }
+                                  );
+                                  if (nextSelected && proposalQuality(candidate) === "FAIL") {
+                                    setExpandedCandidateIndexes((previous) => new Set(previous).add(index));
+                                  }
+                                }}
                               />
                             </td>
                           </tr>
-                          {expandedCandidateIndex === index && (
+                          {expandedCandidateIndexes.has(index) && (
                             <tr
                               key={`candidate-detail-${index}`}
                               className="bg-light"
                             >
                               <td colSpan={5} className="p-3">
+                                <div className={`border rounded p-2 mb-3 small ${proposalQuality(candidate) === "FAIL" ? "border-danger bg-danger-subtle" : proposalQuality(candidate) === "WARN" ? "border-warning bg-warning-subtle" : "border-success bg-success-subtle"}`}>
+                                  <span className="fw-semibold">Calidad: {proposalQualityMeta(candidate).label}.</span>
+                                  {candidate.rule_findings?.length ? (
+                                    <ul className="mb-0 mt-1 ps-3">
+                                      {candidate.rule_findings.map((finding: any) => <li key={`${finding.code}-${finding.message}`}>{finding.message}</li>)}
+                                    </ul>
+                                  ) : candidate.quality?.warnings?.length ? (
+                                    <div className="mt-1">{candidate.quality.warnings.join("; ")}</div>
+                                  ) : (
+                                    <div className="mt-1">La propuesta cumple las reglas automáticas.</div>
+                                  )}
+                                </div>
+                                {hasSimilarStory(candidate) && (
+                                  <div className="border border-warning rounded p-2 mb-3 small bg-warning-subtle">
+                                    <span className="fw-semibold">
+                                      {candidate.similarity_check?.mode === "AI_INTENT"
+                                        ? "La IA detectó una intención funcional equivalente."
+                                        : "Historias existentes con un título similar."}
+                                    </span>
+                                    <div className="mt-1">
+                                      Revisá si esta propuesta aporta un alcance distinto antes de seleccionarla. La decisión final es tuya.
+                                    </div>
+                                    <ul className="mb-0 mt-1 ps-3">
+                                      {candidate.similar_stories.map((story: any) => (
+                                        <li key={`${story.id}-${story.codigo}-${story.titulo}`}>
+                                          <span className="fw-semibold">{story.codigo || "Historia"}</span>{" "}
+                                          {story.titulo}{" "}
+                                          <span className="text-muted">
+                                            ({story.kind === "AI_INTENT"
+                                              ? story.reason || `intención equivalente${story.confidence ? ` (${story.confidence.toLowerCase()})` : ""}`
+                                              : story.kind === "EXACT" ? "título igual" : "título parecido"})
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {proposalQuality(candidate) === "FAIL" && candidate.selected && (
+                                  <div className="border border-danger rounded p-2 mb-3 small">
+                                    <Form.Check
+                                      id={`quality-override-${index}`}
+                                      label="Entiendo las observaciones críticas y decido crear este borrador."
+                                      checked={Boolean(candidate.quality_override_accepted)}
+                                      onChange={(event) => updateGenerationCandidate(index, {
+                                        quality_override_accepted: event.target.checked,
+                                      })}
+                                    />
+                                    <Form.Label className="small fw-semibold mt-2 mb-1" htmlFor={`quality-override-reason-${index}`}>
+                                      Justificación de la decisión
+                                    </Form.Label>
+                                    <Form.Control
+                                      id={`quality-override-reason-${index}`}
+                                      size="sm"
+                                      as="textarea"
+                                      rows={2}
+                                      placeholder="Explicá por qué esta propuesta debe crearse pese a las observaciones."
+                                      value={candidate.quality_override_reason || ""}
+                                      onChange={(event) => updateGenerationCandidate(index, {
+                                        quality_override_reason: event.target.value,
+                                      })}
+                                    />
+                                  </div>
+                                )}
                                 <Row className="g-3">
                                   <Col md={8}>
                                     <Form.Label className="small fw-semibold">
@@ -1531,16 +2000,11 @@ export function TraceabilityTab({
                                     </Form.Label>
                                     <Form.Control
                                       size="sm"
-                                      value={candidate.titulo}
+                                      value={candidate.title}
                                       onChange={(event) =>
                                         setGenerationCandidates((previous) =>
                                           previous.map((item, itemIndex) =>
-                                            itemIndex === index
-                                              ? {
-                                                  ...item,
-                                                  titulo: event.target.value,
-                                                }
-                                              : item,
+                                            itemIndex === index ? { ...item, title: event.target.value } : item,
                                           ),
                                         )
                                       }
@@ -1556,12 +2020,7 @@ export function TraceabilityTab({
                                       onChange={(event) =>
                                         setGenerationCandidates((previous) =>
                                           previous.map((item, itemIndex) =>
-                                            itemIndex === index
-                                              ? {
-                                                  ...item,
-                                                  prioridad: event.target.value,
-                                                }
-                                              : item,
+                                            itemIndex === index ? { ...item, prioridad: event.target.value } : item,
                                           ),
                                         )
                                       }
@@ -1577,22 +2036,16 @@ export function TraceabilityTab({
                                   </Col>
                                   <Col md={6}>
                                     <Form.Label className="small fw-semibold">
-                                      Descripción Markdown
+                                      Descripción
                                     </Form.Label>
                                     <Form.Control
                                       as="textarea"
                                       rows={4}
-                                      value={candidate.descripcion_markdown}
+                                      value={candidate.description}
                                       onChange={(event) =>
                                         setGenerationCandidates((previous) =>
                                           previous.map((item, itemIndex) =>
-                                            itemIndex === index
-                                              ? {
-                                                  ...item,
-                                                  descripcion_markdown:
-                                                    event.target.value,
-                                                }
-                                              : item,
+                                            itemIndex === index ? { ...item, description: event.target.value } : item,
                                           ),
                                         )
                                       }
@@ -1600,27 +2053,11 @@ export function TraceabilityTab({
                                   </Col>
                                   <Col md={6}>
                                     <Form.Label className="small fw-semibold">
-                                      Criterios de aceptación Markdown
+                                      Criterios de aceptación
                                     </Form.Label>
-                                    <Form.Control
-                                      as="textarea"
-                                      rows={4}
-                                      value={
-                                        candidate.criterios_aceptacion_markdown
-                                      }
-                                      onChange={(event) =>
-                                        setGenerationCandidates((previous) =>
-                                          previous.map((item, itemIndex) =>
-                                            itemIndex === index
-                                              ? {
-                                                  ...item,
-                                                  criterios_aceptacion_markdown:
-                                                    event.target.value,
-                                                }
-                                              : item,
-                                          ),
-                                        )
-                                      }
+                                    <AcceptanceCriteriaEditor
+                                      criteria={candidate.acceptance_criteria || []}
+                                      onChange={(acceptance_criteria) => updateGenerationCandidate(index, { acceptance_criteria })}
                                     />
                                   </Col>
                                 </Row>
@@ -1636,7 +2073,7 @@ export function TraceabilityTab({
             </div>
           )}
         </Modal.Body>
-        <Modal.Footer>
+        <Modal.Footer className="d-flex flex-wrap align-items-end justify-content-end gap-2">
           <Button
             variant="secondary"
             disabled={generationBusy}
@@ -1653,7 +2090,7 @@ export function TraceabilityTab({
                 setGenerationCandidates([]);
                 setGenerationStep("context");
                 setGenerationContextExpanded(true);
-                setExpandedCandidateIndex(null);
+                setExpandedCandidateIndexes(new Set());
               }}
             >
               Volver a contexto
@@ -1665,27 +2102,104 @@ export function TraceabilityTab({
               onClick={() => void estimateGeneration()}
             >
               {generationBusy
-                ? "Generando vista previa..."
-                : "Generar historias"}
+                ? "Analizando..."
+                : "Analizar requisito"}
             </Button>
           )}
           {generationRun && generationCandidates.length === 0 && (
-            <Button
-              disabled={generationBusy}
-              onClick={() => void generateCandidates()}
-            >
-              {generationBusy ? "Generando..." : "Generar propuestas"}
-            </Button>
+            generationRun.estado === "ESPERANDO_SUPUESTOS" && generationHasActionableReview ? (
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <Button disabled={generationBusy} onClick={() => void confirmAssumptions()}>
+                  {generationBusy ? "Guardando..." : "Continuar con supuestos de trabajo"}
+                </Button>
+                {generationHasCriticalAssumptions ? (
+                  <span className="small text-muted">Los supuestos críticos requieren esta confirmación explícita.</span>
+                ) : autoContinueRemaining !== null ? (
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => setAutoContinuePaused(true)}
+                  >
+                    Pausar continuación automática ({autoContinueRemaining}s)
+                  </Button>
+                ) : autoContinuePaused ? (
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => setAutoContinuePaused(false)}
+                  >
+                    Reanudar continuación automática
+                  </Button>
+                ) : null}
+              </div>
+            ) : generationStep === "analysis" ? (
+              <Button
+                disabled={generationBusy}
+                onClick={() => void recalculateGenerationScope()}
+              >
+                {generationBusy ? "Actualizando..." : "Continuar y calcular alcance"}
+              </Button>
+            ) : generationStep === "configuration" ? (
+              <div className="d-flex align-items-end gap-2">
+                <Button
+                  variant="outline-secondary"
+                  disabled={generationBusy}
+                  onClick={() => setGenerationStep("analysis")}
+                >
+                  Volver al análisis
+                </Button>
+                <Form.Group style={{ width: "158px" }}>
+                  <Form.Label className="small mb-1 text-nowrap">Cantidad de borradores</Form.Label>
+                  <Form.Control
+                    size="sm"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={generationMaxStories}
+                    disabled={generationBusy}
+                    onChange={(event) => setGenerationMaxStories(Math.max(1, Math.min(20, Number(event.target.value) || 1)))}
+                  />
+                </Form.Group>
+                <Button disabled={generationBusy} onClick={() => void generateCandidates()}>
+                  {generationBusy ? "Generando..." : `Generar ${generationMaxStories} ${generationMaxStories === 1 ? "borrador" : "borradores"}`}
+                </Button>
+              </div>
+            ) : (
+              <div className="d-flex align-items-end gap-2">
+                <Form.Group style={{ width: "104px" }}>
+                  <Form.Label className="small mb-1">Propuestas</Form.Label>
+                  <Form.Control
+                    size="sm"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={generationMaxStories}
+                    disabled={generationBusy}
+                    onChange={(event) => setGenerationMaxStories(Math.max(1, Math.min(20, Number(event.target.value) || 1)))}
+                  />
+                </Form.Group>
+                <Button disabled={generationBusy} onClick={() => void generateCandidates()}>
+                  {generationBusy ? "Generando..." : `Generar ${generationMaxStories} ${generationMaxStories === 1 ? "propuesta" : "propuestas"}`}
+                </Button>
+              </div>
+            )
           )}
           {generationCandidates.length > 0 && (
-            <Button
-              disabled={generationBusy || selectedCandidateCount === 0}
-              onClick={() => void applyCandidates()}
-            >
-              {generationBusy
-                ? "Creando..."
-                : `Crear ${selectedCandidateCount} historias`}
-            </Button>
+            <div className="d-flex flex-column align-items-end gap-1">
+              {selectedCriticalCandidatesNeedDecision && (
+                <span className="small text-danger">
+                  Confirmá y justificá las propuestas que requieren revisión.
+                </span>
+              )}
+              <Button
+                disabled={generationBusy || selectedCandidateCount === 0 || selectedCriticalCandidatesNeedDecision}
+                onClick={() => void applyCandidates()}
+              >
+                {generationBusy
+                  ? "Creando..."
+                  : `Crear ${selectedCandidateCount} borradores`}
+              </Button>
+            </div>
           )}
         </Modal.Footer>
       </Modal>
@@ -1693,14 +2207,17 @@ export function TraceabilityTab({
         show={Boolean(detailItem)}
         onHide={() => setDetailItem(null)}
         size="lg"
+        centered
+        scrollable
       >
-        <Modal.Header closeButton>
-          <Modal.Title>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <Eye size={18} className="text-primary" />
             {detailItem?.kind === "requirement" ? "Requisito" : "Historia"}:{" "}
             {detailItem?.item.codigo}
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="pt-0">
           {detailItem && (
             <Row className="g-3">
               <Col xs={12}>
@@ -1724,13 +2241,7 @@ export function TraceabilityTab({
                 <div className="small fw-bold text-uppercase text-muted mb-1">
                   Descripcion
                 </div>
-                <div
-                  className="border rounded p-3 bg-light markdown-preview"
-                  style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}
-                >
-                  {detailItem.item.descripcion_markdown ||
-                    "Sin descripcion registrada."}
-                </div>
+                <div className="border rounded p-3 bg-light markdown-preview"><WikiMarkdownViewer content={detailItem.item.descripcion_markdown || "Sin descripcion registrada."} /></div>
               </Col>
               {detailItem.kind === "story" && (
                 <>
@@ -1738,13 +2249,7 @@ export function TraceabilityTab({
                     <div className="small fw-bold text-uppercase text-muted mb-1">
                       Criterios de aceptacion
                     </div>
-                    <div
-                      className="border rounded p-3 bg-light markdown-preview"
-                      style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}
-                    >
-                      {detailItem.item.criterios_aceptacion_markdown ||
-                        "Sin criterios de aceptacion registrados."}
-                    </div>
+                    <div className="border rounded p-3 bg-light markdown-preview"><WikiMarkdownViewer content={detailItem.item.criterios_aceptacion_markdown || "Sin criterios de aceptacion registrados."} /></div>
                   </Col>
                   <Col md={6}>
                     <div className="small fw-bold text-uppercase text-muted mb-1">
@@ -1769,12 +2274,9 @@ export function TraceabilityTab({
                   </Col>
                   <Col md={6}>
                     <div className="small fw-bold text-uppercase text-muted mb-1">
-                      Cobertura
+                      Casos de prueba vinculados
                     </div>
-                    <div>
-                      {detailItem.item.case_count || 0} casos de prueba
-                      vinculados
-                    </div>
+                    {linkedStoryCasesLoading ? <span className="small text-muted">Cargando casos vinculados…</span> : linkedStoryCases.length ? <div className="d-flex flex-column gap-1">{linkedStoryCases.map((testCase) => <Button key={testCase.master_id} variant="link" className="p-0 text-start small" onClick={() => { setDetailItem(null); onOpenLinkedCase(String(testCase.master_id)); }}><strong>{testCase.codigo}</strong> · {testCase.titulo}{testCase.requiere_revision ? <span className="ms-1"><ReviewPendingIcon count={1} tooltipId={`linked-case-${testCase.master_id}-pending`} /></span> : null}</Button>)}</div> : <span className="small text-muted">Sin casos vinculados.</span>}
                   </Col>
                 </>
               )}
@@ -1896,21 +2398,131 @@ export function TraceabilityTab({
         </Modal.Footer>
       </Modal>
       <Modal
-        show={Boolean(historyEntries)}
-        onHide={() => setHistoryEntries(null)}
+        show={Boolean(historyEntries) && !historyDiff}
+        size="lg"
+        centered
+        scrollable
+        contentClassName="traceability-history-modal"
+        onHide={() => {
+          setHistoryEntries(null);
+          setHistoryDiff(null);
+        }}
       >
-        <Modal.Header closeButton>
-          <Modal.Title>Historial: {historyTitle}</Modal.Title>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="d-flex align-items-center gap-2">
+            <History size={18} className="text-primary" aria-hidden="true" />
+            Historial del {historyKind === "requisitos" ? "requisito" : "historia"}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          {historyEntries?.map((entry) => (
-            <div key={entry.id} className="border-bottom py-2">
-              <div className="small text-muted">
-                {new Date(entry.fecha_edicion).toLocaleString()}
-              </div>
-              <strong>{entry.comentario_cambio || "Cambio registrado"}</strong>
+        <Modal.Body className="pt-0">
+          <div className="traceability-history-subtitle mb-3">
+            {historyCode && <Badge bg="light" text="dark" className="me-2">{historyCode}</Badge>}
+            <span>{historyTitle}</span>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {historyEntries?.map((entry, index) => (
+              <Card key={entry.id} className="traceability-history-entry shadow-none">
+                <Card.Body className="p-3">
+                  <div className="d-flex align-items-start justify-content-between gap-3">
+                    <div className="min-w-0">
+                      <div className="small text-muted">
+                        {new Date(entry.fecha_edicion).toLocaleString()}
+                      </div>
+                      <div className="small fw-semibold text-break">{historyDisplayActor(entry)}</div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    onClick={() => openHistoryDiff(index)}
+                    disabled={!historyEntries || index >= historyEntries.length - 1}
+                    title={index >= (historyEntries?.length ?? 0) - 1
+                      ? "No hay versión anterior para comparar."
+                      : "Comparar con la versión anterior"}
+                  >
+                    Ver cambios
+                  </Button>
+                  {historyEntries && index >= historyEntries.length - 1 && (
+                    <span className="small text-muted text-end" title="Esta es la versión más antigua">
+                      Versión inicial
+                    </span>
+                  )}
+                    </div>
+                  </div>
+                </Card.Body>
+              </Card>
+            ))}
+          </div>
+        </Modal.Body>
+      </Modal>
+      <Modal
+        show={Boolean(historyDiff)}
+        onHide={() => setHistoryDiff(null)}
+        size="lg"
+        centered
+        scrollable
+        contentClassName="traceability-history-modal traceability-diff-modal"
+      >
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="d-flex align-items-center gap-2">
+            <History size={18} className="text-primary" aria-hidden="true" />
+            <span>Diferencias de versión</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="pt-0">
+          <div className="traceability-history-subtitle mb-3">
+            {historyCode && <Badge bg="light" text="dark" className="me-2">{historyCode}</Badge>}
+            <span>{historyTitle}</span>
+          </div>
+          <div className="traceability-diff-meta mb-3">
+            <div className="small text-muted">
+              Modificación: {historyDiff?.current?.fecha_edicion
+              ? new Date(historyDiff.current.fecha_edicion).toLocaleString()
+                : "—"}
             </div>
-          ))}
+            <div className="small text-muted">
+              {historyDiff?.current?.comentario_cambio || "Sin comentario de cambio."}
+            </div>
+          </div>
+          {historyDiff?.previous ? (
+            historyDiffRows.length === 0 ? (
+              <Card className="traceability-history-entry shadow-none">
+                <Card.Body className="p-3 text-muted">
+                No se detectaron diferencias con la versión anterior.
+                </Card.Body>
+              </Card>
+            ) : (
+              historyDiffRows.map((item) => (
+                <Card key={item.key} className="traceability-history-entry traceability-diff-entry shadow-none mb-3">
+                  <Card.Body className="p-3">
+                    <div className="small fw-semibold text-uppercase text-muted mb-3">
+                      {item.label}
+                    </div>
+                    <Row className="g-3">
+                      <Col md={6}>
+                        <div className="small text-muted mb-1">Anterior</div>
+                        <pre className="traceability-diff-value traceability-diff-value-previous">
+                          {item.previousValue || "—"}
+                        </pre>
+                      </Col>
+                      <Col md={6}>
+                        <div className="small text-muted mb-1">Actual</div>
+                        <pre className="traceability-diff-value traceability-diff-value-current">
+                          {item.currentValue || "—"}
+                        </pre>
+                      </Col>
+                    </Row>
+                  </Card.Body>
+                </Card>
+              ))
+            )
+          ) : (
+            <Card className="traceability-history-entry shadow-none">
+              <Card.Body className="p-3 text-muted">
+                Esta es la versión más antigua, no hay versión anterior para comparar.
+              </Card.Body>
+            </Card>
+          )}
         </Modal.Body>
       </Modal>
     </div>

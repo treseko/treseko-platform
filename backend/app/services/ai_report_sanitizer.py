@@ -27,12 +27,18 @@ HEAVY_KEY_MARKERS = {
     "blob",
     "dom",
     "html",
-    "image",
     "raw",
-    "screenshot",
-    "source",
-    "trace",
     "video",
+}
+HEAVY_EXACT_KEYS = {"image", "screenshot", "source_code"}
+SAFE_SENSITIVE_METADATA_KEYS = {
+    "prompttokens",
+    "completiontokens",
+    "totaltokens",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_tokens",
+    "token_count",
 }
 
 
@@ -62,12 +68,16 @@ def _sanitize_ai_report_text(value: str) -> str:
 
 def _is_sensitive_key(key: Any) -> bool:
     normalized = str(key or "").lower().replace("-", "_").replace(" ", "_")
+    if normalized in SAFE_SENSITIVE_METADATA_KEYS:
+        return False
     return any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
 
 
 def _is_heavy_key(key: Any) -> bool:
     normalized = str(key or "").lower().replace("-", "_").replace(" ", "_")
-    return any(marker in normalized for marker in HEAVY_KEY_MARKERS)
+    if normalized.endswith(("_count", "_available", "_ref", "_id")):
+        return False
+    return normalized in HEAVY_EXACT_KEYS or any(marker in normalized for marker in HEAVY_KEY_MARKERS)
 
 
 def _json_size(value: Any) -> int:
@@ -108,6 +118,8 @@ def sanitize_ai_report_payload(value: Any) -> Any:
         compact = {
             key: sanitized.get(key)
             for key in (
+                "schema_version",
+                "execution_id",
                 "status",
                 "reason",
                 "confidence",
@@ -115,6 +127,13 @@ def sanitize_ai_report_payload(value: Any) -> Any:
                 "failure_category",
                 "human_review_required",
                 "error_code",
+                "decision_mode",
+                "decision_contract_version",
+                "report_complete",
+                "report_delivery_status",
+                "completed_via",
+                "engine_status",
+                "evidence_summary",
                 "metrics",
                 "summary",
             )

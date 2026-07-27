@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ConsolaManualPage } from '../features/ejecutar-pruebas/ConsolaManualPage'
 import { EjecutarPruebasPage } from '../features/ejecutar-pruebas/EjecutarPruebasPage'
 import { EvidenceViewerModal, type EvidenceViewerItem } from '../shared/components/EvidenceViewerModal'
+import { WorkspaceContextEmptyState } from '../shared/components/WorkspaceContextEmptyState'
 
 type EjecutarPruebasRouteProps = any
 
@@ -16,6 +17,7 @@ export function EjecutarPruebasRoute({
   executionRunDetail,
   executionRunDetailLoading,
   executionRunDetailError,
+  focusedExecutionId,
   ...props
 }: EjecutarPruebasRouteProps) {
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
@@ -35,6 +37,12 @@ export function EjecutarPruebasRoute({
   }
 
   if (activeTab === 'ejecutar' && viewMode === 'list') {
+    if (!props.currentProjectId) {
+      return <WorkspaceContextEmptyState message="Selecciona una solución y un proyecto para continuar." detail="Los casos ejecutables aparecerán cuando tengas un proyecto seleccionado." />
+    }
+    if (!props.currentBuildId) {
+      return <WorkspaceContextEmptyState message="Selecciona una build activa para continuar." detail="La ejecución de casos requiere una build seleccionada y, cuando corresponda, un componente." />
+    }
     return (
       <>
       <EjecutarPruebasPage
@@ -45,6 +53,7 @@ export function EjecutarPruebasRoute({
         executionSuiteTree={props.executionSuiteTree}
         renderExecutionSuiteTree={props.renderExecutionSuiteTree}
         currentBuildId={props.currentBuildId}
+        currentCompId={props.currentCompId}
         suitesTree={props.suitesTree}
         selectedSuiteId={props.selectedSuiteId}
         testSearchQuery={props.testSearchQuery}
@@ -75,6 +84,7 @@ export function EjecutarPruebasRoute({
         runDetail={executionRunDetail}
         runDetailLoading={executionRunDetailLoading}
         runDetailError={executionRunDetailError}
+        focusedExecutionId={focusedExecutionId}
         onCloseRunDetail={closeExecutionRunDetail}
         onOpenEvidence={openEvidence}
         canAccessCapability={props.canAccessCapability}

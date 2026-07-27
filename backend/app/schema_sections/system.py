@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SystemLicenseInstallRequest(BaseModel):
@@ -72,6 +72,8 @@ class SystemLicenseState(BaseModel):
     grace_until: Optional[str] = None
     verification_interval_days: Optional[int] = None
     grace_period_days: Optional[int] = None
+    online_status: Optional[Literal["verified", "pending"]] = None
+    online_reason: Optional[str] = None
 
 
 class SystemLicenseUsageItem(BaseModel):
@@ -125,6 +127,8 @@ class SystemBrandingPublicResponse(BaseModel):
     effective_brand_name: str
     effective_logo_url: str
     custom_branding_active: bool
+    effective_primary_color: str
+    effective_accent_color: str
 
 
 class SystemBrandingState(BaseModel):
@@ -136,6 +140,10 @@ class SystemBrandingState(BaseModel):
     effective_brand_name: str
     effective_logo_url: str
     custom_branding_active: bool
+    primary_color: str
+    accent_color: str
+    effective_primary_color: str
+    effective_accent_color: str
 
 
 class SystemBrandingUpdate(BaseModel):
@@ -144,6 +152,8 @@ class SystemBrandingUpdate(BaseModel):
     brand_name: str = Field(min_length=1, max_length=80)
     logo_url: Optional[str] = Field(default=None, max_length=500)
     enabled: bool = True
+    primary_color: str = Field(default="#172033", min_length=7, max_length=7)
+    accent_color: str = Field(default="#1677ff", min_length=7, max_length=7)
 
     @field_validator("brand_name")
     @classmethod
@@ -165,6 +175,15 @@ class SystemBrandingUpdate(BaseModel):
             raise ValueError("El logo debe cargarse desde branding")
         if any(char in normalized for char in ["\x00", "\r", "\n", "\\"]):
             raise ValueError("URL de logo invalida")
+        return normalized
+
+    @field_validator("primary_color", "accent_color")
+    @classmethod
+    def validate_brand_color(cls, value: str) -> str:
+        import re
+        normalized = str(value or "").strip().lower()
+        if not re.fullmatch(r"#[0-9a-f]{6}", normalized):
+            raise ValueError("El color de branding debe usar formato hexadecimal #RRGGBB")
         return normalized
 
 
@@ -223,7 +242,7 @@ class SystemFirstRunCompleteRequest(BaseModel):
 
 class SystemUpdateManifest(BaseModel):
     edition: Literal["community", "premium"]
-    key_id: Optional[str] = Field(default=None, max_length=120)
+    key_id: Optional[str] = Field(default=None, min_length=1, max_length=120)
     channel: str = Field(min_length=1, max_length=80)
     version: str = Field(min_length=1, max_length=80)
     artifact: Optional[str] = Field(
@@ -250,6 +269,12 @@ class SystemUpdateManifest(BaseModel):
     )
     checksum_sha256: str = Field(min_length=1, max_length=128)
     signature: Optional[str] = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def require_signing_key_identity(self) -> "SystemUpdateManifest":
+        if (self.edition == "premium" or self.signature) and not self.key_id:
+            raise ValueError("key_id es obligatorio para manifests Premium o firmados")
+        return self
 
 
 class SystemUpdateCheckRequest(BaseModel):

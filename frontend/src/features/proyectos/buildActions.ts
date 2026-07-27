@@ -47,7 +47,7 @@ export function createBuildActions({
     const mapped = mapBackendBuildToItem(updatedBuild)
     setBuildsList(prev => prev.map(item => {
       if (item.id === mapped.id) return { ...item, ...mapped }
-      if (mapped.active && item.componentId === mapped.componentId) return { ...item, active: false }
+      if (mapped.active && item.componentId === mapped.componentId) return { ...item, active: false, state: 'HISTORICA' }
       return item
     }))
     return mapped
@@ -82,13 +82,13 @@ export function createBuildActions({
         startDate,
         endDate,
         createdAt: new Date().toISOString(),
-        active: buildsList.filter(build => build.projectId === managingProjectId && build.componentId === componentId).length === 0,
+        active: false,
+        state: 'PREPARACION',
         hidden: false
       }
       setBuildsList(prev => [newBuild, ...prev])
       setBuildCaseIds(prev => ({ ...prev, [newBuild.id]: [] }))
-      if (newBuild.active) setCurrentBuildId(newBuild.id)
-      setProjectSyncMessage('Build creada en modo diseño/local.')
+      setProjectSyncMessage('Build creada en preparación en modo diseño/local. Actívala cuando esté lista.')
     }
 
     if (projectsSource === 'backend') {
@@ -107,7 +107,8 @@ export function createBuildActions({
             contexto_cambio: changeContext || null,
             fecha_inicio: fromDateTimeLocalInput(startDate),
             fecha_fin: fromDateTimeLocalInput(endDate),
-            activo: buildsList.filter(build => build.projectId === managingProjectId && build.componentId === componentId).length === 0
+            estado: 'PREPARACION',
+            activo: false
           })
         })
         if (!response.ok) {
@@ -117,8 +118,7 @@ export function createBuildActions({
         const mapped = mapBackendBuildToItem(await response.json())
         setBuildsList(prev => [mapped, ...prev])
         setBuildCaseIds(prev => ({ ...prev, [mapped.id]: [] }))
-        if (mapped.active) setCurrentBuildId(mapped.id)
-        setProjectSyncMessage('Build creada y persistida en backend.')
+        setProjectSyncMessage('Build creada en preparación y persistida en backend.')
       } catch (error: any) {
         setProjectSyncMessage(`No se pudo persistir build: ${error.message}.`)
       }
@@ -140,7 +140,7 @@ export function createBuildActions({
       try {
         const response = await fetchWithAuth(`${API_BASE}/builds/${buildId}`, {
           method: 'PATCH',
-          body: JSON.stringify({ activo: true })
+          body: JSON.stringify({ estado: 'ACTIVA', activo: true })
         })
         if (!response.ok) {
           const error = await response.json().catch(() => null)
@@ -155,7 +155,7 @@ export function createBuildActions({
     const now = new Date().toISOString()
     if (projectsSource !== 'backend') {
       setBuildsList(prev => prev.map(item => item.componentId === build.componentId
-        ? { ...item, active: item.id === buildId, startDate: item.id === buildId ? (item.startDate || now) : item.startDate }
+        ? { ...item, active: item.id === buildId, state: item.id === buildId ? 'ACTIVA' : 'HISTORICA', startDate: item.id === buildId ? (item.startDate || now) : item.startDate }
         : item
       ))
     }
@@ -175,7 +175,7 @@ export function createBuildActions({
       try {
         const response = await fetchWithAuth(`${API_BASE}/builds/${buildId}`, {
           method: 'PATCH',
-          body: JSON.stringify({ activo: false })
+          body: JSON.stringify({ estado: 'HISTORICA', activo: false })
         })
         if (!response.ok) {
           const error = await response.json().catch(() => null)
@@ -191,7 +191,7 @@ export function createBuildActions({
     const now = new Date().toISOString()
     if (projectsSource !== 'backend') {
       setBuildsList(prev => {
-        const nextBuilds = prev.map(item => item.id === buildId ? { ...item, active: false, endDate: now } : item)
+        const nextBuilds = prev.map(item => item.id === buildId ? { ...item, active: false, state: 'HISTORICA', endDate: now } : item)
         if (currentBuildId === buildId) {
           const nextActiveBuild = nextBuilds.find(item => item.projectId === build.projectId && item.componentId === build.componentId && item.active)
           setCurrentBuildId(nextActiveBuild?.id || '')

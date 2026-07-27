@@ -57,7 +57,7 @@ export function IaSchedulerModal({
         <Row className="g-0" style={{ height: '70vh' }}>
           <Col md={7} className="border-end border-light-subtle bg-white d-flex flex-column h-100">
             <div className="p-3 border-bottom bg-light">
-              <h6 className="fw-bold text-secondary mb-2 text-uppercase" style={{ fontSize: '0.8rem', letterSpacing: '0.5px' }}>Catálogo global de pruebas</h6>
+              <h6 className="fw-bold text-secondary mb-2 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>Catálogo global de pruebas</h6>
               <div className="input-group input-group-sm">
                 <span className="input-group-text bg-white text-muted border-end-0"><Search size={14} /></span>
                 <Form.Control
@@ -133,7 +133,7 @@ export function IaSchedulerModal({
           </Col>
 
           <Col md={5} className="d-flex flex-column bg-light h-100 p-4 overflow-auto">
-            <h6 className="fw-bold text-secondary mb-3 text-uppercase" style={{ fontSize: '0.8rem', letterSpacing: '0.5px' }}>
+            <h6 className="fw-bold text-secondary mb-3 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>
               Planilla de despliegue
             </h6>
 
@@ -201,4 +201,3 @@ export function IaSchedulerModal({
     </Modal>
   )
 }
-

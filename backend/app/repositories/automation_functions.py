@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 
 
 async def get_funciones_proyecto(

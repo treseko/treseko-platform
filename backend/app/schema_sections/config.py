@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from ..models import (
     AiReviewStatus,
@@ -78,6 +78,7 @@ class AuthSessionConfig(BaseModel):
 
 class EmailSmtpConfig(BaseModel):
     enabled: bool = False
+    provider: str = "smtp"
     host: str = Field(default="", max_length=255)
     port: int = Field(default=587, ge=1, le=65535)
     use_starttls: bool = True
@@ -90,10 +91,26 @@ class EmailSmtpConfig(BaseModel):
     max_attempts: int = Field(default=5, ge=1, le=20)
     default_locale: str = Field(default="es", max_length=10)
     base_url: str = Field(default="http://localhost:5173", max_length=500)
+    daily_send_limit: int = Field(default=500, ge=1, le=100000)
+    test_mode: bool = False
     password_configured: bool = False
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if str(value or "").strip().lower() != "smtp":
+            raise ValueError("El único proveedor de correo disponible actualmente es SMTP")
+        return "smtp"
+
+    @model_validator(mode="after")
+    def validate_transport_security(self):
+        if self.use_ssl and self.use_starttls:
+            raise ValueError("SSL implícito y STARTTLS no pueden usarse a la vez")
+        return self
 
 class EmailSmtpConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
+    provider: Optional[str] = Field(default=None, max_length=30)
     host: Optional[str] = Field(default=None, max_length=255)
     port: Optional[int] = Field(default=None, ge=1, le=65535)
     use_starttls: Optional[bool] = None
@@ -106,8 +123,16 @@ class EmailSmtpConfigUpdate(BaseModel):
     max_attempts: Optional[int] = Field(default=None, ge=1, le=20)
     default_locale: Optional[str] = Field(default=None, max_length=10)
     base_url: Optional[str] = Field(default=None, max_length=500)
+    daily_send_limit: Optional[int] = Field(default=None, ge=1, le=100000)
+    test_mode: Optional[bool] = None
 
-    @field_validator("host", "username", "from_name", "default_locale")
+    @model_validator(mode="after")
+    def validate_transport_security(self):
+        if self.use_ssl is True and self.use_starttls is True:
+            raise ValueError("SSL implícito y STARTTLS no pueden usarse a la vez")
+        return self
+
+    @field_validator("host", "username", "from_name", "default_locale", "provider")
     @classmethod
     def validate_no_header_control_chars(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
@@ -116,6 +141,15 @@ class EmailSmtpConfigUpdate(BaseModel):
         if any(char in text for char in ("\r", "\n", "\t")):
             raise ValueError("El valor contiene caracteres no permitidos")
         return text
+
+    @field_validator("provider")
+    @classmethod
+    def validate_update_provider(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if value.lower() != "smtp":
+            raise ValueError("El único proveedor de correo disponible actualmente es SMTP")
+        return "smtp"
 
     @field_validator("from_email")
     @classmethod

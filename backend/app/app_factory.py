@@ -182,6 +182,9 @@ async def startup_initialize_database():
         await crud.ensure_default_ai_agent_presets(db)
         await notification_event_service.ensure_notification_seeds(db)
         await send_installation_ping_once(db)
+    # The durable queue is coordinated by the backend, not by a browser tab.
+    from .services.ai_execution_queue import start_ai_execution_scheduler
+    start_ai_execution_scheduler()
 
     try:
         async with engine.connect() as conn:

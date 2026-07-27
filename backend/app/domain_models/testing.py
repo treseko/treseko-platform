@@ -83,3 +83,50 @@ class PasoPrueba(Base):
     __table_args__ = (UniqueConstraint('caso_id', 'numero_paso', name='unique_caso_paso'),)
 
     caso = relationship("CasoPrueba", back_populates="pasos")
+
+
+class CaseImportBatch(Base):
+    """Immutable summary of a case-portability import.
+
+    The source file itself is deliberately not stored in the database: it may
+    contain confidential test specifications.  Its digest and the per-item
+    result are enough to make the operation traceable and reversible.
+    """
+    __tablename__ = "case_import_batches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_tool = Column(String(80), nullable=False, index=True)
+    source_version = Column(String(80), nullable=False)
+    file_name = Column(String(255), nullable=True)
+    file_sha256 = Column(String(64), nullable=False, index=True)
+    status = Column(String(30), nullable=False, default="COMPLETED", index=True)
+    summary_json = Column(JSON, default=dict, nullable=False)
+    item_results = Column(JSON, default=list, nullable=False)
+    created_case_ids = Column(JSON, default=list, nullable=False)
+    created_suite_ids = Column(JSON, default=list, nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False, index=True)
+    rolled_back_at = Column(UTCDateTime(), nullable=True)
+    rolled_back_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+
+class CaseExternalRef(Base):
+    __tablename__ = "case_external_refs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    caso_id = Column(UUID(as_uuid=True), ForeignKey("casos_prueba.id", ondelete="CASCADE"), nullable=False, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    master_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    source_tool = Column(String(80), nullable=False, index=True)
+    external_id = Column(String(255), nullable=False)
+    external_version = Column(String(120), nullable=True)
+    content_sha256 = Column(String(64), nullable=False)
+    import_batch_id = Column(UUID(as_uuid=True), ForeignKey("case_import_batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("proyecto_id", "source_tool", "external_id", "content_sha256", name="uq_case_external_ref_content"),
+        Index("ix_case_external_ref_lookup", "proyecto_id", "source_tool", "external_id"),
+    )

@@ -393,6 +393,16 @@ export function AdminModals({
                   />
                 </Form.Group>
               </Col>
+              {!editingUserId && <Col md={6} className="d-flex align-items-end">
+                <Form.Check
+                  type="switch"
+                  id="send-welcome"
+                  label={userForm.auth === 'AD' ? 'Enviar instrucciones de acceso corporativo' : 'Enviar bienvenida y enlace para definir contraseña'}
+                  checked={!!userForm.sendWelcome}
+                  onChange={(event) => setUserForm({ ...userForm, sendWelcome: event.target.checked, saveError: '' })}
+                />
+                <div className="x-small text-muted mt-1">No se envían contraseñas por correo.</div>
+              </Col>}
               <Col md={4}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">Rol</Form.Label>

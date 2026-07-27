@@ -355,7 +355,7 @@ async def update_caso_metadata(
         detalles=update.model_dump(exclude_unset=True),
         ip_address=client_ip
     )
-    event_type = "case.archived" if update.estado == models.EstadoCaso.ARCHIVADO else "case.updated"
+    event_type = "case.archived" if update.estado_caso == models.EstadoCaso.ARCHIVADO else "case.updated"
     await _publish_case_change(event_type, updated, current_user, {"updated_fields": update.model_dump(exclude_unset=True)})
     
     return updated

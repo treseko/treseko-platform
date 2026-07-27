@@ -11,6 +11,7 @@ from .enums import *
 
 class ScheduledRun(Base):
     __tablename__ = "scheduled_runs"
+    __table_args__ = (Index("ix_scheduled_runs_suite_id", "suite_id"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)

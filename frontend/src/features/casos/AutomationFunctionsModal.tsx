@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap'
-import { Copy, Edit2, Plus, Save, Trash2 } from 'lucide-react'
+import { Code2, Copy, Edit2, Plus, Save, Trash2 } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 
@@ -49,6 +49,7 @@ export function AutomationFunctionsModal({
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null)
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
+  const isDeleteOpen = Boolean(deleteTarget)
 
   const loadFunctions = async () => {
     if (!projectId) return
@@ -179,9 +180,12 @@ export function AutomationFunctionsModal({
 
   return (
     <>
-      <Modal show={show} onHide={onHide} size="xl" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Funciones disponibles</Modal.Title>
+      <Modal show={show && !isDeleteOpen} onHide={onHide} size="xl" centered scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
+            <Code2 size={20} className="text-primary" />
+            Funciones disponibles
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <div className="d-flex gap-2 justify-content-between align-items-center mb-3">
@@ -233,9 +237,12 @@ export function AutomationFunctionsModal({
         </Modal.Body>
       </Modal>
 
-      <Modal show={formOpen} onHide={() => setFormOpen(false)} size="xl" centered>
-        <Modal.Header closeButton>
-          <Modal.Title>{form.master_id ? 'Editar funcion' : 'Nueva funcion'}</Modal.Title>
+      <Modal show={formOpen && !isDeleteOpen} onHide={() => setFormOpen(false)} size="xl" centered scrollable>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
+            <Code2 size={20} className="text-primary" />
+            {form.master_id ? 'Editar función' : 'Nueva función'}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {formError && <Alert variant="danger">{formError}</Alert>}
@@ -290,10 +297,17 @@ export function AutomationFunctionsModal({
       </Modal>
 
       <Modal show={Boolean(deleteTarget)} onHide={() => setDeleteTarget(null)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Eliminar funcion</Modal.Title>
+        <Modal.Header closeButton className="border-0 pb-2">
+          <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
+            <Trash2 size={20} className="text-danger" />
+            Eliminar función
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>Se eliminara la funcion <strong>{deleteTarget?.nombre}</strong> y sus versiones.</Modal.Body>
+        <Modal.Body>
+          <p className="mb-0">
+            Se eliminará la función <strong>{deleteTarget?.nombre}</strong> y sus versiones.
+          </p>
+        </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-secondary" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
           <Button variant="danger" onClick={deleteFunction}>Eliminar</Button>

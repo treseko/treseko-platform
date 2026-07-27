@@ -12,6 +12,8 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from .runtime_environment import IS_PRODUCTION, RUNTIME_ENVIRONMENT
+
 
 TRACE_HEADER_SKIP = "x-test-trace-skip"
 TRACE_DIR = Path(__file__).resolve().parents[2] / "logs" / "test-trace"
@@ -56,11 +58,11 @@ SENSITIVE_QUERY_RE = re.compile(
 
 
 def _runtime_environment() -> str:
-    return (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV") or "development").strip().lower()
+    return RUNTIME_ENVIRONMENT
 
 
 def _is_production_environment() -> bool:
-    return _runtime_environment() in {"prod", "production"}
+    return IS_PRODUCTION
 
 
 def trace_enabled() -> bool:

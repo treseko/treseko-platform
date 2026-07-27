@@ -17,21 +17,21 @@ treseko-platform
 cd public-release/treseko-platform
 git init -b main
 git add .
-git commit -m "chore: publish Treseko Community 0.9.0 RC"
+git commit -m "chore: publish Treseko Community 1.0.0-rc.1"
 git remote add origin git@github.com:<owner>/treseko-platform.git
 git push -u origin main
 ```
 
-3. Crea el tag de release candidate:
+3. Crea el tag de la versión publicada:
 
 ```bash
-git tag treseko-community-v0.9.0-rc.1
-git push origin treseko-community-v0.9.0-rc.1
+git tag treseko-community-v1.0.0-rc.1
+git push origin treseko-community-v1.0.0-rc.1
 ```
 
 ## Flujo recomendado
 
-- `main`: rama publica estable o release candidate.
+- `main`: rama pública estable.
 - `dev`: rama privada de desarrollo diario, si el repositorio se mantiene privado durante preparacion.
 - Tags: `treseko-community-vX.Y.Z` para releases publicos.
 

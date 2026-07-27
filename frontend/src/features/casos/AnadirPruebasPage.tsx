@@ -33,6 +33,7 @@ import { ScriptEditor } from '../../ScriptEditor'
 import { flattenSuites } from '../../testRepositoryUtils'
 import { API_BASE } from '../../app/constants'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { AutomationFunctionsModal } from './AutomationFunctionsModal'
 import { AutomationVariablesModal } from './AutomationVariablesModal'
 import { CaseTraceabilitySection } from './CaseTraceabilitySection'
@@ -283,9 +284,13 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     setPendingTraceabilityStoryIds,
     canAccessCapability
   } = props
+  const editingCaseCode = editingCasoMasterId
+    ? authoringCases.find((item: any) => String(item.masterId || item.master_id || '') === String(editingCasoMasterId))?.code
+    : ''
   const canUseCapability = canAccessCapability || (() => true)
   const canEditSuites = canUseCapability('crear_pruebas.suites', 'edit')
   const canEditCases = canUseCapability('crear_pruebas.casos', 'edit')
+  const canEditTraceability = canUseCapability('crear_pruebas.trazabilidad', 'edit')
   const canEditSteps = canUseCapability('crear_pruebas.pasos', 'edit')
   const canEditAttachments = canUseCapability('crear_pruebas.adjuntos', 'edit')
   const canEditScripts = canUseCapability('crear_pruebas.scripts', 'edit')
@@ -304,7 +309,19 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   const [scriptValidationDetails, setScriptValidationDetails] = useState<ScriptValidationDetails | null>(null)
   const [automationRunners, setAutomationRunners] = useState<any[]>([])
   const [dryRunDebugMode, setDryRunDebugMode] = useState(false)
+  const [dryRunEnvironmentId, setDryRunEnvironmentId] = useState('')
+  const [dryRunDatasetId, setDryRunDatasetId] = useState('')
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(true)
+
+  const projectEnvironments = (environments || []).filter((environment: any) => {
+    const environmentProjectId = environment?.projectId || environment?.proyecto_id || environment?.project_id
+    return !environmentProjectId || String(environmentProjectId) === String(currentProjectId)
+  })
+  const fallbackDryRunEnvironment = projectEnvironments.find((environment: any) => String(environment?.name || environment?.nombre || '').toLowerCase() === 'qa') || projectEnvironments[0]
+  const selectedDryRunEnvironment = projectEnvironments.find((environment: any) => String(environment?.id) === String(dryRunEnvironmentId)) || fallbackDryRunEnvironment
+  const dryRunDatasets = selectedDryRunEnvironment?.datasets || []
+  const fallbackDryRunDataset = dryRunDatasets.find((dataset: any) => dataset?.es_default || dataset?.isDefault) || dryRunDatasets[0]
+  const selectedDryRunDataset = dryRunDatasets.find((dataset: any) => String(dataset?.id) === String(dryRunDatasetId)) || fallbackDryRunDataset
 
   useEffect(() => {
     let cancelled = false
@@ -469,6 +486,15 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     }
   }
 
+  if (!currentProjectId) {
+    return (
+      <WorkspaceContextEmptyState
+        message="Selecciona una solución y un proyecto para continuar."
+        detail="Las suites y los casos de prueba aparecerán cuando tengas un proyecto seleccionado."
+      />
+    )
+  }
+
   return (
     <div className="authoring-page mobile-stack d-flex h-100 overflow-hidden animate__animated animate__fadeIn text-dark">
 
@@ -488,7 +514,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                       <Filter size={13} />
                       {caseArchiveView === 'archived' ? 'Archivadas' : caseArchiveView === 'all' ? 'Todas' : 'Activas'}
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="shadow-sm border-light-subtle" style={{ fontSize: '0.85rem' }}>
+                    <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
                       {[
                         ['active', 'Activas', caseArchiveCounts.active],
                         ['archived', 'Archivadas', caseArchiveCounts.archived],
@@ -557,8 +583,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
 
           {/* PANEL DERECHO: Formulario de Creación (Limpio e Informativo) */}
           <div className="authoring-content flex-grow-1 overflow-auto p-4 bg-light">
-            <Button
-              variant="outline-primary"
+                      <Button
+                        variant="outline-primary"
               size="sm"
               className="mobile-only w-100 mb-3 align-items-center justify-content-center gap-2 fw-bold"
               onClick={() => setMobileExplorerOpen(current => !current)}
@@ -655,7 +681,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                     <Col md={8}>
                       <Form.Group>
                         <Form.Label className="fw-bold x-small text-muted"><RequiredLabel required>TITULO PRINCIPAL</RequiredLabel></Form.Label>
-                        <Form.Control type="text" placeholder="Ej. Validar descarga de reporte PDF en perfil de usuario" value={newTestTitle} onChange={(e) => setNewTestTitle(e.target.value)} required className="bg-light border-light-subtle shadow-none fw-bold text-primary fs-6" />
+                        <div className="input-group"><span className="input-group-text bg-secondary-subtle text-secondary fw-semibold font-monospace" title="Código inmutable del caso">{editingCaseCode || 'TC · al guardar'}</span><Form.Control type="text" placeholder="Ej. Validar descarga de reporte PDF en perfil de usuario" value={newTestTitle} onChange={(e) => setNewTestTitle(e.target.value)} required className="bg-light border-light-subtle shadow-none fw-bold text-primary fs-6" /></div>
                       </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -729,11 +755,11 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                     </Col>
                     <Col md={3}>
                       <Form.Group>
-                        <Form.Label className="fw-bold x-small text-muted"><RequiredLabel required>MÉTODO EJECUCIÓN</RequiredLabel></Form.Label>
+                        <Form.Label className="fw-bold x-small text-muted"><RequiredLabel required>MODO</RequiredLabel></Form.Label>
                         <Form.Select required value={newTestType} onChange={(e) => setNewTestType(e.target.value)} className="bg-primary bg-opacity-10 border-primary text-primary fw-bold shadow-none">
-                          <option value="AI Agent">AI Agent (No-Code)</option>
-                          <option value="Automatizada">Automatizada (Playwright/Selenium/Cypress/Puppeteer)</option>
-                          <option value="Manual">Manual Step-by-Step</option>
+                          <option value="AI Agent">IA</option>
+                          <option value="Automatizada">Automática</option>
+                          <option value="Manual">Manual</option>
                         </Form.Select>
                       </Form.Group>
                     </Col>
@@ -779,6 +805,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                 storyIds={pendingTraceabilityStoryIds}
                 setStoryIds={setPendingTraceabilityStoryIds}
                 editable={canEditCases}
+                canConfirmRevision={canEditTraceability}
+                showFeedback={showFeedback}
               />
 
               <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
@@ -972,6 +1000,36 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                         </Button>
                       </div>
                       <div className="d-flex align-items-center gap-2">
+                        <Form.Select
+                          size="sm"
+                          value={selectedDryRunEnvironment?.id || ''}
+                          onChange={event => {
+                            setDryRunEnvironmentId(event.target.value)
+                            setDryRunDatasetId('')
+                          }}
+                          aria-label="Ambiente para dry-run"
+                          title="Ambiente y URL que usara la prueba"
+                          className="w-auto"
+                        >
+                          <option value="">Sin ambiente</option>
+                          {projectEnvironments.map((environment: any) => (
+                            <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>
+                          ))}
+                        </Form.Select>
+                        <Form.Select
+                          size="sm"
+                          value={selectedDryRunDataset?.id || ''}
+                          onChange={event => setDryRunDatasetId(event.target.value)}
+                          aria-label="Dataset para dry-run"
+                          title="Dataset que usara la prueba"
+                          className="w-auto"
+                          disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}
+                        >
+                          <option value="">Sin dataset</option>
+                          {dryRunDatasets.map((dataset: any) => (
+                            <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>
+                          ))}
+                        </Form.Select>
                         <Form.Check
                           type="switch"
                           id="dry-run-debug-mode"
@@ -996,10 +1054,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                             setScriptTesting(true)
                             setScriptTestResult(null)
                             try {
-                              const defaultEnvironment = environments?.find?.((environment: any) => uuidOrNull(environment?.id)) || null
-                              const defaultDataset = defaultEnvironment?.datasets?.find?.((dataset: any) => (dataset.es_default || dataset.isDefault) && uuidOrNull(dataset?.id))
-                                || defaultEnvironment?.datasets?.find?.((dataset: any) => uuidOrNull(dataset?.id))
-                                || null
                               const response = await fetchWithAuth(`${API_BASE}/scripts/validate/`, {
                                 method: 'POST',
                                 body: JSON.stringify({
@@ -1010,8 +1064,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                                   datos_caso: newTestData,
                                   proyecto_id: currentProjectId,
                                   component_id: newTestComponent || null,
-                                  entorno_id: uuidOrNull(defaultEnvironment?.id),
-                                  dataset_id: uuidOrNull(defaultDataset?.id),
+                                  entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
+                                  dataset_id: uuidOrNull(selectedDryRunDataset?.id),
                                   pasos: newTestSteps.map((step: any, idx: number) => ({
                                     numero_paso: idx + 1,
                                     accion: step.action || '',
@@ -1058,10 +1112,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                           disabled={!newTestScript.trim() || !workerSupportsSelectedLanguage}
                           title="Ejecuta temporalmente el script actual con un worker compatible, sin guardar historial ni requerir build"
                           onClick={() => {
-                            const defaultEnvironment = environments?.find?.((environment: any) => uuidOrNull(environment?.id)) || null
-                            const defaultDataset = defaultEnvironment?.datasets?.find?.((dataset: any) => (dataset.es_default || dataset.isDefault) && uuidOrNull(dataset?.id))
-                              || defaultEnvironment?.datasets?.find?.((dataset: any) => uuidOrNull(dataset?.id))
-                              || null
                             onRunSavedAutomatedCase?.({
                               script_automatizado: newTestScript,
                               framework: newTestFramework || 'playwright',
@@ -1071,8 +1121,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                               titulo: newTestTitle || 'Prueba temporal del editor',
                               codigo: 'DRY-RUN',
                               datos_caso: newTestData || '',
-                              entorno_id: uuidOrNull(defaultEnvironment?.id),
-                              dataset_id: uuidOrNull(defaultDataset?.id),
+                              entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
+                              dataset_id: uuidOrNull(selectedDryRunDataset?.id),
                               debug_mode: dryRunDebugMode,
                               pasos: newTestSteps.map((step: any, index: number) => ({
                                 numero_paso: index + 1,
@@ -1097,47 +1147,49 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                   <Card.Body className="p-3 d-flex justify-content-between align-items-center">
                     <div>
                       <div className="fw-bold text-dark d-flex align-items-center gap-2">
-                        <Cpu size={18} className="text-primary" /> Testear prueba manual con IA
+                        <Cpu size={18} className="text-primary" /> Ejecutar prueba con IA
                       </div>
-                      <div className="small text-muted">
-                        Ejecuta un dry-run temporal con el Motor IA. No guarda historial, evidencias ni cambios del caso.
-                      </div>
+                      <div className="small text-muted">Muestra pasos, capturas y observaciones del Motor IA en tiempo real. No guarda historial.</div>
                     </div>
-                    <Button
+                    <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                      <span className="x-small text-muted fw-bold">CONTEXTO IA</span>
+                      <Form.Select size="sm" value={selectedDryRunEnvironment?.id || ''} onChange={event => { setDryRunEnvironmentId(event.target.value); setDryRunDatasetId('') }} aria-label="Ambiente para prueba con IA" title="Ambiente y URL que usara la IA" className="w-auto">
+                        <option value="">Sin ambiente</option>
+                        {projectEnvironments.map((environment: any) => <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>)}
+                      </Form.Select>
+                      <Form.Select size="sm" value={selectedDryRunDataset?.id || ''} onChange={event => setDryRunDatasetId(event.target.value)} aria-label="Dataset para prueba con IA" title="Dataset que usara la IA" className="w-auto" disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}>
+                        <option value="">Sin dataset</option>
+                        {dryRunDatasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>)}
+                      </Form.Select>
+                      <Button
                       variant="outline-primary"
                       size="sm"
                       className="fw-bold shadow-none"
                       disabled={aiDryRunRunning || !newTestTitle.trim() || newTestSteps.length === 0}
-                      onClick={() => {
-                        if (aiDryRunRunning) return
-                        const defaultEnvironment = environments?.find?.((environment: any) => uuidOrNull(environment?.id)) || null
-                        const defaultDataset = defaultEnvironment?.datasets?.find?.((dataset: any) => (dataset.es_default || dataset.isDefault) && uuidOrNull(dataset?.id))
-                          || defaultEnvironment?.datasets?.find?.((dataset: any) => uuidOrNull(dataset?.id))
-                          || null
-                        onRunAiDryRunFromEditor?.({
-                          proyecto_id: uuidOrNull(currentProjectId) || currentProjectId,
-                          componente_id: uuidOrNull(newTestComponent),
-                          titulo: newTestTitle || 'Prueba temporal con IA',
-                          codigo: 'AI-DRY-RUN',
-                          descripcion: newTestDescription || '',
-                          precondiciones: newTestPre || '',
-                          postcondiciones: newTestPost || '',
-                          datos_caso: newTestData || '',
-                          entorno_id: uuidOrNull(defaultEnvironment?.id),
-                          dataset_id: uuidOrNull(defaultDataset?.id),
-                          debug_mode: true,
-                          pasos: newTestSteps.map((step: any, index: number) => ({
-                            numero_paso: index + 1,
-                            accion: step.action || '',
-                            datos: step.data || '',
-                            resultado_esperado: step.expected || ''
-                          }))
-                        })
-                      }}
+                      onClick={() => onRunAiDryRunFromEditor?.({
+                        proyecto_id: uuidOrNull(currentProjectId) || currentProjectId,
+                        componente_id: uuidOrNull(newTestComponent),
+                        titulo: newTestTitle || 'Prueba temporal con IA',
+                        codigo: 'AI-DRY-RUN',
+                        descripcion: newTestDescription || '',
+                        precondiciones: newTestPre || '',
+                        postcondiciones: newTestPost || '',
+                        datos_caso: newTestData || '',
+                        entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
+                        dataset_id: uuidOrNull(selectedDryRunDataset?.id),
+                        debug_mode: false,
+                        pasos: newTestSteps.map((step: any, index: number) => ({
+                          numero_paso: index + 1,
+                          accion: step.action || '',
+                          datos: step.data || '',
+                          resultado_esperado: step.expected || ''
+                        }))
+                      })}
                     >
                       {aiDryRunRunning ? <RefreshCw size={14} className="me-1 animate-pulse" /> : <PlayCircle size={14} className="me-1" />}
-                      {aiDryRunRunning ? 'Ejecutando...' : 'Dry-run IA'}
-                    </Button>
+                      {aiDryRunRunning ? 'Iniciando...' : 'Ejecutar con IA'}
+                      </Button>
+                    </div>
                   </Card.Body>
                 </Card>
               )}

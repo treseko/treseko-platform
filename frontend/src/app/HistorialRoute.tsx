@@ -27,6 +27,7 @@ export function HistorialRoute(props: HistorialRouteProps) {
   return (
     <>
     <HistorialRunsPage
+      currentProjectId={props.currentProjectId}
       currentProjectRunHistory={props.currentProjectRunHistory}
       getStatusColor={props.getStatusColor}
       buildsList={props.buildsList}
@@ -40,6 +41,7 @@ export function HistorialRoute(props: HistorialRouteProps) {
       onLoadRunDetail={props.loadTestRunDetail}
       onMarkAiReviewed={canReviewIa ? props.markHistorialAiReviewed : undefined}
       onOpenEvidence={openEvidence}
+      isEvidenceViewerOpen={Boolean(viewerEvidence)}
       canViewDetail={canViewDetail}
       canViewEvidence={canViewEvidence}
       fetchWithAuth={props.fetchWithAuth}

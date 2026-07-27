@@ -4,6 +4,8 @@ export function createExecutionDryRunActions({
   currentProjectId,
   fetchWithAuth,
   setAutomationMonitor,
+  aiDryRunInFlightRef,
+  setAiDryRunRunning,
   setIaLogs,
   showFeedback,
   stringifyFeedbackMessage,
@@ -57,8 +59,11 @@ export function createExecutionDryRunActions({
   }
 
   const handleRunAiDryRunFromEditor = async (draft: any = {}) => {
+    if (aiDryRunInFlightRef?.current) return
+    if (aiDryRunInFlightRef) aiDryRunInFlightRef.current = true
+    setAiDryRunRunning?.(true)
     try {
-      const response = await fetchWithAuth(`${API_BASE}/ai-engine/dry-run`, {
+      const response = await fetchWithAuth(`${API_BASE}/ai-engine/dry-run/start`, {
         method: 'POST',
         body: JSON.stringify({
           proyecto_id: draft.proyecto_id || currentProjectId,
@@ -82,17 +87,23 @@ export function createExecutionDryRunActions({
       setAutomationMonitor({
         show: true,
         mode: 'dry-run',
-        run: { id: `ai-dry-run-${Date.now()}`, nombre: 'Prueba temporal con IA' },
+        run: { id: result.run_id, nombre: 'Prueba temporal con IA' },
         jobs: [{
+          jobId: result.run_id,
+          progressRunId: result.run_id,
           caseCode: draft.codigo || 'AI-DRY-RUN',
           caseTitle: draft.titulo || 'Prueba temporal con IA',
-          status: result.status === 'PASO' ? 'PASSED' : result.status === 'BLOQUEADO' ? 'BLOCKED' : 'FAILED',
+          caseSteps: Array.isArray(draft.pasos) ? draft.pasos : [],
+          status: 'RUNNING',
           framework: 'ia',
           language: 'agent',
-          logs: result.logs || result.observations || result.error_message,
-          duration_seconds: result.duration_seconds,
+          logs: 'Conectando con el Motor IA...',
           metadata_resultado: {
             observations: result.observations,
+            error_message: result.error_message,
+            provider: result.metadata?.provider,
+            model: result.metadata?.model,
+            ai_report: result.ai_report || {},
             steps: result.steps || [],
             artifacts: result.final_screenshot_base64 ? [{
               type: 'screenshot',
@@ -115,6 +126,9 @@ export function createExecutionDryRunActions({
         stringifyFeedbackMessage(error?.message || error || 'No se pudo ejecutar la prueba temporal con IA.'),
         'danger'
       )
+    } finally {
+      if (aiDryRunInFlightRef) aiDryRunInFlightRef.current = false
+      setAiDryRunRunning?.(false)
     }
   }
 

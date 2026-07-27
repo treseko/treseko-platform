@@ -1,7 +1,7 @@
 import { Badge, Button, Col, Form, Row, Tab, Tabs } from 'react-bootstrap'
 import { PlayCircle } from 'lucide-react'
 import { getAgentUiMeta } from '../../../../modules/ai-workflow/config/agent-ui.config'
-import type { AiWorkflowEdge, AiWorkflowNode } from '../../types/configuracion'
+import type { AiAgentPreset, AiWorkflowEdge, AiWorkflowNode } from '../../types/configuracion'
 import { safeJson, workflowConditionOptions, workflowTypeOptions } from '../../mappers/configuracionMappers'
 
 type SelectedWorkflowElement = { type: 'node' | 'edge', id: string } | null
@@ -15,6 +15,7 @@ type Props = {
   setWorkflowPropertiesTab: (tab: string) => void
   updateWorkflowNode: (nodeId: string, patch: Partial<AiWorkflowNode>) => void
   updateWorkflowNodeConfig: (nodeId: string, patch: Record<string, any>) => void
+  agentDefinitions: AiAgentPreset[]
   updateWorkflowEdge: (edgeId: string, patch: Partial<AiWorkflowEdge>) => void
   workflowJsonError: string
   setWorkflowJsonError: (error: string) => void
@@ -30,12 +31,21 @@ export function WorkflowPropertiesPanel({
   setWorkflowPropertiesTab,
   updateWorkflowNode,
   updateWorkflowNodeConfig,
+  agentDefinitions,
   updateWorkflowEdge,
   workflowJsonError,
   setWorkflowJsonError,
   closeWorkflowProperties,
 }: Props) {
   if (!selectedWorkflowNode && !selectedWorkflowEdge) return null
+  const agentDefinition = selectedWorkflowNode?.agent_definition_id
+    ? agentDefinitions.find(item => item.agent_definition_id === selectedWorkflowNode.agent_definition_id)
+    : undefined
+  const schemaProperties = agentDefinition?.config_schema_json?.properties || {}
+  const runtimeMetadata = agentDefinition?.ui_metadata_json || {}
+  const universalContract = selectedWorkflowNode?.universal_agent?.contract
+  const universalStrategy = universalContract?.implementation?.editable_strategy
+  const promptOperational = universalStrategy === 'prompt' || universalStrategy === 'hybrid'
 
   return (
     <aside className="workflow-properties">
@@ -65,21 +75,65 @@ export function WorkflowPropertiesPanel({
                 <Form.Check type="switch" label="Activo" checked={selectedWorkflowNode.enabled !== false} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { enabled: event.target.checked })} />
                 <Row className="g-2">
                   <Col md={6}><Form.Label>Timeout</Form.Label><Form.Control type="number" min={1} value={selectedWorkflowNode.timeout_sec || 60} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { timeout_sec: Number(event.target.value) })} /></Col>
-                  <Col md={6}><Form.Label>Temperatura</Form.Label><Form.Control type="number" min={0} max={2} step={0.1} value={selectedWorkflowNode.temperature_override ?? ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { temperature_override: event.target.value === '' ? null : Number(event.target.value) })} /></Col>
+                  {!universalContract && <Col md={6}><Form.Label>Temperatura</Form.Label><Form.Control type="number" min={0} max={2} step={0.1} value={selectedWorkflowNode.temperature_override ?? ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { temperature_override: event.target.value === '' ? null : Number(event.target.value) })} /></Col>}
                 </Row>
-                <Form.Label>Modelo personalizado</Form.Label>
-                <Form.Control value={selectedWorkflowNode.model_override || ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { model_override: event.target.value || null })} />
+                {!universalContract && <><Form.Label>Modelo personalizado</Form.Label><Form.Control value={selectedWorkflowNode.model_override || ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { model_override: event.target.value || null })} /></>}
+                {universalContract && <div className="small text-muted mt-2">Este nodo usa el perfil y modelo único configurado en el workflow.</div>}
               </div>
             </Tab>
             <Tab eventKey="prompt" title="Prompt">
               <div className="workflow-tab-pane">
+                {universalContract && <div className="border rounded-2 p-2 mb-3 small">
+                  <div className="fw-bold">{promptOperational ? 'Prompt complementario u operativo' : universalStrategy === 'rules' ? 'Reglas operativas' : 'Implementación nativa'}</div>
+                  <div className="text-muted mt-1">{promptOperational ? 'Las instrucciones se combinan con la política segura del contrato; no pueden ampliar permisos.' : 'Este agente se ejecuta con un adaptador registrado. El texto no reemplaza su lógica ni habilita código arbitrario.'}</div>
+                </div>}
                 <Form.Label>Prompt template</Form.Label>
-                <Form.Control className="workflow-prompt-editor" as="textarea" rows={12} value={selectedWorkflowNode.prompt_template || ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { prompt_template: event.target.value })} />
+                <Form.Control className="workflow-prompt-editor" as="textarea" rows={12} value={selectedWorkflowNode.prompt_template || ''} disabled={!canEditAi || Boolean(universalContract && !promptOperational)} onChange={(event) => updateWorkflowNode(selectedWorkflowNode.id, { prompt_template: event.target.value })} />
                 {canEditAi && <Button variant="outline-primary" size="sm" type="button" className="fw-bold" disabled><PlayCircle size={14} className="me-1" /> Probar con ultimo snapshot</Button>}
               </div>
             </Tab>
+            <Tab eventKey="implementation" title="Implementacion">
+              <div className="workflow-tab-pane small">
+                {universalContract && <div className="border rounded-2 p-2 mb-3">
+                  <div className="fw-bold">{universalContract.implementation?.native_adapter || 'Adaptador universal'}</div>
+                  <div className="text-muted mt-1">Contrato {selectedWorkflowNode.universal_agent?.version} · {universalContract.implementation?.editable_strategy || 'none'}</div>
+                </div>}
+                <div className="border rounded-2 p-2 mb-3">
+                  <div className="fw-bold">{runtimeMetadata.implementation || 'Implementacion configurable'}</div>
+                  <div className="text-muted mt-1">{runtimeMetadata.source_module || 'Este bloque usa una estrategia declarativa o un script sandboxed.'}</div>
+                </div>
+                {runtimeMetadata.block_contract && (
+                  <div className="border rounded-2 p-2 mb-3">
+                    <div className="fw-bold">Contrato {runtimeMetadata.block_contract}</div>
+                    <div className="text-muted mt-1">Puertos: entrada, éxito, fallo, bloqueo y reintento. Las conexiones se validan antes de publicar.</div>
+                  </div>
+                )}
+                <Form.Label>Estrategia editable</Form.Label>
+                <Form.Control readOnly value={runtimeMetadata.editable_strategy === 'prompt' ? 'Prompt y configuracion' : runtimeMetadata.editable_strategy === 'rules' ? 'Reglas, configuracion y conexiones' : runtimeMetadata.editable_strategy === 'sandbox_script' ? 'Script sandboxed, configuracion y conexiones' : 'Configuracion y conexiones'} />
+                <div className="text-muted mt-3">
+                  El codigo nativo se ejecuta desde una allowlist del motor. No se permite TypeScript arbitrario en el host; para logica propia usa un bloque Script Agent con permisos limitados.
+                </div>
+              </div>
+            </Tab>
+            {universalContract && <Tab eventKey="contract" title="Contrato">
+              <div className="workflow-tab-pane small d-flex flex-column gap-3">
+                <div><div className="text-muted x-small text-uppercase fw-bold">Identidad</div><div>{universalContract.key} · v{universalContract.version}</div></div>
+                <div><div className="text-muted x-small text-uppercase fw-bold">Capabilities permitidas</div><div className="d-flex flex-wrap gap-1 mt-1">{(universalContract.capabilities || []).map((capability: string) => <Badge key={capability} bg="light" text="dark" className="border">{capability}</Badge>)}</div></div>
+                <div><div className="text-muted x-small text-uppercase fw-bold">Puertos de control</div><div>{(universalContract.ports?.control_inputs || []).join(', ')} → {(universalContract.ports?.control_outputs || []).join(', ')}</div></div>
+                <div><div className="text-muted x-small text-uppercase fw-bold">Seguridad</div><div>No permite shell, filesystem, red privada ni código arbitrario.</div></div>
+              </div>
+            </Tab>}
             <Tab eventKey="config" title="Config">
               <div className="workflow-tab-pane">
+                {agentDefinition && (
+                  <div className="border rounded-2 p-2 mb-3 small">
+                    <div className="d-flex align-items-center justify-content-between gap-2">
+                      <span className="fw-bold">{agentDefinition.name}</span>
+                      <Badge bg={agentDefinition.status === 'operational' ? 'success' : agentDefinition.status === 'experimental' ? 'warning' : 'secondary'}>{agentDefinition.status}</Badge>
+                    </div>
+                    <div className="text-muted x-small">{agentDefinition.description || 'Bloque del catalogo de agentes.'}</div>
+                  </div>
+                )}
                 <Form.Label>Retry policy JSON</Form.Label>
                 <Form.Control as="textarea" rows={4} defaultValue={safeJson(selectedWorkflowNode.retry_policy)} disabled={!canEditAi} onBlur={(event) => {
                   try { updateWorkflowNode(selectedWorkflowNode.id, { retry_policy: JSON.parse(event.target.value || '{}') }); setWorkflowJsonError('') } catch { setWorkflowJsonError('Retry policy JSON invalido') }
@@ -88,6 +142,14 @@ export function WorkflowPropertiesPanel({
                 <Form.Control as="textarea" rows={5} defaultValue={safeJson(selectedWorkflowNode.config_json)} disabled={!canEditAi} onBlur={(event) => {
                   try { updateWorkflowNode(selectedWorkflowNode.id, { config_json: JSON.parse(event.target.value || '{}') }); setWorkflowJsonError('') } catch { setWorkflowJsonError('Config JSON invalido') }
                 }} />
+                {Object.entries(schemaProperties).map(([key, definition]: [string, any]) => {
+                  const value = selectedWorkflowNode.config_json?.[key]
+                  const label = definition?.label || key.replace(/_/g, ' ')
+                  if (definition?.type === 'boolean') return <Form.Check key={key} className="mt-2" type="switch" label={label} checked={Boolean(value)} disabled={!canEditAi} onChange={(event) => updateWorkflowNodeConfig(selectedWorkflowNode.id, { [key]: event.target.checked })} />
+                  if (Array.isArray(definition?.enum)) return <><Form.Label key={`${key}-label`}>{label}</Form.Label><Form.Select key={key} value={value || ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNodeConfig(selectedWorkflowNode.id, { [key]: event.target.value })}><option value="">Seleccionar</option>{definition.enum.map((option: string) => <option key={option} value={option}>{option}</option>)}</Form.Select></>
+                  if (definition?.type === 'object' || definition?.type === 'array') return <><Form.Label key={`${key}-label`}>{label} JSON</Form.Label><Form.Control key={key} as="textarea" rows={3} defaultValue={safeJson(value || (definition?.type === 'array' ? [] : {}))} disabled={!canEditAi} onBlur={(event) => { try { updateWorkflowNodeConfig(selectedWorkflowNode.id, { [key]: JSON.parse(event.target.value || (definition?.type === 'array' ? '[]' : '{}')) }); setWorkflowJsonError('') } catch { setWorkflowJsonError(`${label} JSON invalido`) } }} /></>
+                  return <><Form.Label key={`${key}-label`}>{label}</Form.Label><Form.Control key={key} type={definition?.type === 'integer' || definition?.type === 'number' ? 'number' : 'text'} value={value ?? ''} disabled={!canEditAi} onChange={(event) => updateWorkflowNodeConfig(selectedWorkflowNode.id, { [key]: definition?.type === 'integer' || definition?.type === 'number' ? Number(event.target.value) : event.target.value })} /></>
+                })}
                 {['llm_agent', 'rule_agent', 'webhook_agent', 'script_agent', 'validator_agent', 'reporter_agent', 'browser_action_agent'].includes(selectedWorkflowNode.type) && (
                   <>
                     <Form.Label>Input mapping JSON</Form.Label>
@@ -134,6 +196,10 @@ export function WorkflowPropertiesPanel({
           <Form.Label className="x-small text-muted fw-bold text-uppercase">Condition JSON</Form.Label>
           <Form.Control as="textarea" rows={5} defaultValue={safeJson(selectedWorkflowEdge.condition_json)} disabled={!canEditAi} onBlur={(event) => {
             try { updateWorkflowEdge(selectedWorkflowEdge.id, { condition_json: JSON.parse(event.target.value || '{}') }); setWorkflowJsonError('') } catch { setWorkflowJsonError('Condition JSON invalido') }
+          }} />
+          <Form.Label className="x-small text-muted fw-bold text-uppercase">Mapeo de datos JSON</Form.Label>
+          <Form.Control as="textarea" rows={4} defaultValue={safeJson(selectedWorkflowEdge.data_mapping_json || [])} disabled={!canEditAi} onBlur={(event) => {
+            try { updateWorkflowEdge(selectedWorkflowEdge.id, { data_mapping_json: JSON.parse(event.target.value || '[]') }); setWorkflowJsonError('') } catch { setWorkflowJsonError('Mapeo de datos JSON invalido') }
           }} />
         </div>
       )}

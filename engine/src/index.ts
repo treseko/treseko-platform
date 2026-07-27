@@ -1,14 +1,27 @@
 import { Command } from 'commander';
 import dotenv from 'dotenv';
-import { AIClient } from './ai/client.ts';
+import { AIClient, type AIResult } from './ai/client.ts';
+import { OpenCodeDriver } from './ai/opencode-driver.ts';
 import { BrowserController } from './automation/browser.ts';
 import { ReportGenerator } from './automation/report-generator.ts';
 import { TraceLogger } from './automation/trace-logger.ts';
 import { runQaSteps } from './automation/step-runner.ts';
+import { interpretStepData } from './automation/context-data-interpreter.ts';
+import { planExecutionValidation } from './automation/execution-validation-planner.ts';
 import type { BackendStatus, QAEngineStep } from './automation/action-types.ts';
 import { executeWorkflowGraph, type WorkflowDefinition, type WorkflowTrace } from './ai/workflow.ts';
+import { compileBlockWorkflow } from './ai/block-workflow.ts';
+import { validateWorkflowRuntime } from './ai/agent-registry.ts';
 import { runLlmAgent, runReporterAgent, runRuleAgent, runScriptAgent, runValidatorAgent, runWebhookAgent } from './ai/custom-agents.ts';
 import { ENGINE_LOCAL_EVIDENCE_ENABLED, ENGINE_NAME, ENGINE_VERSION } from './runtime-config.ts';
+import {
+  buildAuditEvidence,
+  normalizeAuditDecision,
+  resolveAuditConsensus,
+  type AuditConsensus,
+  type AuditDecision,
+  type AuditEvidenceBundle,
+} from './audit/consensus.ts';
 import WebSocket from 'ws';
 
 dotenv.config({ override: false });
@@ -57,6 +70,12 @@ type EngineRunResult = {
     observations?: string;
     error_log?: string;
     screenshot_base64?: string;
+    agent?: string;
+    failure_category?: string;
+    reason?: string;
+    action_summary?: string;
+    action_executed?: boolean;
+    url?: string;
   }>;
   visited_urls?: string[];
   errors?: string[];
@@ -115,10 +134,16 @@ function sumMetricsFromTimeline(timeline: AgentTimelineEvent[]): Record<string, 
   });
 }
 
-function buildBackendWsUrl(executionId: string, engineWsToken?: string, callbackUrl?: string): string {
-  const wsBase = backendWsUrlFromPublicUrl(callbackUrl) || BACKEND_WS_URL;
+function buildBackendWsUrl(executionId: string, engineWsToken?: string, callbackToken?: string, callbackUrl?: string, progressWsUrl?: string): string {
+  const wsBase = progressWsUrl || BACKEND_WS_URL || backendWsUrlFromPublicUrl(callbackUrl) || 'ws://localhost:8000/ws/engine-sync';
+  if (progressWsUrl) {
+    const token = engineWsToken || callbackToken || BACKEND_WS_TOKEN;
+    if (!token || progressWsUrl.includes('callback_token=')) return progressWsUrl;
+    const separator = progressWsUrl.includes('?') ? '&' : '?';
+    return `${progressWsUrl}${separator}callback_token=${encodeURIComponent(token)}`;
+  }
   const base = `${wsBase}/${encodeURIComponent(executionId)}`;
-  const token = engineWsToken || BACKEND_WS_TOKEN;
+  const token = engineWsToken || callbackToken || BACKEND_WS_TOKEN;
   if (!token) return base;
   const separator = base.includes('?') ? '&' : '?';
   const paramName = engineWsToken ? 'engine_token' : 'callback_token';
@@ -150,13 +175,24 @@ function firstStepUrl(steps?: QAEngineStep[]): string {
 }
 
 function compactHistoryItem(item: any): Record<string, any> {
+  const compactObservation = (observation: any) => observation ? {
+    url: observation.url,
+    title: observation.title,
+    readyState: observation.readyState,
+    loadingSignals: Array.isArray(observation.loadingSignals) ? observation.loadingSignals.slice(0, 10) : [],
+    visibleText: Array.isArray(observation.visibleText) ? observation.visibleText.slice(0, 20) : [],
+    bodyTextExcerpt: typeof observation.bodyText === 'string' ? observation.bodyText.slice(0, 1200) : undefined,
+    elementCount: Array.isArray(observation.elements) ? observation.elements.length : undefined,
+  } : undefined;
   return {
     step_number: item.step_number,
     attempt: item.attempt,
     action: item.action,
     execution: item.execution,
     validation: item.validation,
-    observation_before: item.observation_before,
+    post_validation: item.post_validation,
+    observation_before: compactObservation(item.observation_before),
+    observation_after: compactObservation(item.observation_after),
     duration_ms: item.duration_ms,
     screenshot_available: Boolean(item.screenshot_base64),
     metrics: item.metrics,
@@ -221,8 +257,9 @@ function compactWorkflowTrace(trace: WorkflowTrace): Record<string, any> {
   };
 }
 
-function failureCategory(status: BackendStatus, errors: string[]): string | undefined {
+function failureCategory(status: BackendStatus, errors: string[], failedAssertions = 0): string | undefined {
   if (status === 'PASO') return undefined;
+  if (failedAssertions > 0) return 'assertion_failed';
   const text = errors.join(' ').toLowerCase();
   if (text.includes('url') || text.includes('navigate') || text.includes('goto')) return 'navigation_error';
   if (text.includes('target') || text.includes('visible') || text.includes('element')) return 'target_not_found';
@@ -238,26 +275,52 @@ function buildAiReport(args: {
   status: BackendStatus;
   durationSeconds: number;
   validation: { status: string; reason: string; confidence: number };
+  auditDecision: AuditDecision;
+  consensusDecision: AuditConsensus;
+  auditEvidence: AuditEvidenceBundle;
+  visualAuditUsed: boolean;
   runResult?: Awaited<ReturnType<typeof runQaSteps>>;
   resultSteps: EngineRunResult['steps'];
   errors: string[];
   startedAt: number;
-  url?: string;
-  finalScreenshotBase64?: string;
+  url?: string | undefined;
+  finalScreenshotBase64?: string | undefined;
   timeline?: AgentTimelineEvent[];
   workflowTraces?: WorkflowTrace[];
   parameters?: Record<string, any>;
 }): Record<string, any> {
   const stepConfidences = args.runResult?.steps.map((step) => step.confidence) || [];
-  const confidence = averageConfidence([args.validation.confidence, ...stepConfidences]);
-  const category = failureCategory(args.status, args.errors);
+  const confidence = averageConfidence([args.consensusDecision.confidence, ...stepConfidences]);
+  const category = failureCategory(args.status, args.errors, args.auditEvidence.summary.failed_assertions);
+  const deterministicDecision = args.auditEvidence.summary.failed_assertions > 0
+    || (
+      args.auditEvidence.steps.length > 0
+      && args.auditEvidence.steps.every((step) => (
+        step.technical_status === 'PASO'
+        && step.attempts.some((attempt) => attempt.validation_conclusive && attempt.validation_ok)
+      ))
+    );
   const consensusSignals = {
-    technical: args.errors.length === 0 ? 'PASO' : args.status,
+    technical: args.auditEvidence.technical_status,
     visual_audit: normalizeAuditStatus(args.validation.status),
     final: args.status,
+    resolution: args.consensusDecision.resolution,
+  };
+  const visualAudit = {
+    enabled: args.visualAuditUsed,
+    status: args.visualAuditUsed ? normalizeAuditStatus(args.auditDecision.status) : 'NO_APLICADA',
+    confidence: args.visualAuditUsed ? args.auditDecision.confidence : null,
+    evidence_refs: args.visualAuditUsed ? args.auditDecision.evidence_refs : [],
+    reason: args.visualAuditUsed ? args.auditDecision.reason : 'El resultado se resolvio sin consultar un modelo de vision.',
   };
   const timeline = args.timeline || [];
   const metrics = sumMetricsFromTimeline(timeline);
+  const checkpoints = args.runResult?.checkpoints || [];
+  const contractSteps = args.runResult?.steps || [];
+  const fullContracts = contractSteps.filter((step) => step.contract?.coverage === 'full').length;
+  const partialContracts = contractSteps.filter((step) => step.contract?.coverage === 'partial').length;
+  const semanticContracts = contractSteps.filter((step) => step.contract?.requires_semantic_audit).length;
+  const totalAttempts = contractSteps.reduce((total, step) => total + step.history.length, 0);
   const workflowDefinition = (args.parameters || {}).workflow_definition || null;
   const workflowMeta = workflowDefinition?.workflow || null;
   const workflowNodes = (workflowDefinition?.nodes || []).map(compactWorkflowNode);
@@ -279,8 +342,6 @@ function buildAiReport(args: {
     reason: trace.output_json?.reason,
     confidence: trace.output_json?.confidence,
     metrics: trace.metrics_json,
-    input_json: trace.input_json,
-    output_json: trace.output_json,
     started_at: trace.started_at,
     ended_at: trace.ended_at,
   }));
@@ -296,16 +357,22 @@ function buildAiReport(args: {
   };
   return {
     schema_version: 1,
+    decision_contract_version: 3,
     execution_id: args.testId,
     suite: args.suite,
-    summary: args.validation.reason,
+    summary: args.consensusDecision.reason,
     status: args.status,
     duration_seconds: args.durationSeconds,
     confidence,
     consensus: args.status,
     consensus_signals: consensusSignals,
+    visual_audit: visualAudit,
     failure_category: category,
-    human_review_required: args.status !== 'PASO' || confidence < 70,
+    human_review_required: args.consensusDecision.human_review_required,
+    decision_mode: deterministicDecision ? 'deterministic_assertions' : 'ai_audit',
+    audit_decision: args.auditDecision,
+    audit_evidence: args.auditEvidence,
+    evidence_summary: args.auditEvidence.summary,
     started_at: new Date(args.startedAt).toISOString(),
     ended_at: new Date().toISOString(),
     model: args.model,
@@ -325,7 +392,18 @@ function buildAiReport(args: {
     metrics: {
       ...metrics,
       duration_seconds: args.durationSeconds,
-      avg_latency_ms: metrics.aiCalls ? Math.round(metrics.latencyMs / metrics.aiCalls) : 0,
+      avg_latency_ms: metrics.aiCalls ? Math.round(Number(metrics.latencyMs || 0) / metrics.aiCalls) : 0,
+      reliability: {
+        contract_coverage_percent: contractSteps.length ? Math.round((fullContracts / contractSteps.length) * 100) : 0,
+        full_contract_steps: fullContracts,
+        partial_contract_steps: partialContracts,
+        semantic_audit_steps: semanticContracts,
+        attempts: totalAttempts,
+        retries: Math.max(0, totalAttempts - contractSteps.length),
+        checkpoint_count: checkpoints.length,
+        terminal_step_count: contractSteps.length,
+        completed_step_count: contractSteps.filter((step) => ['PASO', 'FALLO', 'BLOQUEADO'].includes(step.status)).length,
+      },
     },
     timeline,
     workflow_traces: compactTraces,
@@ -335,7 +413,7 @@ function buildAiReport(args: {
     initial_url: args.url,
     visited_urls: args.runResult?.visited_urls || [],
     errors: args.errors,
-    final_result: args.validation.reason,
+    final_result: args.consensusDecision.reason,
     steps: (args.runResult?.steps || []).map((step) => ({
       number: step.number,
       status: step.status,
@@ -345,6 +423,8 @@ function buildAiReport(args: {
       attempts: step.history.map((item) => ({
         ...compactHistoryItem(item),
       })),
+      contract: step.contract,
+      checkpoints: step.checkpoints,
     })),
     screenshots: {
       final_available: Boolean(args.finalScreenshotBase64),
@@ -391,7 +471,7 @@ export async function runTask(
     headless?: boolean;
     viewport?: { width: number; height: number };
     io?: any;
-    aiConfig?: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number };
+    aiConfig?: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxRetries?: number; fallbacks?: Array<{ provider?: string; llm_endpoint?: string; endpoint?: string; model?: string; provider_api_key?: string; apiKey?: string; max_retries?: number }>; executionDriver?: 'treseko_engine' | 'opencode'; opencodeUrl?: string; opencodeUsername?: string; opencodePassword?: string; opencodeModel?: string; opencodeAgent?: string; opencodeTimeoutMs?: number };
     steps?: QAEngineStep[];
     contextData?: Record<string, any>;
     agentWorkflow?: Array<Record<string, any>>;
@@ -399,11 +479,13 @@ export async function runTask(
     timeoutSeconds?: number;
     caseId?: string;
     engineWsToken?: string;
+    callbackToken?: string;
     callbackUrl?: string;
+    progressWsUrl?: string;
   } = {}
 ): Promise<EngineRunResult> {
   const startedAt = Date.now();
-  const ws = new WebSocket(buildBackendWsUrl(testId, options.engineWsToken, options.callbackUrl));
+  const ws = new WebSocket(buildBackendWsUrl(testId, options.engineWsToken, options.callbackToken, options.callbackUrl, options.progressWsUrl));
   let backendWsReady = false;
   const pendingWsMessages: string[] = [];
   const backendWsEventType = (event: string): string => {
@@ -471,7 +553,19 @@ export async function runTask(
   };
 
   const browser = new BrowserController();
-  const ai = new AIClient({ ...(options.aiConfig || {}), agentWorkflow: options.agentWorkflow });
+  const opencode = options.aiConfig?.executionDriver === 'opencode'
+    ? new OpenCodeDriver({ baseUrl: options.aiConfig.opencodeUrl, username: options.aiConfig.opencodeUsername, password: options.aiConfig.opencodePassword, apiKey: options.aiConfig.apiKey, provider: options.aiConfig.provider, model: options.aiConfig.opencodeModel || options.aiConfig.model, agent: options.aiConfig.opencodeAgent, timeoutMs: options.aiConfig.opencodeTimeoutMs })
+    : undefined;
+  if (opencode) {
+    const health = await opencode.ensureAvailable();
+    if (health.status !== 'ok') throw new Error(`OPENCODE_UNAVAILABLE: ${health.detail || 'servidor local no disponible'}`);
+    await opencode.startRun({ runId: testId, prompt: task, model: options.aiConfig?.opencodeModel, agent: options.aiConfig?.opencodeAgent });
+  }
+  const ai = new AIClient({
+    ...(options.aiConfig || {}),
+    ...(options.agentWorkflow ? { agentWorkflow: options.agentWorkflow } : {}),
+    ...(opencode ? { agentDriver: opencode, agentRunId: testId } : {}),
+  });
   const report = createRunReport(task, testId, suite, manualSteps);
   const logger = new TraceLogger(suite, testId, ai.model);
   const workflowTimeoutMs = Math.max(
@@ -506,14 +600,31 @@ export async function runTask(
   emitAgent('SYSTEM', 'INFO', `Iniciando tarea: ${task}`, { step: 0 });
 
   try {
-    const qaSteps = (options.steps && options.steps.length > 0)
+    const suppliedSteps: QAEngineStep[] = (options.steps && options.steps.length > 0)
       ? options.steps
       : Array.from({ length: Math.max(1, maxSteps || 1) }, (_, index) => ({
-          number: index + 1,
-          action: index === 0 ? task : 'Continuar validacion',
-          data: manualSteps,
-          expected,
-        }));
+        number: index + 1,
+        action: index === 0 ? task : 'Continuar validacion',
+        ...(manualSteps ? { data: manualSteps } : {}),
+        ...(expected ? { expected } : {}),
+      }));
+    // This agent works on the in-memory execution copy only. Case definitions,
+    // imports and exports retain their three-field public format.
+    const qaSteps = planExecutionValidation(suppliedSteps);
+    for (const step of qaSteps) {
+      const plan = step.validation_plan;
+      if (!plan) continue;
+      emitAgent('ANALISTA_PREVIO', plan.mode === 'dom' ? 'INFO' : 'WARN', `Plan de validacion del paso ${step.number}: ${plan.mode}`, {
+        step: step.number,
+        confidence: plan.confidence,
+        reason: plan.reason,
+        metrics: {
+          source: plan.source,
+          mode: plan.mode,
+          assertions: plan.assertions.map((item) => item.type),
+        },
+      });
+    }
     const urlCandidate = normalizeEngineUrl(url) || firstStepUrl(qaSteps);
 
     await browser.init(Boolean(options.headless), options.viewport);
@@ -536,11 +647,154 @@ export async function runTask(
 
     let runResult: Awaited<ReturnType<typeof runQaSteps>> | undefined;
     let workflowTraces: WorkflowTrace[] = [];
+    let finalScreenshot: Buffer | undefined;
+    let auditResult: AIResult<AuditDecision> | undefined;
+    let auditPromise: Promise<AIResult<AuditDecision>> | undefined;
+    let auditEvidence: AuditEvidenceBundle | undefined;
+    let visualAuditUsed = false;
+    const performFinalAudit = async (): Promise<AIResult<AuditDecision>> => {
+      if (auditResult) return auditResult;
+      if (auditPromise) return auditPromise;
+      auditPromise = (async () => {
+        if (!runResult) throw new Error('La auditoria final no puede ejecutarse sin resultados de pasos.');
+
+        finalScreenshot = await page.screenshot();
+        const evidence = buildAuditEvidence(task, qaSteps, runResult.steps, runResult.errors);
+        const evidenceBundle = evidence.bundle;
+        auditEvidence = evidenceBundle;
+        const finalScreenshotBase64 = finalScreenshot.toString('base64');
+        if (!evidence.images.some((image) => image.base64 === finalScreenshotBase64)) {
+          evidence.images.push({ evidence_ref: 'final-screenshot', base64: finalScreenshotBase64 });
+        }
+
+        // A conclusive technical failure already establishes the outcome.
+        // Do not wait for a visual model to reinterpret it: that adds latency
+        // and can leave a campaign blocked when the local model is unavailable.
+        if (runResult.errors.length) {
+          const status = runResult.steps.some((step) => step.status === 'FALLO') ? 'FAILED' : 'BLOCKED';
+          auditResult = {
+            data: normalizeAuditDecision({
+              status,
+              reason: runResult.errors.join(' | '),
+              confidence: 90,
+              evidence_refs: [],
+              failed_expectations: runResult.errors,
+              missing_evidence: [],
+              contradictions: [],
+            }),
+            metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            prompt: { deterministic: true, technical_errors: runResult.errors },
+            rawResponse: { deterministic: true, status },
+          };
+          return auditResult;
+        }
+
+        const conclusivePassedAttempts = evidenceBundle.steps.flatMap((step) => (
+          step.attempts.filter((attempt) => attempt.validation_conclusive && attempt.validation_ok)
+        ));
+        const deterministicPass = evidenceBundle.steps.length > 0
+          && evidenceBundle.steps.every((step) => (
+            step.technical_status === 'PASO'
+            && step.attempts.some((attempt) => attempt.validation_conclusive && attempt.validation_ok)
+          ))
+          && evidenceBundle.summary.failed_assertions === 0;
+        if (deterministicPass) {
+          const evidenceRefs = conclusivePassedAttempts.map((attempt) => attempt.evidence_ref);
+          auditResult = {
+            data: normalizeAuditDecision({
+              status: 'PASSED',
+              reason: 'Todos los resultados esperados fueron comprobados mediante aserciones deterministas.',
+              confidence: 100,
+              evidence_refs: evidenceRefs,
+              failed_expectations: [],
+              missing_evidence: [],
+              contradictions: [],
+            }),
+            metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            prompt: { deterministic: true, evidence_refs: evidenceRefs },
+            rawResponse: { deterministic: true, status: 'PASSED' },
+          };
+          emitAgent('AUDITOR', 'INFO', 'Auditoria determinista completada sin delegar hechos observables al LLM', {
+            confidence: 100,
+            evidence_refs: evidenceRefs,
+          });
+          return auditResult;
+        }
+
+        // A non-vision model cannot add a trustworthy visual verdict. When
+        // every step completed successfully and the runtime recorded no
+        // technical error, keep that verified execution as the final result
+        // instead of manufacturing a BLOCKED audit solely for missing vision.
+        const technicalPassWithoutVision = !ai.supportsVision
+          && evidenceBundle.technical_status === 'PASO'
+          && evidenceBundle.steps.length > 0
+          && evidenceBundle.steps.every((step) => step.technical_status === 'PASO');
+        if (technicalPassWithoutVision) {
+          const evidenceRefs = evidenceBundle.steps.flatMap((step) => step.attempts.map((attempt) => attempt.evidence_ref));
+          auditResult = {
+            data: normalizeAuditDecision({
+              status: 'PASSED',
+              reason: 'Todos los pasos finalizaron correctamente con evidencia observable; no se requiere auditoria visual para este modelo.',
+              confidence: 90,
+              evidence_refs: evidenceRefs,
+              failed_expectations: [],
+              missing_evidence: [],
+              contradictions: [],
+            }),
+            metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
+            prompt: { deterministic: true, technical_pass_without_vision: true, evidence_refs: evidenceRefs },
+            rawResponse: { deterministic: true, status: 'PASSED' },
+          };
+          emitAgent('AUDITOR', 'INFO', 'Auditoria tecnica completada sin vision: todos los pasos finalizaron correctamente.', {
+            confidence: 90,
+            evidence_refs: evidenceRefs,
+          });
+          return auditResult;
+        }
+
+        const historyText = runResult.history.map((item) => (
+          `Paso ${item.step_number} intento ${item.attempt}: ${item.action?.action || '-'} -> ${item.execution?.ok ? 'OK' : 'ERROR'}; validacion=${item.post_validation?.reason || item.validation?.reason || 'sin registrar'}`
+        ));
+        const finalState = [
+          `URL final: ${evidenceBundle.final_url || '-'}`,
+          `Titulo final: ${evidenceBundle.final_title || '-'}`,
+          `Pasos aprobados: ${evidenceBundle.summary.passed_steps}/${evidenceBundle.summary.total_steps}`,
+          `Aserciones concluyentes: ${evidenceBundle.summary.conclusive_assertions}`,
+        ].join('\n');
+        visualAuditUsed = ai.supportsVision;
+        const rawAudit = await ai.validateGoal(
+          task,
+          finalState,
+          finalScreenshotBase64,
+          historyText,
+          evidenceBundle,
+          evidence.images,
+        );
+        auditResult = { ...rawAudit, data: normalizeAuditDecision(rawAudit.data) };
+        emitAgent('AUDITOR', 'INFO', 'Auditoria final con evidencia estructurada completada', {
+          confidence: auditResult.data.confidence,
+          reason: auditResult.data.reason,
+          metrics: auditResult.metrics,
+          prompt_excerpt: JSON.stringify(auditResult.prompt).slice(0, 2000),
+          raw_response_excerpt: JSON.stringify(auditResult.rawResponse).slice(0, 2000),
+        });
+        return auditResult;
+      })();
+      try {
+        return await auditPromise;
+      } catch (error) {
+        auditPromise = undefined;
+        throw error;
+      }
+    };
 
     if (options.workflowDefinition?.nodes?.length) {
+      const compiledWorkflow = compileBlockWorkflow(options.workflowDefinition);
+      const runtimeErrors = validateWorkflowRuntime(compiledWorkflow);
+      if (runtimeErrors.length) throw new Error(runtimeErrors.join(' | '));
       emitAgent('WORKFLOW', 'INFO', `Ejecutando workflow ${options.workflowDefinition.workflow?.name || options.workflowDefinition.workflow?.id}`);
       const workflowResult = await executeWorkflowGraph(
-        options.workflowDefinition,
+        compiledWorkflow,
         {
           executionId: testId,
           caseId: options.caseId || testId,
@@ -557,6 +811,10 @@ export async function runTask(
             base_url_candidate: urlCandidate,
             current_step: qaSteps[0]?.number ?? null,
             retry_count: {},
+            resolved_context: qaSteps.map((step) => ({
+              step_number: step.number,
+              ...interpretStepData(step.data, options.contextData || {}),
+            })),
           },
         },
         {
@@ -565,16 +823,50 @@ export async function runTask(
               || normalizeEngineUrl(input.sharedMemory.base_url_candidate)
               || normalizeEngineUrl(input.context.url_candidate)
               || firstStepUrl(qaSteps);
+            const explicitStepUrl = firstStepUrl(qaSteps);
+            if (explicitStepUrl && fallbackUrl === explicitStepUrl) {
+              return {
+                status: 'SUCCESS',
+                confidence: 100,
+                reason: 'URL resuelta desde los datos explicitos del caso de prueba',
+                events: [],
+                sharedMemoryPatch: {
+                  base_url: explicitStepUrl,
+                  total_steps: qaSteps.length,
+                  workflow_node: node.name,
+                  context_resolver_used: true,
+                  context_resolver_deterministic: true,
+                },
+              };
+            }
+            if (!fallbackUrl) {
+              return {
+                status: 'BLOCKED',
+                confidence: 100,
+                reason: 'Falta una URL inicial ejecutable: agrega url o base_url en el ambiente, datos del caso o un paso.',
+                events: [],
+                sharedMemoryPatch: {
+                  base_url: '',
+                  total_steps: qaSteps.length,
+                  workflow_node: node.name,
+                  context_resolver_used: true,
+                  context_resolver_blocked: true,
+                  failure_category: 'missing_base_url',
+                },
+              };
+            }
             try {
               const output = await runLlmAgent(ai, node, {
                 ...input,
                 context: {
                   ...input.context,
-                  resolver_role: 'Elegir la URL/base_url correcta para iniciar la prueba usando todos los datos disponibles. No ejecutes navegador; solo resuelve contexto.',
+                  resolver_role: 'Resolver contexto de ejecución sin ejecutar el navegador. Elegir la URL/base_url únicamente desde ambiente, dataset, inventario, datos del caso o un paso explícito. Interpretar los datos libres de cada paso y devolver resolved_context con source, confidence, inputs y ambiguities. No inventar URLs, credenciales, selectores ni valores.',
                   expected_shared_memory_patch: {
                     base_url: 'URL absoluta http/https elegida para iniciar la prueba',
                     reason: 'por que se eligio esa URL',
                     relevant_variables: 'variables o datos usados',
+                    resolved_context: 'interpretación estructurada de los datos por paso',
+                    input_mapping: 'rol semántico, valor respaldado, origen y confianza',
                   },
                 },
               });
@@ -613,6 +905,24 @@ export async function runTask(
               };
             }
           },
+          PreExecutionAnalyst: async (node) => ({
+            status: 'SUCCESS',
+            confidence: 96,
+            reason: 'Contratos temporales de validacion preparados antes de ejecutar los pasos.',
+            events: [],
+            sharedMemoryPatch: {
+              workflow_node: node.name,
+              execution_validation_plans: qaSteps.map((step) => ({
+                step_number: step.number,
+                mode: step.validation_plan?.mode || 'visual_semantic',
+                confidence: step.validation_plan?.confidence || 0,
+              })),
+              resolved_context: qaSteps.map((step) => ({
+                step_number: step.number,
+                ...interpretStepData(step.data, options.contextData || {}),
+              })),
+            },
+          }),
           Observer: async (_node, input) => {
             if (input.sharedMemory.qa_run_complete) {
               return {
@@ -648,11 +958,12 @@ export async function runTask(
             runResult = await runQaSteps(page, ai, qaSteps, {
               executionId: testId,
               task,
-              expected,
+              ...(expected ? { expected } : {}),
               maxAttempts: 2,
+              contextData: options.contextData || {},
               emit,
               logger: { log: emitAgent },
-              agentWorkflow: options.agentWorkflow,
+              ...(options.agentWorkflow ? { agentWorkflow: options.agentWorkflow } : {}),
             });
             const ok = runResult.errors.length === 0;
             return {
@@ -688,12 +999,20 @@ export async function runTask(
             reason: (input.sharedMemory.detected_errors || []).join(' | ') || 'No hay estrategia de recuperacion automatica disponible',
             events: [],
           }),
-          Auditor: async () => ({
-            status: 'SUCCESS',
-            confidence: 90,
-            reason: 'Auditoria final se ejecutara con el auditor existente',
-            events: [],
-          }),
+          Auditor: async () => {
+            const audit = await performFinalAudit();
+            return {
+              status: 'SUCCESS',
+              confidence: audit.data.confidence,
+              reason: audit.data.reason,
+              decision: audit.data,
+              events: [],
+              sharedMemoryPatch: {
+                audit_status: audit.data.status,
+                audit_evidence_refs: audit.data.evidence_refs,
+              },
+            };
+          },
           Reporter: async () => ({
             status: 'SUCCESS',
             confidence: 100,
@@ -708,11 +1027,12 @@ export async function runTask(
               runResult = await runQaSteps(page, ai, qaSteps, {
                 executionId: testId,
                 task,
-                expected,
-                maxAttempts: 2,
-                emit,
+                ...(expected ? { expected } : {}),
+              maxAttempts: 2,
+              contextData: options.contextData || {},
+              emit,
                 logger: { log: emitAgent },
-                agentWorkflow: options.agentWorkflow,
+                ...(options.agentWorkflow ? { agentWorkflow: options.agentWorkflow } : {}),
               });
             }
             return {
@@ -731,6 +1051,25 @@ export async function runTask(
           reporter_agent: async (node, input) => runReporterAgent(node, input),
           webhook_agent: async (node, input) => runWebhookAgent(node, input),
           script_agent: async (node, input) => runScriptAgent(node, input),
+          human_approval_agent: async (node) => ({
+            // A universal workflow cannot auto-approve. The backend can later
+            // resume from an explicit approval record without executing code.
+            status: 'BLOCKED', confidence: 100,
+            reason: `Aprobacion humana pendiente para ${node.name}`,
+            events: [{ type: 'human_approval_requested', node_id: node.id }],
+          }),
+          mcp_tool_agent: async (node) => ({
+            // MCP stays disabled until an installed tool is explicitly
+            // allowlisted. This is safer than treating it as an LLM request.
+            status: 'BLOCKED', confidence: 100,
+            reason: `La herramienta MCP de ${node.name} no esta autorizada en esta instalacion`,
+            events: [{ type: 'mcp_tool_blocked', node_id: node.id }],
+          }),
+          a2a_disabled_agent: async (node) => ({
+            status: 'BLOCKED', confidence: 100,
+            reason: `A2A permanece deshabilitado para ${node.name} hasta configurar identidad y confianza remota`,
+            events: [{ type: 'a2a_disabled', node_id: node.id }],
+          }),
           default: async (node) => ({
             status: node.enabled === false ? 'SKIPPED' : 'SUCCESS',
             confidence: 80,
@@ -753,18 +1092,19 @@ export async function runTask(
       );
       workflowTraces = workflowResult.traces;
       if (!runResult) {
-        runResult = { steps: [], history: [], visited_urls: [], errors: workflowResult.lastOutput?.reason ? [workflowResult.lastOutput.reason] : ['Workflow finalizado sin ejecutar pasos'] };
+        runResult = { steps: [], history: [], visited_urls: [], checkpoints: [], errors: workflowResult.lastOutput?.reason ? [workflowResult.lastOutput.reason] : ['Workflow finalizado sin ejecutar pasos'] };
       }
     } else {
       await navigateToResolvedBaseUrl(urlCandidate, 'fallback sin workflow');
       runResult = await runQaSteps(page, ai, qaSteps, {
         executionId: testId,
         task,
-        expected,
-        maxAttempts: 2,
-        emit,
+        ...(expected ? { expected } : {}),
+              maxAttempts: 2,
+              contextData: options.contextData || {},
+              emit,
         logger: { log: emitAgent },
-        agentWorkflow: options.agentWorkflow,
+        ...(options.agentWorkflow ? { agentWorkflow: options.agentWorkflow } : {}),
       });
     }
 
@@ -780,48 +1120,52 @@ export async function runTask(
         step.screenshot_base64 || '',
         step.error_log || step.observations || ''
       );
-      resultSteps.push({
+      const persistedStep: EngineRunResult['steps'][number] = {
         number: step.number,
         status: step.status,
-        observations: step.observations,
-        error_log: step.error_log,
-        screenshot_base64: step.screenshot_base64,
-      });
+      };
+      if (step.observations) persistedStep.observations = step.observations;
+      if (step.error_log) persistedStep.error_log = step.error_log;
+      if (step.screenshot_base64) persistedStep.screenshot_base64 = step.screenshot_base64;
+      if (step.agent) persistedStep.agent = step.agent;
+      if (step.failure_category) persistedStep.failure_category = step.failure_category;
+      if (step.reason) persistedStep.reason = step.reason;
+      if (step.action_summary) persistedStep.action_summary = step.action_summary;
+      if (typeof step.action_executed === 'boolean') persistedStep.action_executed = step.action_executed;
+      if (step.url) persistedStep.url = step.url;
+      resultSteps.push(persistedStep);
     }
 
     emitAgent('SYSTEM', 'INFO', 'Pasos QA finalizados. Iniciando auditoria final.');
-    const finalScreenshot = await page.screenshot();
-    const historyText = runResult.history.map((item) => (
-      `Paso ${item.step_number} intento ${item.attempt}: ${item.action?.action || '-'} -> ${item.execution?.ok ? 'OK' : 'ERROR'} ${item.execution?.message || ''}`
-    ));
-    const validation = runResult.errors.length
-      ? {
-          status: (runResult.steps.some((step) => step.status === 'FALLO') ? 'FAILED' : 'BLOCKED') as 'FAILED' | 'BLOCKED',
-          reason: runResult.errors.join(' | '),
-          confidence: 90,
-        }
-      : (await (async () => {
-          const audit = await ai.validateGoal(task, historyText.join('\n') || 'Sin historial estructurado.', finalScreenshot.toString('base64'), historyText);
-          emitAgent('AUDITOR', 'INFO', 'Auditoria final con modelo completada', {
-            confidence: audit.data.confidence,
-            reason: audit.data.reason,
-            metrics: audit.metrics,
-            prompt_excerpt: JSON.stringify(audit.prompt).slice(0, 2000),
-            raw_response_excerpt: JSON.stringify(audit.rawResponse).slice(0, 2000),
-          });
-          return audit.data;
-        })());
+    const completedAudit = await performFinalAudit();
+    const validation = completedAudit.data;
+    const consensusDecision = resolveAuditConsensus(auditEvidence as AuditEvidenceBundle, validation);
 
-    emitAgent('AUDITOR', 'INFO', `Resultado: ${validation.status} (${validation.confidence}%)`, {
-      confidence: validation.confidence,
-      reason: validation.reason,
+    if (visualAuditUsed) {
+      emitAgent('AUDITOR', 'INFO', `Auditoria visual aplicada sobre ${validation.evidence_refs.length} captura(s) citada(s).`, {
+        confidence: validation.confidence,
+        reason: validation.reason,
+        visual_audit: true,
+        evidence_refs: validation.evidence_refs,
+      });
+    } else {
+      emitAgent('AUDITOR', 'INFO', 'Auditoria visual no aplicada: se uso validacion determinista o el modelo no soporta vision.', {
+        visual_audit: false,
+      });
+    }
+
+    emitAgent('AUDITOR', consensusDecision.human_review_required ? 'WARN' : 'INFO', `Resultado visual: ${validation.status}; resultado final: ${consensusDecision.final_status}`, {
+      confidence: consensusDecision.confidence,
+      reason: consensusDecision.reason,
+      validation,
     });
-    emitAgent('AUDITOR', 'INFO', `Razon: ${validation.reason}`, {
-      confidence: validation.confidence,
-      reason: validation.reason,
+    emitAgent('AUDITOR', 'INFO', `Resolucion de consenso: ${consensusDecision.resolution}`, {
+      confidence: consensusDecision.confidence,
+      reason: consensusDecision.reason,
     });
-    report.setFinalStatus(validation.status, validation.reason, validation.confidence);
+    report.setFinalStatus(consensusDecision.final_status, consensusDecision.reason, consensusDecision.confidence);
     await browser.close();
+    await opencode?.closeRun(testId);
     
     const reportPath = await report.generate();
     const localEvidenceLog = ENGINE_LOCAL_EVIDENCE_ENABLED
@@ -829,7 +1173,7 @@ export async function runTask(
       : reportPath;
     emitAgent('SYSTEM', 'SUCCESS', `Test ${testId} finalizado.`);
     const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-    const finalStatus = normalizeAuditStatus(validation.status);
+    const finalStatus = consensusDecision.final_status;
     const aiReport = buildAiReport({
       task,
       testId,
@@ -838,12 +1182,16 @@ export async function runTask(
       status: finalStatus,
       durationSeconds,
       validation,
+      auditDecision: validation,
+      consensusDecision,
+      auditEvidence: auditEvidence as AuditEvidenceBundle,
+      visualAuditUsed,
       runResult,
       resultSteps,
       errors: runResult.errors,
       startedAt,
       url,
-      finalScreenshotBase64: finalScreenshot.toString('base64'),
+      finalScreenshotBase64: finalScreenshot?.toString('base64'),
       timeline,
       workflowTraces,
       parameters: {
@@ -863,8 +1211,9 @@ export async function runTask(
     });
     emit('execution_finished', {
       status: finalStatus,
+      report_pending: true,
       duration_seconds: durationSeconds,
-      observations: validation.reason,
+      observations: consensusDecision.reason,
       confidence: aiReport.confidence,
       consensus: aiReport.consensus,
       failure_category: aiReport.failure_category,
@@ -882,16 +1231,17 @@ export async function runTask(
     return {
       status: finalStatus,
       duration_seconds: durationSeconds,
-      observations: validation.reason,
+      observations: consensusDecision.reason,
       logs: localEvidenceLog,
       metadata: {
         engine: ENGINE_NAME,
         version: ENGINE_VERSION,
         local_evidence_enabled: ENGINE_LOCAL_EVIDENCE_ENABLED,
         model: ai.model,
-        confidence: validation.confidence,
+        confidence: consensusDecision.confidence,
         audit_status: validation.status,
         structured_history: true,
+        report_complete: true,
         ai_report_summary: {
           confidence: aiReport.confidence,
           consensus: aiReport.consensus,
@@ -903,8 +1253,8 @@ export async function runTask(
       steps: resultSteps,
       visited_urls: runResult.visited_urls,
       errors: runResult.errors,
-      final_result: validation.reason,
-      final_screenshot_base64: finalScreenshot.toString('base64'),
+      final_result: consensusDecision.reason,
+      final_screenshot_base64: finalScreenshot?.toString('base64'),
     };
 
   } catch (error: any) {
@@ -917,7 +1267,38 @@ export async function runTask(
       finalScreenshot = page.isClosed() ? undefined : (await page.screenshot()).toString('base64');
     } catch (_) {}
     await browser.close();
+    await opencode?.closeRun(testId);
     const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+    const catchAuditDecision = normalizeAuditDecision({
+      status: 'FAILED',
+      reason: error.message,
+      confidence: 0,
+      evidence_refs: [],
+      failed_expectations: [error.message],
+      missing_evidence: [],
+      contradictions: [],
+    });
+    const catchEvidence: AuditEvidenceBundle = {
+      schema_version: 1,
+      objective: task,
+      technical_status: 'FALLO',
+      technical_errors: [error.message],
+      final_url: '',
+      final_title: '',
+      steps: [],
+      summary: {
+        total_steps: 0,
+        passed_steps: 0,
+        failed_steps: 1,
+        conclusive_assertions: 0,
+        failed_assertions: 0,
+        screenshot_count: finalScreenshot ? 1 : 0,
+        full_contract_steps: 0,
+        partial_contract_steps: 0,
+        semantic_audit_steps: 0,
+      },
+    };
+    const catchConsensus = resolveAuditConsensus(catchEvidence, catchAuditDecision);
     const errorReport = buildAiReport({
       task,
       testId,
@@ -925,7 +1306,11 @@ export async function runTask(
       model: ai.model,
       status: 'FALLO',
       durationSeconds,
-      validation: { status: 'FAILED', reason: error.message, confidence: 0 },
+      validation: catchAuditDecision,
+      auditDecision: catchAuditDecision,
+      consensusDecision: catchConsensus,
+      auditEvidence: catchEvidence,
+      visualAuditUsed: false,
       resultSteps,
       errors: [error.message],
       startedAt,
@@ -949,6 +1334,7 @@ export async function runTask(
     });
     emit('execution_finished', {
       status: 'FALLO',
+      report_pending: true,
       duration_seconds: durationSeconds,
       observations: error.message,
       error_message: error.message,
@@ -977,6 +1363,7 @@ export async function runTask(
         version: ENGINE_VERSION,
         local_evidence_enabled: ENGINE_LOCAL_EVIDENCE_ENABLED,
         model: ai.model,
+        report_complete: true,
         ai_report_summary: {
           confidence: errorReport.confidence,
           consensus: errorReport.consensus,

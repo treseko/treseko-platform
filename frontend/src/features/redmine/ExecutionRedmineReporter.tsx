@@ -102,7 +102,9 @@ export function ExecutionRedmineReporter({
         </Offcanvas.Header>
         <Offcanvas.Body className="p-4 small bg-light text-dark text-start">
           <div className="alert alert-warning border-0 shadow-sm x-small mb-4 fw-bold text-start">
-            El bug se creará en el Bug Tracker interno. Luego podrás vincularlo o generar preview para Redmine desde el detalle del bug.
+            {isManualBug
+              ? 'El bug se creará en el Bug Tracker interno con la build y el contexto QA seleccionados.'
+              : 'El bug se creará en el Bug Tracker interno y quedará asociado a esta ejecución.'}
           </div>
 
           <Form className="text-dark text-start" onSubmit={onSubmitInternalBug}>
@@ -139,6 +141,22 @@ export function ExecutionRedmineReporter({
               </Col>
             </Row>
 
+            {isManualBug && (
+              <Form.Group className="mb-3">
+                <Form.Label className="text-muted fw-bold x-small uppercase">Pasos de reproducción *</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={draft.pasos_reproduccion || ''}
+                  onChange={(e) => updateField('pasos_reproduccion', e.target.value)}
+                  className="bg-white border-0 shadow-sm text-dark"
+                  placeholder="1. Abrir…&#10;2. Realizar…&#10;3. Observar el problema…"
+                  required
+                />
+                <Form.Text className="text-muted">Como este bug no parte de una ejecución, describí cómo reproducirlo.</Form.Text>
+              </Form.Group>
+            )}
+
             <Form.Group className="mb-3">
               <Form.Label className="text-muted fw-bold x-small uppercase d-flex justify-content-between">
                 <span>Resumen del problema</span>
@@ -150,7 +168,7 @@ export function ExecutionRedmineReporter({
             <Row className="g-2 mb-3">
               <Col md={6}>
                 <Form.Label className="text-muted fw-bold x-small uppercase">Resultado esperado</Form.Label>
-                <Form.Control as="textarea" rows={3} value={draft.resultado_esperado || ''} onChange={(e) => updateField('resultado_esperado', e.target.value)} className="bg-white border-0 shadow-sm text-dark" />
+                <Form.Control as="textarea" rows={3} value={draft.resultado_esperado || ''} onChange={(e) => updateField('resultado_esperado', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
               </Col>
               <Col md={6}>
                 <Form.Label className="text-muted fw-bold x-small uppercase">Resultado obtenido</Form.Label>

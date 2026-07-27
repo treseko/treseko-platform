@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -18,6 +19,8 @@ DEFAULT_BRANDING = {
     "brand_name": "Treseko",
     "logo_url": "/gecko-community-icon.png?v=3",
     "enabled": False,
+    "primary_color": "#172033",
+    "accent_color": "#1677ff",
 }
 
 
@@ -113,6 +116,12 @@ async def update_system_time_settings(db: AsyncSession, settings: schemas.System
 
 def normalize_first_run_onboarding(value: dict[str, Any] | None) -> dict[str, Any]:
     raw = value or {}
+    primary_color = str(raw.get("primary_color") or DEFAULT_BRANDING["primary_color"]).lower()
+    accent_color = str(raw.get("accent_color") or DEFAULT_BRANDING["accent_color"]).lower()
+    if not re.fullmatch(r"#[0-9a-f]{6}", primary_color):
+        primary_color = DEFAULT_BRANDING["primary_color"]
+    if not re.fullmatch(r"#[0-9a-f]{6}", accent_color):
+        accent_color = DEFAULT_BRANDING["accent_color"]
     return {
         **DEFAULT_FIRST_RUN_ONBOARDING,
         **raw,
@@ -180,10 +189,17 @@ def normalize_branding_value(value: dict[str, Any] | None) -> dict[str, Any]:
     logo_url = str(raw.get("logo_url") or "").strip()
     if not logo_url.startswith("/static/branding/"):
         logo_url = ""
+    def color(raw_value: Any, fallback: str) -> str:
+        candidate = str(raw_value or "").strip()
+        return candidate if re.fullmatch(r"#[0-9A-Fa-f]{6}", candidate) else fallback
+    primary_color = color(raw.get("primary_color"), DEFAULT_BRANDING["primary_color"])
+    accent_color = color(raw.get("accent_color"), DEFAULT_BRANDING["accent_color"])
     return {
         "brand_name": brand_name[:80],
         "logo_url": logo_url or None,
         "enabled": bool(raw.get("enabled")),
+        "primary_color": primary_color,
+        "accent_color": accent_color,
     }
 
 
@@ -192,6 +208,8 @@ def branding_response(value: dict[str, Any] | None, *, edition: str, can_customi
     custom_active = bool(can_customize and normalized["enabled"] and normalized["brand_name"])
     effective_brand_name = normalized["brand_name"] if custom_active else DEFAULT_BRANDING["brand_name"]
     effective_logo_url = normalized["logo_url"] if custom_active and normalized["logo_url"] else DEFAULT_BRANDING["logo_url"]
+    effective_primary_color = normalized["primary_color"] if custom_active else DEFAULT_BRANDING["primary_color"]
+    effective_accent_color = normalized["accent_color"] if custom_active else DEFAULT_BRANDING["accent_color"]
     return {
         "edition": "premium" if edition == "premium" else "community",
         "can_customize": bool(can_customize),
@@ -201,6 +219,10 @@ def branding_response(value: dict[str, Any] | None, *, edition: str, can_customi
         "effective_brand_name": effective_brand_name,
         "effective_logo_url": effective_logo_url,
         "custom_branding_active": custom_active,
+        "primary_color": normalized["primary_color"] if can_customize else DEFAULT_BRANDING["primary_color"],
+        "accent_color": normalized["accent_color"] if can_customize else DEFAULT_BRANDING["accent_color"],
+        "effective_primary_color": effective_primary_color,
+        "effective_accent_color": effective_accent_color,
     }
 
 

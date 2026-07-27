@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 from ..project_status import PROJECT_ACTIVE_STATUSES, normalize_project_status
 from ..services.edition.entitlement_service import enforce_limit
 from ..time_utils import utc_now
@@ -264,7 +264,8 @@ async def get_builds_componente(db: AsyncSession, componente_id: UUID, skip: int
     return result.scalars().all()
 
 async def create_build(db: AsyncSession, build: schemas.BuildCreate):
-    if build.activo:
+    target_state = "ACTIVA" if build.activo else build.estado
+    if target_state == "ACTIVA":
         await db.execute(
             select(models.Build.id)
             .where(models.Build.componente_id == build.componente_id)
@@ -273,9 +274,11 @@ async def create_build(db: AsyncSession, build: schemas.BuildCreate):
         await db.execute(
             models.Build.__table__.update()
             .where(models.Build.componente_id == build.componente_id)
-            .values(activo=False)
+            .values(activo=False, estado="HISTORICA")
         )
     build_data = build.model_dump()
+    build_data["estado"] = target_state
+    build_data["activo"] = target_state == "ACTIVA"
     build_data["codigo"] = await generate_short_code(
         db,
         models.Build,
@@ -303,7 +306,13 @@ async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.B
             raise ValueError("No se puede mover una build entre componentes.")
         update_data.pop("componente_id")
     target_component_id = db_build.componente_id
-    if update_data.get("activo") is True:
+    requested_state = update_data.get("estado")
+    if requested_state is None and "activo" in update_data:
+        requested_state = "ACTIVA" if update_data["activo"] else "HISTORICA"
+    if requested_state is not None:
+        update_data["estado"] = requested_state
+        update_data["activo"] = requested_state == "ACTIVA"
+    if requested_state == "ACTIVA":
         await db.execute(
             select(models.Build.id)
             .where(models.Build.componente_id == target_component_id)
@@ -313,11 +322,11 @@ async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.B
             models.Build.__table__.update()
             .where(models.Build.componente_id == target_component_id)
             .where(models.Build.id != db_build.id)
-            .values(activo=False)
+            .values(activo=False, estado="HISTORICA")
         )
         if db_build.fecha_inicio is None:
             update_data["fecha_inicio"] = utc_now()
-    elif update_data.get("activo") is False and "fecha_fin" not in build_update.model_fields_set:
+    elif requested_state == "HISTORICA" and "fecha_fin" not in build_update.model_fields_set:
         update_data["fecha_fin"] = utc_now()
     for field, value in update_data.items():
         setattr(db_build, field, value)

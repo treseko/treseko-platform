@@ -1,4 +1,4 @@
-from .legacy_common import *
+from .repository_context import *
 
 BUG_EXPORT_REDACTED_VALUE = "[redacted]"
 BUG_EXPORT_SENSITIVE_KEY_MARKERS = {
@@ -380,11 +380,18 @@ async def mark_bug_duplicate(db: AsyncSession, bug_id: UUID, duplicate_of_id: UU
     if bug.proyecto_id != duplicate.proyecto_id:
         raise ValueError("El bug duplicado debe pertenecer al mismo proyecto.")
     bug.duplicate_of_id = duplicate_of_id
+    old_status = bug.estado
     bug.estado = "DUPLICADO"
     bug.closed_at = utc_now()
     bug.fecha_resolucion = bug.closed_at
     bug.resuelto_por = user_id
+    bug.resolved_build_id = None
     bug.motivo_cierre = comentario or f"Duplicado de {duplicate.codigo}"
+    db.add(models.BugStatusHistory(
+        bug_id=bug.id, project_id=bug.proyecto_id, from_status=old_status,
+        to_status=bug.estado, actor_id=user_id, close_reason=bug.motivo_cierre,
+        source="mark_duplicate", occurred_at=bug.closed_at,
+    ))
     if comentario:
         db.add(models.BugComment(bug_id=bug_id, autor_id=user_id, comentario=comentario))
     await db.commit()

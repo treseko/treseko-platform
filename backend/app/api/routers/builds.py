@@ -44,7 +44,7 @@ async def create_build(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="El componente no pertenece al proyecto seleccionado")
     created_build = await crud.create_build(db=db, build=build)
-    if created_build.activo:
+    if created_build.estado == "ACTIVA":
         await notification_event_service.emit_event(
             db=db,
             event_type="build.activated",
@@ -68,6 +68,7 @@ async def create_build(
                 "nombre": created_build.nombre,
                 "codigo": created_build.codigo,
                 "activo": created_build.activo,
+                "estado": created_build.estado,
             },
         },
     )
@@ -97,7 +98,7 @@ async def update_build(
     db_build = await crud.update_build(db=db, build_id=build_id, build_update=build)
     if not db_build:
         raise HTTPException(status_code=404, detail="Build no encontrada")
-    if build.activo is True:
+    if build.estado == "ACTIVA" or (build.estado is None and build.activo is True):
         await notification_event_service.emit_event(
             db=db,
             event_type="build.activated",
@@ -109,7 +110,7 @@ async def update_build(
             payload={"build": {"id": str(db_build.id), "nombre": db_build.nombre}, "actor": {"email": current_user.email}, "message": f"Build activa: {db_build.nombre}"},
             dedupe_key=f"build.activated:{db_build.id}",
         )
-    elif build.activo is False:
+    elif build.estado == "HISTORICA" or (build.estado is None and build.activo is False):
         await notification_event_service.emit_event(
             db=db,
             event_type="build.closed",
@@ -133,6 +134,7 @@ async def update_build(
                 "nombre": db_build.nombre,
                 "codigo": db_build.codigo,
                 "activo": db_build.activo,
+                "estado": db_build.estado,
             },
             "updated_fields": build.model_dump(exclude_unset=True, exclude_none=True),
         },

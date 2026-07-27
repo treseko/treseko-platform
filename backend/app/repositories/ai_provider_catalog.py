@@ -1,4 +1,5 @@
 AI_PROVIDER_KEY_ENV = {
+    "opencode": None,
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",

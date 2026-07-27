@@ -57,6 +57,35 @@ const compareSuitesByName = (left: any, right: any) =>
   naturalCompare(left.nombre || left.name, right.nombre || right.name)
   || naturalCompare(left.id, right.id)
 
+const normalizeForSearch = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase()
+
+const testMatchesQuery = (test: any, query: string) => {
+  if (!query) return true
+  return [
+    test?.title,
+    test?.id,
+    test?.code,
+    ...(test?.tags || [])
+  ].some((value) => normalizeForSearch(value).includes(query))
+}
+
+const suiteMatchesQuery = (suite: any, props: SuiteTreeProps, query: string, visited = new Set<string>()): boolean => {
+  if (!suite?.id || visited.has(suite.id)) return false
+  const nextVisited = new Set(visited)
+  nextVisited.add(suite.id)
+  if (normalizeForSearch(suite.nombre || suite.name).includes(query)) return true
+  const isUnsuitedRoot = suite.id === UNSUITED_CASES_ROOT_ID
+  const hasMatchingCase = props.casosList.some((test) =>
+    (isUnsuitedRoot ? !test?.suiteId : test?.suiteId === suite.id)
+    && (!props.currentCompId || test?.componentId === props.currentCompId)
+    && testMatchesQuery(test, query)
+  )
+  return hasMatchingCase || (suite.children || []).some((child: any) => suiteMatchesQuery(child, props, query, nextVisited))
+}
+
 const formatCaseCount = (count: number) => `${count} ${count === 1 ? 'caso' : 'casos'}`
 
 const formatSuiteCount = (count: number) => `${count} ${count === 1 ? 'suite' : 'suites'}`
@@ -137,13 +166,15 @@ const SuiteTreeNode = ({
     openSuiteDropdown,
     onToggleSuiteDropdown
   } = props
-  const isExpanded = isUnsuitedRoot ? expandedSuites[suite.id] !== false : expandedSuites[suite.id]
+  const query = normalizeForSearch(testSearchQuery.trim())
+  // Una búsqueda debe revelar el camino hasta el resultado, incluso si la carpeta
+  // estaba contraída. El estado persistido se conserva cuando se limpia la búsqueda.
+  const isExpanded = query !== '' || (isUnsuitedRoot ? expandedSuites[suite.id] !== false : expandedSuites[suite.id])
   const isSelected = selectedSuiteId === suite.id || selectedSubSuiteId === suite.id
-  const query = testSearchQuery.trim().toLowerCase()
   const suiteTests = casosList
     .filter(test => isUnsuitedRoot ? !test.suiteId : test.suiteId === suite.id)
     .filter(test => !currentCompId || test.componentId === currentCompId)
-    .filter(test => !query || test.title.toLowerCase().includes(query) || test.id.toLowerCase().includes(query) || (test.code || '').toLowerCase().includes(query) || (test.tags || []).some((tag: string) => tag.toLowerCase().includes(query)))
+    .filter(test => testMatchesQuery(test, query))
     .sort(compareTestsBySuiteOrder)
   const hasChildSuites = (suite.children || []).length > 0
   const hasExpandableContent = hasChildSuites || suiteTests.length > 0
@@ -203,7 +234,7 @@ const SuiteTreeNode = ({
         </span>
 
         <SuiteIcon size={16} className="flex-shrink-0 me-2" style={{ color: isSelected ? '#0d6efd' : suiteIconColor(suiteColor) }} />
-        <span className="small text-truncate flex-grow-1" style={{ fontSize: '0.85rem' }} title={suiteTooltip} aria-label={suiteTooltip}>{suiteFullName}</span>
+        <span className="app-small text-truncate flex-grow-1" title={suiteTooltip} aria-label={suiteTooltip}>{suiteFullName}</span>
         {suite.archivado && (
           <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">ARCHIVADA</span>
         )}
@@ -225,7 +256,7 @@ const SuiteTreeNode = ({
             <Dropdown.Toggle variant="link" size="sm" className="p-1 text-muted shadow-none border-0 hover-text-primary d-flex align-items-center flex-shrink-0">
               <Settings size={14} />
             </Dropdown.Toggle>
-            <Dropdown.Menu className="shadow-sm border-light-subtle" style={{ fontSize: '0.85rem' }}>
+            <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
               <Dropdown.Item onClick={() => onCreateCase(suite.id)} className="d-flex align-items-center gap-2 text-dark"><PlusCircle size={14}/> Nuevo caso de prueba</Dropdown.Item>
               <Dropdown.Divider />
               <Dropdown.Item onClick={() => onCreateSuite(suite.id)} className="d-flex align-items-center gap-2 text-dark"><FolderPlus size={14}/> Nueva Sub-carpeta</Dropdown.Item>
@@ -255,7 +286,10 @@ const SuiteTreeNode = ({
 
       {isExpanded && hasChildSuites && (
         <div className="mt-1 border-start ms-3 ps-2 border-light-subtle">
-          {suite.children.slice().sort(compareSuitesByName).filter((child: any) => child?.id !== suite.id && !childVisited.has(child?.id)).map((child: any) => (
+          {suite.children.slice().sort(compareSuitesByName)
+            .filter((child: any) => child?.id !== suite.id && !childVisited.has(child?.id))
+            .filter((child: any) => !query || suiteMatchesQuery(child, props, query, childVisited))
+            .map((child: any) => (
             <SuiteTreeNode key={child.id} suite={child} level={level + 1} props={props} visited={childVisited} />
           ))}
         </div>
@@ -313,7 +347,7 @@ const SuiteTreeNode = ({
                 >
                   <MoreVertical size={14} />
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="shadow-sm border-light-subtle" style={{ fontSize: '0.85rem' }}>
+                <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
                   {onViewVersions && test.version > 1 && (
                     <Dropdown.Item onClick={() => onViewVersions(test)} className="d-flex align-items-center gap-2 text-dark">
                       <History size={14} /> Ver cambios
@@ -383,10 +417,15 @@ export const SuiteTree = memo((props: SuiteTreeProps) => {
     children: []
   }
 
+  const query = normalizeForSearch(props.testSearchQuery.trim())
+  const filteredSuites = query
+    ? props.suites.filter((suite: any) => suiteMatchesQuery(suite, mergedProps, query))
+    : props.suites
+
   return (
     <>
-      {hasUnsuitedCases && <SuiteTreeNode suite={unsuitedRoot} level={0} props={mergedProps} />}
-      {props.suites.slice().sort(compareSuitesByName).map((suite: any) => (
+      {hasUnsuitedCases && (!query || suiteMatchesQuery(unsuitedRoot, mergedProps, query)) && <SuiteTreeNode suite={unsuitedRoot} level={0} props={mergedProps} />}
+      {filteredSuites.slice().sort(compareSuitesByName).map((suite: any) => (
         <SuiteTreeNode key={suite.id} suite={suite} level={0} props={mergedProps} />
       ))}
     </>

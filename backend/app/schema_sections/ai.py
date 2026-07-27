@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlsplit
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
@@ -43,6 +44,7 @@ MAX_AI_WORKFLOW_IMPORT_ROWS = 500
 MAX_AI_MODEL_CATALOG_ITEMS = 500
 MAX_AI_AGENT_WORKFLOW_ITEMS = 200
 MAX_AI_DRY_RUN_STEPS = 200
+AI_WORKFLOW_PURPOSES = {"test_execution", "story_generation", "test_case_generation"}
 MAX_AI_RESULT_STEPS = 500
 
 
@@ -150,6 +152,122 @@ def normalize_ai_duration_seconds(value: Any) -> int:
 
 AI_PROVIDER_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$", re.IGNORECASE)
 AI_PROVIDER_API_KEY_FIELDS = {"api_key", "updated_at", "label"}
+AI_PROVIDER_ADAPTERS = {"openai-responses", "anthropic-messages", "gemini", "azure-openai", "openai-compatible"}
+AI_CAPABILITY_STATES = {"tested", "reported", "unsupported", "unknown"}
+
+
+def validate_ai_provider_endpoint(value: str) -> str:
+    endpoint = str(value or "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError as exc:
+        raise ValueError("El endpoint IA es invalido") from exc
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("El endpoint IA no puede contener credenciales, query ni fragment")
+    local = (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and local):
+        raise ValueError("El endpoint IA debe usar HTTPS; HTTP se permite solo en loopback local")
+    if not parsed.hostname:
+        raise ValueError("El endpoint IA debe incluir un host")
+    return endpoint
+
+
+class AiProviderCredentialCreate(BaseModel):
+    provider: str = Field(min_length=1, max_length=MAX_AI_PROVIDER_LENGTH, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=160)
+    secret: str = Field(min_length=1, max_length=4096)
+
+
+class AiProviderCredentialReplace(BaseModel):
+    secret: str = Field(min_length=1, max_length=4096)
+
+
+class AiProviderCredentialUpdate(BaseModel):
+    label: str = Field(min_length=1, max_length=160)
+
+
+class AiProviderCredentialResponse(BaseModel):
+    id: UUID
+    provider: str
+    label: str
+    active: bool
+    configured: bool = True
+    key_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AiProviderProfileBase(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    provider: str = Field(min_length=1, max_length=MAX_AI_PROVIDER_LENGTH, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    adapter: str = Field(min_length=1, max_length=80)
+    endpoint: str = Field(min_length=1, max_length=MAX_AI_ENDPOINT_LENGTH)
+    model: str = Field(min_length=1, max_length=MAX_AI_MODEL_LENGTH)
+    credential_id: Optional[UUID] = None
+    capabilities_json: Dict[str, Any] = Field(default_factory=dict)
+    capability_status: str = "unknown"
+    enabled: bool = True
+    request_timeout_seconds: int = Field(default=300, ge=5, le=900)
+    max_retries: int = Field(default=1, ge=0, le=5)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1)
+    max_output_tokens: Optional[int] = Field(default=None, ge=1, le=20000)
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        return validate_ai_provider_endpoint(value)
+
+    @field_validator("adapter")
+    @classmethod
+    def validate_adapter(cls, value: str) -> str:
+        if value not in AI_PROVIDER_ADAPTERS:
+            raise ValueError("El adaptador IA no esta registrado")
+        return value
+
+    @field_validator("capability_status")
+    @classmethod
+    def validate_capability_status(cls, value: str) -> str:
+        if value not in AI_CAPABILITY_STATES:
+            raise ValueError("El estado de capacidades IA es invalido")
+        return value
+
+    @field_validator("capabilities_json")
+    @classmethod
+    def validate_capabilities(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        return validate_ai_json_payload(value) or {}
+
+
+class AiProviderProfileCreate(AiProviderProfileBase):
+    pass
+
+
+class AiProviderProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    endpoint: Optional[str] = Field(default=None, min_length=1, max_length=MAX_AI_ENDPOINT_LENGTH)
+    model: Optional[str] = Field(default=None, min_length=1, max_length=MAX_AI_MODEL_LENGTH)
+    credential_id: Optional[UUID] = None
+    capabilities_json: Optional[Dict[str, Any]] = None
+    capability_status: Optional[str] = None
+    enabled: Optional[bool] = None
+    request_timeout_seconds: Optional[int] = Field(default=None, ge=5, le=900)
+    max_retries: Optional[int] = Field(default=None, ge=0, le=5)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1)
+    max_output_tokens: Optional[int] = Field(default=None, ge=1, le=20000)
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, value: Optional[str]) -> Optional[str]:
+        return validate_ai_provider_endpoint(value) if value is not None else None
+
+
+class AiProviderProfileResponse(AiProviderProfileBase):
+    id: UUID
+    credential_configured: bool = False
+    active_runtime: bool = False
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
 
 
 def validate_ai_provider_api_keys(value: Optional[Dict[str, Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
@@ -185,6 +303,14 @@ def validate_ai_provider_api_keys(value: Optional[Dict[str, Dict[str, Any]]]) ->
 
 
 class AiEngineConfig(BaseModel):
+    ai_execution_driver: Literal["treseko_engine", "opencode"] = "treseko_engine"
+    opencode_version: Optional[str] = Field(default=None, max_length=64)
+    opencode_model: Optional[str] = Field(default=None, max_length=MAX_AI_MODEL_LENGTH)
+    opencode_agent: Optional[str] = Field(default=None, max_length=128)
+    opencode_timeout_seconds: int = Field(default=30, ge=5, le=300)
+    opencode_max_steps: int = Field(default=20, ge=1, le=100)
+    opencode_health_status: Optional[str] = Field(default=None, max_length=32)
+    opencode_last_verified_at: Optional[datetime] = None
     provider: str = Field(default="openai-compatible", min_length=1, max_length=MAX_AI_PROVIDER_LENGTH)
     provider_label: Optional[str] = Field(default=None, max_length=MAX_AI_STRING_LENGTH)
     llm_endpoint: Optional[str] = Field(default="http://127.0.0.1:1234/v1", max_length=MAX_AI_ENDPOINT_LENGTH)
@@ -195,6 +321,10 @@ class AiEngineConfig(BaseModel):
     viewport_width: int = Field(default=1920, ge=320, le=7680)
     viewport_height: int = Field(default=1080, ge=320, le=4320)
     timeout_seconds: int = Field(default=900, ge=30, le=7200)
+    # Runtime limits are persisted in AppSetting, rather than tied to the
+    # process environment. They apply to governed story-authoring workflows.
+    context_window_tokens: int = Field(default=8192, ge=1024, le=2_000_000)
+    max_completion_tokens: int = Field(default=4096, ge=256, le=20000)
     max_parallel_ai_runs: int = Field(default=1, ge=1, le=5)
     token_cost_prompt_per_1k: float = Field(default=0.0, ge=0)
     token_cost_completion_per_1k: float = Field(default=0.0, ge=0)
@@ -210,8 +340,24 @@ class AiEngineConfig(BaseModel):
     last_model_scan_requires_api_key: bool = False
     last_model_scan_api_key_env: Optional[str] = Field(default=None, max_length=MAX_AI_STRING_LENGTH)
     last_model_scan_api_key_configured: bool = False
+    active_provider_profile_id: Optional[UUID] = None
     agent_workflow: List[Dict[str, Any]] = Field(default_factory=list)
     active_workflow_id: Optional[UUID] = None
+    active_workflow_ids: Dict[str, UUID] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_generation_token_budget(self):
+        if self.max_completion_tokens >= self.context_window_tokens:
+            raise ValueError("La salida máxima debe ser menor que la ventana de contexto operativa")
+        return self
+
+    @field_validator("active_workflow_ids")
+    @classmethod
+    def validate_active_workflow_ids(cls, value: Dict[str, UUID]) -> Dict[str, UUID]:
+        invalid_purposes = set(value) - AI_WORKFLOW_PURPOSES
+        if invalid_purposes:
+            raise ValueError("Los workflows activos solo pueden configurarse para ejecución, historias o casos")
+        return value
 
     @field_validator("model_capabilities")
     @classmethod
@@ -246,6 +392,7 @@ class AiEngineConfig(BaseModel):
 class AiModelScanRequest(BaseModel):
     provider: Optional[str] = Field(default=None, max_length=MAX_AI_PROVIDER_LENGTH)
     llm_endpoint: Optional[str] = Field(default=None, max_length=MAX_AI_ENDPOINT_LENGTH)
+    profile_id: Optional[UUID] = None
 
 class AiModelScanResponse(BaseModel):
     status: str
@@ -315,8 +462,16 @@ class AiWorkflowBase(BaseModel):
     status: str = Field(default="DRAFT", min_length=1, max_length=40)
     is_default: bool = False
     workflow_format: str = Field(default="legacy_v1", pattern="^(legacy_v1|block_v2|universal_v2)$")
-    workflow_purpose: str = Field(default="test_execution", pattern="^(test_execution|story_generation)$")
+    workflow_purpose: str = Field(default="test_execution", pattern="^(test_execution|story_generation|test_case_generation)$")
     source_workflow_id: Optional[UUID] = None
+    provider_profile_id: Optional[UUID] = None
+    fallback_profile_ids: List[UUID] = Field(default_factory=list, max_length=5)
+    decision_policy_json: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("decision_policy_json")
+    @classmethod
+    def validate_decision_policy(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        return validate_ai_json_payload(value) or {}
 
 class AiWorkflowCreate(AiWorkflowBase):
     nodes: List[AiWorkflowNodeBase] = Field(default_factory=list, max_length=MAX_AI_WORKFLOW_NODES)
@@ -329,10 +484,18 @@ class AiWorkflowUpdate(BaseModel):
     status: Optional[str] = Field(default=None, min_length=1, max_length=40)
     is_default: Optional[bool] = None
     workflow_format: Optional[str] = Field(default=None, pattern="^(legacy_v1|block_v2|universal_v2)$")
-    workflow_purpose: Optional[str] = Field(default=None, pattern="^(test_execution|story_generation)$")
+    workflow_purpose: Optional[str] = Field(default=None, pattern="^(test_execution|story_generation|test_case_generation)$")
+    provider_profile_id: Optional[UUID] = None
+    fallback_profile_ids: Optional[List[UUID]] = Field(default=None, max_length=5)
+    decision_policy_json: Optional[Dict[str, Any]] = None
     nodes: Optional[List[AiWorkflowNodeBase]] = Field(default=None, max_length=MAX_AI_WORKFLOW_NODES)
     edges: Optional[List[AiWorkflowEdgeBase]] = Field(default=None, max_length=MAX_AI_WORKFLOW_EDGES)
     changelog: Optional[str] = Field(default=None, max_length=MAX_AI_CHANGELOG_LENGTH)
+
+    @field_validator("decision_policy_json")
+    @classmethod
+    def validate_decision_policy(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        return validate_ai_json_payload(value) if value is not None else None
 
 class AiPromptVersionResponse(BaseModel):
     id: UUID

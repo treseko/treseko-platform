@@ -39,8 +39,9 @@ export function useAiModelConfig({
       ...aiEngineConfig,
       provider,
       provider_label: option.label,
-      llm_endpoint: shouldReplaceEndpoint ? option.defaultEndpoint : aiEngineConfig.llm_endpoint,
-      model: option.defaultModel || aiEngineConfig.model,
+      llm_endpoint: provider === 'opencode' ? option.defaultEndpoint : (shouldReplaceEndpoint ? option.defaultEndpoint : aiEngineConfig.llm_endpoint),
+      model: option.defaultModel || (provider === 'opencode' ? '' : aiEngineConfig.model),
+      ai_execution_driver: provider === 'opencode' ? 'opencode' : 'treseko_engine',
       model_catalog: [],
       last_model_scan_status: null,
       last_model_scan_requires_api_key: option.requiresApiKey,
@@ -75,7 +76,7 @@ export function useAiModelConfig({
         method: 'POST',
         body: JSON.stringify({
           provider: selectedRuntimeProvider,
-          llm_endpoint: aiEngineConfig.llm_endpoint,
+          llm_endpoint: selectedRuntimeProvider === 'opencode' ? 'http://127.0.0.1:4096' : aiEngineConfig.llm_endpoint,
         }),
       })
       if (!response.ok) throw new Error(`Backend respondio ${response.status}`)
@@ -104,6 +105,7 @@ export function useAiModelConfig({
         last_model_scan_api_key_configured: Boolean(result.api_key_configured),
         provider_api_key_configured: Boolean(result.api_key_configured),
         provider_api_key_source: result.api_key_source || aiEngineConfig.provider_api_key_source || null,
+        ai_execution_driver: selectedRuntimeProvider === 'opencode' ? 'opencode' : aiEngineConfig.ai_execution_driver,
       })
       if (result.status === 'ok' || result.status === 'empty') {
         showFeedback('Modelos IA', result.detail || `${scannedModels.length} modelos detectados.`, result.status === 'ok' ? 'success' : 'warning')
@@ -111,10 +113,12 @@ export function useAiModelConfig({
         setModelScanError(result.detail || 'No se pudo escanear modelos.')
         showFeedback('Modelos IA', result.detail || 'No se pudo escanear modelos.', 'warning')
       }
+      return { status: String(result.status || 'error'), models: scannedModels.length }
     } catch (error: any) {
       const message = error?.message || 'No se pudo escanear modelos.'
       setModelScanError(message)
       showFeedback('Modelos IA', message, 'warning')
+      return { status: 'error', models: 0 }
     } finally {
       setModelScanLoading(false)
     }

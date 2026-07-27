@@ -35,6 +35,9 @@ import { featureEnabled } from '../premium/featureAccess'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { dateTimeMs, formatDateTime, toDateTimeLocalInput } from '../../shared/utils/dateTime'
 import { TraceabilityTab } from './TraceabilityTab'
+import { WikiMarkdownViewer } from './WikiMarkdownViewer'
+import { CasePortabilityPanel } from '../configuracion/components/tabs/CasePortabilityPanel'
+import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 
 type ProyectosPageProps = any
 
@@ -111,7 +114,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
     hasSystemFeature,
     setActiveTab,
     confirmAction,
-    onCreateCaseFromStory
+    onCreateCaseFromStory,
+    onOpenLinkedCase
   } = props
   const activeOrganizations = organizations.filter((org: any) => org.active !== false)
   const canUseCapability = canAccessCapability || ((capabilityId: string, level = 'read') => canAccessModule(capabilityId.split('.')[0], level))
@@ -144,6 +148,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
     { id: 'traceability', label: 'Requisitos e Historias', icon: Link, visible: canReadTraceability },
     { id: 'wiki', label: 'Wiki / Documentacion', icon: FileText, visible: canReadProjectWiki },
     { id: 'tickets', label: 'Tickets e Incidencias', icon: Ticket, visible: canReadProjectTickets },
+    { id: 'portability', label: 'Importar / Exportar', icon: History, visible: canUseCapability('plugins.provider.case_portability.importar_casos', 'read') },
   ].filter(tab => tab.visible)
   const projectEnvironments = environments.filter((env: any) => env.projectId === managingProjectId)
   const [showEnvironmentModal, setShowEnvironmentModal] = useState(false)
@@ -528,7 +533,10 @@ export function ProyectosPage(props: ProyectosPageProps) {
     const now = Date.now()
     const start = dateTimeMs(build.startDate)
     const end = dateTimeMs(build.endDate)
-    if (!build.active) {
+    if (build.state === 'PREPARACION') {
+      return { label: 'En preparación', variant: 'warning', progress: null, detail: 'Pendiente de activación' }
+    }
+    if (build.state === 'HISTORICA' || (!build.state && !build.active)) {
       if (!build.startDate && !build.endDate) return { label: 'Histórica', variant: 'primary', progress: null, detail: 'Sin ventana' }
       const durationMin = start && end && end > start ? Math.round((end - start) / 60000) : null
       const durStr = formatBuildDuration(durationMin)
@@ -640,26 +648,29 @@ export function ProyectosPage(props: ProyectosPageProps) {
           {/* VISTA 1: GRID DE PROYECTOS */}
           {!managingProjectId ? (
             <div className="d-flex flex-column h-100 overflow-hidden">
-              <div className="responsive-page-toolbar d-flex justify-content-between align-items-center mb-4 flex-shrink-0">
-                <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
-                  <Folders size={28} /> Portafolio de Proyectos
-                </h4>
+              {activeOrganizations.length > 0 && (
+                <div className="responsive-page-toolbar d-flex justify-content-between align-items-center mb-4 flex-shrink-0">
+                  <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
+                    <Folders size={28} /> Portafolio de Proyectos
+                  </h4>
 
-                {canEditProjectPortfolio && (
-                  <Form className="project-create-form d-flex align-items-center bg-white p-1 rounded-pill shadow-sm border border-light-subtle" onSubmit={handleCreateProject}>
-                    <Form.Select name="orgSelect" size="sm" className="border-0 shadow-none bg-transparent text-secondary fw-bold ms-2" style={{ width: '160px' }}>
-                      {activeOrganizations.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </Form.Select>
-                    <div className="vr text-muted opacity-25 my-2"></div>
-                    <Form.Control name="projName" size="sm" type="text" placeholder="Nuevo proyecto *..." className="border-0 shadow-none bg-transparent text-dark px-3" required />
-                    <Button type="submit" variant="primary" size="sm" className="fw-bold text-nowrap rounded-pill px-4 shadow-sm" disabled={projectsLoading}>
-                      {projectsLoading ? 'Sync...' : '+ Crear'}
-                    </Button>
-                  </Form>
-                )}
-              </div>
+                  {canEditProjectPortfolio && (
+                    <Form className="project-create-form d-flex align-items-center bg-white p-1 rounded-pill shadow-sm border border-light-subtle" onSubmit={handleCreateProject}>
+                      <Form.Control name="projName" size="sm" type="text" placeholder="Nuevo proyecto *..." className="border-0 shadow-none bg-transparent text-dark px-3" required />
+                      <Button type="submit" variant="primary" size="sm" className="fw-bold text-nowrap rounded-pill px-4 shadow-sm" disabled={projectsLoading}>
+                        {projectsLoading ? 'Sync...' : '+ Crear'}
+                      </Button>
+                    </Form>
+                  )}
+                </div>
+              )}
 
-              <Row className="g-4 text-start overflow-auto pb-4 flex-grow-1">
+              {activeOrganizations.length === 0 ? (
+                <WorkspaceContextEmptyState
+                  message="Selecciona una solución para continuar."
+                  detail="Los controles de proyectos aparecerán cuando tengas una solución asignada."
+                />
+              ) : <Row className="g-4 text-start overflow-auto pb-4 flex-grow-1">
                 {projectsList.filter(p => p.orgId === currentOrgId).map(p => {
                   const orgName = organizations.find(o => o.id === p.orgId)?.name || 'Cliente general';
                   const isSelected = currentProjectId === p.id;
@@ -860,7 +871,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
                     </Col>
                   );
                 })}
-              </Row>
+              </Row>}
             </div>
           ) : (
             /* VISTA 2: ADMINISTRACIÓN DETALLADA DEL PROYECTO */
@@ -1013,6 +1024,14 @@ export function ProyectosPage(props: ProyectosPageProps) {
                         </Col>
                         )}
                       </Row>
+                    </div>
+                  )}
+
+                  {projectInnerTab === 'portability' && (
+                    <div className="animate__animated animate__fadeIn">
+                      <h5 className="fw-bold text-dark mb-1">Importar / Exportar casos</h5>
+                      <p className="small text-muted mb-4">Exportá suites en el formato oficial Treseko o importá casos desde otras herramientas.</p>
+                      <CasePortabilityPanel fetchWithAuth={fetchWithAuth} showFeedback={showFeedback} canEdit={canUseCapability('plugins.provider.case_portability.importar_casos', 'edit')} initialProjectId={managingProjectId} embedded />
                     </div>
                   )}
 
@@ -1201,9 +1220,9 @@ export function ProyectosPage(props: ProyectosPageProps) {
                                               </div>
                                               <div className="flex-grow-1">
                                                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                                                  <div className="fw-bold text-dark font-monospace" style={{ fontSize: '0.9rem' }}>{build.name}</div>
-                                                  <Badge bg={build.active ? 'success' : 'light'} text={build.active ? undefined : 'secondary'} className={build.active ? '' : 'border'}>
-                                                    {build.active ? 'Activo' : 'Histórico'}
+                                                  <div className="fw-bold text-dark font-monospace app-small">{build.name}</div>
+                                                  <Badge bg={build.state === 'ACTIVA' || build.active ? 'success' : build.state === 'PREPARACION' ? 'warning' : 'light'} text={build.state === 'ACTIVA' || build.active || build.state === 'PREPARACION' ? undefined : 'secondary'} className={build.state === 'HISTORICA' || (!build.state && !build.active) ? 'border' : ''}>
+                                                    {build.state === 'PREPARACION' ? 'En preparación' : build.state === 'ACTIVA' || build.active ? 'Activo' : 'Histórico'}
                                                   </Badge>
                                                   {build.hidden && <Badge bg="light" text="secondary" className="border">Oculto</Badge>}
                                                   <Badge bg={windowState.variant as any}>{windowState.label}</Badge>
@@ -1626,6 +1645,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
                       refreshToken={traceabilityRefreshToken}
                       confirmAction={confirmAction}
                       onCreateCaseFromStory={onCreateCaseFromStory}
+                      onOpenLinkedCase={onOpenLinkedCase}
                       showFeedback={showFeedback}
                       />
                     </div>
@@ -1709,10 +1729,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
                                 <span className="x-small text-muted fw-bold text-uppercase ms-2">Formato Markdown Reconocido</span>
                                 <span className="small text-muted me-2">Actualizado por <strong>{selectedWiki.lastEditedBy}</strong> el {selectedWiki.lastEditedAt}</span>
                               </div>
-                              {/* Visor simulado de Markdown */}
-                              <div className="markdown-preview text-dark" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                                {selectedWiki.content}
-                              </div>
+                              <WikiMarkdownViewer content={selectedWiki.content} />
                             </Card.Body>
                           </Card>
                         </div>
@@ -1733,7 +1750,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
                           <div className="flex-grow-1 d-flex flex-column gap-3">
                             <Form.Control size="lg" type="text" placeholder="Título del documento..." className="fw-bold border-light-subtle shadow-sm" value={wikiFormData.title} onChange={(e) => setWikiFormData({ ...wikiFormData, title: e.target.value })} />
                             <div className="flex-grow-1 position-relative">
-                              <Form.Control as="textarea" placeholder="Escribe aquí utilizando sintaxis Markdown (Ej: ### Título, **Negrita**, * Lista)..." className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4" style={{ resize: 'none', fontSize: '0.9rem' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
+                              <Form.Control as="textarea" placeholder="Escribe aquí utilizando sintaxis Markdown (Ej: ### Título, **Negrita**, * Lista)..." className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4 app-small" style={{ resize: 'none' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
                             </div>
                           </div>
                         </div>

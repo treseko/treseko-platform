@@ -3,17 +3,7 @@ import type { AttachmentMeta } from '../../EvidenceUpload'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { mergeCasesById } from '../casos/caseUtils'
-
-type ExecutionMode = 'manual' | 'automated' | 'ia'
-type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
-
-const iaLog = (level: string, message: string, extra: Record<string, any> = {}) => ({
-  ts: new Date().toISOString(),
-  level,
-  source: String(level).toUpperCase(),
-  message,
-  ...extra,
-})
+import { createIaLog as iaLog, type ExecutionMode, type FeedbackVariant } from './executionPresentation'
 
 type CreateExecutionActionsParams = {
   managingProjectId: string | null
@@ -58,7 +48,6 @@ type CreateExecutionActionsParams = {
   setIaLogs: Dispatch<SetStateAction<any[]>>
   setActiveTab: (tab: string) => void
   openAutomationMonitor: (monitor: { run: any; jobs: any[] }) => void
-  automationDebugMode?: boolean
   aiMaxParallelRuns?: number
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
@@ -107,7 +96,6 @@ export function createExecutionActions({
   setIaLogs,
   setActiveTab,
   openAutomationMonitor,
-  automationDebugMode = false,
   aiMaxParallelRuns = 1,
   setProjectSyncMessage,
   showFeedback
@@ -223,17 +211,12 @@ export function createExecutionActions({
     const snapshots = await snapshotsResponse.json()
     const stepSnapshots = snapshots.filter((snap: any) => Number(snap.numero_paso) > 0)
     const generalSnapshot = snapshots.find((snap: any) => Number(snap.numero_paso) === 0) || null
-    const snapshotAttachmentEntries = await Promise.all(snapshots.map(async (snap: any) => {
-      try {
-        const attachmentsResponse = await fetchWithAuth(`${API_BASE}/snapshots/${snap.id}/attachments/`)
-        if (!attachmentsResponse.ok) return [snap.id, []]
-        const links = await attachmentsResponse.json()
-        return [snap.id, links.map((link: any) => link.attachment)]
-      } catch {
-        return [snap.id, []]
-      }
-    }))
-    const attachmentsBySnapshot = Object.fromEntries(snapshotAttachmentEntries)
+    const attachmentsResponse = await fetchWithAuth(`${API_BASE}/ejecuciones/${ejecucion.id}/snapshot-attachments/`)
+    if (!attachmentsResponse.ok) throw new Error(`No se pudieron cargar las evidencias (${attachmentsResponse.status})`)
+    const attachmentLinksBySnapshot = await attachmentsResponse.json()
+    const attachmentsBySnapshot = Object.fromEntries(
+      snapshots.map((snap: any) => [snap.id, (attachmentLinksBySnapshot[String(snap.id)] || []).map((link: any) => link.attachment)])
+    )
     const isFreshExecution = !ejecucion.estado_resultado || ejecucion.estado_resultado === 'SIN_CORRER'
     const isAutoBlockNote = (value?: string) =>
       String(value || '').trim().toLowerCase().startsWith('bloqueado autom')
@@ -321,6 +304,7 @@ export function createExecutionActions({
           return {
             executionId: item.id,
             caseId: item.caso_id,
+            runId: run.id,
             caseCode: test?.code || test?.codigo || '',
             caseTitle: test?.title || test?.titulo || 'Caso IA',
             runName: run.nombre,
@@ -443,7 +427,7 @@ export function createExecutionActions({
           try {
             const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, {
               method: 'POST',
-              body: JSON.stringify({ debug_mode: Boolean(automationDebugMode) })
+              body: JSON.stringify({ debug_mode: false })
             })
             const payload = await response.json().catch(() => null)
             if (!response.ok) {

@@ -48,6 +48,12 @@ from ...services.updater import configured_community_update_channel, get_update_
 from ...services.edition.usage_limits import WEEKLY_USAGE_WINDOW_DAYS, count_weekly_executions
 from ...time_utils import utc_now
 from ...version import COMMUNITY_RELEASE_TAG, PRODUCT_EDITION_BASE, PRODUCT_NAME, PRODUCT_VERSION, RELEASE_CHANNEL
+from .system_support import (
+    branding_state as _branding_state,
+    database_schema_revision as _database_schema_revision,
+    first_run_state as _first_run_state,
+    request_client_ip as _request_client_ip,
+)
 
 
 router = APIRouter(tags=["system"])
@@ -63,25 +69,9 @@ BRANDING_LOGO_MIME_TYPES = {
 MAX_BRANDING_LOGO_BYTES = 2 * 1024 * 1024
 
 
-def _request_client_ip(request: Request) -> str | None:
-    forwarded_for = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
-    if forwarded_for:
-        return forwarded_for
-    return request.client.host if request.client else None
-
-
 @router.get("/health")
 async def read_health():
     return {"status": "ok", "service": "backend", "version": PRODUCT_VERSION}
-
-
-async def _database_schema_revision(db: AsyncSession) -> str | None:
-    try:
-        result = await db.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-        revision = result.scalar_one_or_none()
-        return str(revision) if revision else None
-    except Exception:
-        return None
 
 
 @router.get("/system/version")
@@ -128,18 +118,6 @@ async def read_system_features(
     }
 
 
-async def _branding_state(db: AsyncSession) -> dict[str, Any]:
-    entitlement_state = await get_entitlement_provider().get_state(db)
-    enabled_features = set(entitlement_state.get("enabled_features") or [])
-    can_customize = entitlement_state.get("edition") == "premium" and "branding.custom" in enabled_features
-    value = await config_service.get_workspace_branding(db)
-    return config_service.branding_response(
-        value,
-        edition=str(entitlement_state.get("edition") or "community"),
-        can_customize=can_customize,
-    )
-
-
 @router.get("/system/branding/public", response_model=schemas.SystemBrandingPublicResponse)
 async def read_public_system_branding(
     db: AsyncSession = Depends(get_db),
@@ -150,6 +128,8 @@ async def read_public_system_branding(
         "effective_brand_name": state["effective_brand_name"],
         "effective_logo_url": state["effective_logo_url"],
         "custom_branding_active": state["custom_branding_active"],
+        "effective_primary_color": state["effective_primary_color"],
+        "effective_accent_color": state["effective_accent_color"],
     }
 
 
@@ -224,46 +204,6 @@ async def update_system_evidence_sanitization_policy(
         ip_address=client_ip,
     )
     return updated
-
-
-async def _installation_data_counts(db: AsyncSession) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for key, model in (
-        ("organizations", models.Organizacion),
-        ("projects", models.Proyecto),
-        ("cases", models.CasoPrueba),
-    ):
-        result = await db.execute(select(func.count()).select_from(model))
-        counts[key] = int(result.scalar() or 0)
-    return counts
-
-
-async def _first_run_state(db: AsyncSession, current_user: models.Usuario | None = None) -> dict[str, Any]:
-    setting = await config_service.get_first_run_onboarding(db)
-    counts = await _installation_data_counts(db)
-    installation_has_data = any(counts.values())
-    completed = bool(setting.get("completed"))
-
-    if not completed and installation_has_data:
-        setting = await config_service.update_first_run_onboarding(db, {
-            **setting,
-            "completed": True,
-            "completed_at": utc_now().isoformat(),
-            "completed_by_user_id": str(current_user.id) if current_user else None,
-            "completion_source": "existing_installation_data",
-            "terms_accepted": bool(setting.get("terms_accepted")),
-        })
-        completed = True
-
-    return {
-        "completed": completed,
-        "requires_onboarding": not completed and not installation_has_data,
-        "installation_has_data": installation_has_data,
-        "completion_source": setting.get("completion_source"),
-        "completed_at": setting.get("completed_at"),
-        "completed_by_user_id": setting.get("completed_by_user_id"),
-        "terms_version": setting.get("terms_version"),
-    }
 
 
 @router.get("/system/first-run", response_model=schemas.SystemFirstRunState)
@@ -422,6 +362,20 @@ async def read_system_license_usage(
             solution_id=organization_id,
         )
         ai_count = await count_weekly_executions(db, (models.ExecutionMode.IA,), solution_id=organization_id)
+        ai_case_generation_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(models.CasoGeneracion)
+                    .join(models.Proyecto, models.Proyecto.id == models.CasoGeneracion.proyecto_id)
+                    .filter(
+                        models.Proyecto.organizacion_id == organization_id,
+                        models.CasoGeneracion.fecha_creacion >= utc_now() - timedelta(days=WEEKLY_USAGE_WINDOW_DAYS),
+                    )
+                )
+            ).scalar()
+            or 0
+        )
         storage_bytes = int(
             (
                 await db.execute(
@@ -465,6 +419,21 @@ async def read_system_license_usage(
             (models.ExecutionMode.AUTOMATIZADA, models.ExecutionMode.EXTERNA),
         )
         ai_count = await _count_weekly_executions_any_solution(db, (models.ExecutionMode.IA,))
+        ai_case_generation_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(models.CasoGeneracion)
+                    .join(models.Proyecto, models.Proyecto.id == models.CasoGeneracion.proyecto_id)
+                    .join(models.Organizacion, models.Organizacion.id == models.Proyecto.organizacion_id)
+                    .filter(
+                        models.Organizacion.activo.is_(True),
+                        models.CasoGeneracion.fecha_creacion >= utc_now() - timedelta(days=WEEKLY_USAGE_WINDOW_DAYS),
+                    )
+                )
+            ).scalar()
+            or 0
+        )
         storage_bytes = int((await db.execute(select(func.coalesce(func.sum(models.Attachment.size), 0)))).scalar() or 0)
 
     storage_mb = round(storage_bytes / (1024 * 1024), 2)
@@ -475,6 +444,10 @@ async def read_system_license_usage(
         "max_workers": _usage_item(workers_count, limits.get("max_workers")),
         "max_automated_runs_per_week": _usage_item(automated_count, limits.get("max_automated_runs_per_week")),
         "max_ai_runs_per_week": _usage_item(ai_count, limits.get("max_ai_runs_per_week")),
+        "max_ai_case_generations_per_week": _usage_item(
+            ai_case_generation_count,
+            limits.get("max_ai_case_generations_per_week"),
+        ),
         "max_storage_mb": _usage_item(storage_mb, limits.get("max_storage_mb")),
     }
     return {"organization_id": str(organization_id) if organization_id else None, "usage": usage}
@@ -503,8 +476,14 @@ async def install_system_license(
         if license_data.get("verification_server"):
             try:
                 online_state = await activate_license_online(license_data)
-            except PremiumVerificationError:
-                return state
+            except PremiumVerificationError as exc:
+                # La firma local ya fue validada y la licencia quedó instalada,
+                # pero no debemos presentar la activación online como confirmada.
+                return {
+                    **state,
+                    "online_status": "pending",
+                    "online_reason": f"No se pudo confirmar la activación online: {exc}",
+                }
             return await save_online_license_state(db, online_state)
         return state
     except LicenseError as exc:
@@ -935,6 +914,26 @@ async def apply_system_update(
         ip_address=_request_client_ip(request),
     )
     return {"task_id": task_id, "status": "queued"}
+
+
+@router.post("/system/updates/restart/{task_id}", response_model=schemas.SystemUpdateStatusResponse)
+async def restart_prepared_system_update(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "edit")),
+):
+    try:
+        result = await get_update_service().restart_prepared_update(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await crud.create_audit_log(
+        db,
+        usuario_id=current_user.id,
+        accion="UPDATE_RESTART_APPROVED",
+        recurso="system_updates",
+        detalles={"task_id": task_id, "version": result.get("version")},
+    )
+    return result
 
 
 @router.get("/system/updates/status", response_model=schemas.SystemUpdateStatusResponse)

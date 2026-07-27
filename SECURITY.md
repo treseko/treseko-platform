@@ -4,7 +4,8 @@ Treseko esta pensado para operaciones QA self-hosted y puede procesar datos sens
 
 ## Versiones Soportadas
 
-Este repositorio publica release candidates de Community. Las correcciones de seguridad apuntan primero al release candidate mas reciente.
+Este repositorio publica versiones estables de Community. Las correcciones de
+seguridad apuntan primero a la versión publicada más reciente.
 
 ## Reportar Una Vulnerabilidad
 

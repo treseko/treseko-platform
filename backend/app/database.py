@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from dotenv import load_dotenv
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
@@ -11,16 +10,13 @@ from sqlalchemy.orm import declarative_base
 from .database_legacy_sqlite_automation import migrate_automation_schema
 from .database_legacy_sqlite_core import migrate_identity_and_project_schema
 from .database_legacy_sqlite_testing import migrate_testing_execution_schema
+from .runtime_environment import IS_PRODUCTION, RUNTIME_ENVIRONMENT
 
 
 logger = logging.getLogger(__name__)
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
-APP_ENV = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower()
-IS_PRODUCTION = APP_ENV in {"production", "prod"}
-
-if not IS_PRODUCTION:
-    load_dotenv(BACKEND_DIR / ".env")
+APP_ENV = RUNTIME_ENVIRONMENT
 
 
 def _env_int(name: str, default: int) -> int:
@@ -49,13 +45,12 @@ def _env_or_file(name: str) -> str:
 DATABASE_URL = _env_or_file("DATABASE_URL")
 if not DATABASE_URL:
     if IS_PRODUCTION:
-        raise RuntimeError("DATABASE_URL es obligatorio cuando APP_ENV=production.")
-    DATABASE_URL = "postgresql+asyncpg://postgres:treseko_dev@localhost:5432/treseko_db"
+        raise RuntimeError("DATABASE_URL es obligatorio para iniciar Treseko.")
 
 DB_ECHO = os.getenv("DB_ECHO", "false").lower() in {"1", "true", "yes", "on"}
 ALLOW_SQLITE_LEGACY = os.getenv("ALLOW_SQLITE_LEGACY", "false").lower() in {"1", "true", "yes", "on"}
 ALLOW_SCHEMA_CREATE_ALL = (
-    os.getenv("TRESEKO_ALLOW_SCHEMA_CREATE_ALL", "false" if IS_PRODUCTION else "true").lower()
+    os.getenv("TRESEKO_ALLOW_SCHEMA_CREATE_ALL", "false").lower()
     in {"1", "true", "yes", "on"}
 )
 DB_POOL_SIZE = _env_int("DB_POOL_SIZE", 5)

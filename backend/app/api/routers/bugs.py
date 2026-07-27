@@ -14,56 +14,10 @@ BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_
 # --- ENDPOINTS BUG TRACKER INTERNO ---
 
 async def _ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> None:
-    if not bug.build_id:
-        return
-    build_active = (
-        await db.execute(select(models.Build.activo).filter(models.Build.id == bug.build_id))
-    ).scalar_one_or_none()
-    if build_active is not False:
-        return
-
-    if bug.caso_id:
-        bug_case = (
-            await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == bug.caso_id))
-        ).scalar_one_or_none()
-        if bug_case:
-            active_tracking_build = (
-                await db.execute(
-                    select(models.Build.id)
-                    .join(models.BuildCaso, models.BuildCaso.build_id == models.Build.id)
-                    .join(models.CasoPrueba, models.CasoPrueba.id == models.BuildCaso.caso_id)
-                    .filter(models.Build.proyecto_id == bug.proyecto_id)
-                    .filter(models.Build.activo == True)  # noqa: E712
-                    .filter(models.CasoPrueba.master_id == bug_case.master_id)
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if active_tracking_build:
-                return
-
-    metadata = bug.metadata_json if isinstance(bug.metadata_json, dict) else {}
-    occurrence_build_ids = [
-        item.get("build_id")
-        for item in (metadata.get("linked_execution_occurrences") or [])
-        if isinstance(item, dict) and item.get("build_id")
-    ]
-    if occurrence_build_ids:
-        active_occurrence = (
-            await db.execute(
-                select(models.Build.id)
-                .filter(models.Build.id.in_(occurrence_build_ids))
-                .filter(models.Build.proyecto_id == bug.proyecto_id)
-                .filter(models.Build.activo == True)  # noqa: E712
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if active_occurrence:
-            return
-
-    raise HTTPException(
-        status_code=409,
-        detail="La build origen del bug está inactiva. Para modificarlo, registra seguimiento en una build activa del mismo caso o reabre una build vigente.",
-    )
+    try:
+        await crud.ensure_bug_build_is_active(db, bug)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 @router.get("/proyectos/{proyecto_id}/bugs", response_model=schemas.BugListResponse)
 @router.get("/proyectos/{proyecto_id}/bugs/", response_model=schemas.BugListResponse)
@@ -243,7 +197,10 @@ async def update_bug(
     await access_control.require_project_access(db, current_user, bug.proyecto_id, "edit")
     await _ensure_bug_build_is_active(db, bug)
     old_state = {"asignado_a": bug.asignado_a, "severidad": bug.severidad, "prioridad": bug.prioridad}
-    updated = await crud.update_bug_issue(db, bug_id, payload)
+    try:
+        updated = await crud.update_bug_issue(db, bug_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     if payload.asignado_a is not None and old_state["asignado_a"] != updated.asignado_a:
         await _emit_bug_event(db, "bug.assigned", updated, current_user)
     if payload.severidad is not None and old_state["severidad"] != updated.severidad:
@@ -304,7 +261,8 @@ async def transition_bug(
     if not bug:
         raise HTTPException(status_code=404, detail="Bug no encontrado")
     await access_control.require_project_access(db, current_user, bug.proyecto_id, "edit")
-    await _ensure_bug_build_is_active(db, bug)
+    if payload.estado.upper() not in BUG_CLOSED_STATES:
+        await _ensure_bug_build_is_active(db, bug)
     old_status = bug.estado
     try:
         updated = await crud.transition_bug_issue(db, bug_id, payload, current_user.id)
@@ -317,8 +275,24 @@ async def transition_bug(
         event_type = "bug.closed"
     elif old_status in {"CERRADO", "RESUELTO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}:
         event_type = "bug.reopened"
-    await _emit_bug_event(db, event_type, updated, current_user, {"old_value": old_status, "new_value": updated.estado})
+    await _emit_bug_event(db, event_type, updated, current_user, {
+        "old_value": old_status,
+        "new_value": updated.estado,
+        "resolution_build_id": str(updated.resolved_build_id) if updated.resolved_build_id else None,
+    })
     return updated
+
+@router.get("/bugs/{bug_id}/history/", response_model=List[schemas.BugStatusHistoryResponse])
+async def read_bug_status_history(
+    bug_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read")),
+):
+    bug = await crud.get_bug_issue(db, bug_id)
+    if not bug:
+        raise HTTPException(status_code=404, detail="Bug no encontrado")
+    await access_control.require_project_access(db, current_user, bug.proyecto_id, "read")
+    return await crud.list_bug_status_history(db, bug_id)
 
 @router.get("/bugs/{bug_id}/comments/", response_model=List[schemas.BugCommentResponse])
 async def read_bug_comments(

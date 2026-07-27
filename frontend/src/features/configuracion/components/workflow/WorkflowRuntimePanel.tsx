@@ -25,8 +25,9 @@ export function WorkflowRuntimePanel({
           <div className="fw-bold small"><Activity size={14} className="me-1" /> Runtime & trazabilidad</div>
           <div className="x-small text-muted">Timeline, eventos, variables, snapshots, logs, tokens, costos y latencia.</div>
         </div>
-        <div className="d-flex gap-2 align-items-center">
-          <Form.Control size="sm" placeholder="execution_id" value={traceExecutionId} onChange={(event) => setTraceExecutionId(event.target.value)} />
+        <div className="workflow-runtime-actions">
+          <Form.Label visuallyHidden htmlFor="workflow-trace-execution-id">ID de ejecución</Form.Label>
+          <Form.Control id="workflow-trace-execution-id" name="workflow_trace_execution_id" autoComplete="off" size="sm" placeholder="ID de ejecución…" value={traceExecutionId} onChange={(event) => setTraceExecutionId(event.target.value)} />
           <Button size="sm" variant="outline-primary" className="fw-bold" type="button" onClick={loadRuntimeTraces}>Cargar</Button>
           <Button size="sm" variant="light" type="button" onClick={() => setWorkflowRuntimeExpanded(!workflowRuntimeExpanded)}>{workflowRuntimeExpanded ? 'Contraer' : 'Expandir'}</Button>
         </div>
@@ -49,7 +50,7 @@ export function WorkflowRuntimePanel({
             <div className="workflow-runtime-list">
               {runtimeTraces.map(trace => (
                 <details key={trace.id} className="workflow-runtime-item">
-                  <summary><Badge bg={trace.status === 'SUCCESS' ? 'success' : trace.status === 'FAILED' ? 'danger' : trace.status === 'BLOCKED' ? 'warning' : 'secondary'}>{trace.status}</Badge><span className="font-monospace">{trace.node_id || 'workflow'}</span><span className="text-muted">{trace.started_at || '-'}</span></summary>
+                  <summary><Badge bg={trace.status === 'SUCCESS' ? 'success' : trace.status === 'FAILED' ? 'danger' : trace.status === 'BLOCKED' ? 'primary' : 'secondary'}>{trace.status}</Badge><span className="font-monospace">{trace.node_id || 'workflow'}</span><span className="text-muted">{trace.started_at || '-'}</span></summary>
                   <pre>{JSON.stringify({ input: trace.input_json, output: trace.output_json, metrics: trace.metrics_json }, null, 2)}</pre>
                 </details>
               ))}

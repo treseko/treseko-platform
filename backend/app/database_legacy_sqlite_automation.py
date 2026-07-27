@@ -24,6 +24,10 @@ async def migrate_automation_schema(conn, get_columns, get_column_info, backend_
         )
     if build_columns and "oculto" not in build_columns:
         await conn.execute(text("ALTER TABLE builds ADD COLUMN oculto BOOLEAN DEFAULT 0 NOT NULL"))
+    if build_columns and "estado" not in build_columns:
+        await conn.execute(text("ALTER TABLE builds ADD COLUMN estado VARCHAR(20) DEFAULT 'HISTORICA' NOT NULL"))
+        await conn.execute(text("UPDATE builds SET estado = CASE WHEN activo = 1 THEN 'ACTIVA' ELSE 'HISTORICA' END"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_builds_estado ON builds (estado)"))
 
     build_caso_columns = await conn.run_sync(get_columns, "build_casos")
     if not build_caso_columns:

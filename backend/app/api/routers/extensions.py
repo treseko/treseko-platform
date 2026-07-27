@@ -1,130 +1,34 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import auth, models, schemas
 from ...database import get_db
-from ...services.edition.entitlement_provider import get_entitlement_provider
-from ...services.integrations.registry import get_registered_integrations
-from ...services.plugins.registry import get_registered_plugins
 from ...services.secret_crypto import encrypt_secret_value
-from ...time_utils import isoformat_utc, utc_now
+from ...services.plugins.installation import install_official_plugin
+from ...services.plugins.manifest import PluginManifestError, audit_manifest_snapshot, installation_scope_key
+from ...services.plugins.runner import PluginRunnerError, invoke_declarative_junit
+from ...services.plugins.store_client import PluginStoreClientError, fetch_official_catalog
+from ...services.plugins.pairing import download_paired_release, pair_installation, pairing_status
+from ...repositories.scheduled_runs_audit import create_audit_log
+from ...time_utils import utc_now
+from .extensions_catalog import (
+    AUDIT_CONFIG_KEY, append_audit as _append_audit, assert_capability as _assert_capability,
+    assert_feature as _assert_feature, audit_events as _audit_events, catalog_response as _catalog_response,
+    instance_summary as _instance_summary, load_instance as _load_instance, manifest_by_id as _manifest_by_id,
+    public_config as _public_config, required_capability as _required_capability,
+)
 
 
 router = APIRouter(tags=["extensions"])
 
-EXTENSION_PREMIUM_FEATURES = {
-    "integration": "integrations.enterprise",
-}
-
-AUDIT_CONFIG_KEY = "_treseko_audit"
-
-
-def _manifest_by_id(provider_id: str) -> dict[str, Any] | None:
-    for manifest in [*get_registered_integrations(), *get_registered_plugins()]:
-        if manifest.get("id") == provider_id:
-            return manifest
-    return None
-
-
-def _required_capability(kind: str, action: str) -> str:
-    if kind == "integration":
-        return {
-            "catalog": "integraciones.catalogo",
-            "install": "integraciones.configurar",
-            "configure": "integraciones.configurar",
-            "secrets": "integraciones.secretos",
-            "enable": "integraciones.configurar",
-            "test": "integraciones.test_conexion",
-        }[action]
-    return {
-        "catalog": "plugins.catalogo",
-        "install": "plugins.instalar",
-        "configure": "plugins.configurar",
-        "secrets": "plugins.gestionar_secretos",
-        "enable": "plugins.habilitar",
-        "test": "plugins.configurar",
-    }[action]
-
-
-def _assert_capability(user: models.Usuario, capability_id: str, level: str = "read") -> None:
-    if not auth.has_capability_permission(user, capability_id, level):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para gestionar este complemento",
-        )
-
-
-async def _assert_feature(db: AsyncSession, kind: str) -> None:
-    feature_id = EXTENSION_PREMIUM_FEATURES.get(kind)
-    if not feature_id:
-        return
-    state = await get_entitlement_provider().get_state(db)
-    if feature_id not in set(state.get("enabled_features") or []):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta funcion esta disponible en Treseko Premium.")
-
-
-def _public_config(config_json: dict[str, Any] | None) -> dict[str, Any]:
-    return {key: value for key, value in (config_json or {}).items() if not str(key).startswith("_treseko")}
-
-
-def _audit_events(config_json: dict[str, Any] | None) -> list[dict[str, Any]]:
-    events = (config_json or {}).get(AUDIT_CONFIG_KEY)
-    return events if isinstance(events, list) else []
-
-
-def _append_audit(instance: models.IntegrationInstance, user: models.Usuario, action: str) -> None:
-    config = dict(instance.config_json or {})
-    events = list(_audit_events(config))
-    events.insert(0, {
-        "action": action,
-        "actor_id": str(user.id),
-        "actor": user.email,
-        "at": isoformat_utc(utc_now()),
-    })
-    config[AUDIT_CONFIG_KEY] = events[:20]
-    instance.config_json = config
-
-
-def _instance_summary(instance: models.IntegrationInstance | None, kind: str) -> schemas.ExtensionInstanceSummary | None:
-    if not instance:
-        return None
-    return schemas.ExtensionInstanceSummary(
-        id=instance.id,
-        provider_id=instance.provider_id,
-        kind=kind,
-        enabled=bool(instance.enabled),
-        status=instance.status or "disabled",
-        config_json=_public_config(instance.config_json),
-        secrets_configured=instance.secrets_configured or {},
-        last_check_at=isoformat_utc(instance.last_check_at) if instance.last_check_at else None,
-        last_error=instance.last_error,
-        audit_events=_audit_events(instance.config_json),
-    )
-
-
-async def _instances_by_provider(db: AsyncSession) -> dict[str, models.IntegrationInstance]:
-    result = await db.execute(
-        select(models.IntegrationInstance)
-        .order_by(models.IntegrationInstance.created_at.desc())
-    )
-    instances: dict[str, models.IntegrationInstance] = {}
-    for instance in result.scalars().all():
-        instances.setdefault(instance.provider_id, instance)
-    return instances
-
-
-async def _load_instance(db: AsyncSession, instance_id: UUID) -> models.IntegrationInstance:
-    instance = await db.get(models.IntegrationInstance, instance_id)
-    if not instance:
-        raise HTTPException(status_code=404, detail="Complemento no encontrado")
-    return instance
 
 
 @router.get("/integrations/catalog", response_model=schemas.ExtensionCatalogResponse)
@@ -151,42 +55,6 @@ async def read_extensions_catalog(
     return await _catalog_response(db, current_user)
 
 
-async def _catalog_response(
-    db: AsyncSession,
-    current_user: models.Usuario,
-    kind_filter: str | None = None,
-) -> schemas.ExtensionCatalogResponse:
-    manifests = [*get_registered_integrations(), *get_registered_plugins()]
-    instances = await _instances_by_provider(db)
-    state = await get_entitlement_provider().get_state(db)
-    enabled_features = set(state.get("enabled_features") or [])
-    items: list[schemas.ExtensionCatalogItem] = []
-    for manifest in manifests:
-        kind = str(manifest.get("kind") or "")
-        if kind_filter and kind != kind_filter:
-            continue
-        catalog_capability = _required_capability(kind, "catalog")
-        if not auth.has_capability_permission(current_user, catalog_capability, "read"):
-            continue
-        feature_id = EXTENSION_PREMIUM_FEATURES.get(kind)
-        instance = instances.get(str(manifest.get("id")))
-        builtin = bool(manifest.get("builtin"))
-        items.append(schemas.ExtensionCatalogItem(
-            id=str(manifest.get("id")),
-            kind=kind,
-            display_name=str(manifest.get("display_name")),
-            description=manifest.get("description"),
-            status=str(manifest.get("status") or "planned"),
-            builtin=builtin,
-            capabilities=manifest.get("capabilities") or [],
-            premium_feature=feature_id,
-            premium_required=bool(feature_id and feature_id not in enabled_features),
-            installed=builtin or instance is not None,
-            instance=_instance_summary(instance, kind),
-        ))
-    return schemas.ExtensionCatalogResponse(items=items)
-
-
 @router.post("/extensions/{provider_id}/install", response_model=schemas.ExtensionInstanceSummary)
 async def install_extension(
     provider_id: str,
@@ -201,14 +69,19 @@ async def install_extension(
     _assert_capability(current_user, _required_capability(kind, "install"), "edit")
     await _assert_feature(db, kind)
     result = await db.execute(
-        select(models.IntegrationInstance)
-        .filter(models.IntegrationInstance.provider_id == provider_id)
+        select(models.IntegrationInstance).filter(
+            models.IntegrationInstance.provider_id == provider_id,
+            models.IntegrationInstance.scope_key == installation_scope_key(
+                organizacion_id=payload.organizacion_id, proyecto_id=payload.proyecto_id,
+            ),
+        )
         .order_by(models.IntegrationInstance.created_at.desc())
     )
     instance = result.scalars().first()
     if not instance:
         instance = models.IntegrationInstance(
             provider_id=provider_id,
+            scope_key=installation_scope_key(organizacion_id=payload.organizacion_id, proyecto_id=payload.proyecto_id),
             organizacion_id=payload.organizacion_id,
             proyecto_id=payload.proyecto_id,
             enabled=False,
@@ -225,6 +98,152 @@ async def install_extension(
     return _instance_summary(instance, kind)
 
 
+@router.post("/plugins/store/releases/{release_id}/install", response_model=schemas.ExtensionInstanceSummary)
+async def install_paired_official_store_release(
+    release_id: str,
+    payload: schemas.ExtensionInstallTargetRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.instalar", "edit")
+    state = await get_entitlement_provider().get_state(db)
+    try:
+        manifest, artifact = await download_paired_release(
+            db, release_id=release_id, enabled_features=set(state.get("enabled_features") or []),
+        )
+        instance = await install_official_plugin(
+            db,
+            manifest=manifest,
+            artifact_b64=base64.b64encode(artifact).decode("ascii"),
+            user=current_user,
+            organizacion_id=payload.organizacion_id,
+            proyecto_id=payload.proyecto_id,
+        )
+    except (PluginManifestError, PluginStoreClientError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _instance_summary(instance, "plugin")
+
+
+@router.get("/plugins/store/catalog")
+async def read_official_plugin_store_catalog(
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.catalogo", "read")
+    try:
+        return {"items": await fetch_official_catalog()}
+    except PluginStoreClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/plugins/store/register")
+async def register_official_plugin_store(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.configurar", "edit")
+    try:
+        result = await pair_installation(db)
+    except PluginStoreClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    await create_audit_log(db, current_user.id, "plugin_store.paired", "plugin_store", detalles={"installation_id": result["installation_id"]})
+    return result
+
+
+@router.get("/plugins/store/connection")
+async def read_official_plugin_store_connection(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.configurar", "edit")
+    return await pairing_status(db)
+
+
+@router.post("/plugins/store/{instance_id}/invoke")
+async def invoke_official_store_plugin(
+    instance_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.habilitar", "edit")
+    instance = await _load_instance(db, instance_id)
+    manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
+    if not instance.enabled or manifest.get("plugin_id") != "com.treseko.junit-importer":
+        raise HTTPException(status_code=409, detail="El plugin oficial no está habilitado para invocarse")
+    release_id = str(manifest.get("release_id") or "")
+    try:
+        catalog = await fetch_official_catalog()
+        release_available = any(str(item.get("release_id") or "") == release_id and item.get("status") == "published" for item in catalog)
+    except PluginStoreClientError as exc:
+        # Fail closed: a runner must never execute a release whose revocation
+        # state cannot be checked.
+        raise HTTPException(status_code=503, detail="No se puede verificar el estado de revocación del plugin") from exc
+    if not release_available:
+        instance.enabled = False
+        instance.status = "revoked"
+        instance.last_error = "El release oficial fue revocado o dejó de estar disponible"
+        await db.commit()
+        await create_audit_log(db, current_user.id, "plugin.revocation_blocked", "plugin_installation", instance.id, {"plugin_id": manifest.get("plugin_id"), "release_id": release_id})
+        raise HTTPException(status_code=409, detail="El release oficial está revocado y su ejecución fue bloqueada")
+    try:
+        result = await invoke_declarative_junit()
+    except PluginRunnerError as exc:
+        instance.status = "error"
+        instance.last_error = str(exc)
+        await db.commit()
+        await create_audit_log(db, current_user.id, "plugin.invocation_failed", "plugin_installation", instance.id, {"plugin_id": manifest.get("plugin_id")})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    await create_audit_log(db, current_user.id, "plugin.invoked", "plugin_installation", instance.id, {"plugin_id": manifest.get("plugin_id"), "invocation_id": result.get("invocation_id")})
+    return {"status": "accepted", "invocation_id": result.get("invocation_id")}
+
+
+@router.delete("/plugins/store/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def uninstall_official_store_plugin(
+    instance_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    """Remove a locally installed official plugin without erasing its audit trail."""
+    _assert_capability(current_user, "plugins.instalar", "edit")
+    instance = await _load_instance(db, instance_id)
+    if not ((instance.config_json or {}).get("_treseko_store") or {}):
+        raise HTTPException(status_code=409, detail="Solo los plugins instalados desde la tienda oficial se desinstalan por esta ruta")
+    store_manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
+    details = {
+        "plugin_id": store_manifest.get("plugin_id"), "release_id": store_manifest.get("release_id"),
+        "version": store_manifest.get("version"), "manifest": audit_manifest_snapshot(store_manifest),
+    }
+    await db.delete(instance)
+    await db.commit()
+    await create_audit_log(db, current_user.id, "plugin.uninstalled", "plugin_installation", instance_id, details)
+
+
+@router.get("/plugins/store/{instance_id}/audit", response_model=list[schemas.AuditLog])
+async def read_official_store_plugin_audit(
+    instance_id: UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    _assert_capability(current_user, "plugins.auditoria", "read")
+    rows = (await db.execute(
+        select(models.AuditLog).where(
+            models.AuditLog.recurso == "plugin_installation",
+            models.AuditLog.recurso_id == instance_id,
+        ).order_by(models.AuditLog.fecha.desc()).limit(limit)
+    )).scalars().all()
+    user_ids = {row.usuario_id for row in rows if row.usuario_id}
+    users_by_id: dict[Any, models.Usuario] = {}
+    if user_ids:
+        users_by_id = {user.id: user for user in (await db.execute(select(models.Usuario).where(models.Usuario.id.in_(user_ids)))).scalars().all()}
+    return [schemas.AuditLog(
+        id=row.id, usuario_id=row.usuario_id,
+        usuario_email=users_by_id[row.usuario_id].email if row.usuario_id in users_by_id else None,
+        usuario_nombre=(users_by_id[row.usuario_id].display_name or users_by_id[row.usuario_id].nombre_completo) if row.usuario_id in users_by_id else None,
+        accion=row.accion, recurso=row.recurso, recurso_id=row.recurso_id,
+        detalles=row.detalles, ip_address=row.ip_address, fecha=row.fecha,
+    ) for row in rows]
+
+
 @router.patch("/extensions/{instance_id}", response_model=schemas.ExtensionInstanceSummary)
 async def update_extension(
     instance_id: UUID,
@@ -239,9 +258,11 @@ async def update_extension(
     kind = str(manifest.get("kind"))
     _assert_capability(current_user, _required_capability(kind, "configure"), "edit")
     await _assert_feature(db, kind)
-    config = dict(instance.config_json or {})
-    audit = config.get(AUDIT_CONFIG_KEY)
+    previous_config = dict(instance.config_json or {})
+    internal_config = {key: value for key, value in previous_config.items() if str(key).startswith("_treseko")}
+    audit = previous_config.get(AUDIT_CONFIG_KEY)
     config = dict(payload.config_json or {})
+    config.update(internal_config)
     if audit:
         config[AUDIT_CONFIG_KEY] = audit
     instance.config_json = config
@@ -249,6 +270,8 @@ async def update_extension(
     _append_audit(instance, current_user, "configured")
     await db.commit()
     await db.refresh(instance)
+    if (instance.config_json or {}).get("_treseko_store"):
+        await create_audit_log(db, current_user.id, "plugin.configured", "plugin_installation", instance.id, {"plugin_id": instance.provider_id, "manifest": audit_manifest_snapshot(((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {})})
     return _instance_summary(instance, kind)
 
 
@@ -296,6 +319,8 @@ async def configure_extension_secrets(
     _append_audit(instance, current_user, "secrets_configured")
     await db.commit()
     await db.refresh(instance)
+    if (instance.config_json or {}).get("_treseko_store"):
+        await create_audit_log(db, current_user.id, "plugin.secrets_configured", "plugin_installation", instance.id, {"plugin_id": instance.provider_id, "manifest": audit_manifest_snapshot(((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {})})
     return _instance_summary(instance, kind)
 
 
@@ -330,12 +355,29 @@ async def _set_extension_enabled(
     kind = str(manifest.get("kind"))
     _assert_capability(current_user, _required_capability(kind, "enable"), "edit")
     await _assert_feature(db, kind)
+    store_manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
+    if enabled and store_manifest:
+        release_id = str(store_manifest.get("release_id") or "")
+        try:
+            catalog = await fetch_official_catalog()
+            release_available = any(str(item.get("release_id") or "") == release_id and item.get("status") == "published" for item in catalog)
+        except PluginStoreClientError as exc:
+            raise HTTPException(status_code=503, detail="No se puede verificar el estado de revocación del plugin") from exc
+        if not release_available:
+            instance.enabled = False
+            instance.status = "revoked"
+            instance.last_error = "El release oficial fue revocado o dejó de estar disponible"
+            await db.commit()
+            await create_audit_log(db, current_user.id, "plugin.revocation_blocked", "plugin_installation", instance.id, {"plugin_id": store_manifest.get("plugin_id"), "release_id": release_id})
+            raise HTTPException(status_code=409, detail="El release oficial está revocado y no se puede habilitar")
     instance.enabled = enabled
     instance.status = "active" if enabled else "disabled"
     instance.last_error = None
     _append_audit(instance, current_user, "enabled" if enabled else "disabled")
     await db.commit()
     await db.refresh(instance)
+    if (instance.config_json or {}).get("_treseko_store"):
+        await create_audit_log(db, current_user.id, "plugin.enabled" if enabled else "plugin.disabled", "plugin_installation", instance.id, {"plugin_id": instance.provider_id, "manifest": audit_manifest_snapshot(store_manifest)})
     return _instance_summary(instance, kind)
 
 

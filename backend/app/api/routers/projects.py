@@ -94,6 +94,7 @@ async def update_proyecto(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.portfolio", "edit"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    previous_project = await crud.get_proyecto(db, proyecto_id=proyecto_id)
     if proyecto.organizacion_id:
         await access_control.require_organization_access(db, current_user, proyecto.organizacion_id, "edit")
     try:
@@ -112,6 +113,18 @@ async def update_proyecto(
         },
     )
     if proyecto.activo is False:
+        if previous_project and previous_project.activo:
+            await notification_event_service.emit_event(
+                db=db,
+                event_type="project.closed",
+                actor_user_id=current_user.id,
+                proyecto_id=db_proyecto.id,
+                entity_type="project",
+                entity_id=db_proyecto.id,
+                severity="info",
+                payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto cerrado: {db_proyecto.nombre}"},
+                dedupe_key=f"project.closed:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
+            )
         await realtime_event_bus.publish(
             db_proyecto.id,
             "project.deleted",
@@ -119,6 +132,18 @@ async def update_proyecto(
             payload={"project": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "source": "soft_delete"},
         )
     elif proyecto.activo is True:
+        if previous_project and not previous_project.activo:
+            await notification_event_service.emit_event(
+                db=db,
+                event_type="project.reopened",
+                actor_user_id=current_user.id,
+                proyecto_id=db_proyecto.id,
+                entity_type="project",
+                entity_id=db_proyecto.id,
+                severity="info",
+                payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto reabierto: {db_proyecto.nombre}"},
+                dedupe_key=f"project.reopened:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
+            )
         await realtime_event_bus.publish(
             db_proyecto.id,
             "project.restored",
