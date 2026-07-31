@@ -32,6 +32,7 @@ test('Azure usa api-key y OpenAI-compatible usa bearer', () => {
   assert.equal(azure.headers.Authorization, undefined);
   const compatible = providerRequest({ ...base, provider: 'openai-compatible' }, request);
   assert.equal(compatible.headers.Authorization, 'Bearer secret');
+  assert.deepEqual(compatible.body.response_format, { type: 'json_object' });
 });
 
 test('normaliza usage y texto de los tres protocolos nativos', () => {
@@ -49,4 +50,21 @@ test('clasifica errores sin copiar mensajes externos', () => {
   assert.equal(error.category, 'rate_limited');
   assert.equal(error.retryAfterMs, 2000);
   assert.equal(error.message.includes('sensitive'), false);
+});
+
+test('clasifica la matriz de fallos del proveedor sin filtrar respuestas externas', () => {
+  const cases = [
+    [401, 'authentication_failed'],
+    [403, 'permission_denied'],
+    [429, 'rate_limited'],
+    [500, 'provider_unavailable'],
+    [undefined, 'network_error'],
+  ] as const;
+  for (const [status, category] of cases) {
+    const error = normalizeProviderError(status ? { response: { status, data: { secret: 'hidden' } } } : { code: 'ECONNRESET' });
+    assert.equal(error.category, category);
+    assert.equal(error.message.includes('hidden'), false);
+  }
+  assert.equal(normalizeProviderError({ code: 'ECONNABORTED' }).category, 'timeout');
+  assert.equal(normalizeProviderError({}).category, 'invalid_response');
 });

@@ -152,6 +152,7 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
       messages: request.messages,
       temperature: request.temperature,
       max_tokens: request.maxTokens,
+      response_format: { type: 'json_object' },
       ...(request.disableThinking ? { reasoning_effort: 'none', chat_template_kwargs: { enable_thinking: false } } : {}),
     },
   };

@@ -8,7 +8,7 @@
     "postinstall": "node -e \"if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD) { console.log('Skipping Playwright browser install'); process.exit(0) } process.exit(1)\" || playwright install chromium",
     "install:browsers": "playwright install chromium",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/audit/consensus.test.ts src/ai/agent-driver.test.ts src/ai/agent-registry.test.ts src/ai/block-workflow.test.ts src/ai/case-generation-flow.test.ts src/ai/provider-adapters.test.ts src/ai/universal-agent.test.ts src/automation/step-contract.test.ts src/automation/context-data-interpreter.test.ts src/automation/execution-validation-planner.test.ts src/delivery/terminal-callback.test.ts src/test-trace.test.ts",
+    "test": "node --import tsx --test src/audit/consensus.test.ts src/ai/agent-driver.test.ts src/ai/agent-registry.test.ts src/ai/block-workflow.test.ts src/ai/case-generation-flow.test.ts src/ai/client.contract.test.ts src/ai/provider-adapters.test.ts src/ai/universal-agent.test.ts src/automation/step-contract.test.ts src/automation/context-data-interpreter.test.ts src/automation/execution-validation-planner.test.ts src/delivery/terminal-callback.test.ts src/test-trace.test.ts",
     "test:campaign": "node --import tsx --test src/automation/campaign-deterministic.test.ts",
     "smoke": "npx tsx src/batch-runner.ts",
     "start": "npx tsx src/server.ts"

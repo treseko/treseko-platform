@@ -118,8 +118,8 @@ function providerFailure(error: unknown): { status: number; code: string; catego
     rate_limited: { status: 429, code: "AI_PROVIDER_RATE_LIMITED" },
     timeout: { status: 504, code: "AI_PROVIDER_TIMEOUT" },
     invalid_response: { status: 502, code: "AI_PROVIDER_INVALID_RESPONSE" },
-    network_error: { status: 503, code: "AI_PROVIDER_UNAVAILABLE" },
-    provider_unavailable: { status: 503, code: "AI_PROVIDER_UNAVAILABLE" },
+    network_error: { status: 502, code: "AI_PROVIDER_UNAVAILABLE" },
+    provider_unavailable: { status: 502, code: "AI_PROVIDER_UNAVAILABLE" },
   };
   const resolved = mapping[category] || mapping.provider_unavailable;
   return { ...resolved, category };

@@ -306,7 +306,12 @@ Responde SOLO JSON con esta forma minima:
   }
   async checkHealthDetailed(): Promise<{ ok: boolean; category?: string; status?: number }> {
     try {
-      await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16 });
+      const response = await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16 });
+      try {
+        parseAIJson(response.content);
+      } catch (_) {
+        throw new ProviderRequestError('Respuesta IA no válida', 'invalid_response');
+      }
       return { ok: true };
     } catch (error: any) {
       traceEntry('error', {
