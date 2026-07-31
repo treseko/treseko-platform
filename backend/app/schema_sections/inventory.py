@@ -160,7 +160,7 @@ class Entorno(EntornoBase):
     proyecto_id: UUID
     ultima_verificacion: Optional[datetime] = None
     datasets: List[EntornoDataset] = Field(default_factory=list)
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- INFRAESTRUCTURA ---
@@ -175,7 +175,7 @@ class DispositivoBase(BaseModel):
 
 class Dispositivo(DispositivoBase):
     id: UUID
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class NodoEjecucionBase(BaseModel):
@@ -189,7 +189,7 @@ class NodoEjecucion(NodoEjecucionBase):
     ram_usage: int
     total_ejecuciones: int
     ultima_conexion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertCircle, Download, ExternalLink, FileText } from 'lucide-react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
 import { API_BASE } from '../../app/constants'
+import { useI18n } from '../../i18n'
 import { resolveAssetUrl } from '../utils/assets'
 import { getEvidenceMissingReason, isEvidenceAvailable } from '../utils/evidenceAvailability'
 
@@ -79,6 +80,7 @@ const openAssetBlob = async (
   filename: string,
   download: boolean,
   setDownloading: (value: boolean) => void
+  ,loadErrorMessage: string
 ) => {
   if (!url) return
   const controller = new AbortController()
@@ -86,7 +88,7 @@ const openAssetBlob = async (
   let objectUrl = ''
   try {
     const response = await fetchEvidenceAsset(url, controller.signal)
-    if (!response.ok) throw new Error(`No se pudo cargar la evidencia (${response.status}).`)
+    if (!response.ok) throw new Error(`${loadErrorMessage} (${response.status}).`)
     const blob = await response.blob()
     objectUrl = URL.createObjectURL(blob)
     if (download) {
@@ -108,6 +110,7 @@ const openAssetBlob = async (
 }
 
 export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalProps) {
+  const { t } = useI18n()
   const source = resolveAssetUrl(evidence?.url)
   const previewSource = stripAssetToken(source)
   const assetSource = previewSource || source
@@ -142,10 +145,10 @@ export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalPro
       .then(async response => {
         if (!response.ok) {
           const message = response.status === 401
-            ? 'La sesión para ver esta evidencia expiró. Vuelve a iniciar sesión o usa descargar con una sesión activa.'
+            ? t('casos.evidenceSessionExpired')
             : response.status === 410 || response.status === 404
-              ? 'El archivo físico de esta evidencia no está disponible en el storage. El registro existe, pero no hay archivo para previsualizar o descargar.'
-              : `No se pudo cargar la evidencia (${response.status}).`
+              ? t('casos.evidenceStorageUnavailable')
+              : t('casos.evidenceLoadFailed', { status: response.status })
           throw new Error(message)
         }
         const blob = await response.blob()
@@ -159,7 +162,7 @@ export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalPro
       })
       .catch(error => {
         if (controller.signal.aborted) return
-        setPreviewError(error instanceof Error ? error.message : 'No se pudo cargar la vista previa.')
+        setPreviewError(error instanceof Error ? error.message : t('casos.evidencePreviewLoadFailed'))
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingPreview(false)
@@ -169,7 +172,7 @@ export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalPro
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [previewSource, canPreview, contentType, evidence])
+  }, [previewSource, canPreview, contentType, evidence, t])
 
   return (
     <Modal show={Boolean(evidence)} onHide={onHide} size="xl" centered>
@@ -183,24 +186,24 @@ export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalPro
         {!available ? (
           <div className="text-center text-muted py-5 bg-white rounded-3 border">
             <AlertCircle size={32} className="mb-2 text-warning" />
-            <div className="fw-bold text-dark">Archivo no disponible</div>
+            <div className="fw-bold text-dark">{t('casos.evidenceFileUnavailable')}</div>
             <div className="small">{missingReason}</div>
-            <div className="small mt-2">El registro de evidencia se conserva para trazabilidad, pero el archivo físico no está en storage.</div>
+            <div className="small mt-2">{t('casos.evidenceRecordRetained')}</div>
           </div>
         ) : !source ? (
           <div className="text-center text-muted py-5">
             <AlertCircle size={32} className="mb-2" />
-            <div className="fw-bold">No se pudo resolver la URL de la evidencia.</div>
+            <div className="fw-bold">{t('casos.evidenceUrlUnavailable')}</div>
           </div>
         ) : loadingPreview ? (
           <div className="text-center text-muted py-5 bg-white rounded-3 border">
             <Spinner animation="border" size="sm" className="me-2" />
-            Cargando vista previa...
+            {t('casos.evidenceLoadingPreview')}
           </div>
         ) : previewError ? (
           <div className="text-center text-muted py-5 bg-white rounded-3 border">
             <AlertCircle size={32} className="mb-2 text-warning" />
-            <div className="fw-bold text-dark">No se pudo mostrar la vista previa.</div>
+            <div className="fw-bold text-dark">{t('casos.evidencePreviewUnavailable')}</div>
             <div className="small">{previewError}</div>
           </div>
         ) : isImage(contentType) ? (
@@ -230,22 +233,22 @@ export function EvidenceViewerModal({ evidence, onHide }: EvidenceViewerModalPro
         ) : (
           <div className="text-center text-muted py-5 bg-white rounded-3 border">
             <FileText size={36} className="mb-3 opacity-50" />
-            <div className="fw-bold text-dark">Este archivo no se puede previsualizar en el navegador.</div>
-            <div className="small">Descárgalo para revisarlo con una aplicación compatible.</div>
+            <div className="fw-bold text-dark">{t('casos.evidenceCannotPreview')}</div>
+            <div className="small">{t('casos.evidenceDownloadToReview')}</div>
           </div>
         )}
         {available && source && canPreview && (
           <div className="small text-muted mt-3">
-            Si el navegador no muestra la vista previa correctamente, usa descargar.
+            {t('casos.evidencePreviewFallback')}
           </div>
         )}
       </Modal.Body>
       <Modal.Footer className="d-flex justify-content-between">
-        <Button variant="outline-secondary" onClick={() => openAssetBlob(assetSource, filename, false, setDownloading)} disabled={!available || !assetSource || downloading}>
-          <ExternalLink size={16} className="me-2" /> Abrir aparte
+        <Button variant="outline-secondary" onClick={() => openAssetBlob(assetSource, filename, false, setDownloading, t('common.evidenceLoadFailed'))} disabled={!available || !assetSource || downloading}>
+          <ExternalLink size={16} className="me-2" /> {t('casos.evidenceOpenSeparately')}
         </Button>
-        <Button className="fw-bold" onClick={() => openAssetBlob(assetSource, filename, true, setDownloading)} disabled={!available || !assetSource || downloading}>
-          <Download size={16} className="me-2" /> {downloading ? 'Preparando...' : 'Descargar'}
+        <Button className="fw-bold" onClick={() => openAssetBlob(assetSource, filename, true, setDownloading, t('common.evidenceLoadFailed'))} disabled={!available || !assetSource || downloading}>
+          <Download size={16} className="me-2" /> {downloading ? t('casos.evidencePreparing') : t('casos.evidenceDownload')}
         </Button>
       </Modal.Footer>
     </Modal>

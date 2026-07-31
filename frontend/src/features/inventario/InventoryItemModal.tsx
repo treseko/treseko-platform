@@ -1,6 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { Button, Col, Form, Modal, Row } from 'react-bootstrap'
 import { Save, Settings } from 'lucide-react'
+import { useI18n } from '../../i18n'
 
 type InventoryModalConfig = {
   show: boolean
@@ -23,13 +24,6 @@ type InventoryItemModalProps = {
   setCustomInventoryItems: Dispatch<SetStateAction<any[]>>
 }
 
-const getInventoryTypeLabel = (type: string) => {
-  if (type === 'env') return 'Entorno'
-  if (type === 'device') return 'Dispositivo'
-  if (type === 'node') return 'Nodo de cómputo'
-  return 'Registro'
-}
-
 export function InventoryItemModal({
   invModalConfig,
   setInvModalConfig,
@@ -44,6 +38,14 @@ export function InventoryItemModal({
   setCustomInventoryItems
 }: InventoryItemModalProps) {
   const hideModal = () => setInvModalConfig({ ...invModalConfig, show: false })
+  const { t } = useI18n()
+
+  const getInventoryTypeLabel = (type: string) => {
+    if (type === 'env') return t('inventario.invTitleEnv')
+    if (type === 'device') return t('inventario.invTitleDevice')
+    if (type === 'node') return t('inventario.invTitleNode')
+    return 'Registro'
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -105,24 +107,24 @@ export function InventoryItemModal({
       <Modal.Header closeButton className="bg-light border-bottom text-dark">
         <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
           <Settings size={20} className="text-primary" />
-          {invModalConfig.mode === 'add' ? 'Registrar nuevo' : 'Editar'} {getInventoryTypeLabel(invModalConfig.type)}
+          {t(`inventario.inventoryItemModal.${invModalConfig.mode === 'add' ? 'add' : 'edit'}${invModalConfig.type === 'env' ? 'Env' : invModalConfig.type === 'device' ? 'Device' : invModalConfig.type === 'node' ? 'Node' : 'Custom'}`, { type: getInventoryTypeLabel(invModalConfig.type) })}
         </Modal.Title>
       </Modal.Header>
       <Form onSubmit={handleSubmit}>
         <Modal.Body className="p-4 text-start">
           <Form.Group className="mb-3">
-            <Form.Label className="x-small fw-bold text-muted">Nombre / Identificador</Form.Label>
+            <Form.Label className="x-small fw-bold text-muted">{t('inventario.nameLabel')}</Form.Label>
             <Form.Control name="name" defaultValue={invModalConfig.itemData?.name} required className="bg-light shadow-sm" />
           </Form.Group>
 
           {invModalConfig.type === 'env' && (
             <>
               <Form.Group className="mb-3">
-                <Form.Label className="x-small fw-bold text-muted">URL / Endpoint</Form.Label>
+                <Form.Label className="x-small fw-bold text-muted">{t('inventario.urlLabel')}</Form.Label>
                 <Form.Control name="url" type="url" defaultValue={invModalConfig.itemData?.url} required className="bg-light shadow-sm font-monospace x-small" />
               </Form.Group>
               <Form.Group className="mb-3">
-                <Form.Label className="x-small fw-bold text-muted">Versión desplegada</Form.Label>
+                <Form.Label className="x-small fw-bold text-muted">{t('inventario.versionLabel')}</Form.Label>
                 <Form.Control name="version" defaultValue={invModalConfig.itemData?.version} required className="bg-light shadow-sm" placeholder="Ej: v1.0.0" />
               </Form.Group>
             </>
@@ -132,22 +134,22 @@ export function InventoryItemModal({
             <Row className="g-2 mb-3">
               <Col md={6}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Resolución de pantalla</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('inventario.resolutionLabel')}</Form.Label>
                   <Form.Control name="resolution" defaultValue={invModalConfig.itemData?.resolution} required className="bg-light shadow-sm" placeholder="1920x1080" />
                 </Form.Group>
               </Col>
               <Col md={6}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Tipo de dispositivo</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('inventario.deviceType')}</Form.Label>
                   <Form.Select name="type" defaultValue={invModalConfig.itemData?.type || 'Desktop'} className="bg-light shadow-sm">
-                    <option value="Desktop">Desktop</option>
-                    <option value="Mobile">Mobile</option>
+                    <option value="Desktop">{t('inventario.desktopType')}</option>
+                    <option value="Mobile">{t('inventario.mobileType')}</option>
                   </Form.Select>
                 </Form.Group>
               </Col>
               <Col md={12}>
                 <Form.Group className="mt-2">
-                  <Form.Label className="x-small fw-bold text-muted">Sistema operativo / navegador</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('inventario.browserOs')}</Form.Label>
                   <Form.Control name="browser" defaultValue={invModalConfig.itemData?.browser} required className="bg-light shadow-sm" placeholder="Chrome v126 / iOS 17" />
                 </Form.Group>
               </Col>
@@ -156,23 +158,23 @@ export function InventoryItemModal({
 
           {invModalConfig.type === 'node' && (
             <Form.Group className="mb-3">
-              <Form.Label className="x-small fw-bold text-muted">Dirección IP / hostname</Form.Label>
+              <Form.Label className="x-small fw-bold text-muted">{t('inventario.ipHostname')}</Form.Label>
               <Form.Control name="ip" defaultValue={invModalConfig.itemData?.ip} required className="bg-light shadow-sm font-monospace x-small" placeholder="192.168.1.X" />
             </Form.Group>
           )}
 
           <Form.Group className="mb-2">
-            <Form.Label className="x-small fw-bold text-muted">Estado inicial</Form.Label>
+            <Form.Label className="x-small fw-bold text-muted">{t('inventario.initialStatus')}</Form.Label>
             <Form.Select name="status" defaultValue={invModalConfig.itemData?.status || 'Online'} className="bg-light shadow-sm fw-bold text-secondary">
-              <option value="Online">Online / Activo</option>
-              <option value="Offline">Offline / Inactivo</option>
+              <option value="Online">{t('inventario.statusOnline')}</option>
+              <option value="Offline">{t('inventario.statusOffline')}</option>
             </Form.Select>
           </Form.Group>
         </Modal.Body>
         <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
-          <Button variant="outline-secondary" onClick={hideModal} className="fw-bold shadow-none rounded-pill px-4">Cancelar</Button>
+          <Button variant="outline-secondary" onClick={hideModal} className="fw-bold shadow-none rounded-pill px-4">{t('inventario.modalCancel')}</Button>
           <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4">
-            <Save size={16} className="me-2" /> Guardar registro
+            <Save size={16} className="me-2" /> {t('inventario.modalSave')}
           </Button>
         </Modal.Footer>
       </Form>

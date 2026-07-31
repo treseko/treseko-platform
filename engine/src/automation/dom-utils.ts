@@ -24,13 +24,13 @@ export async function getInteractiveElements(page: Page): Promise<ElementInfo[]>
     const interactiveSelector = 'button, input, select, textarea, a, [role="button"], [onclick], .btn, span[title], span[id*="delete"], span[id*="edit"], .rct-collapse, [title*="Toggle"], [title*="Expand"]';
     // Select informational text elements that might contain credentials, instructions or table data
     const infoSelector = 'p, span, div, label, h1, h2, h3, h4, h5, h6, li, td, [role="gridcell"], .rt-td';
-    
+
     const interactives = Array.from(document.querySelectorAll(interactiveSelector));
     const informational = Array.from(document.querySelectorAll(infoSelector)).filter(el => {
         const htmlEl = el as HTMLElement;
         const text = (htmlEl.innerText || '').trim();
         if (!text || text.length > 200) return false;
-        
+
         // Avoid capturing containers that only contain other info elements
         const hasInteractiveChild = el.querySelector(interactiveSelector);
         if (hasInteractiveChild) return false;
@@ -44,7 +44,7 @@ export async function getInteractiveElements(page: Page): Promise<ElementInfo[]>
 
     const allElements = [...interactives, ...informational];
     const seen = new Set();
-    
+
     return allElements
       .filter(el => {
         if (seen.has(el)) return false;
@@ -53,29 +53,29 @@ export async function getInteractiveElements(page: Page): Promise<ElementInfo[]>
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
         const isVisible = rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
-        
+
         // For informational elements, they don't need to be "clickable"
         const isInteractive = el.matches(interactiveSelector) || style.cursor === 'pointer' || el.tagName === 'BUTTON' || el.tagName === 'A' || el.hasAttribute('onclick');
-        
+
         return isVisible && (isInteractive || informational.includes(el));
       })
       .map((el, index) => {
         const htmlEl = el as HTMLElement;
         const inputEl = el as HTMLInputElement;
-        
+
         const id = `el-${index}`;
         htmlEl.setAttribute('data-ai-id', id);
 
         // --- HEURÍSTICA DE ETIQUETADO ---
         let inferredLabel = htmlEl.ariaLabel || htmlEl.getAttribute('aria-label') || htmlEl.title || undefined;
-        
+
         // Detectar si es un botón de expandir/colapsar (árboles) con mayor agresividad
         const className = htmlEl.className || '';
         const tagName = el.tagName;
         const innerHTML = htmlEl.innerHTML || '';
-        const isToggle = (typeof className === 'string' && (className.includes('rct-collapse') || className.includes('toggle') || className.includes('expand'))) || 
+        const isToggle = (typeof className === 'string' && (className.includes('rct-collapse') || className.includes('toggle') || className.includes('expand'))) ||
                          (innerHTML.includes('rct-icon-expand-close') || innerHTML.includes('rct-icon-expand-all'));
-        
+
         if (isToggle) inferredLabel = "BOTÓN_EXPANDIR_ARBOL (Click para ver sub-elementos)";
 
         if (!inferredLabel && (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT')) {
@@ -84,13 +84,13 @@ export async function getInteractiveElements(page: Page): Promise<ElementInfo[]>
                 const label = document.querySelector(`label[for="${htmlEl.id}"]`);
                 if (label) inferredLabel = (label as HTMLElement).innerText;
             }
-            
+
             // 2. Buscar texto cercano (hacia arriba o a la izquierda)
             if (!inferredLabel) {
                 // Buscar label padre
                 const parentLabel = htmlEl.closest('label');
                 if (parentLabel) inferredLabel = parentLabel.innerText;
-                
+
                 // Buscar elemento de texto anterior en el DOM
                 if (!inferredLabel) {
                     const prevSibling = htmlEl.previousElementSibling;

@@ -4,6 +4,7 @@ import { ERROR_CODES, formatAppError } from '../../app/errorCodes'
 import { mapBackendProjectToCard } from '../../app/mappers'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
+type Translate = (key: string, options?: Record<string, unknown>) => string
 
 type CreateProjectActionsParams = {
   canEditCurrentProject: boolean
@@ -24,6 +25,7 @@ type CreateProjectActionsParams = {
   setProjectsSource: (source: 'local' | 'backend') => void
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: Translate
 }
 
 export function createProjectActions({
@@ -44,7 +46,8 @@ export function createProjectActions({
   setCurrentBuildId,
   setProjectsSource,
   setProjectSyncMessage,
-  showFeedback
+  showFeedback,
+  t
 }: CreateProjectActionsParams) {
   const loadProjectsFromBackend = async (knownOrganizations = organizations) => {
     setProjectsLoading(true)
@@ -56,7 +59,7 @@ export function createProjectActions({
         setCurrentCompId('')
         setCurrentBuildId('')
         setProjectsSource('backend')
-        setProjectSyncMessage('No hay clientes o soluciones asignados para este usuario.')
+        setProjectSyncMessage(t('proyectos.noAssignedSolutions'))
         return
       }
       const response = await fetchWithAuth(`${API_BASE}/proyectos/`)
@@ -93,14 +96,14 @@ export function createProjectActions({
       }
       if (ALLOW_LOCAL_FALLBACK) {
         setProjectsSource('local')
-        setProjectSyncMessage(`Modo diseño/local: ${error.message || 'backend no disponible'}.`)
+        setProjectSyncMessage(`${t('proyectos.localMode')}: ${error.message || t('proyectos.backendUnavailable')}.`)
       } else {
         setProjectsList([])
         setCurrentProjectId('')
         setCurrentCompId('')
         setCurrentBuildId('')
         setProjectsSource('backend')
-        setProjectSyncMessage(formatAppError(ERROR_CODES.BACKEND_UNAVAILABLE, `No se pudieron cargar proyectos reales. ${error.message || 'Backend no disponible'}.`))
+        setProjectSyncMessage(formatAppError(ERROR_CODES.BACKEND_UNAVAILABLE, `${t('proyectos.projectsLoadError')} ${error.message || t('proyectos.backendUnavailable')}.`))
       }
     } finally {
       setProjectsLoading(false)
@@ -115,9 +118,9 @@ export function createProjectActions({
     const orgSelect = String(formData.get('orgSelect') || currentOrgId)
     if (!pName) return
     if (!orgSelect) {
-      const message = 'Debes seleccionar una solución antes de crear un proyecto.'
+      const message = t('proyectos.solutionRequired')
       setProjectSyncMessage(message)
-      showFeedback('Solución requerida', message, 'warning')
+      showFeedback(t('proyectos.solutionRequiredTitle'), message, 'warning')
       return
     }
 
@@ -137,7 +140,7 @@ export function createProjectActions({
       setProjectsList([...projectsList, localProject])
       setCurrentProjectId(newProjId)
       setCurrentOrgId(orgSelect)
-      setProjectSyncMessage('Proyecto creado en modo diseño/local. Levantá el backend para persistirlo.')
+      setProjectSyncMessage(t('proyectos.projectCreatedLocal'))
     }
 
     if (projectsSource === 'backend') {
@@ -162,25 +165,25 @@ export function createProjectActions({
         setProjectsList([...projectsList, mapped])
         setCurrentProjectId(mapped.id)
         setCurrentOrgId(mapped.orgId)
-        setProjectSyncMessage('Proyecto creado y persistido en backend.')
+        setProjectSyncMessage(t('proyectos.projectCreatedBackend'))
       } catch (error: any) {
         if (ALLOW_LOCAL_FALLBACK) {
           setProjectsSource('local')
           createLocalProject()
-          setProjectSyncMessage(`No se pudo persistir en backend: ${error.message}. Se creó localmente.`)
+          setProjectSyncMessage(`${t('proyectos.projectPersistError')}: ${error.message}. ${t('proyectos.createdLocally')}`)
         } else {
           const message = formatAppError(ERROR_CODES.PROJECT_CREATE_FAILED, `No se pudo crear el proyecto en backend. ${error.message}.`)
           setProjectSyncMessage(message)
-          showFeedback('Proyecto no creado', message, 'danger')
+          showFeedback(t('proyectos.projectNotCreated'), message, 'danger')
         }
       }
     } else {
       if (ALLOW_LOCAL_FALLBACK) {
         createLocalProject()
       } else {
-        const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, 'La creación local está deshabilitada. Conectá el backend para crear proyectos.')
+        const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, t('proyectos.localProjectCreationDisabled'))
         setProjectSyncMessage(message)
-        showFeedback('Modo real activo', message, 'warning')
+        showFeedback(t('proyectos.realModeActive'), message, 'warning')
       }
     }
 
@@ -191,7 +194,7 @@ export function createProjectActions({
     event.preventDefault()
     if (!managingProjectId) return
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto es de solo lectura.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.projectReadOnly'), 'warning')
       return
     }
 
@@ -234,20 +237,20 @@ export function createProjectActions({
         setProjectsList(projectsList.map(project => (
           project.id === mapped.id ? { ...project, ...mapped } : project
         )))
-        setProjectSyncMessage('Cambios del proyecto guardados en backend.')
-        showFeedback('Proyecto actualizado', 'Los cambios del proyecto se guardaron correctamente.', 'success')
+        setProjectSyncMessage(t('proyectos.projectChangesSavedBackend'))
+        showFeedback(t('proyectos.projectUpdated'), t('proyectos.projectChangesSaved'), 'success')
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo actualizar backend: ${error.message}.`)
-        showFeedback('No se pudo guardar', error.message || 'Revisa los datos del proyecto.', 'danger')
+        setProjectSyncMessage(`${t('proyectos.projectUpdateError')}: ${error.message}.`)
+        showFeedback(t('proyectos.saveError'), error.message || t('proyectos.reviewProjectData'), 'danger')
       }
     } else {
       if (ALLOW_LOCAL_FALLBACK) {
         updateLocalProject()
-        setProjectSyncMessage('Cambios del proyecto aplicados en modo diseño/local.')
+        setProjectSyncMessage(t('proyectos.projectChangesSavedLocal'))
       } else {
-        const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, 'La edición local está deshabilitada. Conectá el backend para guardar cambios.')
+        const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, t('proyectos.localProjectEditDisabled'))
         setProjectSyncMessage(message)
-        showFeedback('Modo real activo', message, 'warning')
+        showFeedback(t('proyectos.realModeActive'), message, 'warning')
       }
     }
   }

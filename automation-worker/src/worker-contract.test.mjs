@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
 
 import {
   artifactFromBuffer,
@@ -12,6 +13,7 @@ import {
   frameworkKey,
   getValue,
   isAssertionLike,
+  isInvalidRunnerTokenError,
   languageKey,
   normalizeDataset,
   normalizeJobStatus,
@@ -85,6 +87,32 @@ for (let seed = 1; seed <= 128; seed += 1) {
 test("redacción cubre secretos comunes sin destruir el resto", () => {
   const value = "password=uno token=dos secret=tres key=cuatro visible=cinco";
   assert.equal(redact(value), "password=[redacted] token=[redacted] secret=[redacted] key=[redacted] visible=cinco");
+  assert.equal(redact("https://service.test/run?access_token=uno&visible=cinco"), "https://service.test/run?access_token=[redacted]&visible=cinco");
+});
+
+test("el contrato del worker conserva correlación en resultados y errores públicos", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /function withCorrelation\(result\)/);
+  assert.match(source, /correlation_id: activeCorrelationId/);
+  assert.match(source, /X-Correlation-ID/);
+  assert.match(source, /function formatLogArg\(arg\)/);
+  assert.match(source, /return redactTraceText\(arg\);/);
+  assert.match(source, /JSON\.stringify\(safeTraceValue\(arg\)\)/);
+  assert.match(source, /if \(typeof detail === "string"\) return redactTraceText\(detail\);/);
+  assert.match(source, /console\.error\(formatLogArg\(error\.stack\)\)/);
+  assert.match(source, /error: safeTraceValue\(\{ message: error\?\.message \|\| String\(error\), stack: error\?\.stack \}\)/);
+});
+
+test("el token de pairing puede persistirse fuera del árbol de código", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /process\.env\.QA_RUNNER_TOKEN_FILE \|\| path\.join\(ROOT_DIR, "\.runner-token"\)/);
+  assert.match(source, /fs\.writeFileSync\(tokenPath, token, \{ encoding: "utf8", mode: 0o600 \}\)/);
+});
+
+test("un token de runner inválido activa recuperación y no se confunde con otros fallos", () => {
+  assert.equal(isInvalidRunnerTokenError({ error_code: "UNAUTHORIZED" }), true);
+  assert.equal(isInvalidRunnerTokenError({ message: "Runner token invalido" }), true);
+  assert.equal(isInvalidRunnerTokenError({ error_code: "UPSTREAM_TIMEOUT" }), false);
 });
 
 test("formatos de script se detectan sin ejecución", () => {

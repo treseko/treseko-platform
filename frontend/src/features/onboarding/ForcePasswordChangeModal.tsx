@@ -3,6 +3,7 @@ import { Alert, Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { KeyRound, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { applyPasswordChangeResult } from './passwordChangeResult'
+import { useI18n } from '../../i18n'
 
 type ForcePasswordChangeModalProps = {
   loggedUser: any
@@ -21,6 +22,7 @@ export function ForcePasswordChangeModal({
   onAccessTokenRefreshed,
   onPreferencesUpdated
 }: ForcePasswordChangeModalProps) {
+  const { t } = useI18n()
   const show = needsForcedPasswordChange(loggedUser?.profileSettings || {})
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -34,7 +36,7 @@ export function ForcePasswordChangeModal({
     if (!canSubmit) return
     setError('')
     if (newPassword !== confirmPassword) {
-      setError('La confirmacion no coincide con la nueva contraseña.')
+      setError(t('forcePasswordChange.passwordMismatch'))
       return
     }
     setSaving(true)
@@ -47,13 +49,13 @@ export function ForcePasswordChangeModal({
         }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo cambiar la contraseña.')
+      if (!response.ok) throw new Error(data?.detail || t('forcePasswordChange.changePasswordError'))
       applyPasswordChangeResult(data, onAccessTokenRefreshed, onPreferencesUpdated)
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (err: any) {
-      setError(err?.message || 'No se pudo cambiar la contraseña.')
+      setError(err?.message || t('forcePasswordChange.changePasswordError'))
     } finally {
       setSaving(false)
     }
@@ -65,7 +67,7 @@ export function ForcePasswordChangeModal({
         <Modal.Header className="border-0 pb-0">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2 text-dark">
             <ShieldCheck size={22} className="text-primary" />
-            Protege tu cuenta
+            {t('forcePasswordChange.protectAccount')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="pt-3">
@@ -74,16 +76,16 @@ export function ForcePasswordChangeModal({
               <KeyRound size={22} />
             </div>
             <div>
-              <div className="fw-bold text-dark">Cambia la contraseña inicial</div>
+              <div className="fw-bold text-dark">{t('forcePasswordChange.changeInitialPassword')}</div>
               <div className="small text-muted">
-                Esta cuenta fue creada durante la instalacion. Antes de continuar, define una contraseña propia.
+                {t('forcePasswordChange.installationDescription')}
               </div>
             </div>
           </div>
           {error && <Alert variant="danger" className="small py-2">{error}</Alert>}
           <div className="d-grid gap-3">
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">Contraseña actual</Form.Label>
+              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.currentPassword')}</Form.Label>
               <Form.Control
                 type="password"
                 value={currentPassword}
@@ -93,7 +95,7 @@ export function ForcePasswordChangeModal({
               />
             </Form.Group>
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">Nueva contraseña</Form.Label>
+              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.newPassword')}</Form.Label>
               <Form.Control
                 type="password"
                 value={newPassword}
@@ -102,10 +104,10 @@ export function ForcePasswordChangeModal({
                 minLength={8}
                 required
               />
-              <div className="x-small text-muted mt-1">Usa al menos 8 caracteres.</div>
+              <div className="x-small text-muted mt-1">{t('forcePasswordChange.minimumPasswordLength')}</div>
             </Form.Group>
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">Confirmar nueva contraseña</Form.Label>
+              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.confirmNewPassword')}</Form.Label>
               <Form.Control
                 type="password"
                 value={confirmPassword}
@@ -119,7 +121,7 @@ export function ForcePasswordChangeModal({
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">
           <Button type="submit" variant="primary" className="fw-bold px-4" disabled={!canSubmit}>
-            {saving ? <><Spinner size="sm" className="me-2" /> Guardando</> : 'Cambiar contraseña'}
+            {saving ? <><Spinner size="sm" className="me-2" /> {t('forcePasswordChange.saving')}</> : t('forcePasswordChange.changePassword')}
           </Button>
         </Modal.Footer>
       </Form>

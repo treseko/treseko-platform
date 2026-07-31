@@ -30,6 +30,7 @@ type ProyectosRouteProps = {
   currentProjectId: string
   componentsList: any[]
   buildsList: any[]
+  readOnlyBuild: boolean
   canEditCurrentProject: boolean
   traceabilityRefreshToken: number
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
@@ -69,6 +70,7 @@ export function ProyectosRoute({
   currentProjectId,
   componentsList,
   buildsList,
+  readOnlyBuild,
   canEditCurrentProject,
   traceabilityRefreshToken,
   fetchWithAuth,
@@ -95,6 +97,7 @@ export function ProyectosRoute({
       currentProjectId={currentProjectId}
       componentsList={componentsList}
       buildsList={buildsList}
+      readOnlyBuild={readOnlyBuild}
       handleProjectChange={handleProjectChange}
       handleUpdateProject={projectActions.handleUpdateProject}
       canEditCurrentProject={canEditCurrentProject}

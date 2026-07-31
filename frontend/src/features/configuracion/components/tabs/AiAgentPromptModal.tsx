@@ -1,5 +1,6 @@
 import { Button, Col, Form, Modal, Row } from 'react-bootstrap'
 import { RotateCcw } from 'lucide-react'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   promptAgentIndex: number | null
@@ -20,11 +21,12 @@ export function AiAgentPromptModal({
   updateAgentWorkflowItem,
   restoreAgentPrompt,
 }: Props) {
+  const { t } = useI18n()
   return (
     <Modal show={promptAgentIndex !== null} onHide={() => setPromptAgentIndex(null)} size="lg" centered>
       <Modal.Header closeButton>
         <Modal.Title className="fw-bold">
-          Prompt de {promptAgent?.name || promptAgent?.id || 'agente'}
+          {t('configuracion.promptFor', { name: promptAgent?.name || promptAgent?.id || t('configuracion.agent') })}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
@@ -32,7 +34,7 @@ export function AiAgentPromptModal({
           <div className="d-flex flex-column gap-3">
             <Row className="g-2">
               <Col md={8}>
-                <Form.Label className="x-small text-muted fw-bold text-uppercase">Acción operativa</Form.Label>
+                <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.actionLabel')}</Form.Label>
                 <Form.Select
                   value={promptAgent.action || 'custom_review'}
                   disabled={!canEditAi || promptAgent.locked}
@@ -42,7 +44,7 @@ export function AiAgentPromptModal({
                 </Form.Select>
               </Col>
               <Col md={4}>
-                <Form.Label className="x-small text-muted fw-bold text-uppercase">Reintentos</Form.Label>
+                <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.retries')}</Form.Label>
                 <Form.Control
                   type="number"
                   min={0}
@@ -54,7 +56,7 @@ export function AiAgentPromptModal({
               </Col>
             </Row>
             <Form.Group>
-              <Form.Label className="x-small text-muted fw-bold text-uppercase">Prompt operativo</Form.Label>
+              <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.operationalPrompt')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={9}
@@ -66,11 +68,11 @@ export function AiAgentPromptModal({
             <div className="d-flex justify-content-between gap-2">
               {canEditAi && (
                 <Button variant="outline-secondary" type="button" disabled={!promptAgent.locked} onClick={() => restoreAgentPrompt(promptAgentIndex as number)}>
-                  <RotateCcw size={14} className="me-1" /> Restaurar prompt
+                  <RotateCcw size={14} className="me-1" /> {t('configuracion.restorePrompt')}
                 </Button>
               )}
               <Button variant="primary" type="button" onClick={() => setPromptAgentIndex(null)}>
-                Listo
+                {t('configuracion.done')}
               </Button>
             </div>
           </div>

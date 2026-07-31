@@ -1,0 +1,13 @@
+export default {
+  beforeStart: 'Before you start', intro: 'Four answers help us configure Treseko for the way you work.', role: 'Primary role', organization: 'Organization size', expectedUse: 'Expected use', currentFlow: 'Current tool or workflow', chooseMultiple: 'You can choose more than one.',
+  terms: 'I accept Treseko terms and conditions.', telemetry: 'I want to share these anonymous answers to help improve Treseko.', telemetryHint: 'This helps us prioritize integrations, onboarding and reports. It is optional: Treseko works the same if you leave it unchecked. No email, name or project IDs are sent. You can review the terms at', continue: 'Continue',
+  guideTitle: 'How Treseko is organized', guideIntro: 'A quick visual guide to understand the work hierarchy.', solution: 'Solution', project: 'Project', component: 'Component', build: 'Build', cases: 'Cases', reports: 'Reports', previous: 'Previous', next: 'Next', start: 'Start', guideTip: 'Each user sees this guide once. You can return to it later from the navigation structure.',
+  roleManual: 'Manual QA', roleAutomation: 'QA automation', roleLead: 'QA lead', roleDev: 'Dev/DevOps', roleProduct: 'Product/Management', other: 'Other',
+  useCases: 'manage cases', useExecute: 'run tests', useAutomation: 'automation', useBugs: 'bugs/evidence', useReports: 'reports',
+  toolNone: 'Nothing / informal process', toolExcel: 'Excel / Sheets', toolJira: 'Jira', toolGithub: 'GitHub Issues', toolTestRail: 'TestRail / Zephyr / Xray', toolAutomation: 'Automation tools',
+  guideSolutions: 'Solutions', guideSolutionsText: 'Group clients, teams or business lines. It is the first container where your QA work lives.', guideClient: 'Client', guideTeam: 'Team', guideQaUnit: 'QA unit',
+  guideProjects: 'Projects', guideProjectsText: 'Each project represents a product, app or initiative that needs its own tests, bugs and reports.', guideProduct: 'Product', guideApp: 'Application', guideInitiative: 'Initiative',
+  guideComponents: 'Components and Builds', guideComponentsText: 'Components separate modules. Builds are concrete versions: assign cases there and decide whether a delivery is ready.', guideModule: 'Module', guideVersion: 'Version', guideRelease: 'Release',
+  guideSuites: 'Suites, runs and reports', guideSuitesText: 'Organize cases into suites, run tests, attach evidence, report bugs and share build metrics.', guideCases: 'Cases', guideEvidence: 'Evidence', guideReports: 'Reports',
+  savePreferencesError: 'Could not save your preferences.', telemetryError: 'Could not send the answers.', initialConfigError: 'Could not save the initial configuration.', surveyError: 'Could not save the survey.', closeGuideError: 'Could not close the guide.',
+} as const

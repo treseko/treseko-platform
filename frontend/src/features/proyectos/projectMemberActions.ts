@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { mapBackendProjectMemberToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
+import type { TranslationKey } from '../../i18n'
 
 type CreateProjectMemberActionsParams = {
   projectsSource: 'local' | 'backend'
@@ -17,6 +18,7 @@ type CreateProjectMemberActionsParams = {
   setProjectMembers: Dispatch<SetStateAction<any[]>>
   setProjectsList: Dispatch<SetStateAction<any[]>>
   setProjectMemberRemoval: Dispatch<SetStateAction<any | null>>
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createProjectMemberActions({
@@ -32,7 +34,8 @@ export function createProjectMemberActions({
   setProjectSyncMessage,
   setProjectMembers,
   setProjectsList,
-  setProjectMemberRemoval
+  setProjectMemberRemoval,
+  t
 }: CreateProjectMemberActionsParams) {
   const loadProjectMembers = async (projectId: string) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return
@@ -67,7 +70,7 @@ export function createProjectMemberActions({
     if (!managingProjectId || !projectMemberForm.userId) return
     const user = assignableUsers.find(item => item.id === projectMemberForm.userId)
     if (!user) {
-      setProjectSyncMessage('Usuario no encontrado. Primero debe existir en el directorio de usuarios.')
+      setProjectSyncMessage(t('proyectos.memberUserNotFound'))
       return
     }
     const localMember = {
@@ -97,10 +100,10 @@ export function createProjectMemberActions({
         ]
         setProjectMembers(nextMembers)
         setProjectsList(prev => prev.map(project => project.id === managingProjectId ? { ...project, team: nextMembers.filter(item => item.projectId === managingProjectId).length } : project))
-        setProjectSyncMessage('Miembro asignado al proyecto en backend.')
+        setProjectSyncMessage(t('proyectos.memberAssignedBackend'))
         setShowProjectMemberModal(false)
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo asignar miembro: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.memberAssignError')}: ${error.message}.`)
       }
       return
     }
@@ -111,7 +114,7 @@ export function createProjectMemberActions({
     ]
     setProjectMembers(nextMembers)
     setProjectsList(prev => prev.map(project => project.id === managingProjectId ? { ...project, team: nextMembers.filter(item => item.projectId === managingProjectId).length } : project))
-    setProjectSyncMessage('Miembro asignado en modo local.')
+    setProjectSyncMessage(t('proyectos.memberAssignedLocal'))
     setShowProjectMemberModal(false)
   }
 
@@ -133,9 +136,9 @@ export function createProjectMemberActions({
           const error = await response.json().catch(() => null)
           throw new Error(error?.detail || `Backend respondió ${response.status}`)
         }
-        setProjectSyncMessage('Miembro quitado del proyecto en backend.')
+        setProjectSyncMessage(t('proyectos.memberRemovedBackend'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo quitar miembro: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.memberRemoveError')}: ${error.message}.`)
         return
       }
     }

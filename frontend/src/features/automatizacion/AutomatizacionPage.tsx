@@ -1,4 +1,5 @@
 import { Code } from 'lucide-react'
+import { useI18n } from '../../i18n'
 import { AutomationCodesPanel } from './components/AutomationCodesPanel'
 import { FuncionesManager } from './components/FuncionesManager'
 import { WorkersManager } from './components/WorkersManager'
@@ -49,6 +50,7 @@ export function AutomatizacionPage({
   canAccessCapability,
   hasSystemFeature,
 }: AutomatizacionPageProps) {
+  const { t } = useI18n()
   const canUseCapability = canAccessCapability || ((capabilityId: string, level = 'read') => canAccessModule(capabilityId.split('.')[0], level))
   const multiWorkerEnabled = featureEnabled(hasSystemFeature, 'automation.multi_worker')
   const schedulerEnabled = featureEnabled(hasSystemFeature, 'automation.scheduler')
@@ -63,8 +65,8 @@ export function AutomatizacionPage({
   if (!currentProjectId) {
     return (
       <WorkspaceContextEmptyState
-        message="Selecciona una solución y un proyecto para continuar."
-        detail="Las opciones de automatización aparecerán cuando tengas un proyecto seleccionado. Para ejecutar jobs sobre una build, seleccioná también una build activa."
+        message={t('automatizacion.selectProject')}
+        detail={t('automatizacion.selectProjectDetail')}
       />
     )
   }
@@ -73,7 +75,7 @@ export function AutomatizacionPage({
     <div className="p-4 animate__animated animate__fadeIn text-dark text-start">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
-          <Code size={24} /> Gestión de Automatización
+          <Code size={24} /> {t('automatizacion.pageTitle')}
         </h4>
       </div>
 
@@ -97,8 +99,8 @@ export function AutomatizacionPage({
             <PremiumGate
               feature="automation.multi_worker"
               hasFeature={hasSystemFeature}
-              title="Workers distribuidos Premium"
-              description="Community permite vincular un worker local por solución. Premium habilita múltiples workers y su administración distribuida."
+              title={t('automatizacion.premiumWorkersTitle')}
+              description={t('automatizacion.premiumWorkersDesc')}
               mode="card"
               className="mb-4"
             />
@@ -107,8 +109,8 @@ export function AutomatizacionPage({
             <PremiumGate
               feature="automation.scheduler"
               hasFeature={hasSystemFeature}
-              title="Scheduler y jobs Premium"
-              description="Community ejecuta casos bajo demanda. Premium agrega scheduler, cola distribuida y observabilidad de jobs recientes."
+              title={t('automatizacion.premiumSchedulerTitle')}
+              description={t('automatizacion.premiumSchedulerDesc')}
               mode="card"
               className="mb-4"
             />

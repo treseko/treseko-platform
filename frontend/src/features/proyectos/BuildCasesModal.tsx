@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
 import { RotateCcw, Terminal } from 'lucide-react'
 import { BuildCaseSelector } from '../../BuildCaseSelector'
+import { useI18n } from '../../i18n'
+import { isBuildReadOnly } from '../../app/buildState'
 
 type BuildCasesModalProps = {
   show: boolean
@@ -34,8 +36,10 @@ export function BuildCasesModal({
   saveBuildCases,
   assignPreviousFailedCases
 }: BuildCasesModalProps) {
+  const { t } = useI18n()
   const [loadingPreviousFailures, setLoadingPreviousFailures] = useState(false)
   const build = buildsList.find(item => item.id === editingBuildCasesId)
+  const readOnlyBuild = isBuildReadOnly(build)
   const availableCases = currentAuthoringCases.filter(test => !build?.componentId || test.componentId === build.componentId)
   const lockedIds = editingBuildCasesId ? lockedBuildCaseIds[editingBuildCasesId] || [] : []
 
@@ -53,14 +57,14 @@ export function BuildCasesModal({
     <Modal show={show} onHide={onHide} centered size="lg">
       <Modal.Header closeButton className="bg-light border-bottom text-dark">
         <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
-          <Terminal size={20} className="text-primary" /> Casos de la build
+          <Terminal size={20} className="text-primary" /> {t('proyectos.relatedCases')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4 text-start">
         <div className="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap">
           <div>
             <div className="fw-bold text-dark">{build?.name || 'Build'}</div>
-            <div className="small text-muted">Solo estos casos aparecerán en Ejecutar pruebas y contarán en reportes de esta build.</div>
+            <div className="small text-muted">{t('proyectos.casesHint')}</div>
           </div>
           <div className="d-flex gap-2 flex-wrap justify-content-end">
             {availableCases.length > 0 && (
@@ -69,8 +73,9 @@ export function BuildCasesModal({
                 size="sm"
                 className="rounded-pill fw-bold shadow-none"
                 onClick={() => setBuildCaseDraftIds(availableCases.map(test => test.id))}
+                disabled={readOnlyBuild}
               >
-                Asignar todos disponibles
+                {t('proyectos.assignAll')}
               </Button>
             )}
             <Button
@@ -78,22 +83,27 @@ export function BuildCasesModal({
               size="sm"
               className="rounded-pill fw-bold shadow-none d-inline-flex align-items-center gap-2"
               onClick={handleAssignPreviousFailedCases}
-              disabled={!editingBuildCasesId || loadingPreviousFailures}
-              title="Seleccionar casos que fallaron o quedaron bloqueados en builds anteriores"
+              disabled={!editingBuildCasesId || loadingPreviousFailures || readOnlyBuild}
+              title={t('proyectos.previousFailuresTitle')}
             >
               {loadingPreviousFailures ? <Spinner animation="border" size="sm" /> : <RotateCcw size={14} />}
-              Fallidos previos
+              {t('proyectos.previousFailures')}
             </Button>
           </div>
         </div>
+        {readOnlyBuild && (
+          <div className="alert alert-info border-0 small mb-3">
+            Esta build histórica está en modo consulta. El alcance y sus casos no se pueden modificar.
+          </div>
+        )}
         {buildCaseDraftIds.length === 0 && availableCases.length > 0 && (
           <div className="alert alert-warning border-0 small mb-3">
-            Esta build todavía no tiene casos agregados. Selecciona casos específicos y guarda el alcance para poder ejecutarlos en esta build.
+            {t('proyectos.noCasesAdded')}
           </div>
         )}
         {lockedIds.length > 0 && (
           <div className="alert alert-info border-0 small mb-3">
-            {lockedIds.length} caso(s) ya tienen ejecución final en esta build y no se pueden quitar por trazabilidad.
+            {t('proyectos.lockedCases', { count: lockedIds.length })}
           </div>
         )}
         <BuildCaseSelector
@@ -102,14 +112,15 @@ export function BuildCasesModal({
           componentId={build?.componentId || null}
           selectedCaseIds={buildCaseDraftIds}
           onSelectionChange={setBuildCaseDraftIds}
+          readOnly={readOnlyBuild}
           lockedCaseIds={lockedIds}
           searchQuery={buildCaseSearch}
           onSearchChange={setBuildCaseSearch}
         />
       </Modal.Body>
       <Modal.Footer className="bg-light border-top-0 px-4 pb-4">
-        <Button variant="outline-secondary" className="fw-bold shadow-none rounded-pill px-4" onClick={onHide}>Cancelar</Button>
-        <Button variant="primary" className="fw-bold shadow-sm rounded-pill px-4" onClick={saveBuildCases}>Guardar alcance</Button>
+        <Button variant="outline-secondary" className="fw-bold shadow-none rounded-pill px-4" onClick={onHide}>{t('proyectos.cancel')}</Button>
+        <Button variant="primary" className="fw-bold shadow-sm rounded-pill px-4" onClick={saveBuildCases} disabled={readOnlyBuild}>{t('proyectos.saveScope')}</Button>
       </Modal.Footer>
     </Modal>
   )

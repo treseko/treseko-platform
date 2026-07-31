@@ -44,7 +44,7 @@ class Organizacion(OrganizacionBase):
     id: UUID
     codigo: Optional[str] = None
     fecha_creacion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class OrganizacionMiembroCreate(BaseModel):

@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { mapBackendEnvironmentToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
+import type { TranslationKey } from '../../i18n'
 
 type CreateEnvironmentActionsParams = {
   projectsSource: 'local' | 'backend'
@@ -10,6 +11,7 @@ type CreateEnvironmentActionsParams = {
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   setEnvironments: Dispatch<SetStateAction<any[]>>
   setProjectSyncMessage: (message: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createEnvironmentActions({
@@ -18,7 +20,8 @@ export function createEnvironmentActions({
   environments,
   fetchWithAuth,
   setEnvironments,
-  setProjectSyncMessage
+  setProjectSyncMessage,
+  t
 }: CreateEnvironmentActionsParams) {
   const parseVariablesText = (value: string) =>
     Object.fromEntries(
@@ -96,14 +99,14 @@ export function createEnvironmentActions({
         }
         const env = await response.json()
         setEnvironments([...environments, mapBackendEnvironmentToItem(env)])
-        setProjectSyncMessage('Ambiente creado y persistido en backend.')
+        setProjectSyncMessage(t('proyectos.environmentCreatedBackend'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo persistir ambiente: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.environmentPersistError')}: ${error.message}.`)
         return
       }
     } else {
       setEnvironments([...environments, { id: `e${Date.now()}`, projectId: managingProjectId, ...data, lastPing: 'Justo ahora' }])
-      setProjectSyncMessage('Ambiente creado en modo diseño/local.')
+      setProjectSyncMessage(t('proyectos.environmentCreatedLocal'))
     }
     target.reset()
   }
@@ -117,12 +120,12 @@ export function createEnvironmentActions({
           throw new Error(error?.detail || `Backend respondió ${response.status}`)
         }
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo eliminar ambiente: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.environmentDeleteError')}: ${error.message}.`)
         return
       }
     }
     setEnvironments(environments.filter(env => env.id !== envId))
-    setProjectSyncMessage('Ambiente ocultado. El historial existente se conserva.')
+    setProjectSyncMessage(t('proyectos.environmentHidden'))
   }
 
   const handleEditProjectEnvironment = async (envId: string, event?: FormEvent<HTMLFormElement>) => {
@@ -153,15 +156,15 @@ export function createEnvironmentActions({
           }
           const updated = await response.json()
           setEnvironments(environments.map(env => env.id === envId ? mapBackendEnvironmentToItem(updated) : env))
-          setProjectSyncMessage('Ambiente actualizado.')
+          setProjectSyncMessage(t('proyectos.environmentUpdated'))
         } catch (error: any) {
-          setProjectSyncMessage(`No se pudo actualizar ambiente: ${error.message}.`)
+          setProjectSyncMessage(`${t('proyectos.environmentUpdateError')}: ${error.message}.`)
         }
         return
       }
 
       setEnvironments(environments.map(env => env.id === envId ? { ...env, name, url, version, status, variables } : env))
-      setProjectSyncMessage('Ambiente actualizado en modo diseño/local.')
+      setProjectSyncMessage(t('proyectos.environmentUpdatedLocal'))
       return
     }
     return false
@@ -211,9 +214,9 @@ export function createEnvironmentActions({
             }))
           }
         }))
-        setProjectSyncMessage('Dataset guardado.')
+        setProjectSyncMessage(t('proyectos.datasetSaved'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo crear dataset: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.datasetCreateError')}: ${error.message}.`)
         return false
       }
     } else {
@@ -242,7 +245,7 @@ export function createEnvironmentActions({
           throw new Error(error?.detail || `Backend respondio ${response.status}`)
         }
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo marcar dataset default: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.datasetDefaultError')}: ${error.message}.`)
         return false
       }
     }
@@ -250,7 +253,7 @@ export function createEnvironmentActions({
       ...env,
       datasets: (env.datasets || []).map((dataset: any) => ({ ...dataset, isDefault: dataset.id === datasetId }))
     } : env))
-    setProjectSyncMessage('Dataset default actualizado.')
+    setProjectSyncMessage(t('proyectos.datasetDefaultUpdated'))
     return true
   }
 
@@ -299,9 +302,9 @@ export function createEnvironmentActions({
             }))
           }
         }))
-        setProjectSyncMessage('Dataset actualizado.')
+        setProjectSyncMessage(t('proyectos.datasetUpdated'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo actualizar dataset: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.datasetUpdateError')}: ${error.message}.`)
         return false
       }
       return true
@@ -321,7 +324,7 @@ export function createEnvironmentActions({
         isDefault: payload.es_default ? dataset.id === datasetId : dataset.isDefault
       }))
     } : env))
-    setProjectSyncMessage('Dataset guardado.')
+    setProjectSyncMessage(t('proyectos.datasetSaved'))
     return true
   }
 
@@ -334,7 +337,7 @@ export function createEnvironmentActions({
           throw new Error(error?.detail || `Backend respondio ${response.status}`)
         }
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo eliminar dataset: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.datasetDeleteError')}: ${error.message}.`)
         return false
       }
     }
@@ -342,7 +345,7 @@ export function createEnvironmentActions({
       ...env,
       datasets: (env.datasets || []).filter((dataset: any) => dataset.id !== datasetId)
     } : env))
-    setProjectSyncMessage('Dataset ocultado. Las ejecuciones historicas conservan sus datos congelados.')
+    setProjectSyncMessage(t('proyectos.datasetHidden'))
     return true
   }
 

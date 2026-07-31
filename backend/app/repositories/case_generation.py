@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -137,7 +136,6 @@ async def _resolve_destination_suite(db, project_id, suite_id, requested_compone
     component = (await db.execute(select(models.Componente).where(
         models.Componente.id == component_uuid,
         models.Componente.proyecto_id == project_id,
-        models.Componente.activo == True,
     ))).scalar_one_or_none()
     if not component:
         raise ValueError("El componente destino no es válido para este proyecto.")
@@ -221,8 +219,7 @@ async def _call_engine(db, workflow, phase, context, instructions, max_cases=Non
         "temperature": config.get("temperature"),
         "max_completion_tokens": min(int(config.get("max_completion_tokens") or 4096), 12000),
     }
-    token = os.getenv("AI_ENGINE_INTERNAL_TOKEN")
-    headers = {"X-Engine-Internal-Token": token} if token else {}
+    headers = engine_internal_headers(current_correlation_id())
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         response = await client.post(f"{ENGINE_URL.rstrip('/')}/generate-test-cases-sync", json=payload, headers=headers)
     if response.status_code >= 400:

@@ -54,10 +54,10 @@ export class TraceLogger {
 
         // Initialize trace file with empty array
         fs.writeFileSync(this.traceFilePath, JSON.stringify([], null, 2));
-        
+
         // Clean start for log file
         fs.writeFileSync(this.logFilePath, '');
-        
+
         this.log('SYSTEM', 'INFO', `Iniciando trazabilidad para Test: ${testId} en Suite: ${suiteId}`);
     }
 
@@ -70,15 +70,15 @@ export class TraceLogger {
     log(agentName: string, level: string, message: string) {
         const timestamp = new Date().toISOString();
         const logLine = `[${timestamp}] [${this.model}] [${this.suiteId}] [${this.testId}] [${agentName}] [${level}] - ${message}\n`;
-        
+
         // Usar appendFileSync que es bloqueante y asegura escritura
         fs.appendFileSync(this.logFilePath, logLine);
-        
+
         // Forzar flush al sistema de archivos (Windows a veces bufferea)
         const fd = fs.openSync(this.logFilePath, 'a');
         fs.fsyncSync(fd);
         fs.closeSync(fd);
-        
+
         const color = level === 'ERROR' ? '\x1b[31m' : level === 'WARN' ? '\x1b[33m' : '\x1b[32m';
         const reset = '\x1b[0m';
         process.stdout.write(`${color}${logLine}${reset}`);
@@ -105,7 +105,7 @@ export class TraceLogger {
             const currentTrace = JSON.parse(fs.readFileSync(this.traceFilePath, 'utf8'));
             currentTrace.push(traceEntry);
             fs.writeFileSync(this.traceFilePath, JSON.stringify(currentTrace, null, 2));
-            
+
             // Forzar persistencia del JSON también
             const fd = fs.openSync(this.traceFilePath, 'a');
             fs.fsyncSync(fd);
@@ -132,11 +132,11 @@ Status:             Traceability Completed
 ================================================================================
 `;
         fs.appendFileSync(this.logFilePath, summary);
-        
+
         const fd = fs.openSync(this.logFilePath, 'a');
         fs.fsyncSync(fd);
         fs.closeSync(fd);
-        
+
         console.log(summary);
     }
 }

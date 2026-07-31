@@ -1,580 +1,45 @@
-import type { Page } from 'playwright';
-import type { AIClient, AIResult } from '../ai/client.ts';
-import type { BrowserObservation, ExecutionCheckpoint, QAEngineStep, StepContract, StepRunResult, StrictAIAction, StructuredHistoryItem } from './action-types.ts';
-import { executeStrictAction, normalizeAction, normalizeUrl, shouldUseCoordinateClickFallback, toCoordinateClickFallback, validateAction } from './action-executor.ts';
-import { formatObservation, observeBrowser } from './observation.ts';
-import { buildStepContract, evaluateStepContract, inferConventionalUiAction, inferStructuredAction, parseStepData, stepDataValue } from './step-contract.ts';
-import { displayResolvedInput, interpretStepData } from './context-data-interpreter.ts';
-
-export interface StepRunnerOptions {
-  executionId: string;
-  task: string;
-  expected?: string;
-  maxAttempts?: number;
-  agentWorkflow?: any[];
-  contextData?: Record<string, any>;
-  emit?: (event: string, data: any) => void;
-  logger?: { log: (source: string, level: string, message: string, details?: Record<string, unknown>) => void };
-}
-
-export interface RunStepsResult {
-  steps: StepRunResult[];
-  history: StructuredHistoryItem[];
-  visited_urls: string[];
-  errors: string[];
-  checkpoints: ExecutionCheckpoint[];
-}
-
-function stepGoal(task: string, step: QAEngineStep, contract: StepContract): string {
-  return [
-    `Caso: ${task}`,
-    `Paso ${step.number}`,
-    `Accion esperada: ${step.action || '-'}`,
-    `Datos normalizados: ${step.data || '-'}`,
-    `Resultado esperado: ${step.expected || '-'}`,
-    `Contrato verificable: ${contract.assertions.map((item) => `${item.type}:${item.target || item.expected || item.alternatives?.join('|') || '-'}`).join(', ') || 'sin aserciones tipadas'}`,
-    `Cobertura: ${contract.coverage}`,
-    `Pendiente de evaluacion semantica: ${contract.unresolved_fragments.join(' | ') || 'nada'}`,
-  ].join('\n');
-}
-
-function summarizeHistory(history: StructuredHistoryItem[]): string {
-  return history.slice(-8).map((item) => {
-    const status = item.execution.ok ? 'OK' : 'ERROR';
-    const target = item.action.target_ref || (item.action.action === 'click_at' ? `${item.action.x},${item.action.y}` : '');
-    const checkpoint = item.checkpoint
-      ? ` checkpoint=${item.checkpoint.contract_coverage}/${item.checkpoint.recoverable ? 'recuperable' : 'terminal'}`
-      : '';
-    return `Paso ${item.step_number} intento ${item.attempt}: ${item.action.action} ${target} ${item.action.value || ''} -> ${status}: ${item.execution.message}${checkpoint}`;
-  }).join('\n') || 'Sin acciones previas.';
-}
-
-function latestCheckpointContext(history: StructuredHistoryItem[]): string {
-  const latest = [...history].reverse().find((item) => item.checkpoint)?.checkpoint;
-  if (!latest) return 'Sin checkpoint previo.';
-  return [
-    `Checkpoint paso ${latest.step_number}, intento ${latest.attempt}`,
-    `URL: ${latest.url}`,
-    `Titulo: ${latest.title}`,
-    `Cobertura del contrato: ${latest.contract_coverage}`,
-    `Aserciones: ${latest.assertion_results.map((item) => `${item.assertion.type}=${item.ok ? 'OK' : 'FALLO'}`).join(', ') || 'sin aserciones tipadas'}`,
-    `Recuperable: ${latest.recoverable ? 'si' : 'no'}`,
-  ].join('\n');
-}
-
-function actionExplicitlySubmits(step: QAEngineStep): boolean {
-  const action = normalizeText(step.action || '');
-  return /\b(enviar|submit|confirmar envio|iniciar sesion)\b/.test(action);
-}
-
-function buildCheckpoint(
-  step: QAEngineStep,
-  attempt: number,
-  contract: StepContract,
-  before: Pick<BrowserObservation, 'url'>,
-  after: BrowserObservation,
-  screenshotAvailable: boolean,
-): ExecutionCheckpoint {
-  const evaluation = evaluateStepContract(contract, before, after);
-  return {
-    step_number: step.number,
-    attempt,
-    created_at: new Date().toISOString(),
-    url: after.url,
-    title: after.title,
-    ready_state: after.readyState,
-    visible_text_excerpt: after.visibleText.slice(0, 20),
-    assertion_results: evaluation.results,
-    contract_coverage: contract.coverage,
-    screenshot_available: screenshotAvailable,
-    recoverable: !evaluation.conclusive || !evaluation.ok,
-  };
-}
-
-function statusFromAction(action: StrictAIAction, ok: boolean): 'PASO' | 'FALLO' | 'BLOQUEADO' {
-  if (ok && action.action !== 'fail' && action.action !== 'blocked') return 'PASO';
-  if (action.action === 'blocked') return 'BLOQUEADO';
-  return 'FALLO';
-}
-
-function isBrowserOpenStep(step: QAEngineStep): boolean {
-  const text = `${step.action || ''} ${step.data || ''}`.toLowerCase();
-  return /(abrir|abre|open).*(navegador|browser|chrome|crome|firefox|edge)/.test(text) || /(navegador|browser|chrome|crome|firefox|edge).*(abrir|abre|open)/.test(text);
-}
-
-function extractStepUrl(step: QAEngineStep): string {
-  const text = `${step.action || ''}\n${step.data || ''}`.trim();
-  if (!text) return '';
-  const keyMatch = text.match(/\b(?:url|base_url|url_base)\s*[:=]\s*([^\s,;]+)/i);
-  const directMatch = text.match(/\bhttps?:\/\/[^\s,;]+|\b(?:www\.)[^\s,;]+/i);
-  const candidate = keyMatch?.[1] || directMatch?.[0] || '';
-  return normalizeUrl(candidate.replace(/^["']|["']$/g, ''));
-}
-
-function isUrlNavigationStep(step: QAEngineStep): boolean {
-  const text = `${step.action || ''} ${step.data || ''}`.toLowerCase();
-  return Boolean(extractStepUrl(step)) && /(ingresar|abrir|navegar|cargar|visitar|ir a|go to|navigate|url)/i.test(text);
-}
-
-function confidenceFromHistory(history: StructuredHistoryItem[]): number {
-  const values = history
-    .map((item) => Number(item.action?.confidence || 0))
-    .filter((value) => value > 0);
-  if (!values.length) return 0;
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
-function normalizeText(value: string): string {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function evidenceTerms(step: QAEngineStep, action: StrictAIAction): string[] {
-  const keyValues = Object.values(parseStepData(step.data)).filter(Boolean);
-  const quotedExpected = Array.from(String(step.expected || '').matchAll(/["'“”]([^"'“”]{2,120})["'“”]/g))
-    .map((match) => String(match[1] || '').trim())
-    .filter(Boolean);
-  const source = String([keyValues.join(' '), action.value || '', quotedExpected.join(' ')].filter(Boolean).join(' ') || step.data || '').trim();
-  if (!source || source === '-') return [];
-  return Array.from(new Set(
-    normalizeText(source)
-      .replace(/https?:\/\/\S+/g, ' ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(/\s+/)
-      .map((term) => term.trim())
-      .filter((term) => term.length >= 3)
-  )).slice(0, 5);
-}
-
-function observationCorpus(observation: Pick<BrowserObservation, 'url' | 'title' | 'visibleText' | 'bodyText' | 'elements'>): string {
-  const elementText = observation.elements.map((el) => [
-    el.name,
-    el.label,
-    el.text,
-    el.value,
-    el.placeholder,
-    el.title,
-    el.role,
-  ].filter(Boolean).join(' '));
-  return normalizeText([observation.url, observation.title, observation.bodyText, ...observation.visibleText, ...elementText].join(' '));
-}
-
-function expectsDynamicResults(step: QAEngineStep): boolean {
-  const text = normalizeText(`${step.action || ''} ${step.expected || ''}`);
-  return /(aparece|aparecen|resultado|resultados|sugerencia|sugerencias|desplegable|dropdown|lista|opciones|filtrar|filtro|quedan|contador)/.test(text);
-}
-
-function expectsVisibleOutcome(step: QAEngineStep, action: StrictAIAction): boolean {
-  if (['assert_visible', 'assert_text'].includes(action.action)) return true;
-  if (action.action === 'navigate') return true;
-  if (action.action === 'finish') return /["'“”][^"'“”]{2,120}["'“”]/.test(String(step.expected || ''));
-  if (action.action === 'type') return expectsDynamicResults(step);
-  if (action.action === 'fill_form') {
-    const text = normalizeText(`${step.action || ''} ${step.expected || ''}`);
-    return Boolean(action.submit_after_type)
-      || /(ingreso|ingresar|completar|campos?|login|sesion|area segura|mensaje|muestra|confirma)/.test(text);
-  }
-  if (action.action === 'wait') {
-    const text = normalizeText(`${step.action || ''} ${step.expected || ''}`);
-    return /(abrir|abre|navegar|resultado|validar|confirmar|verificar)/.test(text);
-  }
-  if (!['click', 'click_at', 'press', 'select'].includes(action.action)) return false;
-  const text = normalizeText(`${step.action || ''} ${step.expected || ''}`);
-  return /(visualiza|aparece|muestra|informacion|informacion|pagina|navega|abre|resultado)/.test(text);
-}
-
-const COUNT_WORDS: Record<string, number> = {
-  'un': 1,
-  'uno': 1,
-  'una': 1,
-  'solo': 1,
-  'dos': 2,
-  'tres': 3,
-  'cuatro': 4,
-  'cinco': 5,
-};
-
-const COUNT_STOP_WORDS = new Set([
-  'aparece',
-  'aparecen',
-  'boton',
-  'botones',
-  'campo',
-  'campos',
-  'elemento',
-  'elementos',
-  'visible',
-  'visibles',
-  'queda',
-  'quedan',
-  'solo',
-  'sola',
-  'un',
-  'uno',
-  'una',
-  'dos',
-  'tres',
-  'cuatro',
-  'cinco',
-]);
-
-function expectedCountRequirement(step: QAEngineStep): { term: string; count: number; comparator: 'at_least' | 'exact' } | null {
-  const text = normalizeText(`${step.action || ''} ${step.expected || ''}`);
-  const countMatch = text.match(/\b(un solo|una sola|exactamente\s+(?:[1-5]|un|uno|una|dos|tres|cuatro|cinco)|[2-5]|dos|tres|cuatro|cinco)\b/);
-  if (!countMatch) return null;
-  const rawCount = String(countMatch[1] || '').replace(/^exactamente\s+/i, '');
-  const countWord = rawCount.split(/\s+/)[0] || '';
-  const count = Number.isFinite(Number(rawCount)) ? Number(rawCount) : (COUNT_WORDS[countWord] ?? 0);
-  if (!Number.isFinite(count) || count <= 0) return null;
-  const quoted = text.match(/["'“”]([^"'“”]{2,40})["'“”]/);
-  const words = normalizeText(quoted?.[1] || text)
-    .split(/\s+/)
-    .filter((word) => word.length >= 3 && !COUNT_STOP_WORDS.has(word));
-  const term = words.reverse().find(Boolean);
-  if (!term) return null;
-  const comparator = /(queda|quedan|un solo|una sola|exactamente)/.test(text) ? 'exact' : 'at_least';
-  return { term, count, comparator };
-}
-
-function countVisibleTerm(observation: Pick<BrowserObservation, 'visibleText' | 'elements'>, term: string): number {
-  const elementMatches = observation.elements.filter((el) => {
-    if (!el.visible) return false;
-    const elementCorpus = normalizeText([el.name, el.label, el.text, el.value, el.placeholder, el.title].filter(Boolean).join(' '));
-    return elementCorpus.includes(term);
-  }).length;
-  if (elementMatches > 0) return elementMatches;
-  return observation.visibleText.reduce((total, text) => {
-    const matches = normalizeText(text).match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'));
-    return total + (matches?.length || 0);
-  }, 0);
-}
-
-function hasDynamicResultEvidence(step: QAEngineStep, action: StrictAIAction, observation: BrowserObservation): boolean {
-  if (action.action !== 'type' || !expectsDynamicResults(step)) return true;
-  const terms = evidenceTerms(step, action);
-  if (!terms.length) return true;
-  const visibleTextCorpus = normalizeText(observation.visibleText.join(' '));
-  if (terms.some((term) => visibleTextCorpus.includes(term))) return true;
-  return observation.elements.some((el) => {
-    if (el.ref === action.target_ref || el.editable) return false;
-    const elementCorpus = normalizeText([el.name, el.label, el.text, el.value, el.placeholder, el.title].filter(Boolean).join(' '));
-    return terms.some((term) => elementCorpus.includes(term));
-  });
-}
-
-function extractKeyValue(step: QAEngineStep, keys: string[]): string {
-  return stepDataValue(step, keys);
-}
-
-function extractExpectedFalseClaim(step: QAEngineStep): string {
-  return extractKeyValue(step, ['expected_false_claim', 'afirmacion_falsa', 'false_claim', 'claim_falso']);
-}
-
-function findSearchInput(observation: BrowserObservation): string {
-  const candidates = observation.elements.filter((element) => {
-    if (!element.visible || element.disabled || !element.editable) return false;
-    const corpus = normalizeText([
-      element.role,
-      element.name,
-      element.label,
-      element.placeholder,
-      element.title,
-      element.type,
-    ].filter(Boolean).join(' '));
-    return element.role === 'searchbox'
-      || element.type === 'search'
-      || /(search|buscar|busqueda|consulta|query)/.test(corpus);
-  });
-  return candidates[0]?.ref || observation.elements.find((element) => element.visible && !element.disabled && element.editable)?.ref || '';
-}
-
-function findCredentialField(observation: BrowserObservation, kind: 'username' | 'password'): string {
-  const candidates = observation.elements.filter((element) => {
-    if (!element.visible || element.disabled || !element.editable) return false;
-    const corpus = normalizeText([
-      element.role,
-      element.name,
-      element.label,
-      element.placeholder,
-      element.title,
-      element.type,
-    ].filter(Boolean).join(' '));
-    if (kind === 'password') return element.type === 'password' || /password|contrase/.test(corpus);
-    return element.type !== 'password' && /(username|usuario|email|login|user)/.test(corpus);
-  });
-  if (candidates[0]?.ref) return candidates[0].ref;
-  const fallback = observation.elements.find((element) => (
-    element.visible
-    && !element.disabled
-    && element.editable
-    && (kind === 'password' ? element.type === 'password' : element.type !== 'password')
-  ));
-  return fallback?.ref || '';
-}
-
-function wordsForMatch(value: string): string[] {
-  return normalizeText(value)
-    .replace(/[^a-z0-9]+/g, ' ')
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter((word) => word.length >= 3);
-}
-
-function findPreferredResultTarget(observation: BrowserObservation, preferred: string): string {
-  const words = wordsForMatch(preferred);
-  if (!words.length) return '';
-  const candidates = observation.elements.filter((element) => {
-    if (!element.visible || element.disabled || (!element.clickable && element.role !== 'link')) return false;
-    const corpus = normalizeText([
-      element.role,
-      element.name,
-      element.label,
-      element.text,
-      element.value,
-      element.placeholder,
-      element.title,
-    ].filter(Boolean).join(' '));
-    return words.every((word) => corpus.includes(word));
-  });
-  return candidates[0]?.ref || '';
-}
-
-function preferredWikipediaUrl(currentUrl: string, preferred: string): string {
-  if (!preferred || !/wikipedia\.org/i.test(currentUrl)) return '';
-  try {
-    const url = new URL(currentUrl);
-    const slug = preferred.trim().replace(/\s+/g, '_');
-    return `${url.origin}/wiki/${encodeURIComponent(slug).replace(/%28/g, '(').replace(/%29/g, ')')}`;
-  } catch {
-    return '';
-  }
-}
-
-function deterministicRecoveryAction(step: QAEngineStep, observation: BrowserObservation): StrictAIAction | null {
-  const text = normalizeText(`${step.action || ''} ${step.data || ''} ${step.expected || ''}`);
-  const expectedFalseClaim = extractExpectedFalseClaim(step);
-  if (expectedFalseClaim) {
-    const corpus = observationCorpus(observation);
-    const claimWords = wordsForMatch(expectedFalseClaim);
-    const claimLooksSupported = claimWords.length > 0 && claimWords.every((word) => corpus.includes(word));
-    const action: StrictAIAction = {
-      action: claimLooksSupported ? 'finish' : 'fail',
-      value: expectedFalseClaim,
-      reason: claimLooksSupported
-        ? `La afirmacion negativa "${expectedFalseClaim}" aparece respaldada por el contenido visible.`
-        : `Fallo funcional esperado: la pagina no respalda la afirmacion "${expectedFalseClaim}".`,
-      confidence: 98,
-      step_number: step.number,
-    };
-    if (step.expected) action.expected = step.expected;
-    return action;
-  }
-  const username = extractKeyValue(step, ['username', 'usuario', 'user', 'email', 'login']);
-  const password = extractKeyValue(step, ['password', 'contraseña', 'contrasena', 'pass']);
-  if (username && password && /(login|sesion|iniciar|ingresar|credencial|usuario|password|contrase)/.test(text)) {
-    const usernameTarget = findCredentialField(observation, 'username');
-    const passwordTarget = findCredentialField(observation, 'password');
-    if (usernameTarget && passwordTarget) {
-      const shouldSubmit = /(iniciar\s+sesion|iniciar\s+login|login\s+valido|hacer\s+login|enviar|submit|ingreso exitoso|area segura)/.test(text);
-      const action: StrictAIAction = {
-        action: 'fill_form',
-        fields: [
-          { target_ref: usernameTarget, value: username },
-          { target_ref: passwordTarget, value: password },
-        ],
-        submit_after_type: shouldSubmit,
-        reason: shouldSubmit
-          ? 'Recuperacion deterministica: completar credenciales y enviar formulario.'
-          : 'Recuperacion deterministica: completar credenciales visibles.',
-        confidence: 95,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-  }
-
-  const searchTerm = extractKeyValue(step, ['search_term', 'termino', 'term', 'query', 'busqueda']);
-  if (searchTerm && /(buscar|busqueda|search)/.test(text)) {
-    const target = findSearchInput(observation);
-    if (target) {
-      const action: StrictAIAction = {
-        action: 'type',
-        target_ref: target,
-        value: searchTerm,
-        submit_after_type: true,
-        reason: `Recuperacion deterministica: escribir el termino de busqueda "${searchTerm}".`,
-        confidence: 92,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-  }
-
-  const preferredResult = extractKeyValue(step, ['resultado_preferido', 'preferred_result', 'preferred', 'result']);
-  if (preferredResult && /(abrir|abre|resultado|relevante|navegar)/.test(text)) {
-    const target = findPreferredResultTarget(observation, preferredResult);
-    if (target) {
-      const action: StrictAIAction = {
-        action: 'click',
-        target_ref: target,
-        reason: `Recuperacion deterministica: abrir el resultado preferido "${preferredResult}".`,
-        confidence: 94,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-    const url = preferredWikipediaUrl(observation.url, preferredResult);
-    if (url) {
-      const action: StrictAIAction = {
-        action: 'navigate',
-        value: url,
-        reason: `Recuperacion deterministica: navegar al articulo preferido "${preferredResult}".`,
-        confidence: 90,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-  }
-
-  if (/(validar|confirmar|verificar|registrar evidencia|buscar visualmente|observar|visual)/.test(text)) {
-    const expectedText = extractKeyValue(step, ['expected_keyword', 'keyword', 'texto', 'text']);
-    if (expectedText) {
-      const action: StrictAIAction = {
-        action: 'assert_text',
-        value: expectedText,
-        reason: `Recuperacion deterministica: validar texto visible "${expectedText}".`,
-        confidence: 90,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-    const corpus = observationCorpus(observation);
-    const finishAction: StrictAIAction = {
-      action: 'finish',
-      reason: '',
-      confidence: 90,
-      step_number: step.number,
-    };
-    if (step.expected) finishAction.expected = step.expected;
-    const expectedTerms = evidenceTerms(step, finishAction);
-    const hasEvidence = expectedTerms.length === 0 || expectedTerms.some((term) => corpus.includes(term));
-    if (hasEvidence && observation.readyState === 'complete') {
-      const action: StrictAIAction = {
-        action: 'finish',
-        reason: 'Recuperacion deterministica: la pagina esta cargada y el snapshot contiene evidencia visual suficiente.',
-        confidence: 88,
-        step_number: step.number,
-      };
-      if (step.expected) action.expected = step.expected;
-      return action;
-    }
-  }
-
-  return null;
-}
-
-function isCompoundFlowStep(step: QAEngineStep): boolean {
-  const action = normalizeText(step.action || '');
-  return /\by\s+(?:abrir|hacer clic|luego|completar|finalizar)|(?:luego|despues)\s+en|menu.*(?:reset|logout)|back home.*menu|completar checkout|completar datos.*(?:continue|finalizar)|reemplazar.*(?:clic|login)/.test(action);
-}
-
-function needsCompoundContinuation(step: QAEngineStep, observation: BrowserObservation): boolean {
-  const action = normalizeText(step.action || '');
-  const url = normalizeText(observation.url);
-  if (/completar checkout|completar datos.*finalizar/.test(action)) return !observationCorpus(observation).includes('thank you for your order');
-  if (/checkout/.test(action) && /(abrir|agregar)/.test(action) && !/checkout-step-one\.html/.test(url)) return true;
-  if (/(abrir.*carrito|agregar.*carrito)/.test(action) && !/cart\.html/.test(url)) return true;
-  if (/continue shopping/.test(action) && !/inventory\.html/.test(url)) return true;
-  if (/continue.*(?:luego|despues).*cancel/.test(action) && !/inventory\.html/.test(url)) return true;
-  if (/back home.*menu.*logout/.test(action) && !/saucedemo\.com\/?$/.test(url)) return true;
-  if (/menu.*reset app state/.test(action)) return observationCorpus(observation).includes('shopping_cart_badge');
-  if (/reemplazar.*(?:clic|login)/.test(action) && !/inventory\.html/.test(url)) return true;
-  return false;
-}
-
-async function waitForExpectedEvidence(page: Page, step: QAEngineStep, action: StrictAIAction, executionId?: string): Promise<BrowserObservation> {
-  const shouldWait = (action.action === 'type' && expectsDynamicResults(step))
-    || ['click', 'check', 'fill_form', 'select'].includes(action.action);
-  const deadline = Date.now() + (shouldWait ? 3000 : 0);
-  const initialUrl = page.url();
-  let latest = await observeBrowser(page, executionId, step.number);
-  if (!deadline) return latest;
-  const contract = buildStepContract(step);
-
-  while (Date.now() < deadline) {
-    const evaluation = evaluateStepContract(contract, { url: initialUrl }, latest);
-    if (evaluation.ok && evaluation.conclusive) return latest;
-    if (!evaluation.conclusive && hasDynamicResultEvidence(step, action, latest)) return latest;
-    await page.waitForTimeout(200);
-    latest = await observeBrowser(page, executionId, step.number);
-  }
-  return latest;
-}
-
-function validateExpectedOutcome(
-  step: QAEngineStep,
-  before: Pick<BrowserObservation, 'url'>,
-  after: Pick<BrowserObservation, 'url' | 'title' | 'visibleText' | 'bodyText' | 'elements'>
-): { ok: boolean; reason: string; conclusive?: boolean } {
-  const contract = buildStepContract(step);
-  const evaluation = evaluateStepContract(contract, before, after as BrowserObservation);
-  return {
-    ok: evaluation.ok,
-    reason: evaluation.reason,
-    conclusive: evaluation.conclusive,
-  };
-}
-
-function stepLooksActionable(step: QAEngineStep, observation: BrowserObservation): boolean {
-  const text = normalizeText(`${step.action || ''} ${step.data || ''} ${step.expected || ''}`);
-  const mentionsAction = /(ingresar|completar|escribir|tipear|buscar|seleccionar|click|clic|presionar|enviar|abrir|navegar|validar|confirmar|registrar|evidencia|visual|observar|verificar)/.test(text);
-  if (!mentionsAction) return false;
-  const hasUsableElement = observation.elements.some((element) => (
-    element.visible
-    && !element.disabled
-    && (element.editable || element.clickable || ['button', 'link', 'textbox', 'combobox', 'searchbox'].includes(String(element.role || '').toLowerCase()))
-  ));
-  if (!hasUsableElement) return false;
-  const hasStructuredData = /(username|usuario|user|email|password|contrase|search_term|query|termino|url|base_url)\s*[:=]/i.test(`${step.data || ''}`);
-  const needsNoData = /(click|clic|presionar|abrir|navegar|validar|confirmar)/.test(text);
-  return hasStructuredData || needsNoData || observation.elements.some((element) => element.editable);
-}
-
-function isActionableBlocked(action: StrictAIAction, step: QAEngineStep, observation: BrowserObservation): boolean {
-  if (action.action !== 'blocked') return false;
-  const reason = normalizeText(action.reason || '');
-  const realBlocker = /(falta|faltan|missing|no existe|no esta disponible|no visible|sin dato|sin datos|imposible|no se puede|requiere credencial|requiere acceso)/.test(reason);
-  return !realBlocker && stepLooksActionable(step, observation);
-}
-
-function getWorkflowAgent(workflow: any[] | undefined, id: string): any | undefined {
-  return (workflow || []).find((item) => String(item?.id || '').toUpperCase() === id);
-}
-
-function retryLimitFromWorkflow(workflow: any[] | undefined, fallbackAttempts: number): number {
-  const sentinel = getWorkflowAgent(workflow, 'SENTINEL');
-  if (sentinel?.enabled === false) return 1;
-  const retryLimit = Number(sentinel?.retry_limit);
-  if (Number.isFinite(retryLimit)) {
-    return Math.max(1, Math.min(6, retryLimit + 1));
-  }
-  return fallbackAttempts;
-}
-
-function conventionalUiInferenceEnabled(workflow: any[] | undefined): boolean {
-  return (workflow || []).some((agent) => (
-    agent?.enabled !== false
-    && (agent?.config?.conventional_ui_inference === true || agent?.config_json?.conventional_ui_inference === true)
-  ));
-}
-
+import type { Page } from 'playwright'; import type { AIClient, AIResult } from '../ai/client.ts'; import type { BrowserObservation, ExecutionCheckpoint, QAEngineStep, StepContract, StepRunResult, StrictAIAction, StructuredHistoryItem } from './action-types.ts';
+import { executeStrictAction, normalizeAction, normalizeUrl, shouldUseCoordinateClickFallback, toCoordinateClickFallback, validateAction } from './action-executor.ts'; import { formatObservation, observeBrowser } from './observation.ts'; import { buildStepContract, evaluateStepContract, inferConventionalUiAction, inferStructuredAction, parseStepData, stepDataValue } from './step-contract.ts'; import { displayResolvedInput, interpretStepData } from './context-data-interpreter.ts';
+import type { RunStepsResult, StepRunnerOptions } from './step-runner-types.ts'; export type { RunStepsResult, StepRunnerOptions } from './step-runner-types.ts';
+import {
+  stepGoal,
+  summarizeHistory,
+  latestCheckpointContext,
+  actionExplicitlySubmits,
+  buildCheckpoint,
+  statusFromAction,
+  isBrowserOpenStep,
+  extractStepUrl,
+  isUrlNavigationStep,
+  confidenceFromHistory,
+  normalizeText,
+  evidenceTerms,
+  observationCorpus,
+  expectsDynamicResults,
+  expectsVisibleOutcome,
+  expectedCountRequirement,
+  countVisibleTerm,
+  hasDynamicResultEvidence,
+} from './step-runner-helpers.ts';
+import {
+  extractKeyValue,
+  extractExpectedFalseClaim,
+  findSearchInput,
+  findCredentialField,
+  wordsForMatch,
+  findPreferredResultTarget,
+  preferredWikipediaUrl,
+  deterministicRecoveryAction,
+  isCompoundFlowStep,
+  needsCompoundContinuation,
+  waitForExpectedEvidence,
+  validateExpectedOutcome,
+  stepLooksActionable,
+  isActionableBlocked,
+  getWorkflowAgent,
+  retryLimitFromWorkflow,
+  conventionalUiInferenceEnabled,
+} from './step-runner-recovery.ts';
 export async function runQaSteps(
   page: Page,
   ai: AIClient,
@@ -588,14 +53,12 @@ export async function runQaSteps(
   const visitedUrls = new Set<string>();
   const errors: string[] = [];
   const checkpoints: ExecutionCheckpoint[] = [];
-
   for (const sourceStep of steps) {
     const resolvedData = interpretStepData(sourceStep.data, options.contextData || {});
     const step = resolvedData.normalizedData ? { ...sourceStep, data: resolvedData.normalizedData } : sourceStep;
     const contract = buildStepContract(step);
     const stepHistory: StructuredHistoryItem[] = [];
     let finalResult: StepRunResult | null = null;
-
     if (isBrowserOpenStep(step)) {
       const observation = await observeBrowser(page, options.executionId, step.number);
       const screenshot = await page.screenshot();
@@ -666,7 +129,6 @@ export async function runQaSteps(
       });
       continue;
     }
-
     if (isUrlNavigationStep(step)) {
       const url = extractStepUrl(step);
       const observation = await observeBrowser(page, options.executionId, step.number);
@@ -768,7 +230,6 @@ export async function runQaSteps(
       if (status !== 'PASO') break;
       continue;
     }
-
     const stepMaxAttempts = isCompoundFlowStep(step) ? Math.max(maxAttempts, 6) : maxAttempts;
     for (let attempt = 1; attempt <= stepMaxAttempts; attempt++) {
       const observation = await observeBrowser(page, options.executionId, step.number);
@@ -795,7 +256,6 @@ export async function runQaSteps(
         resolved_inputs: resolvedData.inputs.map(displayResolvedInput),
         ambiguities: resolvedData.ambiguities,
       });
-
       const deterministicAction = inferStructuredAction(step, observation)
         || (useConventionalUiInference ? inferConventionalUiAction(step, observation) : null)
         || deterministicRecoveryAction(step, observation);
@@ -881,7 +341,6 @@ export async function runQaSteps(
         reason: 'La accion no llego a ejecutarse.',
         conclusive: true,
       };
-
       if (!validation.ok) {
         execution = {
           ok: false,
@@ -937,7 +396,6 @@ export async function runQaSteps(
         action,
         execution,
       });
-
       const afterScreenshot = await page.screenshot().catch(() => screenshot);
       const item: StructuredHistoryItem = {
         step_number: step.number,
@@ -970,7 +428,6 @@ export async function runQaSteps(
       checkpoints.push(item.checkpoint);
       stepHistory.push(item);
       globalHistory.push(item);
-
       options.emit?.('step_result', {
         agent: execution.ok ? 'SENTINEL' : 'QA_GUARD',
         step: step.number,
@@ -991,7 +448,6 @@ export async function runQaSteps(
         execution,
         confidence: action.confidence,
       });
-
       const terminalModelDecision = validation.ok && (action.action === 'blocked' || action.action === 'fail');
       const compoundContinuation = actionExecutionSucceeded && isCompoundFlowStep(step) && needsCompoundContinuation(step, afterObservation);
       const conclusiveAssertionFailure = execution.command === 'postActionValidation' && postValidation.conclusive && !compoundContinuation;
@@ -1021,7 +477,6 @@ export async function runQaSteps(
         }
         break;
       }
-
       options.logger?.log('RECOVERY', 'INFO', `Paso ${step.number}: reintentando con nuevo snapshot por ${execution.message}`, {
         step: step.number,
         attempt,
@@ -1030,13 +485,11 @@ export async function runQaSteps(
         validation,
       });
     }
-
     if (finalResult) {
       results.push(finalResult);
       if (finalResult.status !== 'PASO') break;
     }
   }
-
   return {
     steps: results,
     history: globalHistory,

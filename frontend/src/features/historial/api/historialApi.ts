@@ -17,4 +17,3 @@ export async function fetchTestRunDetail(fetchWithAuth: FetchWithAuth, runId: st
   const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/`)
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
-

@@ -11,7 +11,7 @@ router = APIRouter(tags=["scheduler"], dependencies=[Depends(require_feature("au
 
 @router.get("/proyectos/{proyecto_id}/schedules/", response_model=List[schemas.ScheduledRun])
 async def read_schedules(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -22,7 +22,7 @@ async def read_schedules(
 
 @router.post("/schedules/", response_model=schemas.ScheduledRun)
 async def create_schedule(
-    schedule: schemas.ScheduledRunCreate, 
+    schedule: schemas.ScheduledRunCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_module("ejecutar", "edit"))
 ):

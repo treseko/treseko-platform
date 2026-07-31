@@ -21,6 +21,7 @@ from .routers import (
     inventory,
     legacy_automation_execution,
     notifications,
+    mcp,
     organizations,
     portability,
     projects,
@@ -71,6 +72,7 @@ api_router.include_router(scheduler.router)
 api_router.include_router(script_validation.router)
 api_router.include_router(system.router)
 api_router.include_router(notifications.router)
+api_router.include_router(mcp.router)
 api_router.include_router(system_monitor.router)
 api_router.include_router(suites.router)
 api_router.include_router(test_runs.router)

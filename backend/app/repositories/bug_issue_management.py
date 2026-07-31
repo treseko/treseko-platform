@@ -108,7 +108,7 @@ async def create_bug_issue(db: AsyncSession, payload: schemas.BugIssueCreate, cr
         ).scalar_one_or_none()
         if not build:
             raise ValueError("Build no encontrada para el proyecto.")
-        if not build.activo:
+        if not access_control.is_build_active(build):
             raise ValueError("La build está inactiva. No se pueden reportar bugs sobre una build cerrada.")
     if not data.get("dedupe_hash"):
         data["dedupe_hash"] = compute_bug_dedupe_hash(data)
@@ -203,7 +203,7 @@ async def _validate_resolution_build(db: AsyncSession, bug, build_id: UUID, *, a
         raise ValueError("La build de corrección no pertenece al proyecto del bug.")
     if bug.componente_id and build.componente_id and build.componente_id != bug.componente_id:
         raise ValueError("La build de corrección no corresponde al componente del bug.")
-    if not allow_inactive and not build.activo:
+    if not allow_inactive and not access_control.is_build_active(build):
         raise ValueError("La build de corrección está inactiva.")
     return build
 
@@ -303,20 +303,25 @@ async def link_bug_to_execution(
     payload: schemas.BugExecutionLinkRequest,
     user_id: Optional[UUID],
 ):
+    # The bug and execution are independently addressed resources.  Fetching
+    # both as roots in one statement created a Cartesian product; project and
+    # logical-case compatibility is checked explicitly below.
+    bug = await get_bug_issue(db, bug_id)
+    if not bug:
+        return None
     result = await db.execute(
-        select(models.BugIssue, models.EjecucionCaso, models.TestRun, models.CasoPrueba, models.Build, models.Componente)
+        select(models.EjecucionCaso, models.TestRun, models.CasoPrueba, models.Build, models.Componente)
         .join(models.TestRun, models.TestRun.id == models.EjecucionCaso.test_run_id)
         .join(models.CasoPrueba, models.CasoPrueba.id == models.EjecucionCaso.caso_id)
         .outerjoin(models.Build, models.Build.id == models.TestRun.build_id)
         .outerjoin(models.Componente, models.Componente.id == models.CasoPrueba.componente_id)
-        .filter(models.BugIssue.id == bug_id)
         .filter(models.EjecucionCaso.id == payload.ejecucion_id)
     )
     row = result.first()
     if not row:
         return None
-    bug, execution, run, executed_case, build, component = row
-    if build and not build.activo:
+    execution, run, executed_case, build, component = row
+    if build and not access_control.is_build_active(build):
         raise ValueError("La build está inactiva. No se puede registrar seguimiento sobre una build cerrada.")
     if bug.proyecto_id != run.proyecto_id:
         raise ValueError("El bug y la ejecución pertenecen a proyectos distintos.")

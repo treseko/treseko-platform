@@ -57,7 +57,7 @@ class ScheduledRun(ScheduledRunBase):
     id: UUID
     proyecto_id: UUID
     next_run: Optional[datetime] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- COMPONENTE ---

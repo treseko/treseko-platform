@@ -10,6 +10,7 @@ let organizationsLoadInFlight: Promise<any[]> | null = null
 let organizationsLoadCache: { at: number, data: any[] } = { at: 0, data: [] }
 
 type CreateOrganizationActionsParams = {
+  t: (key: `configuracion.${string}`, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   organizations: any[]
   selectedOrganizationId: string | null
@@ -30,6 +31,7 @@ type CreateOrganizationActionsParams = {
 }
 
 export function createOrganizationActions({
+  t,
   projectsSource,
   organizations,
   selectedOrganizationId,
@@ -106,7 +108,7 @@ export function createOrganizationActions({
         setCurrentOrgId('')
         setSelectedOrganizationId('')
       }
-      setProjectSyncMessage(`Modo local: no se pudieron cargar clientes (${error.message || 'backend no disponible'}).`)
+      setProjectSyncMessage(t('configuracion.organizationLoadLocalFallback', { error: error.message || t('configuracion.backendUnavailable') }))
       return []
     } finally {
       organizationsLoadInFlight = null
@@ -148,7 +150,7 @@ export function createOrganizationActions({
       setSelectedOrganizationId(org.id)
       target.reset()
     } catch (error: any) {
-      showFeedback('No se pudo crear cliente', error.message || 'Error al crear cliente/solución.', 'danger')
+      showFeedback(t('configuracion.createOrganizationFailed'), error.message || t('configuracion.createOrganizationError'), 'danger')
     }
   }
 
@@ -198,9 +200,9 @@ export function createOrganizationActions({
       const org = mapBackendOrganizationToItem(await response.json())
       organizationsLoadCache = { at: 0, data: [] }
       setOrganizations(prev => prev.map(item => item.id === orgId ? org : item))
-      setProjectSyncMessage('Cliente actualizado.')
+      setProjectSyncMessage(t('configuracion.organizationUpdated'))
     } catch (error: any) {
-      showFeedback('No se pudo editar cliente', error.message || 'Error al actualizar cliente/solución.', 'danger')
+      showFeedback(t('configuracion.updateOrganizationFailed'), error.message || t('configuracion.updateOrganizationError'), 'danger')
     }
   }
 
@@ -208,10 +210,10 @@ export function createOrganizationActions({
     const organization = organizations.find(item => item.id === orgId)
     if (!active) {
       const confirmed = await confirmAction({
-        title: 'Desactivar solución',
-        message: `La solución ${organization?.name || 'seleccionada'} dejará de aparecer en la navegación operativa y sus proyectos quedarán inaccesibles para usuarios no administradores.`,
+        title: t('configuracion.deactivateOrganization'),
+        message: t('configuracion.deactivateOrganizationMessage', { name: organization?.name || t('configuracion.selectedOrganization') }),
         variant: 'warning',
-        confirmLabel: 'Desactivar solución'
+        confirmLabel: t('configuracion.deactivateOrganization')
       })
       if (!confirmed) return null
     }
@@ -229,20 +231,20 @@ export function createOrganizationActions({
       setOrganizations(prev => prev.map(item => item.id === orgId ? org : item))
       if (org.active) {
         setSelectedOrganizationId(org.id)
-        showFeedback('Solución reactivada', `${org.name} vuelve a estar disponible para la operación.`, 'success')
+        showFeedback(t('configuracion.organizationReactivated'), t('configuracion.organizationReactivatedMessage', { name: org.name }), 'success')
       } else {
         const nextActiveOrganization = organizations.find(item => item.id !== orgId && item.active !== false)
         if (selectedOrganizationId === orgId) {
           setSelectedOrganizationId(nextActiveOrganization?.id || '')
         }
         setCurrentOrgId(prev => prev === orgId ? (nextActiveOrganization?.id || '') : prev)
-        showFeedback('Solución desactivada', `${org.name} quedó oculta de la operación.`, 'warning')
+        showFeedback(t('configuracion.organizationDeactivated'), t('configuracion.organizationDeactivatedMessage', { name: org.name }), 'warning')
       }
       return org
     } catch (error: any) {
       showFeedback(
-        active ? 'No se pudo reactivar la solución' : 'No se pudo desactivar la solución',
-        error.message || 'Error al actualizar cliente/solución.',
+        active ? t('configuracion.reactivateOrganizationFailed') : t('configuracion.deactivateOrganizationFailed'),
+        error.message || t('configuracion.updateOrganizationError'),
         'danger'
       )
       return null
@@ -271,17 +273,17 @@ export function createOrganizationActions({
       ])
       setOrganizationMemberForm({ userId: '' })
     } catch (error: any) {
-      showFeedback('No se pudo asignar usuario', error.message || 'Error al asignar usuario.', 'danger')
+      showFeedback(t('configuracion.assignMemberFailed'), error.message || t('configuracion.assignMemberError'), 'danger')
     }
   }
 
   const handleRemoveOrganizationMember = async (userId: string) => {
     if (!selectedOrganizationId) return
     const confirmed = await confirmAction({
-      title: 'Quitar usuario',
-      message: 'Se quitará este usuario del cliente seleccionado.',
+      title: t('configuracion.removeMember'),
+      message: t('configuracion.removeMemberMessage'),
       variant: 'warning',
-      confirmLabel: 'Quitar usuario'
+      confirmLabel: t('configuracion.removeMember')
     })
     if (!confirmed) return
     try {
@@ -292,7 +294,7 @@ export function createOrganizationActions({
       }
       setOrganizationMembers(prev => prev.filter(item => !(item.orgId === selectedOrganizationId && item.userId === userId)))
     } catch (error: any) {
-      showFeedback('No se pudo quitar usuario', error.message || 'Error al quitar usuario.', 'danger')
+      showFeedback(t('configuracion.removeMemberFailed'), error.message || t('configuracion.removeMemberError'), 'danger')
     }
   }
 

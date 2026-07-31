@@ -45,13 +45,13 @@ def save_evidence_image(snapshot_id: UUID, image_base64: str) -> Optional[str]:
             return None
 
         file_path = os.path.join(STATIC_DIR, f"{snapshot_id}.png")
-        
+
         # Asegurar que el directorio existe
         os.makedirs(STATIC_DIR, exist_ok=True)
-        
+
         with open(file_path, "wb") as f:
             f.write(image_bytes)
-            
+
         return f"/static/evidencias/{snapshot_id}.png"
     except Exception as e:
         logger.warning("Error al guardar evidencia visual: %s", sanitize_external_error(e))

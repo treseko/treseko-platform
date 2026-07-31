@@ -17,6 +17,7 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import type { AiAgentPreset, AiWorkflow } from '../../types/configuracion'
+import { useI18n } from '../../../../i18n'
 
 const workflowDebug = Boolean((import.meta as any).env?.DEV)
   && typeof window !== 'undefined'
@@ -81,6 +82,7 @@ export function WorkflowCanvas({
   selectWorkflowElement,
   closeWorkflowProperties,
 }: Props) {
+  const { t } = useI18n()
   const reactFlowInstance = useReactFlow()
   const canvasRef = useRef<HTMLDivElement>(null)
   const insertingRef = useRef(false)
@@ -181,7 +183,7 @@ export function WorkflowCanvas({
           <Form.Control
             size="sm"
             className="workflow-name-input"
-            aria-label="Nombre del workflow"
+            aria-label={t('configuracion.workflowCanvasName')}
             value={workflowDraft?.name || ''}
             disabled={!canEditAi || !workflowDraft}
             onChange={(event) => updateWorkflowDraft({ name: event.target.value })}
@@ -190,22 +192,22 @@ export function WorkflowCanvas({
         <div className="workflow-canvas-controls">
           {graphSaveState !== 'idle' && (
             <span className={`workflow-graph-save-state is-${graphSaveState}`} aria-live="polite">
-              {graphSaveState === 'saving' && 'Guardando diagrama...'}
-              {graphSaveState === 'saved' && 'Diagrama guardado'}
-              {graphSaveState === 'error' && 'No se pudo guardar'}
+              {graphSaveState === 'saving' && t('configuracion.workflowCanvasSaving')}
+              {graphSaveState === 'saved' && t('configuracion.workflowCanvasSaved')}
+              {graphSaveState === 'error' && t('configuracion.workflowCanvasSaveError')}
             </span>
           )}
           {workflowUndoAction && (
             <Button size="sm" variant="outline-warning" className="workflow-undo-button" onClick={undoLastGraphOperation} title={workflowUndoAction.label}>
-              Deshacer
+              {t('configuracion.workflowCanvasUndo')}
             </Button>
           )}
           <Form.Control
             size="sm"
             className="workflow-changelog-input"
-            aria-label="Descripción del cambio"
+            aria-label={t('configuracion.workflowCanvasChangelog')}
             autoComplete="off"
-            placeholder="Descripción del cambio…"
+            placeholder={t('configuracion.workflowCanvasChangelogPlaceholder')}
             value={workflowChangelog}
             disabled={!canEditAi || !workflowDraft}
             onChange={(event) => setWorkflowChangelog(event.target.value)}
@@ -244,7 +246,9 @@ export function WorkflowCanvas({
         </ReactFlow>
         {placementPreset && (
           <div className={`workflow-drop-status ${dropPreview ? 'is-valid' : ''}`} aria-live="polite">
-            {dropPreview ? `Soltá para agregar: ${placementPreset.name}` : `Arrastrá ${placementPreset.name} a una zona vacía del diagrama`}
+            {dropPreview
+              ? t('configuracion.workflowCanvasDropToAdd', { name: placementPreset.name })
+              : t('configuracion.workflowCanvasDragToEmptyArea', { name: placementPreset.name })}
           </div>
         )}
         {placementPreset && dropPreview && (

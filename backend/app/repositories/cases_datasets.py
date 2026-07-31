@@ -27,7 +27,7 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
             raise ValueError("No se puede copiar un caso a una suite de otro componente")
         if not original.componente_id and target_suite.componente_id:
             raise ValueError("No se puede copiar un caso sin componente a una suite con componente")
-    
+
     cloned = models.CasoPrueba(
         master_id=uuid.uuid4(),
         codigo=await generate_case_code(db),
@@ -52,7 +52,7 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
     db.add(cloned)
     await db.flush()
     await clone_case_traceability(db, original.master_id, cloned.master_id)
-    
+
     cloned_steps_by_original_id = {}
     for paso in original.pasos:
         new_paso = models.PasoPrueba(
@@ -79,7 +79,7 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
                 attachment_id=original_link.attachment_id,
                 tipo=original_link.tipo,
             ))
-    
+
     await db.commit()
     await db.refresh(cloned)
     return cloned
@@ -94,8 +94,8 @@ async def get_caso_versions(db: AsyncSession, master_id: UUID):
     return result.scalars().all()
 
 async def search_casos(
-    db: AsyncSession, 
-    proyecto_id: UUID, 
+    db: AsyncSession,
+    proyecto_id: UUID,
     query: str = "",
     suite_id: Optional[UUID] = None,
     component_id: Optional[UUID] = None,
@@ -105,7 +105,7 @@ async def search_casos(
     estado: Optional[str] = None,
     etiqueta: Optional[str] = None,
     include_archived: bool = False,
-    skip: int = 0, 
+    skip: int = 0,
     limit: Optional[int] = None
 ) -> tuple[list, int]:
     await ensure_case_codes(db, proyecto_id)
@@ -113,15 +113,15 @@ async def search_casos(
         models.CasoPrueba.proyecto_id == proyecto_id,
         *_visible_case_filter()
     )
-    
+
     if query:
         base_query = base_query.filter(
-            (models.CasoPrueba.titulo.ilike(f"%{query}%")) | 
+            (models.CasoPrueba.titulo.ilike(f"%{query}%")) |
             (models.CasoPrueba.descripcion.ilike(f"%{query}%")) |
             (models.CasoPrueba.codigo.ilike(f"%{query}%")) |
             (cast(models.CasoPrueba.etiquetas, String).ilike(f"%{query}%"))
         )
-    
+
     if suite_id:
         base_query = base_query.filter(models.CasoPrueba.suite_id == suite_id)
 
@@ -131,13 +131,13 @@ async def search_casos(
     if build_id:
         build_case_ids = select(models.BuildCaso.caso_id).filter(models.BuildCaso.build_id == build_id)
         base_query = base_query.filter(models.CasoPrueba.id.in_(build_case_ids))
-    
+
     if prioridad:
         base_query = base_query.filter(models.CasoPrueba.prioridad == prioridad)
-    
+
     if criticidad:
         base_query = base_query.filter(models.CasoPrueba.criticidad == criticidad)
-    
+
     if estado:
         base_query = base_query.filter(models.CasoPrueba.estado_caso == estado)
     elif not include_archived:
@@ -145,17 +145,17 @@ async def search_casos(
 
     if etiqueta:
         base_query = base_query.filter(cast(models.CasoPrueba.etiquetas, String).ilike(f"%{etiqueta}%"))
-    
+
     count_query = select(func.count()).select_from(base_query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar()
-    
+
     items_query = base_query.offset(skip)
     if limit is not None:
         items_query = items_query.limit(limit)
     items_result = await db.execute(items_query)
     items = items_result.scalars().all()
-    
+
     return items, total
 
 async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.CasoPruebaUpdateMetadata):

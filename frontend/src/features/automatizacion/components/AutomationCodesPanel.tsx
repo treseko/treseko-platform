@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Spinner, Table } from 'react-bootstrap'
 import { Code, Copy } from 'lucide-react'
+import { useI18n } from '../../../i18n'
 import { API_BASE } from '../../../app/constants'
 
 type AutomationCodesPanelProps = {
@@ -36,6 +37,7 @@ export function AutomationCodesPanel({
   fetchWithAuth,
   copyToClipboard,
 }: AutomationCodesPanelProps) {
+  const { t } = useI18n()
   const [backendCases, setBackendCases] = useState<any[]>([])
   const [backendCasesTotal, setBackendCasesTotal] = useState(0)
   const [backendCasesLoading, setBackendCasesLoading] = useState(false)
@@ -46,11 +48,11 @@ export function AutomationCodesPanel({
   const currentBuild = buildsList.find(build => build.id === currentBuildId)
   const componentNameById = new Map(componentsList.map(component => [component.id, component.name || component.nombre]))
   const getCaseCode = (test: any) => test?.code || test?.codigo || ''
-  const getCaseTitle = (test: any) => test?.title || test?.titulo || 'Sin titulo'
+  const getCaseTitle = (test: any) => test?.title || test?.titulo || t('automatizacion.noTitle')
   const getCasePriority = (test: any) => test?.priority || test?.prioridad || 'MEDIA'
   const getCaseComponentId = (test: any) => test?.componentId || test?.componente_id || ''
   const displayComponentName = (test: any) =>
-    componentNameById.get(getCaseComponentId(test)) || test.component || 'Sin componente asignado'
+    componentNameById.get(getCaseComponentId(test)) || test.component || t('automatizacion.noComponentAssigned')
 
   useEffect(() => {
     if (projectsSource !== 'backend' || !currentProjectId) {
@@ -109,10 +111,10 @@ export function AutomationCodesPanel({
   const buildCode = currentBuild?.code || ''
 
   const codeRows = [
-    { label: 'solution_code', value: solutionCode, name: currentOrg?.name || 'Sin solucion' },
-    { label: 'project_code', value: projectCode, name: currentProject?.name || 'Sin proyecto' },
-    { label: 'component_code', value: componentCode, name: currentComponent?.name || 'Sin componente' },
-    { label: 'build_code', value: buildCode, name: currentBuild?.name || 'Sin build' },
+    { label: 'solution_code', value: solutionCode, name: currentOrg?.name || t('automatizacion.noSolution') },
+    { label: 'project_code', value: projectCode, name: currentProject?.name || t('automatizacion.noProject') },
+    { label: 'component_code', value: componentCode, name: currentComponent?.name || t('automatizacion.noComponent') },
+    { label: 'build_code', value: buildCode, name: currentBuild?.name || t('automatizacion.noBuild') },
   ]
 
   const sampleCase = visibleCases[0]
@@ -137,20 +139,20 @@ export function AutomationCodesPanel({
         <div>
           <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
             <Code size={20} className="text-primary" />
-            Códigos para automatización externa
+            {t('automatizacion.externalCodesTitle')}
           </h6>
           <p className="small text-muted mb-0">
-            Usa estos valores en <code>POST /external/executions/report</code>.
+            {t('automatizacion.externalCodesDescription')} <code>POST /external/executions/report</code>.
           </p>
         </div>
         <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => copyToClipboard(samplePayload, 'Payload ejemplo')}>
-          <Copy size={14} className="me-1" /> Copiar JSON
+          <Copy size={14} className="me-1" /> {t('automatizacion.copyJson')}
         </Button>
       </div>
 
       {projectsSource !== 'backend' && (
         <Alert variant="warning" className="small">
-          Los códigos externos solo están disponibles con datos sincronizados desde backend.
+          {t('automatizacion.externalCodesBackendOnly')}
         </Alert>
       )}
 
@@ -179,16 +181,16 @@ export function AutomationCodesPanel({
       <Table hover size="sm" className="mb-3 align-middle">
         <thead className="table-light">
           <tr>
-            <th>case_code</th>
-            <th>Nombre</th>
-            <th>Componente</th>
-            <th>Prioridad</th>
+            <th>{t('automatizacion.caseCodeCol')}</th>
+            <th>{t('automatizacion.caseTitleCol')}</th>
+            <th>{t('automatizacion.caseComponentCol')}</th>
+            <th>{t('automatizacion.casePriorityCol')}</th>
             <th className="text-end">Copiar</th>
           </tr>
         </thead>
         <tbody>
           {backendCasesLoading && (
-            <tr><td colSpan={5} className="text-center py-4 text-muted small"><Spinner size="sm" className="me-2" />Cargando casos del contexto...</td></tr>
+            <tr><td colSpan={5} className="text-center py-4 text-muted small"><Spinner size="sm" className="me-2" />{t('automatizacion.loadingCases')}</td></tr>
           )}
           {!backendCasesLoading && visibleCases.map((test: any) => (
             <tr key={test.id}>
@@ -204,12 +206,12 @@ export function AutomationCodesPanel({
             </tr>
           ))}
           {!backendCasesLoading && visibleCases.length === 0 && (
-            <tr><td colSpan={5} className="text-center py-4 text-muted small">No hay casos cargados para este proyecto/componente.</td></tr>
+            <tr><td colSpan={5} className="text-center py-4 text-muted small">{t('automatizacion.noCases')}</td></tr>
           )}
         </tbody>
       </Table>
       {visibleCasesTotal > visibleCases.length && (
-        <div className="x-small text-muted mb-3">Mostrando los primeros {visibleCases.length} de {visibleCasesTotal} casos del contexto.</div>
+        <div className="x-small text-muted mb-3">{t('automatizacion.externalCodesShowing', { shown: visibleCases.length, total: visibleCasesTotal })}</div>
       )}
 
       <pre className="bg-dark text-light p-3 rounded-3 small mb-0 overflow-auto" style={{ fontSize: 'var(--app-font-size-micro)' }}>{samplePayload}</pre>

@@ -33,6 +33,14 @@
   --app-table-head: #f8fafc;
   --app-hover: rgba(13, 110, 253, 0.08);
   --app-focus-ring: rgba(13, 110, 253, 0.25);
+  /* Semantic component surfaces. Themes override these tokens, never rows. */
+  --app-surface-raised: #ffffff;
+  --app-surface-hover: #f1f5f9;
+  --app-border-strong: #cbd5e1;
+  --app-row-selected: #e7f1ff;
+  --app-case-row-bg: #ffffff;
+  --app-case-row-hover: #f8fafc;
+  --app-case-row-text: var(--app-text);
   --app-radius: 0.75rem;
   --app-radius-sm: 0.5rem;
   --app-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
@@ -498,8 +506,78 @@
   --app-table-head: #1e293b;
   --app-hover: rgba(56, 189, 248, 0.14);
   --app-focus-ring: rgba(56, 189, 248, 0.28);
+  --app-surface-raised: #162238;
+  --app-surface-hover: #1b2940;
+  --app-border-strong: #3b506d;
+  --app-row-selected: #0d3042;
+  --app-case-row-bg: #0e1828;
+  --app-case-row-hover: #142136;
+  --app-case-row-text: #dce7f5;
   --app-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
+}
+
+/* Shared explorer surfaces. Components provide only semantic hooks and accents. */
+.execution-suite-row,
+.suite-tree-suite-row {
+  background: var(--app-surface-raised) !important;
+  border-color: var(--app-border) !important;
+  border-left: 3px solid var(--suite-color, var(--app-primary)) !important;
+  color: var(--app-text) !important;
+  box-shadow: none !important;
+}
+
+.execution-suite-row:hover,
+.suite-tree-suite-row:hover,
+.suite-tree-suite-row:focus-visible {
+  background: var(--app-surface-hover) !important;
+  border-color: var(--app-border-strong) !important;
+}
+
+.execution-suite-row .text-dark,
+.suite-tree-suite-row .text-dark,
+.execution-suite-case-row .text-dark,
+.suite-tree-case-row .text-dark {
+  color: var(--app-text) !important;
+}
+
+.execution-suite-case-row,
+.suite-tree-case-row {
+  background: var(--app-case-row-bg) !important;
+  border-color: var(--app-border) !important;
+  color: var(--app-case-row-text) !important;
+  box-shadow: none !important;
+}
+
+.execution-suite-case-row:hover,
+.suite-tree-case-row:hover {
+  background: var(--app-case-row-hover) !important;
+  border-color: var(--app-border-strong) !important;
+}
+
+.execution-suite-row.is-selected,
+.suite-tree-suite-row.is-selected,
+.execution-suite-case-row.is-selected,
+.suite-tree-case-row.is-selected {
+  background: var(--app-row-selected) !important;
+  border-color: var(--app-primary) !important;
+}
+
+.suite-tree-case-row:not(.is-selected) {
+  border-left-color: var(--case-tone-border, var(--app-border)) !important;
+}
+
+.execution-suite-case-row.is-selected,
+.suite-tree-case-row.is-selected {
+  box-shadow: inset 3px 0 0 var(--app-primary) !important;
+}
+
+.execution-suite-row .badge.bg-light,
+.execution-suite-case-row .badge.bg-light,
+.suite-tree-case-row .badge.bg-light {
+  background: var(--app-input-bg) !important;
+  border-color: var(--app-border-strong) !important;
+  color: var(--app-text) !important;
 }
 
 :root[data-qa-theme='pink-panther'] {
@@ -527,6 +605,13 @@
   --app-hover: rgba(219, 39, 119, 0.1);
   --app-focus-ring: rgba(219, 39, 119, 0.25);
   --app-shadow: 0 14px 36px rgba(157, 23, 77, 0.12);
+  --app-surface-raised: #ffffff;
+  --app-surface-hover: #fff1f7;
+  --app-border-strong: #ec4899;
+  --app-row-selected: #fce7f3;
+  --app-case-row-bg: #ffffff;
+  --app-case-row-hover: #fff1f7;
+  --app-case-row-text: #311827;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -555,6 +640,13 @@
     --app-hover: rgba(56, 189, 248, 0.14);
     --app-focus-ring: rgba(56, 189, 248, 0.28);
     --app-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+    --app-surface-raised: #162238;
+    --app-surface-hover: #1b2940;
+    --app-border-strong: #3b506d;
+    --app-row-selected: #0d3042;
+    --app-case-row-bg: #0e1828;
+    --app-case-row-hover: #142136;
+    --app-case-row-text: #dce7f5;
     color-scheme: dark;
   }
 }
@@ -600,6 +692,7 @@ body,
 }
 
 .bg-light,
+.bg-light-subtle,
 .table-light,
 .dropdown-header,
 .input-group-text,
@@ -740,6 +833,17 @@ input::placeholder {
 
 .text-white-50 {
   color: color-mix(in srgb, var(--app-sidebar-text) 62%, transparent) !important;
+}
+
+.feedback-toast {
+  background-color: var(--app-surface) !important;
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
+}
+
+.feedback-toast-header {
+  background-color: var(--app-surface-muted) !important;
+  color: var(--app-text) !important;
 }
 
 img,
@@ -1259,9 +1363,9 @@ button.theme-choice.is-selected,
 }
 
 .dashboard-trend-row {
-  border: 1px solid #e3ebf6;
+  border: 1px solid var(--app-border);
   border-radius: 7px;
-  background: #fff;
+  background: var(--app-surface-raised);
   padding: 0.625rem 0.75rem;
 }
 
@@ -1269,7 +1373,7 @@ button.theme-choice.is-selected,
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: #edf2f7;
+  background: var(--app-surface-hover);
 }
 
 .dashboard-trend-executed {
@@ -1408,6 +1512,44 @@ button.theme-choice.is-selected,
   min-height: 430px;
 }
 
+/* Project administration is a workspace, not a card nested inside the page. */
+.project-admin-shell {
+  min-height: 0;
+  background: var(--app-bg);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.project-admin-header {
+  background: var(--app-surface-muted) !important;
+  border-color: var(--app-border) !important;
+}
+
+.project-admin-content {
+  background: var(--app-bg) !important;
+}
+
+.project-admin-shell .project-component-list,
+.project-admin-shell .project-build-card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.project-admin-shell .project-component-list {
+  border-right: 1px solid var(--app-border) !important;
+}
+
+.project-admin-shell .project-build-card {
+  background: var(--app-surface) !important;
+}
+
+.project-portfolio-card.is-selected {
+  outline: 2px solid var(--app-primary);
+  outline-offset: -2px;
+}
+
 .project-avatar {
   width: 52px;
   height: 52px;
@@ -1442,6 +1584,8 @@ button.theme-choice.is-selected,
 .project-portfolio-health,
 .project-portfolio-build {
   min-width: 0;
+  background: var(--app-surface) !important;
+  border-color: var(--app-border) !important;
 }
 
 .project-portfolio-kpis {
@@ -1461,7 +1605,7 @@ button.theme-choice.is-selected,
   padding: 0.65rem;
   border: 1px solid var(--app-border);
   border-radius: 0.5rem;
-  background: #fff;
+  background: var(--app-surface) !important;
   color: var(--app-muted);
   font-size: var(--app-font-size-meta);
   line-height: 1.1;
@@ -1485,7 +1629,8 @@ button.theme-choice.is-selected,
   padding: 0.75rem;
   border: 1px dashed rgba(100, 116, 139, 0.28);
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--app-surface-muted);
+  border-color: var(--app-border);
 }
 
 .project-portfolio-actions .btn {
@@ -1916,11 +2061,14 @@ button.theme-choice.is-selected,
 }
 
 .component-list-panel {
-  background: #f8fafc !important;
+  background: var(--app-surface-muted) !important;
+  border-color: var(--app-border) !important;
 }
 
 .component-detail-header {
-  background: #fff !important;
+  background: var(--app-surface) !important;
+  color: var(--app-text) !important;
+  border-color: var(--app-border) !important;
 }
 
 .build-create-compact {
@@ -1936,13 +2084,14 @@ button.theme-choice.is-selected,
 }
 
 .build-row-card {
-  background: #fff !important;
+  background: var(--app-surface-raised) !important;
   border-color: var(--app-border) !important;
+  color: var(--app-text);
 }
 
 .build-row-card.is-active {
-  border-color: rgba(25, 135, 84, 0.45) !important;
-  box-shadow: inset 3px 0 0 #198754, 0 0.125rem 0.375rem rgba(15, 23, 42, 0.06) !important;
+  border-color: color-mix(in srgb, var(--app-success) 55%, var(--app-border)) !important;
+  box-shadow: inset 3px 0 0 var(--app-success), var(--app-shadow) !important;
 }
 
 .build-row-progress {
@@ -1965,14 +2114,14 @@ button.theme-choice.is-selected,
 }
 
 .build-row-dates strong {
-  color: #52657d;
+  color: var(--app-muted);
   font-size: var(--app-font-size-meta);
   margin-right: 0.2rem;
   text-transform: uppercase;
 }
 
 .build-row-window-detail {
-  color: #52657d;
+  color: var(--app-muted);
 }
 
 .build-row-actions {
@@ -2184,8 +2333,8 @@ button.theme-choice.is-selected,
 
 .workflow-engine {
   min-width: 0;
-  background: #F7F9FC;
-  border: 1px solid #E2E8F0;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
   border-radius: 12px;
   padding: 12px;
 }
@@ -2197,8 +2346,8 @@ button.theme-choice.is-selected,
 }
 
 .workflow-summary-grid > div {
-  border: 1px solid #E2E8F0;
-  background: #fff;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
   border-radius: 10px;
   padding: 10px 12px;
   display: flex;
@@ -2208,7 +2357,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-summary-grid strong {
-  color: #0F172A;
+  color: var(--app-text);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2216,7 +2365,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-summary-label {
-  color: #64748B;
+  color: var(--app-muted);
   font-size: var(--app-font-size-meta);
   font-weight: 900;
   text-transform: uppercase;
@@ -2249,7 +2398,7 @@ button.theme-choice.is-selected,
   width: 100%;
   height: 100dvh;
   overflow: hidden;
-  background: #F7F9FC;
+  background: var(--app-bg);
 }
 
 .workflow-builder {
@@ -2270,8 +2419,8 @@ button.theme-choice.is-selected,
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-  background: #fff;
-  border: 1px solid #E2E8F0;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
   border-radius: 10px;
   padding: 10px 12px;
   min-width: 0;
@@ -2301,7 +2450,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-toolbar-meta {
-  color: #64748B;
+  color: var(--app-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -2309,7 +2458,7 @@ button.theme-choice.is-selected,
 .workflow-action-btn,
 .workflow-more-btn {
   border-radius: 8px;
-  border-color: #D8E0EC;
+  border-color: var(--app-border-strong);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2322,9 +2471,9 @@ button.theme-choice.is-selected,
   align-items: center;
   gap: 4px;
   padding: 3px;
-  border: 1px solid #D8E0EC;
+  border: 1px solid var(--app-border-strong);
   border-radius: 10px;
-  background: #F8FAFC;
+  background: var(--app-surface-muted);
 }
 
 .workflow-mode-toggle .workflow-action-btn {
@@ -2342,9 +2491,9 @@ button.theme-choice.is-selected,
 .workflow-builder-close {
   width: 34px;
   height: 34px;
-  border: 1px solid #D8E0EC;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface);
+  color: var(--app-text);
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
@@ -2443,8 +2592,8 @@ button.theme-choice.is-selected,
 .workflow-properties,
 .workflow-canvas-shell,
 .workflow-runtime {
-  border: 1px solid #E2E8F0;
-  background: #fff;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
   border-radius: 10px;
 }
 
@@ -2472,7 +2621,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-panel-title {
-  color: #334155;
+  color: var(--app-text);
   font-size: var(--app-font-size-meta);
   font-weight: 900;
   text-transform: uppercase;
@@ -2486,8 +2635,8 @@ button.theme-choice.is-selected,
 }
 
 .workflow-list-item {
-  border: 1px solid #E2E8F0;
-  background: #fff;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
   border-radius: 8px;
   padding: 9px 10px;
   text-align: left;
@@ -2499,8 +2648,8 @@ button.theme-choice.is-selected,
 }
 
 .workflow-list-item.is-selected {
-  border-color: #0D6EFD;
-  background: #EFF6FF;
+  border-color: var(--app-primary);
+  background: var(--app-row-selected);
 }
 
 .workflow-canvas-shell {
@@ -2509,7 +2658,7 @@ button.theme-choice.is-selected,
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #FBFCFF;
+  background: var(--app-surface-muted);
 }
 
 .workflow-canvas-header {
@@ -2561,8 +2710,8 @@ button.theme-choice.is-selected,
 }
 
 .workflow-agent-card {
-  border: 1px solid #DDE5F0;
-  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
   border-radius: 10px;
   padding: 10px;
   display: flex;
@@ -2684,23 +2833,23 @@ button.theme-choice.is-selected,
 .workflow-agent-name {
   font-size: 12px;
   font-weight: 900;
-  color: #0F172A;
+  color: var(--app-text);
 }
 
 .workflow-agent-type {
   font-size: var(--app-font-size-meta);
-  color: #64748B;
+  color: var(--app-muted);
   font-weight: 700;
 }
 
 .workflow-node-card {
   width: 260px;
   height: 120px;
-  border: 1px solid #D8E0EC;
-  border-left: 4px solid var(--workflow-agent-color, #D8E0EC);
+  border: 1px solid var(--app-border-strong);
+  border-left: 4px solid var(--workflow-agent-color, var(--app-border-strong));
   border-radius: 12px;
-  background: #fff;
-  color: #0F172A;
+  background: var(--app-surface-raised);
+  color: var(--app-text);
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.10);
   padding: 10px;
   position: relative;
@@ -2713,7 +2862,7 @@ button.theme-choice.is-selected,
 
 .workflow-node-card.is-disabled {
   opacity: 0.5;
-  background: #F1F5F9;
+  background: var(--app-surface-muted);
 }
 
 .workflow-node-topline,
@@ -2855,7 +3004,7 @@ button.theme-choice.is-selected,
 
 .workflow-node-type {
   font-size: var(--app-font-size-meta);
-  color: #64748B;
+  color: var(--app-muted);
   font-weight: 700;
   margin-top: 3px;
 }
@@ -2866,7 +3015,7 @@ button.theme-choice.is-selected,
 }
 
 .workflow-node-model {
-  color: #64748B;
+  color: var(--app-muted);
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2939,7 +3088,9 @@ button.theme-choice.is-selected,
 
 .react-flow__controls,
 .react-flow__minimap {
-  border: 1px solid #E2E8F0;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface) !important;
+  color: var(--app-text);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);

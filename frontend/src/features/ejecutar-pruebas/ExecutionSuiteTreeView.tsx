@@ -1,4 +1,5 @@
 import { SuiteTree } from '../../SuiteTree'
+import { useI18n } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -33,8 +34,9 @@ export function ExecutionSuiteTreeView({
   handleSelectTestForExecution,
   showFeedback
 }: ExecutionSuiteTreeViewProps) {
+  const { t } = useI18n()
   const showUnavailableAction = (message: string) =>
-    showFeedback('Acción no disponible', message, 'info')
+    showFeedback(t('ejecutarPruebas.unavailableAction'), message, 'info')
 
   return (
     <SuiteTree
@@ -51,16 +53,16 @@ export function ExecutionSuiteTreeView({
       getSuiteMetrics={getSuiteExecutionMetrics}
       onSelectSuite={selectSuiteTarget}
       onToggleSuite={(suiteId) => setExpandedSuites(prev => ({ ...prev, [suiteId]: !prev[suiteId] }))}
-      onCreateCase={() => showUnavailableAction('La creación de casos se realiza desde el módulo Añadir Pruebas.')}
-      onCreateSuite={() => showUnavailableAction('La gestión de carpetas se realiza desde el módulo Añadir Pruebas.')}
-      onEditSuite={() => showUnavailableAction('La edición de carpetas se realiza desde el módulo Añadir Pruebas.')}
-      onDeleteSuite={() => showUnavailableAction('La eliminación de carpetas se realiza desde el módulo Añadir Pruebas.')}
+      onCreateCase={() => showUnavailableAction(t('ejecutarPruebas.createCasesFrom'))}
+      onCreateSuite={() => showUnavailableAction(t('ejecutarPruebas.manageFoldersFrom'))}
+      onEditSuite={() => showUnavailableAction(t('ejecutarPruebas.manageFoldersFrom'))}
+      onDeleteSuite={() => showUnavailableAction(t('ejecutarPruebas.manageFoldersFrom'))}
       onSelectTest={(test, suiteId) => {
         selectSuiteTarget(suiteId)
         handleSelectTestForExecution(test)
       }}
-      onEditCase={() => showUnavailableAction('La edición de casos se realiza desde el módulo Añadir Pruebas.')}
-      onDeleteCase={() => showUnavailableAction('La eliminación de casos se realiza desde el módulo Añadir Pruebas.')}
+      onEditCase={() => showUnavailableAction(t('ejecutarPruebas.createCasesFrom'))}
+      onDeleteCase={() => showUnavailableAction(t('ejecutarPruebas.createCasesFrom'))}
     />
   )
 }

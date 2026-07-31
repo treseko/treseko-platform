@@ -52,7 +52,7 @@ async def _require_execution_access(
 
 @router.post("/test-runs/", response_model=schemas.TestRun)
 async def create_test_run(
-    run: schemas.TestRunCreate, 
+    run: schemas.TestRunCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.manual", "edit"))
 ):
@@ -70,7 +70,7 @@ async def create_test_run(
     db_build = result.scalar_one_or_none()
     if not db_build:
         raise HTTPException(status_code=400, detail="La build no pertenece al proyecto seleccionado")
-    if not db_build.activo:
+    if not access_control.is_build_active(db_build):
         raise HTTPException(status_code=409, detail="La build está inactiva. No se pueden crear nuevas ejecuciones sobre una build cerrada.")
     if not db_build.componente_id:
         raise HTTPException(status_code=400, detail="La build no tiene componente asociado")
@@ -127,7 +127,7 @@ async def create_test_run(
 
 @router.get("/proyectos/{proyecto_id}/test-runs/")
 async def read_test_runs(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     build_id: Optional[UUID] = None,
@@ -195,7 +195,7 @@ async def read_test_run_detail(
 
 @router.get("/test-runs/{run_id}/ejecuciones/", response_model=List[schemas.EjecucionCaso])
 async def read_ejecuciones_run(
-    run_id: UUID, 
+    run_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -206,7 +206,7 @@ async def read_ejecuciones_run(
 
 @router.get("/ejecuciones/{ejecucion_id}/snapshots/", response_model=List[schemas.SnapshotPaso])
 async def read_snapshots_ejecucion(
-    ejecucion_id: UUID, 
+    ejecucion_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),

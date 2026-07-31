@@ -1,6 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { Button, Form, Modal } from 'react-bootstrap'
 import { Bug, Database, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, Layers, LockKeyhole, Save, Search, Settings, ShieldCheck, Smartphone, Zap } from 'lucide-react'
+import { useI18n } from '../../i18n'
 import { SUITE_COLORS, SUITE_ICONS } from '../../app/constants'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { findSuiteById, flattenSuites } from '../../testRepositoryUtils'
@@ -75,6 +76,7 @@ export function SuiteAndComponentModals({
   setComponentForm,
   handleSaveComponentForm
 }: SuiteAndComponentModalsProps) {
+  const { t } = useI18n()
   const resetSuiteModal = () => {
     setShowSuiteModal(false)
     setEditingSuiteId(null)
@@ -115,7 +117,7 @@ export function SuiteAndComponentModals({
         <Modal.Header closeButton className="border-0 pb-0">
           <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
             <FolderPlus size={20} className="text-primary" />
-            {folderConfig.parentId ? 'Nueva subsuite' : 'Nueva suite raíz'}
+            {folderConfig.parentId ? t('casos.newSubsuite') : t('casos.newRootSuiteBtn')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleCreateFolder}>
@@ -124,27 +126,27 @@ export function SuiteAndComponentModals({
             <input type="hidden" name="descripcion" value="" />
             {folderConfig.parentId && (
               <div className="text-muted x-small mb-3">
-                Se creará dentro de: <strong className="text-dark">{findSuiteById(suitesTree, folderConfig.parentId)?.nombre}</strong>
+                {t('casos.createdWithin')} <strong className="text-dark">{findSuiteById(suitesTree, folderConfig.parentId)?.nombre}</strong>
               </div>
             )}
             <Form.Group>
-              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Nombre de la carpeta</RequiredLabel></Form.Label>
-              <Form.Control name="folderName" autoFocus required placeholder="Ej: Casos borde..." className="bg-light shadow-none" />
+              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('casos.folderName')}</RequiredLabel></Form.Label>
+              <Form.Control name="folderName" autoFocus required placeholder={t('casos.folderNamePlaceholder')} className="bg-light shadow-none" />
             </Form.Group>
             <div className="row g-2 mt-2">
               <Form.Group className="col-5">
-                <Form.Label className="x-small fw-bold text-muted">Color</Form.Label>
+                <Form.Label className="x-small fw-bold text-muted">{t('casos.color')}</Form.Label>
                 <Form.Control
                   name="color"
                   type="color"
                   defaultValue="#F1F5F9"
-                  title="Color de carpeta"
-                  aria-label="Color de carpeta"
+                  title={t('casos.folderColor')}
+                  aria-label={t('casos.folderColor')}
                   style={{ height: 34, padding: 4 }}
                 />
               </Form.Group>
               <Form.Group className="col-7">
-                <Form.Label className="x-small fw-bold text-muted">Icono</Form.Label>
+                <Form.Label className="x-small fw-bold text-muted">{t('casos.icon')}</Form.Label>
                 <Form.Select name="icono" defaultValue="folder" size="sm">
                   {SUITE_ICONS.map(item => (
                     <option key={item.id} value={item.id}>{item.label}</option>
@@ -154,8 +156,8 @@ export function SuiteAndComponentModals({
             </div>
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0">
-            <Button variant="light" size="sm" className="fw-bold text-muted" onClick={() => setShowAddFolderModal(false)}>Cancelar</Button>
-            <Button variant="primary" size="sm" type="submit" className="fw-bold px-3 shadow-sm">Crear carpeta</Button>
+            <Button variant="light" size="sm" className="fw-bold text-muted" onClick={() => setShowAddFolderModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" size="sm" type="submit" className="fw-bold px-3 shadow-sm">{t('casos.createFolder')}</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -164,34 +166,34 @@ export function SuiteAndComponentModals({
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
             <FolderPlus size={20} className="text-primary" />
-            {editingSuiteId ? 'Editar suite' : 'Nueva suite'}
+            {editingSuiteId ? t('casos.editSuite') : t('casos.newSuite')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={editingSuiteId ? handleUpdateSuite : handleCreateSuite}>
           <Modal.Body className="pt-0">
             <Form.Group className="mb-3">
-              <Form.Label><RequiredLabel required>Nombre</RequiredLabel></Form.Label>
+              <Form.Label><RequiredLabel required>{t('casos.name')}</RequiredLabel></Form.Label>
               <Form.Control
                 name="nombre"
                 value={suiteForm.nombre}
                 onChange={(e) => setSuiteForm({ ...suiteForm, nombre: e.target.value })}
                 required
-                placeholder="Ej: Pruebas de humo"
+                placeholder={t('casos.suiteNamePlaceholder')}
               />
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Descripción</Form.Label>
+              <Form.Label>{t('casos.suiteDescription')}</Form.Label>
               <Form.Control
                 as="textarea"
                 name="descripcion"
                 value={suiteForm.descripcion}
                 onChange={(e) => setSuiteForm({ ...suiteForm, descripcion: e.target.value })}
                 rows={3}
-                placeholder="Descripción de la suite"
+                placeholder={t('casos.suiteDescriptionPlaceholder')}
               />
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Color tenue</Form.Label>
+              <Form.Label>{t('casos.mutedColor')}</Form.Label>
               <div className="d-flex gap-2 flex-wrap">
                 {SUITE_COLORS.map(color => (
                   <button
@@ -209,8 +211,8 @@ export function SuiteAndComponentModals({
                   type="color"
                   value={suiteForm.color || '#F1F5F9'}
                   onChange={(e) => setSuiteForm({ ...suiteForm, color: e.target.value })}
-                  title="Color personalizado"
-                  aria-label="Color personalizado de carpeta"
+                  title={t('casos.customColor')}
+                  aria-label={t('casos.customFolderColor')}
                   style={{ width: 46, height: 34, padding: 4 }}
                 />
                 <Form.Control
@@ -223,7 +225,7 @@ export function SuiteAndComponentModals({
               </div>
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Icono de carpeta</Form.Label>
+              <Form.Label>{t('casos.folderIcon')}</Form.Label>
               <div className="d-flex gap-2 flex-wrap">
                 {SUITE_ICONS.map(item => {
                   const Icon = suiteIconMap[item.id] || Folders
@@ -234,7 +236,7 @@ export function SuiteAndComponentModals({
                       type="button"
                       className={`btn btn-sm d-inline-flex align-items-center gap-2 ${selected ? 'btn-primary' : 'btn-outline-secondary'}`}
                       title={item.label}
-                      aria-label={`Usar icono ${item.label}`}
+                      aria-label={t('casos.useIcon', { label: item.label })}
                       onClick={() => setSuiteForm({ ...suiteForm, icono: item.id })}
                     >
                       <Icon size={14} />
@@ -246,13 +248,13 @@ export function SuiteAndComponentModals({
             </Form.Group>
             {!editingSuiteId && (
               <Form.Group>
-                <Form.Label>Suite padre</Form.Label>
+                <Form.Label>{t('casos.parentSuite')}</Form.Label>
                 <Form.Select
                   name="parentId"
                   value={suiteForm.parentId}
                   onChange={(e) => setSuiteForm({ ...suiteForm, parentId: e.target.value })}
                 >
-                  <option value="">-- Suite raíz --</option>
+                  <option value="">{t('casos.rootSuiteOption')}</option>
                   {flattenSuites(suitesTree).map(suite => (
                     <option key={suite.id} value={suite.id}>{suite.nombre}</option>
                   ))}
@@ -262,10 +264,10 @@ export function SuiteAndComponentModals({
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0">
             <Button variant="secondary" onClick={resetSuiteModal}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" type="submit">
-              {editingSuiteId ? 'Actualizar' : 'Crear'}
+              {editingSuiteId ? t('common.update') : t('common.create')}
             </Button>
           </Modal.Footer>
         </Form>
@@ -275,18 +277,18 @@ export function SuiteAndComponentModals({
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
             <FolderCheck size={20} className="text-primary" />
-            Mover suite
+            {t('casos.moveSuite')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={(event) => { event.preventDefault(); handleMoveSuite() }}>
           <Modal.Body className="pt-0">
             <Form.Group>
-              <Form.Label>Nueva suite padre</Form.Label>
+              <Form.Label>{t('casos.newParentSuite')}</Form.Label>
               <Form.Select
                 value={moveSuiteParentId}
                 onChange={(e) => setMoveSuiteParentId(e.target.value)}
               >
-                <option value="">-- Suite raíz (sin padre) --</option>
+                <option value="">{t('casos.rootSuiteWithoutParentOption')}</option>
                 {moveSuiteOptions.map(suite => (
                   <option key={suite.id} value={suite.id}>{suite.nombre}</option>
                 ))}
@@ -295,10 +297,10 @@ export function SuiteAndComponentModals({
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0">
             <Button variant="secondary" onClick={resetMoveSuiteModal}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" type="submit">
-              Mover
+              {t('common.move')}
             </Button>
           </Modal.Footer>
         </Form>
@@ -308,60 +310,58 @@ export function SuiteAndComponentModals({
         <Modal.Header closeButton className="bg-light border-bottom text-dark">
           <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
             <Layers size={20} className="text-primary" />
-            {componentForm.id ? 'Editar componente' : 'Nuevo componente'}
+            {componentForm.id ? t('casos.editComponent') : t('casos.newComponent')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleSaveComponentForm}>
           <Modal.Body className="p-4 text-start">
             <Form.Group className="mb-3">
-              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Nombre del componente</RequiredLabel></Form.Label>
+              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('casos.componentName')}</RequiredLabel></Form.Label>
               <Form.Control
                 value={componentForm.name}
                 onChange={e => setComponentForm({ ...componentForm, name: e.target.value })}
                 required
                 className="bg-light shadow-sm fw-bold text-dark"
-                placeholder="Ej: Microservicio de pagos"
+                placeholder={t('casos.componentNamePlaceholder')}
               />
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label className="x-small fw-bold text-muted">Stack tecnológico / etiquetas</Form.Label>
+              <Form.Label className="x-small fw-bold text-muted">{t('casos.techStack')}</Form.Label>
               <Form.Control
                 value={componentForm.techStack}
                 onChange={e => setComponentForm({ ...componentForm, techStack: e.target.value })}
                 className="bg-light shadow-sm font-monospace x-small"
-                placeholder="Ej: Node.js, Express, MongoDB"
+                placeholder={t('casos.techStackPlaceholder')}
               />
             </Form.Group>
             <Form.Group className="mb-2">
-              <Form.Label className="x-small fw-bold text-muted">Descripción y alcance</Form.Label>
+              <Form.Label className="x-small fw-bold text-muted">{t('casos.descriptionAndScope')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={3}
                 value={componentForm.description}
                 onChange={e => setComponentForm({ ...componentForm, description: e.target.value })}
                 className="bg-light shadow-sm text-dark"
-                placeholder="Describe qué abarca este componente..."
+                placeholder={t('casos.descriptionAndScopePlaceholder')}
               />
             </Form.Group>
             <Form.Group className="mb-2">
-              <Form.Label className="x-small fw-bold text-muted">Variables tecnicas del componente</Form.Label>
+              <Form.Label className="x-small fw-bold text-muted">{t('casos.technicalVariables')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={4}
                 value={componentForm.variablesText || ''}
                 onChange={e => setComponentForm({ ...componentForm, variablesText: e.target.value })}
                 className="bg-light shadow-sm font-monospace x-small"
-                placeholder={'api_path=/api\nhealth_endpoint=/health\nservice_name=backend-api'}
+                placeholder={t('casos.technicalVariablesPlaceholder')}
               />
-              <Form.Text className="text-muted">
-                Configuracion tecnica reutilizable para automatizacion. Los datos de negocio van en Ambientes y Datasets.
-              </Form.Text>
+              <Form.Text className="text-muted">{t('casos.technicalVariablesHelp')}</Form.Text>
             </Form.Group>
           </Modal.Body>
           <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4 component-edit-modal-footer">
-            <Button variant="outline-secondary" onClick={() => setShowComponentModal(false)} className="fw-bold shadow-none rounded-pill px-4">Cancelar</Button>
+            <Button variant="outline-secondary" onClick={() => setShowComponentModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('common.cancel')}</Button>
             <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4">
-              <Save size={16} className="me-2" /> Guardar componente
+              <Save size={16} className="me-2" /> {t('casos.saveComponent')}
             </Button>
           </Modal.Footer>
         </Form>

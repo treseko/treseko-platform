@@ -3,6 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func, delete, or_, cast, String, text
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from .. import models, schemas
+from .. import access_control
 from ..database import AsyncSessionLocal
 from ..services import config_service
 from uuid import UUID
@@ -24,6 +25,7 @@ from datetime import datetime, timezone, timedelta
 from ..time_utils import ensure_utc, isoformat_utc, utc_now
 from ..test_trace import write_trace
 from ..runtime_environment import IS_PRODUCTION, RUNTIME_ENVIRONMENT
+from ..services.error_contract import current_correlation_id, correlation_headers
 
 # Compatibility: repository modules created during modularization still do
 # relative imports to a helper module named `.auth`. Register the real package
@@ -32,6 +34,21 @@ sys.modules.setdefault(__package__ + "." + "a" + "uth", import_module("app." + "
 sys.modules.setdefault(__package__ + ".rbac_catalog", import_module("app.rbac_catalog"))
 
 ENGINE_URL = os.getenv("ENGINE_URL", "http://127.0.0.1:3010")
+
+
+def engine_internal_headers(correlation_id: str | None = None) -> dict[str, str]:
+    """Build the shared backend -> Engine auth headers without exposing secrets."""
+    token = (os.getenv("AI_ENGINE_INTERNAL_TOKEN") or "").strip()
+    token_file = (os.getenv("AI_ENGINE_INTERNAL_TOKEN_FILE") or "").strip()
+    if not token and token_file:
+        try:
+            token = Path(token_file).read_text(encoding="utf-8").strip()
+        except OSError:
+            token = ""
+    headers = {"X-Engine-Internal-Token": token} if token else {}
+    if correlation_id:
+        headers.update(correlation_headers(correlation_id))
+    return headers
 APP_ENV = RUNTIME_ENVIRONMENT
 IS_PRODUCTION_MONITOR = IS_PRODUCTION
 TRESEKO_DEPLOY_MODE = (os.getenv("TRESEKO_DEPLOY_MODE") or ("docker" if IS_PRODUCTION_MONITOR else "native")).strip().lower()

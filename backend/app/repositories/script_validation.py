@@ -244,12 +244,11 @@ async def validate_script(
                         select(models.Componente).filter(
                             models.Componente.id == component_id,
                             models.Componente.proyecto_id == proyecto_id,
-                            models.Componente.activo == True,
                         )
                     )
                     componente = component_result.scalar_one_or_none()
                     if componente is None:
-                        errors.append("El componente seleccionado para validar variables no existe o esta inactivo.")
+                        errors.append("El componente seleccionado para validar variables no existe en este proyecto.")
                     else:
                         raw_component_variables = normalize_variable_map(getattr(componente, "variables", None))
                         component_variables.update(raw_component_variables)

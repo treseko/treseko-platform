@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter
 
 from ...main_context import *
+from ...services.case_search import resolve_dataset, search_cases
 
 
 router = APIRouter(tags=["Casos"])
@@ -133,7 +134,7 @@ async def create_caso_prueba(
     except SQLAlchemyError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=f"No se pudo crear el caso por un error de base de datos: {exc.__class__.__name__}") from exc
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -145,7 +146,7 @@ async def create_caso_prueba(
         ip_address=client_ip
     )
     await _publish_case_change("case.created", new_caso, current_user)
-    
+
     return new_caso
 
 @router.put("/casos/{master_id}", response_model=schemas.CasoPrueba)
@@ -175,7 +176,7 @@ async def update_caso_prueba(
         raise HTTPException(status_code=400, detail=f"No se pudo actualizar el caso por un error de base de datos: {exc.__class__.__name__}") from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Caso de prueba no encontrado")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -187,7 +188,7 @@ async def update_caso_prueba(
         ip_address=client_ip
     )
     await _publish_case_change("case.version.created", updated, current_user, {"master_id": str(master_id)})
-    
+
     return updated
 
 @router.get("/proyectos/{proyecto_id}/casos/")
@@ -273,7 +274,7 @@ async def get_caso_historial(
         fecha_historial = ejec.fecha_ejecucion
         if index == 0 and caso and caso.ultima_ejecucion_fecha:
             fecha_historial = caso.ultima_ejecucion_fecha
-        
+
         historial.append({
             "id": str(ejec.id),
             "estado": ejec.estado_resultado.value,
@@ -344,7 +345,7 @@ async def update_caso_metadata(
     updated = await crud.update_caso_metadata(db=db, caso_id=caso_id, update=update)
     if not updated:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -357,7 +358,7 @@ async def update_caso_metadata(
     )
     event_type = "case.archived" if update.estado_caso == models.EstadoCaso.ARCHIVADO else "case.updated"
     await _publish_case_change(event_type, updated, current_user, {"updated_fields": update.model_dump(exclude_unset=True)})
-    
+
     return updated
 
 @router.patch("/casos/{caso_id}/move", response_model=schemas.CasoPrueba)
@@ -401,7 +402,7 @@ async def delete_caso(
     exito, mensaje = await crud.delete_caso(db=db, caso_id=caso_id)
     if not exito:
         raise HTTPException(status_code=400, detail=mensaje)
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -413,7 +414,7 @@ async def delete_caso(
     )
     if case_context:
         await _publish_case_change("case.archived", case_context, current_user, {"source": "delete"})
-    
+
     return {"detail": mensaje}
 
 @router.post("/casos/{caso_id}/clone", response_model=schemas.CasoPrueba)
@@ -431,7 +432,7 @@ async def clone_caso(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cloned:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -443,7 +444,7 @@ async def clone_caso(
         ip_address=client_ip
     )
     await _publish_case_change("case.created", cloned, current_user, {"source": "clone", "original_id": str(caso_id)})
-    
+
     return cloned
 
 @router.get("/proyectos/{proyecto_id}/casos/search", response_model=schemas.CasoSearchResponse)
@@ -464,56 +465,9 @@ async def search_casos(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.casos", "read"))
 ):
-    await access_control.require_project_access(db, current_user, proyecto_id, "read")
-    if estado is not None and estado not in {item.value for item in models.EstadoCaso}:
-        raise HTTPException(status_code=422, detail="Estado de caso invalido")
-    if suite_id:
-        suite_result = await db.execute(
-            select(models.Suite).filter(
-                models.Suite.id == suite_id,
-                models.Suite.proyecto_id == proyecto_id,
-            )
-        )
-        if not suite_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Suite no encontrada para el proyecto")
-    if component_id:
-        component_result = await db.execute(
-            select(models.Componente).filter(
-                models.Componente.id == component_id,
-                models.Componente.proyecto_id == proyecto_id,
-            )
-        )
-        if not component_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Componente no encontrado para el proyecto")
-    if build_id:
-        build_result = await db.execute(
-            select(models.Build).filter(
-                models.Build.id == build_id,
-                models.Build.proyecto_id == proyecto_id,
-            )
-        )
-        if not build_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Build no encontrada para el proyecto")
-    items, total = await crud.search_casos(
-        db=db,
-        proyecto_id=proyecto_id,
-        query=q,
-        suite_id=suite_id,
-        component_id=component_id,
-        build_id=build_id,
-        prioridad=prioridad,
-        criticidad=criticidad,
-        estado=estado,
-        etiqueta=etiqueta or tag,
-        include_archived=include_archived,
-        skip=skip,
-        limit=limit
-    )
-    return schemas.CasoSearchResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit
+    return await search_cases(
+        proyecto_id, q, suite_id, component_id, build_id, prioridad, criticidad,
+        estado, etiqueta, tag, include_archived, skip, limit, db, current_user,
     )
 
 # --- ENDPOINTS TEST RUNS ---
@@ -525,41 +479,7 @@ async def resolve_case_dataset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
 ):
-    caso = await _require_case_access(db, current_user, caso_id, "read")
-    if payload.build_id:
-        db_build = await access_control.require_build_access(db, current_user, payload.build_id, "read")
-        if db_build.proyecto_id != caso.proyecto_id:
-            raise HTTPException(status_code=404, detail="Build no encontrado para el caso")
-    if payload.entorno_id:
-        env_result = await db.execute(
-            select(models.Entorno).filter(
-                models.Entorno.id == payload.entorno_id,
-                models.Entorno.proyecto_id == caso.proyecto_id,
-            )
-        )
-        if not env_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Entorno no encontrado para el caso")
-    if payload.dataset_id:
-        dataset_result = await db.execute(
-            select(models.EntornoDataset)
-            .join(models.Entorno, models.Entorno.id == models.EntornoDataset.entorno_id)
-            .filter(
-                models.EntornoDataset.id == payload.dataset_id,
-                models.Entorno.proyecto_id == caso.proyecto_id,
-            )
-        )
-        if not dataset_result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Dataset no encontrado para el caso")
-    resolved = await crud.resolve_case_dataset(
-        db,
-        caso_id=caso_id,
-        build_id=payload.build_id,
-        entorno_id=payload.entorno_id,
-        dataset_id=payload.dataset_id,
-    )
-    if not resolved:
-        raise HTTPException(status_code=404, detail="Caso no encontrado")
-    return resolved
+    return await resolve_dataset(caso_id, payload, db, current_user)
 
 
 router.export_symbols = {"validate_caso_component": validate_caso_component}

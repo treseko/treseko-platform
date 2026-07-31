@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from ...main_context import *
 from ...main_context import _issue_auth_tokens
 from ...schema_sections.auth import _normalize_email, _validate_password
+from ...services.audit_context import audit_request_context
 from ...services.notifications import welcome_service
 
 
@@ -10,12 +11,23 @@ router = APIRouter(tags=["Auth"])
 
 
 @router.post("/auth/activate/")
-async def activate_welcome_access(payload: schemas.WelcomeActivationRequest, db: AsyncSession = Depends(get_db)):
+async def activate_welcome_access(
+    payload: schemas.WelcomeActivationRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Consumes an expiring local-user welcome link without exposing identity."""
     user = await welcome_service.consume_local_invitation(db, raw_token=payload.token, password=payload.password)
     if not user:
         raise HTTPException(status_code=400, detail="El enlace de activación no es válido o ya venció")
-    await crud.create_audit_log(db=db, usuario_id=user.id, accion="ACTIVATE", recurso="notification_welcome", detalles={})
+    await crud.create_audit_log(
+        db=db,
+        usuario_id=user.id,
+        accion="ACTIVATE",
+        recurso="notification_welcome",
+        detalles={"auth_provider": "local", "result": "success", "activation": "welcome_link"},
+        **audit_request_context(request),
+    )
     await notification_event_service.emit_event(
         db=db, event_type="user.activated", actor_user_id=user.id, entity_type="user", entity_id=user.id,
         severity="info", payload={"user": {"id": str(user.id), "email": user.email}, "message": "Usuario activó su acceso."},
@@ -45,7 +57,8 @@ def _normalize_login_credentials(username: str, password: str) -> tuple[str, str
 
 @router.post("/auth/register/", response_model=schemas.Usuario)
 async def register(user: schemas.UsuarioCreate, request: Request = None, db: AsyncSession = Depends(get_db)):
-    client_ip = request.client.host if request and request.client else "unknown"
+    request_context = audit_request_context(request)
+    client_ip = request_context["ip_address"] or "unknown"
     rate_limit_key = f"register:{client_ip}:{_normalize_email(user.email)}"
     if auth.login_rate_limiter.is_rate_limited(rate_limit_key):
         raise HTTPException(
@@ -87,13 +100,14 @@ async def register(user: schemas.UsuarioCreate, request: Request = None, db: Asy
 @router.post("/auth/login/", response_model=schemas.Token)
 async def login_for_access_token(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(), 
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
-    client_ip = request.client.host if request.client else "unknown"
+    request_context = audit_request_context(request)
+    client_ip = request_context["ip_address"] or "unknown"
     username, password = _normalize_login_credentials(form_data.username, form_data.password)
     rate_limit_key = f"{username}_{client_ip}"
-    
+
     if auth.login_rate_limiter.is_rate_limited(rate_limit_key):
         await notification_event_service.emit_event(
             db=db,
@@ -107,7 +121,7 @@ async def login_for_access_token(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Demasiados intentos de login. Intenta de nuevo en 15 minutos.",
         )
-    
+
     user = await crud.get_user_by_email(db, email=username)
     password_valid = bool(user and auth.verify_password(password, user.hashed_password))
 
@@ -118,25 +132,26 @@ async def login_for_access_token(
             detail="Email o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.activo:
         auth.login_rate_limiter.record_failure(rate_limit_key)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario inactivo",
         )
-    
+
     auth.login_rate_limiter.clear(rate_limit_key)
     token_payload = await _issue_auth_tokens(db, user)
-    
+
     await crud.create_audit_log(
         db=db,
         usuario_id=user.id,
         accion="LOGIN",
         recurso="auth",
-        ip_address=client_ip
+        detalles={"auth_provider": "local", "result": "success"},
+        **request_context,
     )
-    
+
     return token_payload
 
 @router.post("/auth/logout/")
@@ -145,15 +160,16 @@ async def logout(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_active_user)
 ):
-    client_ip = request.client.host if request.client else "unknown"
+    request_context = audit_request_context(request)
     await crud.create_audit_log(
         db=db,
         usuario_id=current_user.id,
         accion="LOGOUT",
         recurso="auth",
-        ip_address=client_ip
+        detalles={"auth_provider": "local", "result": "success"},
+        **request_context,
     )
-    
+
     return {"detail": "Sesión cerrada correctamente"}
 
 @router.get("/users/me/", response_model=schemas.Usuario)

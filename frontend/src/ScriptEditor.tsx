@@ -3,6 +3,7 @@ import Editor, { OnMount } from '@monaco-editor/react'
 import { Badge, Button } from 'react-bootstrap'
 import { Info } from 'lucide-react'
 import { APP_EDITOR_FONT_SIZE } from './shared/ui/typography'
+import { useI18n } from './i18n'
 
 type ScriptEditorProps = {
   value: string
@@ -25,6 +26,7 @@ export const ScriptEditor = ({
   readOnly = false,
   confirmAction
 }: ScriptEditorProps) => {
+  const { t } = useI18n()
   const editorRef = useRef<any>(null)
   const monacoRef = useRef<any>(null)
 
@@ -70,7 +72,7 @@ export const ScriptEditor = ({
           kind: monaco.languages.CompletionItemKind.Variable,
           insertText: '{{URL_BASE}}',
           range,
-          detail: 'Variable: URL base de la aplicacion'
+          detail: t('automatizacion.editorVariableBaseUrl')
         })
 
         suggestions.push({
@@ -78,7 +80,7 @@ export const ScriptEditor = ({
           kind: monaco.languages.CompletionItemKind.Variable,
           insertText: '{{USUARIO_TEST}}',
           range,
-          detail: 'Variable: Usuario de prueba'
+          detail: t('automatizacion.editorVariableUser')
         })
 
         suggestions.push({
@@ -86,7 +88,7 @@ export const ScriptEditor = ({
           kind: monaco.languages.CompletionItemKind.Variable,
           insertText: '{{PASSWORD_TEST}}',
           range,
-          detail: 'Variable: Password de prueba'
+          detail: t('automatizacion.editorVariablePassword')
         })
 
         // Autocompletado de funciones comunes (ejemplo)
@@ -97,8 +99,8 @@ export const ScriptEditor = ({
             insertText: 'login(${1:usuario}, ${2:password})',
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
             range,
-            detail: 'Funcion: Iniciar sesion',
-            documentation: 'Funcion reutilizable para iniciar sesion'
+            detail: t('automatizacion.editorFunctionLogin'),
+            documentation: t('automatizacion.editorFunctionLoginDescription')
           })
 
           suggestions.push({
@@ -106,7 +108,7 @@ export const ScriptEditor = ({
             kind: monaco.languages.CompletionItemKind.Function,
             insertText: 'logout()',
             range,
-            detail: 'Funcion: Cerrar sesion'
+            detail: t('automatizacion.editorFunctionLogout')
           })
 
           suggestions.push({
@@ -115,7 +117,7 @@ export const ScriptEditor = ({
             insertText: 'navegar_a(${1:ruta})',
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
             range,
-            detail: 'Funcion: Navegar a pagina'
+            detail: t('automatizacion.editorFunctionNavigate')
           })
         }
 
@@ -178,10 +180,10 @@ await page.Locator("#login-btn").ClickAsync();`
 test('caso de prueba', async ({ page }) => {
   // Navegar a la aplicacion
   await page.goto('{{URL_BASE}}');
-  
+
   // Usar funcion reutilizable
   await login('{{USUARIO_TEST}}', '{{PASSWORD_TEST}}');
-  
+
   // Verificar resultado
   await expect(page.locator('.dashboard')).toBeVisible();
 });`
@@ -226,12 +228,12 @@ from selenium.webdriver.common.by import By
 def test_caso():
     driver = webdriver.Chrome()
     driver.get("{{URL_BASE}}")
-    
+
     # Login
     driver.find_element(By.ID, "username").send_keys("{{USUARIO_TEST}}")
     driver.find_element(By.ID, "password").send_keys("{{PASSWORD_TEST}}")
     driver.find_element(By.ID, "login-btn").click()
-    
+
     # Verificar
     assert "Dashboard" in driver.title
     driver.quit()`
@@ -251,14 +253,14 @@ def test_caso():
 (async () => {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
-  
+
   await page.goto('{{URL_BASE}}');
   await page.type('#username', '{{USUARIO_TEST}}');
   await page.type('#password', '{{PASSWORD_TEST}}');
   await page.click('#login-btn');
-  
+
   await page.waitForSelector('.dashboard');
-  
+
   await browser.close();
 })();`
     }
@@ -269,8 +271,8 @@ def test_caso():
     <div>
       <div className="d-flex justify-content-between align-items-center mb-2">
         <div className="d-flex align-items-center gap-2">
-          <Badge bg="info" className="x-small">Framework: {framework.toUpperCase()}</Badge>
-          <Badge bg="secondary" className="x-small">Lenguaje: {getLanguage()}</Badge>
+          <Badge bg="info" className="x-small">{t('common.scriptFramework', { framework: framework.toUpperCase() })}</Badge>
+          <Badge bg="secondary" className="x-small">{t('common.scriptLanguage', { language: getLanguage() })}</Badge>
         </div>
         <Button
           variant="link"
@@ -278,15 +280,15 @@ def test_caso():
           className="p-0 text-primary shadow-none x-small"
           onClick={() => {
             confirmAction?.({
-              title: 'Ayuda del script',
-              message: 'La validación revisa sintaxis y contexto; no ejecuta el navegador.\nLa UI lista los lenguajes oficiales del framework. La ejecución con worker requiere que exista un worker compatible para framework + lenguaje.\nEl worker local soporta Playwright JS/TS, Puppeteer JS/TS, Cypress JS/TS y Selenium Python.\nUsa {{VARIABLE}} para inyectar variables configuradas. Ctrl+Space para autocompletado.',
+              title: t('common.scriptHelp'),
+              message: t('common.scriptHelpMessage'),
               variant: 'info',
-              confirmLabel: 'Entendido',
+              confirmLabel: t('common.understood'),
               cancelLabel: null
             })
           }}
         >
-          <Info size={14} /> Ayuda
+          <Info size={14} /> {t('common.help')}
         </Button>
       </div>
       <div className="border rounded-3 overflow-hidden" style={{ height: '400px' }}>
@@ -316,7 +318,7 @@ def test_caso():
       </div>
       <div className="mt-2">
         <small className="text-muted">
-          Tip: Ctrl+Space para autocompletado. Usa {'{{VARIABLE}}'} para inyectar variables. Probar con worker ejecuta un dry-run temporal y requiere un worker compatible.
+          {t('common.autocompleteTip')}
         </small>
       </div>
     </div>

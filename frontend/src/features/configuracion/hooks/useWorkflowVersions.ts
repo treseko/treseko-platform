@@ -9,6 +9,7 @@ import {
 } from '../api/aiWorkflowApi'
 import type { AiWorkflow, AiWorkflowVersion } from '../types/configuracion'
 import type { FetchWithAuth } from '../api/configuracionApi'
+import type { TranslationKey } from '../../../i18n'
 
 type UseWorkflowVersionsParams = {
   fetchWithAuth: FetchWithAuth
@@ -20,6 +21,7 @@ type UseWorkflowVersionsParams = {
   syncFlowFromWorkflow: (workflow: AiWorkflow | null) => void
   loadAiWorkflows: () => Promise<void>
   showFeedback: (title: string, message: string, variant?: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function useWorkflowVersions({
@@ -32,6 +34,7 @@ export function useWorkflowVersions({
   syncFlowFromWorkflow,
   loadAiWorkflows,
   showFeedback,
+  t,
 }: UseWorkflowVersionsParams) {
   const [workflowChangelog, setWorkflowChangelog] = useState('')
   const [workflowVersions, setWorkflowVersions] = useState<AiWorkflowVersion[]>([])
@@ -52,7 +55,7 @@ export function useWorkflowVersions({
   const publishWorkflowVersion = async () => {
     if (!workflowDraft) return
     if (!workflowChangelog.trim()) {
-      setWorkflowJsonError('El changelog es obligatorio para publicar una version.')
+      setWorkflowJsonError(t('configuracion.workflowChangelogRequired'))
       return
     }
     setWorkflowLoading(true)
@@ -61,9 +64,9 @@ export function useWorkflowVersions({
       setWorkflowChangelog('')
       await loadAiWorkflows()
       await loadWorkflowVersions(workflowDraft.id)
-      showFeedback('Workflow IA', 'Version publicada.', 'success')
+      showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowVersionPublished'), 'success')
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo publicar la version.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowPublishError'), 'danger')
     } finally {
       setWorkflowLoading(false)
     }
@@ -76,11 +79,11 @@ export function useWorkflowVersions({
       const result = await validateAiWorkflow(fetchWithAuth, workflowDraft.id)
       const issues = Array.isArray(result?.issues) ? result.issues : []
       setWorkflowValidationIssues(issues)
-      if (result?.valid) showFeedback('Workflow IA', issues.length ? 'Workflow valido con advertencias.' : 'Workflow valido.', issues.length ? 'warning' : 'success')
-      else showFeedback('Workflow IA', 'El workflow tiene errores bloqueantes. Revisa el resumen de validacion.', 'danger')
+      if (result?.valid) showFeedback(t('configuracion.workflowTitle'), issues.length ? t('configuracion.workflowValidWarnings') : t('configuracion.workflowValid'), issues.length ? 'warning' : 'success')
+      else showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowBlockingErrors'), 'danger')
       return Boolean(result?.valid)
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo validar el workflow.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowValidationError'), 'danger')
       return false
     } finally {
       setWorkflowLoading(false)
@@ -90,15 +93,15 @@ export function useWorkflowVersions({
   const activateWorkflowVersion = async (version: AiWorkflowVersion) => {
     if (!workflowDraft) return
     try {
-      const confirmRunning = window.confirm(`Activar la version ${version.version} para nuevas ejecuciones? Las ejecuciones ya iniciadas conservaran su snapshot.`)
+      const confirmRunning = window.confirm(t('configuracion.workflowActivateConfirm', { version: version.version }))
       if (!confirmRunning) return
       const saved = await activateAiWorkflowVersion(fetchWithAuth, workflowDraft.id, version.version, true)
       setWorkflowDraft(saved)
       syncFlowFromWorkflow(saved)
       await loadAiWorkflows()
-      showFeedback('Workflow IA', `Version ${version.version} activada.`, 'success')
+      showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowVersionActivated', { version: version.version }), 'success')
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo activar la version.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowActivateError'), 'danger')
     }
   }
 
@@ -112,9 +115,9 @@ export function useWorkflowVersions({
       setWorkflowChangelog('')
       await loadWorkflowVersions(saved.id)
       await loadAiWorkflows()
-      showFeedback('Workflow IA', `Version ${version.version} restaurada como draft.`, 'success')
+      showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowVersionRestored', { version: version.version }), 'success')
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo aplicar rollback.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowRollbackError'), 'danger')
     }
   }
 

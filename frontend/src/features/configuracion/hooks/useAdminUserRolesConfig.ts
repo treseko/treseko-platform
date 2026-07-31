@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useI18n } from '../../../i18n'
 import { MODULE_PERMISSIONS, ROLE_ACCESS } from '../../../app/constants'
 import { createSystemRoleItems } from '../../../app/navigationModel'
 import type { ModulePermissionMap, RoleKey } from '../../../app/types'
@@ -26,6 +27,7 @@ export function useAdminUserRolesConfig({
   setProjectSyncMessage,
   confirmAction,
 }: UseAdminUserRolesConfigParams) {
+  const { t } = useI18n()
   const [adConfig, setAdConfig] = useState(allowLocalFallback ? initialAdConfig : { enabled: false, server: '', domain: '' })
   const [appUsers, setAppUsers] = useState(allowLocalFallback ? initialAppUsers : [])
   const [customRoles, setCustomRoles] = useState<any[]>([])
@@ -86,6 +88,7 @@ export function useAdminUserRolesConfig({
     setSystemRoleOverrides,
     setProjectSyncMessage,
     confirmAction,
+    t,
   })
   const assignableUsers = projectsSource === 'backend' ? appUsers.filter(user => isValidUUID(user.id)) : appUsers
   const systemRoleItems = createSystemRoleItems(actions.getRoleModules, actions.getRoleAccess)

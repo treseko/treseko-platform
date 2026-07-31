@@ -32,7 +32,7 @@ function readVersion(): string {
       // Version lookup must never prevent engine startup.
     }
   }
-  return '1.0.0-rc.1';
+  return '1.0.1';
 }
 
 export function safePathSegment(value: string | undefined, fallback = 'default'): string {

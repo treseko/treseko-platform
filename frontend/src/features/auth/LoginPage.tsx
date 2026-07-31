@@ -9,6 +9,7 @@ import { resolveAssetUrl } from '../../shared/utils/assets'
 import traceabilityHero from '../../assets/marketing/login-hero-traceability.svg'
 import automationHero from '../../assets/marketing/login-hero-automation.svg'
 import reportingHero from '../../assets/marketing/login-hero-reporting.svg'
+import { useI18n } from '../../i18n'
 
 type LoginFormState = {
   email: string
@@ -71,6 +72,7 @@ export function LoginPage({
   handleLogin,
   branding = DEFAULT_BRANDING
 }: LoginPageProps) {
+  const { t } = useI18n()
   const [activeSlide, setActiveSlide] = useState(0)
   const activeMarketingSlide = marketingSlides[activeSlide]
   const effectiveAuthMode = showAdLogin ? authMode : 'local'
@@ -112,16 +114,15 @@ export function LoginPage({
                 </div>
                 <div>
                   <div className="fw-bold fs-4">{displayBrandName}</div>
-                  <div className="text-muted small">Entorno QA {editionLabel}</div>
+                  <div className="text-muted small">{t('auth.qaEnvironment')} {editionLabel}</div>
                 </div>
               </div>
 
               <h1 className="fw-bold mb-3" style={{ fontSize: 'clamp(2rem, 4vw, 3.6rem)', lineHeight: 1 }}>
-                Calidad visible antes de cada entrega.
+                {t('auth.visibleQuality')}
               </h1>
               <p className="text-secondary fs-5 mb-4" style={{ maxWidth: 650 }}>
-                Gestiona proyectos, builds, ejecuciones, evidencias y reportes desde una edicion abierta,
-                limitada a capacidades base y pensada para adopcion inicial.
+                {t('auth.qualityDescription')}
               </p>
 
               <div className="position-relative mb-4" style={{ maxWidth: 720 }}>
@@ -199,12 +200,12 @@ export function LoginPage({
                   </div>
 
                   <div className="mb-4">
-                    <div className="text-primary fw-bold small text-uppercase mb-2">Entorno QA</div>
+                    <div className="text-primary fw-bold small text-uppercase mb-2">{t('auth.qaEnvironment')}</div>
                     <h2 className="fw-bold text-dark mb-2" style={{ lineHeight: 1.08 }}>
-                      Ingresa a tu entorno de calidad.
+                      {t('auth.login')}
                     </h2>
                     <p className="text-muted small mb-0">
-                      Accede a proyectos, builds, ejecuciones, evidencias y reportes desde una sesion segura.
+                      {t('auth.qaEditionDescription')}
                     </p>
                   </div>
 
@@ -212,13 +213,13 @@ export function LoginPage({
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
                         <div className="fw-bold small text-dark">{editionLabel} Edition</div>
-                        <div className="text-muted app-label">{branding.edition === 'premium' ? 'Licencia activa para capacidades avanzadas.' : 'Edicion abierta para adopcion inicial y operacion base.'}</div>
+                        <div className="text-muted app-label">{branding.edition === 'premium' ? t('auth.activeLicense') : t('auth.openEdition')}</div>
                       </div>
                     </div>
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
-                        <div className="fw-bold small text-dark">Capacidades incluidas</div>
-                        <div className="text-muted app-label">Gestion QA, ejecuciones, evidencia y metricas base.</div>
+                        <div className="fw-bold small text-dark">{t('auth.includedCapabilities')}</div>
+                        <div className="text-muted app-label">{t('auth.includedCapabilitiesDescription')}</div>
                       </div>
                     </div>
                   </div>
@@ -226,7 +227,7 @@ export function LoginPage({
                   {showAdLogin && (
                     <div className="d-flex gap-2 mb-4 p-1 bg-light border rounded-3">
                       <Button variant={authMode === 'local' ? 'primary' : 'light'} className="flex-fill fw-bold border-0" onClick={() => setAuthMode('local')} type="button">
-                        <Key size={16} className="me-2" /> Local
+                        <Key size={16} className="me-2" /> {t('auth.local')}
                       </Button>
                       <Button variant={authMode === 'ad' ? 'primary' : 'light'} className="flex-fill fw-bold border-0" onClick={() => setAuthMode('ad')} type="button">
                         <Building2 size={16} className="me-2" /> AD
@@ -238,24 +239,24 @@ export function LoginPage({
                     {effectiveAuthMode === 'local' || isAdPasswordMode ? (
                       <>
                         <Form.Group className="mb-3">
-                          <Form.Label className="small fw-bold text-muted">{isAdPasswordMode ? 'Usuario corporativo' : 'Email'}</Form.Label>
-                          <Form.Control type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? 'usuario o usuario@empresa.com' : 'usuario@empresa.com'} required />
+                          <Form.Label className="small fw-bold text-muted">{isAdPasswordMode ? t('auth.corporateUser') : t('auth.email')}</Form.Label>
+                          <Form.Control type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? t('auth.corporateUserPlaceholder') : t('auth.emailPlaceholder')} required />
                         </Form.Group>
                         <Form.Group className="mb-3">
-                          <Form.Label className="small fw-bold text-muted">Contrasena</Form.Label>
-                          <Form.Control type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder="Contrasena" required />
+                          <Form.Label className="small fw-bold text-muted">{t('auth.password')}</Form.Label>
+                          <Form.Control type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required />
                         </Form.Group>
                       </>
                     ) : (
                       <div className="small text-muted bg-light border rounded-3 p-3 mb-3">
-                        Seras redirigido al proveedor corporativo configurado. El login local permanece disponible.
+                        {t('auth.corporateRedirect')}
                       </div>
                     )}
 
                     {loginError && <div className="small text-danger bg-danger bg-opacity-10 border border-danger-subtle rounded-3 p-2 mb-3">{loginError}</div>}
 
                     <Button type="submit" variant="primary" className="w-100 fw-bold py-2 rounded-3 shadow-sm" disabled={loginLoading}>
-                      {loginLoading ? 'Validando...' : (effectiveAuthMode === 'ad' ? 'Ingresar con Active Directory' : 'Entrar a la plataforma')}
+                      {loginLoading ? t('auth.validating') : (effectiveAuthMode === 'ad' ? t('auth.loginWithAd') : t('auth.enterPlatform'))}
                     </Button>
                   </Form>
 
@@ -263,7 +264,7 @@ export function LoginPage({
                     <div className="d-flex align-items-start gap-2 small text-muted mt-4">
                       <Lock size={16} className="text-primary mt-1 flex-shrink-0" />
                       <span>
-                        Desarrollo: <span className="font-monospace">{DEV_ADMIN_EMAIL}</span>. Roles y permisos protegidos por sesion.
+                        {t('auth.development')}: <span className="font-monospace">{DEV_ADMIN_EMAIL}</span>. {t('auth.protectedSession')}
                       </span>
                     </div>
                   )}

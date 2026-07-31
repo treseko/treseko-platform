@@ -1,4 +1,5 @@
 import { DashboardPage } from '../features/dashboard/DashboardPage'
+import { useI18n } from '../i18n'
 import { WorkspaceContextEmptyState } from '../shared/components/WorkspaceContextEmptyState'
 
 type DashboardRouteProps = {
@@ -15,12 +16,14 @@ type DashboardRouteProps = {
 }
 
 export function DashboardRoute(props: DashboardRouteProps) {
+  const { t } = useI18n()
+
   if (props.activeTab !== 'dashboard') return null
   if (!props.currentProjectId) {
     return (
       <WorkspaceContextEmptyState
-        message="Selecciona una solución y un proyecto para continuar."
-        detail="El dashboard aparecerá cuando tengas un proyecto seleccionado."
+        message={t('dashboard.selectSolutionAndProject')}
+        detail={t('dashboard.projectRequired')}
       />
     )
   }

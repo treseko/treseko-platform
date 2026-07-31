@@ -5,10 +5,12 @@ import { isValidUUID } from '../../app/validation'
 import { getSuiteParentMap } from '../../testRepositoryUtils'
 import { backendTestTypeToEditor, composeFrameworkLanguage, editorTestTypeToBackend, formatDatasetForInput, normalizeCaseTags, parseDatasetInput, splitFrameworkLanguage } from './caseUtils'
 import { createCaseStepEditorActions } from './caseStepEditorActions'
+import type { I18nContextValue } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
 type CreateCaseEditorActionsParams = {
+  t: I18nContextValue['t']
   newTestSteps: any[]
   newTestTitle: string
   newTestSuite: string
@@ -74,6 +76,7 @@ type CreateCaseEditorActionsParams = {
 }
 
 export function createCaseEditorActions({
+  t,
   newTestSteps,
   newTestTitle,
   newTestSuite,
@@ -184,7 +187,7 @@ export function createCaseEditorActions({
     }))
     if (componentId) setCurrentCompId(componentId)
     setActiveTab('crear_pruebas')
-    setProjectSyncMessage('Nuevo caso listo para crearse en la carpeta seleccionada.')
+    setProjectSyncMessage(t('casos.newCaseReady'))
   }
 
   const openEditCase = async (test: any) => {
@@ -283,9 +286,9 @@ export function createCaseEditorActions({
       }))
       setSelectedTest(test)
       setActiveTab('crear_pruebas')
-      setProjectSyncMessage(`Editando caso ${test.code || test.id}. Al guardar se creará una nueva versión.`)
+      setProjectSyncMessage(t('casos.editingCaseReady', { code: test.code || test.id }))
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudo cargar el caso para editar: ${error.message}`)
+      setProjectSyncMessage(`${t('casos.loadCaseForEditError')}: ${error.message}`)
     }
   }
 
@@ -360,7 +363,7 @@ export function createCaseEditorActions({
       const targetSuiteId = isValidUUID(selectedSuiteTarget) ? selectedSuiteTarget : null
       const targetComponentId = isValidUUID(newTestComponent) ? newTestComponent : (isValidUUID(currentCompId) ? currentCompId : null)
       if (!targetComponentId) {
-        setProjectSyncMessage('Primero crea o selecciona un componente del proyecto para agregar casos.')
+        setProjectSyncMessage(t('casos.selectComponentBeforeAddingCase'))
         return
       }
       setCurrentCompId(targetComponentId)
@@ -412,7 +415,7 @@ export function createCaseEditorActions({
             })
             if (!traceabilityResponse.ok) {
               const error = await traceabilityResponse.json().catch(() => null)
-              throw new Error(error?.detail || 'El caso se guardo, pero no se pudo vincular con la historia.')
+              throw new Error(error?.detail || t('casos.caseSavedStoryLinkFailed'))
             }
             if (!editingCasoMasterId) setPendingTraceabilityStoryIds([])
           }
@@ -429,17 +432,17 @@ export function createCaseEditorActions({
             setTimeout(() => setAddTestSuccess(false), 3000)
           }
           showFeedback(
-            createdFromStory ? 'Caso creado y vinculado' : saved.version && previousVersion && saved.version > previousVersion ? 'Nueva versión creada' : 'Guardado',
+            createdFromStory ? t('casos.caseCreatedAndLinked') : saved.version && previousVersion && saved.version > previousVersion ? t('casos.newVersionCreated') : t('casos.saved'),
             createdFromStory
-              ? `${saved.codigo || saved.code || 'El caso'} quedó vinculado a ${linkedStoryCount} ${linkedStoryCount === 1 ? 'historia' : 'historias'}${saved.suite_id || saved.suiteId ? ' y guardado en la carpeta seleccionada.' : '.'}`
-              : saved.version && previousVersion && saved.version > previousVersion ? 'El caso tenía ejecuciones finales.' : 'Cambios guardados.',
+              ? t('casos.caseLinkedToStories', { caseCode: saved.codigo || saved.code || t('casos.theCase'), count: linkedStoryCount, stories: linkedStoryCount === 1 ? t('casos.storySingular') : t('casos.storyPlural'), folderSuffix: saved.suite_id || saved.suiteId ? t('casos.savedInSelectedFolder') : '.' })
+              : saved.version && previousVersion && saved.version > previousVersion ? t('casos.caseHadFinalRuns') : t('casos.changesSaved'),
             'success'
           )
         }
         return
       } catch (error: any) {
-        setProjectSyncMessage(`Error al guardar caso: ${error.message}`)
-        showFeedback('Error al guardar caso', error.message || 'No se pudo guardar el caso de prueba.', 'danger')
+        setProjectSyncMessage(`${t('casos.saveCaseError')}: ${error.message}`)
+        showFeedback(t('casos.saveCaseError'), error.message || t('casos.saveCaseFallback'), 'danger')
         return
       } finally {
         setCaseEditorSaving(false)

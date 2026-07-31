@@ -12,6 +12,7 @@ import { createWorkflowDraftFromSource } from '../mappers/workflowFlowMappers'
 import type { AiAgentPreset, AiWorkflow } from '../types/configuracion'
 import type { FetchWithAuth } from '../api/configuracionApi'
 import type { Dispatch, SetStateAction } from 'react'
+import { useI18n } from '../../../i18n'
 
 type UseWorkflowActionsParams = {
   fetchWithAuth: FetchWithAuth
@@ -48,6 +49,7 @@ export function useWorkflowActions({
   selectWorkflow,
   showFeedback,
 }: UseWorkflowActionsParams) {
+  const { t } = useI18n()
   const saveWorkflowDraft = async () => {
     if (!workflowDraft) return false
     setWorkflowLoading(true)
@@ -57,10 +59,10 @@ export function useWorkflowActions({
       setAiWorkflows(prev => prev.map(item => item.id === saved.id ? saved : item))
       syncFlowFromWorkflow(saved)
       await loadWorkflowVersions(saved.id)
-      showFeedback('Workflow IA', 'Draft guardado sin publicar version.', 'success')
+      showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowDraftSaved'), 'success')
       return true
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo guardar el workflow.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowSaveError'), 'danger')
       return false
     } finally {
       setWorkflowLoading(false)
@@ -88,7 +90,7 @@ export function useWorkflowActions({
       setAiWorkflows(prev => [created, ...prev])
       selectWorkflow(created)
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo crear el workflow.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowCreateError'), 'danger')
     }
   }
 
@@ -100,7 +102,7 @@ export function useWorkflowActions({
       setWorkflowDraft(saved)
       syncFlowFromWorkflow(saved)
     } catch (error: any) {
-      showFeedback('Workflow IA', error?.message || 'No se pudo ejecutar la accion.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowActionError'), 'danger')
     }
   }
 
@@ -110,9 +112,9 @@ export function useWorkflowActions({
       const created = await copyAiWorkflowAsBlocks(fetchWithAuth, workflowDraft.id)
       setAiWorkflows(prev => [created, ...prev])
       selectWorkflow(created)
-      showFeedback('Workflow por bloques', 'Se creó un borrador V2. El workflow clásico original no fue modificado.', 'success')
+      showFeedback(t('configuracion.workflowBlocksTitle'), t('configuracion.workflowBlocksCreated'), 'success')
     } catch (error: any) {
-      showFeedback('Workflow por bloques', error?.message || 'No se pudo crear la copia por bloques.', 'danger')
+      showFeedback(t('configuracion.workflowBlocksTitle'), error?.message || t('configuracion.workflowBlocksError'), 'danger')
     }
   }
 
@@ -122,9 +124,9 @@ export function useWorkflowActions({
       const created = await copyAiWorkflowAsUniversal(fetchWithAuth, workflowDraft.id)
       setAiWorkflows(prev => [created, ...prev])
       selectWorkflow(created)
-      showFeedback('Workflow universal', 'Se creó una copia universal. El workflow original no fue modificado.', 'success')
+      showFeedback(t('configuracion.workflowUniversalTitle'), t('configuracion.workflowUniversalCreated'), 'success')
     } catch (error: any) {
-      showFeedback('Workflow universal', error?.message || 'No se pudo crear la copia universal.', 'danger')
+      showFeedback(t('configuracion.workflowUniversalTitle'), error?.message || t('configuracion.workflowUniversalError'), 'danger')
     }
   }
 
@@ -141,7 +143,7 @@ export function useWorkflowActions({
       link.click()
       URL.revokeObjectURL(url)
     } catch (error: any) {
-      showFeedback('Workflow portable', error?.message || 'No se pudo exportar el workflow portable.', 'danger')
+      showFeedback(t('configuracion.workflowPortableTitle'), error?.message || t('configuracion.workflowExportError'), 'danger')
     }
   }
 
@@ -154,9 +156,9 @@ export function useWorkflowActions({
       const imported = await importAiUniversalWorkflowPackage(fetchWithAuth, btoa(binary))
       setAiWorkflows(prev => [imported, ...prev])
       selectWorkflow(imported)
-      showFeedback('Workflow portable', 'El workflow fue importado como borrador independiente.', 'success')
+      showFeedback(t('configuracion.workflowPortableTitle'), t('configuracion.workflowImported'), 'success')
     } catch (error: any) {
-      showFeedback('Workflow portable', error?.message || 'El archivo portable no es válido.', 'danger')
+      showFeedback(t('configuracion.workflowPortableTitle'), error?.message || t('configuracion.workflowImportError'), 'danger')
     }
   }
 
@@ -164,10 +166,10 @@ export function useWorkflowActions({
     try {
       const created = await createAiUniversalAgent(fetchWithAuth, payload)
       await loadAgentPresets()
-      showFeedback('Agente universal', `Se creó ${created.name} como borrador. Podés insertarlo en un workflow universal.`, 'success')
+      showFeedback(t('configuracion.universalAgentTitle'), t('configuracion.universalAgentCreated', { name: created.name }), 'success')
       return created
     } catch (error: any) {
-      showFeedback('Agente universal', error?.message || 'No se pudo crear el agente.', 'danger')
+      showFeedback(t('configuracion.universalAgentTitle'), error?.message || t('configuracion.universalAgentError'), 'danger')
       throw error
     }
   }

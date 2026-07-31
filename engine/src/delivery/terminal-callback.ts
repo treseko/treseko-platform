@@ -70,7 +70,7 @@ export async function deliverTerminalResult(options: TerminalCallbackOptions): P
   const maxAttempts = Math.max(1, Math.min(16, Number(options.attempts || 12)));
   const timeoutMs = Math.max(1000, Number(options.timeoutMs || 15_000));
   const deliveryId = terminalDeliveryId(options.executionId);
-  const payload = {
+  const payload: Record<string, any> = {
     ...options.payload,
     metadata: {
       ...(options.payload.metadata || {}),
@@ -89,6 +89,8 @@ export async function deliverTerminalResult(options: TerminalCallbackOptions): P
         'Content-Type': 'application/json',
         'X-Idempotency-Key': deliveryId,
       };
+      const correlationId = String(payload.correlation_id || '').trim();
+      if (correlationId) headers['X-Correlation-ID'] = correlationId;
       if (options.token) headers['X-AI-Engine-Token'] = options.token;
       const response = await fetchImpl(options.url, {
         method: 'POST',

@@ -14,204 +14,28 @@ from .report_rendering import *
 
 
 router = APIRouter(tags=["reports"])
-
-SHARED_REPORT_TOKEN_PATH = Path(
-    ...,
-    min_length=1,
-    max_length=schemas.MAX_SHARED_REPORT_TOKEN_LENGTH,
-    pattern=r"^[A-Za-z0-9_-]+$",
+from .reports_shared import (
+    SAFE_REPORT_THUMBNAIL_SVG,
+    SHARED_REPORT_TOKEN_PATH,
+    REPORT_SLUG_PATH,
+    REPORT_TYPE_PATH,
+    _enforce_public_shared_report_rate_limit,
+    _request_ip,
+    _report_pretty_path,
+    _shared_report_audit_details,
+    _safe_public_thumbnail_svg,
+    _shared_report_html_response,
+    _safe_download_filename,
+    _safe_report_download_filename,
+    _shared_report_markdown_response,
+    _shared_report_csv_response,
+    _shared_report_pdf_response,
 )
-REPORT_SLUG_PATH = Path(..., min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
-REPORT_TYPE_PATH = Path(..., min_length=1, max_length=24, pattern=r"^[A-Za-z0-9_-]+$")
-
-SAFE_REPORT_THUMBNAIL_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#0f172a"/>
-  <rect x="48" y="48" width="1104" height="534" rx="28" fill="#ffffff"/>
-  <text x="92" y="145" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#0f172a">Informe QA</text>
-  <text x="92" y="210" font-family="Arial, sans-serif" font-size="28" fill="#475569">Miniatura no disponible</text>
-</svg>"""
-
-UNSAFE_SVG_PATTERN = re.compile(
-    r"(?is)(<\s*script\b|<\s*foreignObject\b|<\s*iframe\b|<\s*object\b|<\s*embed\b|"
-    r"\bon[a-z0-9_-]+\s*=|javascript\s*:|data\s*:|xlink:href\s*=|href\s*=\s*['\"]\s*https?://|"
-    r"<\s*image\b|<\s*use\b)"
-)
-
-REPORT_HTML_SECURITY_HEADERS = {
-    "Content-Security-Policy": (
-        "default-src 'none'; "
-        "script-src 'none'; "
-        "style-src 'unsafe-inline'; "
-        "img-src 'self' data:; "
-        "font-src 'none'; "
-        "connect-src 'none'; "
-        "object-src 'none'; "
-        "base-uri 'none'; "
-        "form-action 'none'; "
-        "frame-ancestors 'none'"
-    ),
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Cache-Control": "no-store",
-}
-
-REPORT_MARKDOWN_SECURITY_HEADERS = {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Cache-Control": "no-store",
-}
-
-public_shared_report_rate_limiter = auth.LoginRateLimiter(max_attempts=120, window_minutes=1)
-
-
-def _request_ip(request: Request | None) -> str:
-    return request.client.host if request and request.client else "unknown"
-
-
-def _enforce_public_shared_report_rate_limit(request: Request, token: str) -> None:
-    key = f"shared-report:{_request_ip(request)}:{token}"
-    if public_shared_report_rate_limiter.is_rate_limited(key):
-        raise HTTPException(status_code=429, detail="Demasiadas solicitudes. Intenta nuevamente en unos minutos.")
-    public_shared_report_rate_limiter.record_failure(key)
-
-
-def _shared_report_audit_details(bundle: dict, payload: schemas.SharedReportSnapshotCreate) -> dict:
-    snapshots = bundle.get("snapshots") or []
-    return {
-        "snapshot_group_id": bundle.get("snapshot_group_id"),
-        "metrics_hash": bundle.get("metrics_hash"),
-        "reused": bool(bundle.get("reused")),
-        "project_id": str(payload.proyecto_id),
-        "build_id": str(payload.build_id) if payload.build_id else None,
-        "component_id": str(payload.componente_id) if payload.componente_id else None,
-        "report_types": [_snapshot_report_type(snapshot) for snapshot in snapshots],
-        "snapshot_count": len(snapshots),
-        "build_definition": payload.build_definition,
-    }
-
-
-def _safe_public_thumbnail_svg(value: Any) -> str:
-    text = str(value or "").replace("\x00", "").strip()
-    if not text or len(text) > 200_000:
-        return SAFE_REPORT_THUMBNAIL_SVG
-    if not re.match(r"(?is)^<\s*svg\b", text):
-        return SAFE_REPORT_THUMBNAIL_SVG
-    if UNSAFE_SVG_PATTERN.search(text):
-        return SAFE_REPORT_THUMBNAIL_SVG
-    return text
-
-
-def _shared_report_html_response(content: str) -> HTMLResponse:
-    return HTMLResponse(content=content, headers=REPORT_HTML_SECURITY_HEADERS)
-
-
-def _safe_download_filename(filename: str, fallback: str = "informe-qa.md") -> str:
-    value = re.sub(r"[^A-Za-z0-9._-]+", "_", str(filename or "").strip())
-    value = value.strip("._-")
-    if not value:
-        value = fallback
-    if not value.lower().endswith(".md"):
-        value = f"{value}.md"
-    return value[:120]
-
-def _safe_report_download_filename(filename: str, extension: str, fallback_stem: str = "informe-qa") -> str:
-    ext = extension.strip(".").lower() or "txt"
-    value = re.sub(r"[^A-Za-z0-9._-]+", "_", str(filename or "").strip()).strip("._-")
-    if not value:
-        value = fallback_stem
-    value = re.sub(r"\.[A-Za-z0-9]+$", "", value)
-    return f"{value[:100]}.{ext}"
-
-def _report_slug(value: Any, fallback: str) -> str:
-    text = str(value or fallback).strip().lower()
-    replacements = {
-        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n",
-        "Á": "a", "É": "e", "Í": "i", "Ó": "o", "Ú": "u", "Ñ": "n",
-    }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
-    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
-    text = re.sub(r"-+", "-", text)
-    return (text or fallback)[:60].strip("-") or fallback
-
-def _report_pretty_path(snapshot: models.SharedReportSnapshot) -> str:
-    metadata = (snapshot.payload or {}).get("metadata") or {}
-    report_type = _snapshot_report_type(snapshot)
-    solution = _report_slug(metadata.get("organizacion"), "solucion")
-    project = _report_slug(metadata.get("proyecto"), "proyecto")
-    build = _report_slug(metadata.get("build") or metadata.get("build_code"), "build")
-    if report_type == "internal":
-        return f"/informes-internos/{solution}/{project}/{build}/{snapshot.token}"
-    return f"/informes/{solution}/{project}/{build}/{report_type}/{snapshot.token}"
-
-
-def _shared_report_markdown_response(content: str, filename: str) -> Response:
-    safe_filename = _safe_download_filename(filename)
-    headers = {
-        **REPORT_MARKDOWN_SECURITY_HEADERS,
-        "Content-Disposition": f'attachment; filename="{safe_filename}"',
-    }
-    return Response(content=content, media_type="text/markdown; charset=utf-8", headers=headers)
-
-def _shared_report_csv_response(content: str, filename: str) -> Response:
-    safe_filename = _safe_report_download_filename(filename, "csv")
-    headers = {
-        **REPORT_MARKDOWN_SECURITY_HEADERS,
-        "Content-Disposition": f'attachment; filename="{safe_filename}"',
-    }
-    return Response(content=content, media_type="text/csv; charset=utf-8", headers=headers)
-
-async def _shared_report_pdf_response(snapshot: models.SharedReportSnapshot, request: Request, has_new_values: bool, latest_url: str | None = None) -> Response:
-    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
-    if not chrome:
-        raise HTTPException(status_code=503, detail="Exportacion PDF no disponible en este entorno")
-    html_content = _shared_report_html(snapshot, request, has_new_values, latest_url)
-    safe_filename = _safe_report_download_filename(snapshot.title or snapshot.token, "pdf")
-    with tempfile.TemporaryDirectory(prefix="treseko-report-") as tmp_dir:
-        html_path = os.path.join(tmp_dir, "report.html")
-        pdf_path = os.path.join(tmp_dir, "report.pdf")
-        with open(html_path, "w", encoding="utf-8") as handle:
-            handle.write(html_content)
-        command = [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--no-pdf-header-footer",
-            "--print-to-pdf-no-header",
-            f"--print-to-pdf={pdf_path}",
-            f"file://{html_path}",
-        ]
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-            if process.returncode != 0:
-                raise RuntimeError((stderr or stdout or b"").decode("utf-8", errors="replace")[:1000])
-            with open(pdf_path, "rb") as handle:
-                content = handle.read()
-        except asyncio.TimeoutError as exc:
-            process.kill()
-            await process.wait()
-            raise HTTPException(status_code=504, detail="La generacion del PDF demoro demasiado") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail="No se pudo generar el PDF") from exc
-    headers = {
-        **REPORT_MARKDOWN_SECURITY_HEADERS,
-        "Content-Disposition": f'attachment; filename="{safe_filename}"',
-    }
-    return Response(content=content, media_type="application/pdf", headers=headers)
 
 @router.get("/proyectos/{proyecto_id}/metrics/")
 async def read_project_metrics(
-    proyecto_id: UUID, 
-    build_id: Optional[UUID] = None, 
+    proyecto_id: UUID,
+    build_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
 ):
@@ -561,313 +385,30 @@ async def delete_shared_report(
     )
     return {"ok": True}
 
-@router.get("/s/reports/{token}.md", name="public_shared_report_markdown")
-async def public_shared_report_markdown(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    content = _shared_report_markdown(snapshot, await crud.shared_report_has_new_values(db, snapshot))
-    filename = f"{snapshot.token}.md"
-    return _shared_report_markdown_response(content, filename)
+from .reports_public import router as reports_public_router
+from .reports_public import (
+    public_shared_report_markdown,
+    pretty_public_shared_report_markdown,
+    public_shared_report_csv,
+    pretty_public_shared_report_csv,
+    public_shared_report_pdf,
+    pretty_public_shared_report_pdf,
+    public_shared_report_v2,
+    pretty_public_shared_report,
+    internal_shared_report_markdown,
+    pretty_internal_shared_report_markdown,
+    internal_shared_report_csv,
+    pretty_internal_shared_report_csv,
+    internal_shared_report_pdf,
+    pretty_internal_shared_report_pdf,
+    internal_shared_report,
+    pretty_internal_shared_report,
+    public_shared_report,
+    public_shared_report_thumbnail,
+    pretty_public_shared_report_thumbnail,
+)
 
-@router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}.md", name="pretty_public_shared_report_markdown")
-async def pretty_public_shared_report_markdown(
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    report_type: str = REPORT_TYPE_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-):
-    return await public_shared_report_markdown(request=request, token=token, db=db)
-
-@router.get("/s/reports/{token}.csv", name="public_shared_report_csv")
-async def public_shared_report_csv(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    return _shared_report_csv_response(_shared_report_csv(snapshot), f"{snapshot.token}.csv")
-
-@router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}.csv", name="pretty_public_shared_report_csv")
-async def pretty_public_shared_report_csv(
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    report_type: str = REPORT_TYPE_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-):
-    return await public_shared_report_csv(request=request, token=token, db=db)
-
-@router.get("/s/reports/{token}.pdf", name="public_shared_report_pdf")
-async def public_shared_report_pdf(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    has_new_values = await crud.shared_report_has_new_values(db, snapshot)
-    latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
-    latest_url = _snapshot_url(latest, request) if latest else None
-    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url)
-
-@router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}.pdf", name="pretty_public_shared_report_pdf")
-async def pretty_public_shared_report_pdf(
-    request: Request,
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    report_type: str = REPORT_TYPE_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-):
-    return await public_shared_report_pdf(request=request, token=token, db=db)
-
-@router.get("/s/reports/{token}", response_class=HTMLResponse, name="public_shared_report")
-async def public_shared_report_v2(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    has_new_values = await crud.shared_report_has_new_values(db, snapshot)
-    latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
-    latest_url = _snapshot_url(latest, request) if latest else None
-    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url))
-
-@router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}", response_class=HTMLResponse, name="pretty_public_shared_report")
-async def pretty_public_shared_report(
-    request: Request,
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    report_type: str = REPORT_TYPE_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-):
-    return await public_shared_report_v2(request=request, token=token, db=db)
-
-@router.get("/reports/internal/{token}.md", name="internal_shared_report_markdown")
-async def internal_shared_report_markdown(
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    await access_control.require_project_access(db, current_user, snapshot.proyecto_id, "read")
-    if _snapshot_report_type(snapshot) != "internal":
-        raise HTTPException(status_code=404, detail="Informe interno no encontrado")
-    content = _shared_report_markdown(snapshot, await crud.shared_report_has_new_values(db, snapshot))
-    filename = f"{snapshot.token}-interno.md"
-    return _shared_report_markdown_response(content, filename)
-
-@router.get("/informes-internos/{solution}/{project}/{build}/{token}.md", name="pretty_internal_shared_report_markdown")
-async def pretty_internal_shared_report_markdown(
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    return await internal_shared_report_markdown(token=token, db=db, current_user=current_user)
-
-@router.get("/reports/internal/{token}.csv", name="internal_shared_report_csv")
-async def internal_shared_report_csv(
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    await access_control.require_project_access(db, current_user, snapshot.proyecto_id, "read")
-    if _snapshot_report_type(snapshot) != "internal":
-        raise HTTPException(status_code=404, detail="Informe interno no encontrado")
-    return _shared_report_csv_response(_shared_report_csv(snapshot), f"{snapshot.token}-interno.csv")
-
-@router.get("/informes-internos/{solution}/{project}/{build}/{token}.csv", name="pretty_internal_shared_report_csv")
-async def pretty_internal_shared_report_csv(
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    return await internal_shared_report_csv(token=token, db=db, current_user=current_user)
-
-@router.get("/reports/internal/{token}.pdf", name="internal_shared_report_pdf")
-async def internal_shared_report_pdf(
-    request: Request,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    await access_control.require_project_access(db, current_user, snapshot.proyecto_id, "read")
-    if _snapshot_report_type(snapshot) != "internal":
-        raise HTTPException(status_code=404, detail="Informe interno no encontrado")
-    has_new_values = await crud.shared_report_has_new_values(db, snapshot)
-    latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
-    latest_url = _snapshot_url(latest, request) if latest else None
-    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url)
-
-@router.get("/informes-internos/{solution}/{project}/{build}/{token}.pdf", name="pretty_internal_shared_report_pdf")
-async def pretty_internal_shared_report_pdf(
-    request: Request,
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    return await internal_shared_report_pdf(request=request, token=token, db=db, current_user=current_user)
-
-@router.get("/reports/internal/{token}", response_class=HTMLResponse, name="internal_shared_report")
-async def internal_shared_report(
-    request: Request,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    await access_control.require_project_access(db, current_user, snapshot.proyecto_id, "read")
-    if _snapshot_report_type(snapshot) != "internal":
-        raise HTTPException(status_code=404, detail="Informe interno no encontrado")
-    has_new_values = await crud.shared_report_has_new_values(db, snapshot)
-    latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
-    latest_url = _snapshot_url(latest, request) if latest else None
-    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url))
-
-@router.get("/informes-internos/{solution}/{project}/{build}/{token}", response_class=HTMLResponse, name="pretty_internal_shared_report")
-async def pretty_internal_shared_report(
-    request: Request,
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read"))
-):
-    return await internal_shared_report(request=request, token=token, db=db, current_user=current_user)
-
-@router.get("/s/reports/{token}", response_class=HTMLResponse, name="public_shared_report_legacy")
-async def public_shared_report(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Informe no disponible")
-    has_new_values = await crud.shared_report_has_new_values(db, snapshot)
-    payload = snapshot.payload or {}
-    meta = payload.get("metadata") or {}
-    metrics = payload.get("metrics") or {}
-    stats = metrics.get("stats") or {}
-    title = html.escape(snapshot.title)
-    description = html.escape(snapshot.description or "")
-    image_url = str(request.url_for("public_shared_report_thumbnail", token=token))
-    banner = (
-        "<div class='banner'>Hay nuevos resultados disponibles desde que se compartio este informe.</div>"
-        if has_new_values else ""
-    )
-    body = f"""<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{title}</title>
-  <meta name="description" content="{description}" />
-  <meta property="og:title" content="{title}" />
-  <meta property="og:description" content="{description}" />
-  <meta property="og:image" content="{html.escape(image_url)}" />
-  <meta property="og:type" content="article" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="{title}" />
-  <meta name="twitter:description" content="{description}" />
-  <meta name="twitter:image" content="{html.escape(image_url)}" />
-  <style>
-    body {{ margin: 0; font-family: Arial, sans-serif; background: #f8fafc; color: #0f172a; }}
-    main {{ max-width: 980px; margin: 40px auto; padding: 0 20px; }}
-    .card {{ background: white; border: 1px solid #e2e8f0; border-radius: 14px; padding: 28px; box-shadow: 0 10px 35px rgba(15,23,42,.08); }}
-    .banner {{ background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; font-weight: 700; }}
-    .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }}
-    .metric {{ border-radius: 12px; padding: 20px; }}
-    .ok {{ background: #dcfce7; color: #166534; }}
-    .fail {{ background: #fee2e2; color: #991b1b; }}
-    .blocked {{ background: #dbeafe; color: #1e3a8a; }}
-    .value {{ font-size: 42px; font-weight: 800; display: block; }}
-    .label {{ font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }}
-    .meta {{ color: #64748b; line-height: 1.7; }}
-  </style>
-</head>
-<body>
-  <main>
-    {banner}
-    <section class="card">
-      <h1>{title}</h1>
-      <p class="meta">
-        Organizacion: {html.escape(str(meta.get("organizacion") or "N/D"))}<br/>
-        Componente: {html.escape(str(meta.get("componente") or "N/D"))}<br/>
-        Plataforma: {html.escape(str(meta.get("plataforma") or "N/D"))}<br/>
-        Fecha snapshot: {html.escape(str(meta.get("snapshot_at") or snapshot.created_at))}
-      </p>
-      <div class="grid">
-        <div class="metric ok"><span class="label">Pasadas</span><span class="value">{stats.get("pasados", 0)}</span></div>
-        <div class="metric fail"><span class="label">Fallidas</span><span class="value">{stats.get("fallados", 0)}</span></div>
-        <div class="metric blocked"><span class="label">Bloqueadas</span><span class="value">{stats.get("bloqueados", 0)}</span></div>
-      </div>
-      <p class="meta">Cobertura: {metrics.get("cobertura_porcentaje", 0)}% · Ejecutadas: {metrics.get("total_ejecutados", 0)} / {metrics.get("total_casos_asignados", 0)}</p>
-    </section>
-  </main>
-</body>
-</html>"""
-    return _shared_report_html_response(body)
-
-@router.get("/s/reports/{token}/thumbnail.svg", name="public_shared_report_thumbnail")
-async def public_shared_report_thumbnail(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
-    _enforce_public_shared_report_rate_limit(request, token)
-    snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
-        raise HTTPException(status_code=404, detail="Miniatura no disponible")
-    if not _is_public_shared_report(snapshot):
-        raise HTTPException(status_code=404, detail="Miniatura no disponible")
-    return Response(
-        content=_safe_public_thumbnail_svg(snapshot.thumbnail_svg),
-        media_type="image/svg+xml",
-        headers={
-            "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "default-src 'none'; img-src 'none'; style-src 'unsafe-inline'",
-        },
-    )
-
-@router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}/preview.svg", name="pretty_public_shared_report_thumbnail")
-async def pretty_public_shared_report_thumbnail(
-    request: Request,
-    solution: str = REPORT_SLUG_PATH,
-    project: str = REPORT_SLUG_PATH,
-    build: str = REPORT_SLUG_PATH,
-    report_type: str = REPORT_TYPE_PATH,
-    token: str = SHARED_REPORT_TOKEN_PATH,
-    db: AsyncSession = Depends(get_db),
-):
-    return await public_shared_report_thumbnail(request=request, token=token, db=db)
+router.routes.extend(reports_public_router.routes)
 
 router.export_symbols = {
     "read_project_metrics": read_project_metrics,

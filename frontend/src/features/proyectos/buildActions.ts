@@ -3,6 +3,8 @@ import { API_BASE } from '../../app/constants'
 import { mapBackendBuildToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
 import { fromDateTimeLocalInput } from '../../shared/utils/dateTime'
+import type { TranslationKey } from '../../i18n'
+import { isBuildReadOnly } from '../../app/buildState'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
@@ -22,6 +24,8 @@ type CreateBuildActionsParams = {
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
+  readOnlyBuild?: boolean
 }
 
 export function createBuildActions({
@@ -38,16 +42,29 @@ export function createBuildActions({
   setCurrentBuildId,
   setProjectSyncMessage,
   showFeedback,
-  confirmAction
+  confirmAction,
+  t,
+  readOnlyBuild = false
 }: CreateBuildActionsParams) {
   const getTargetComponentId = () =>
     currentCompId || componentsList.find(component => component.projectId === managingProjectId)?.id || ''
+
+  const rejectInactiveWrite = (buildId: string) => {
+    const build = buildsList.find(item => item.id === buildId)
+    if (isBuildReadOnly(build)) {
+      showFeedback(t('proyectos.buildUpdateError'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
+      return true
+    }
+    return false
+  }
 
   const applyBackendBuild = (updatedBuild: any) => {
     const mapped = mapBackendBuildToItem(updatedBuild)
     setBuildsList(prev => prev.map(item => {
       if (item.id === mapped.id) return { ...item, ...mapped }
-      if (mapped.active && item.componentId === mapped.componentId) return { ...item, active: false, state: 'HISTORICA' }
+      if (mapped.active && item.componentId === mapped.componentId && (item.active || item.state === 'ACTIVA')) {
+        return { ...item, active: false, state: 'HISTORICA' }
+      }
       return item
     }))
     return mapped
@@ -56,7 +73,11 @@ export function createBuildActions({
   const handleCreateBuild = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite crear builds.', 'warning')
+      showFeedback(t('proyectos.buildPermissionTitle'), t('proyectos.buildCreatePermission'), 'warning')
+      return
+    }
+    if (readOnlyBuild) {
+      showFeedback(t('proyectos.buildUpdateError'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
       return
     }
     const target = event.currentTarget
@@ -70,7 +91,7 @@ export function createBuildActions({
     const createLocalBuild = () => {
       const componentId = getTargetComponentId()
       if (!componentId) {
-        setProjectSyncMessage('Primero crea o selecciona un componente para poder agregar una build.')
+        setProjectSyncMessage(t('proyectos.buildSelectComponent'))
         return
       }
       const newBuild = {
@@ -88,14 +109,14 @@ export function createBuildActions({
       }
       setBuildsList(prev => [newBuild, ...prev])
       setBuildCaseIds(prev => ({ ...prev, [newBuild.id]: [] }))
-      setProjectSyncMessage('Build creada en preparación en modo diseño/local. Actívala cuando esté lista.')
+      setProjectSyncMessage(t('proyectos.buildCreatedLocal'))
     }
 
     if (projectsSource === 'backend') {
       try {
         const componentId = getTargetComponentId()
         if (!componentId) {
-          setProjectSyncMessage('Primero crea o selecciona un componente para poder agregar una build.')
+          setProjectSyncMessage(t('proyectos.buildSelectComponent'))
           return
         }
         const response = await fetchWithAuth(`${API_BASE}/builds/`, {
@@ -118,9 +139,9 @@ export function createBuildActions({
         const mapped = mapBackendBuildToItem(await response.json())
         setBuildsList(prev => [mapped, ...prev])
         setBuildCaseIds(prev => ({ ...prev, [mapped.id]: [] }))
-        setProjectSyncMessage('Build creada en preparación y persistida en backend.')
+        setProjectSyncMessage(t('proyectos.buildCreatedBackend'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo persistir build: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.buildPersistError')}: ${error.message}.`)
       }
     } else {
       createLocalBuild()
@@ -130,7 +151,7 @@ export function createBuildActions({
 
   const handleSetActiveBuild = async (buildId: string) => {
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite activar builds.', 'warning')
+      showFeedback(t('proyectos.buildPermissionTitle'), t('proyectos.buildActivatePermission'), 'warning')
       return
     }
     const build = buildsList.find(item => item.id === buildId)
@@ -148,24 +169,28 @@ export function createBuildActions({
         }
         updatedBuild = applyBackendBuild(await response.json())
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo activar build: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.buildActivateError')}: ${error.message}.`)
         return
       }
     }
     const now = new Date().toISOString()
     if (projectsSource !== 'backend') {
       setBuildsList(prev => prev.map(item => item.componentId === build.componentId
-        ? { ...item, active: item.id === buildId, state: item.id === buildId ? 'ACTIVA' : 'HISTORICA', startDate: item.id === buildId ? (item.startDate || now) : item.startDate }
+        ? item.id === buildId
+          ? { ...item, active: true, state: 'ACTIVA', startDate: item.startDate || now }
+          : item.active || item.state === 'ACTIVA'
+            ? { ...item, active: false, state: 'HISTORICA' }
+            : item
         : item
       ))
     }
     setCurrentBuildId(buildId)
-    showFeedback('Build activada', `${updatedBuild?.name || build.name || 'La build'} quedó activa.`, 'success')
+    showFeedback(t('proyectos.buildActivated'), `${updatedBuild?.name || build.name || t('proyectos.theBuild')} ${t('proyectos.buildIsActive')}`, 'success')
   }
 
   const handleSetInactiveBuild = async (buildId: string) => {
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite desactivar builds.', 'warning')
+      showFeedback(t('proyectos.buildPermissionTitle'), t('proyectos.buildDeactivatePermission'), 'warning')
       return
     }
     const build = buildsList.find(item => item.id === buildId)
@@ -183,8 +208,8 @@ export function createBuildActions({
         }
         updatedBuild = applyBackendBuild(await response.json())
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo desactivar build: ${error.message}.`)
-        showFeedback('No se pudo desactivar build', error.message || 'Error al actualizar la build.', 'danger')
+        setProjectSyncMessage(`${t('proyectos.buildDeactivateError')}: ${error.message}.`)
+        showFeedback(t('proyectos.buildUpdateError'), error.message || t('proyectos.buildUpdateFallback'), 'danger')
         return
       }
     }
@@ -202,15 +227,16 @@ export function createBuildActions({
       const nextActiveBuild = buildsList.find(item => item.projectId === build.projectId && item.componentId === build.componentId && item.id !== buildId && item.active)
       setCurrentBuildId(nextActiveBuild?.id || '')
     }
-    showFeedback('Build desactivada', `${updatedBuild?.name || build.name || 'La build'} ya no puede usarse para nuevas ejecuciones.`, 'success')
+    showFeedback(t('proyectos.buildDeactivated'), `${updatedBuild?.name || build.name || t('proyectos.theBuild')} ${t('proyectos.buildNoLongerActive')}`, 'success')
   }
 
   const handleUpdateBuildContext = async (event: FormEvent<HTMLFormElement>, buildId: string) => {
     event.preventDefault()
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite editar builds.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildEditPermission'), 'warning')
       return
     }
+    if (rejectInactiveWrite(buildId)) return
     const formData = new FormData(event.currentTarget)
     const changeContext = String(formData.get('buildContext') || '').trim()
     const startDate = String(formData.get('buildStartDate') || '').trim()
@@ -233,22 +259,23 @@ export function createBuildActions({
         updatedBuild = applyBackendBuild(await response.json())
       } catch (error: any) {
         setProjectSyncMessage(`No se pudieron guardar notas de build: ${error.message}.`)
-        showFeedback('No se pudo actualizar build', error.message || 'Error al guardar notas.', 'danger')
+        showFeedback(t('proyectos.buildUpdateError'), error.message || t('proyectos.buildUpdateFallback'), 'danger')
         return
       }
     }
     if (projectsSource !== 'backend') {
       setBuildsList(prev => prev.map(item => item.id === buildId ? { ...item, changeContext, startDate, endDate } : item))
     }
-    setProjectSyncMessage('Notas de build actualizadas.')
-    showFeedback('Build actualizada', `${updatedBuild?.name || 'Las notas de control de cambios'} fueron guardadas.`, 'success')
+    setProjectSyncMessage(t('proyectos.buildUpdated'))
+    showFeedback(t('proyectos.buildUpdated'), `${updatedBuild?.name || t('proyectos.changeNotes')} ${t('proyectos.savedSuffix')}`, 'success')
   }
 
   const handleToggleBuildHidden = async (buildId: string) => {
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite modificar builds.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildEditPermission'), 'warning')
       return
     }
+    if (rejectInactiveWrite(buildId)) return
     const build = buildsList.find(item => item.id === buildId)
     if (!build) return
     const nextHidden = !build.hidden
@@ -266,7 +293,7 @@ export function createBuildActions({
         updatedBuild = applyBackendBuild(await response.json())
       } catch (error: any) {
         setProjectSyncMessage(`No se pudo actualizar visibilidad de build: ${error.message}.`)
-        showFeedback('No se pudo actualizar build', error.message || 'Error al actualizar la build.', 'danger')
+        showFeedback(t('proyectos.buildUpdateError'), error.message || t('proyectos.buildUpdateFallback'), 'danger')
         return
       }
     }
@@ -295,22 +322,23 @@ export function createBuildActions({
       setCurrentBuildId(nextVisibleActiveBuild?.id || '')
     }
     showFeedback(
-      nextHidden ? 'Build oculta' : 'Build visible',
-      nextHidden ? 'La build ya no aparece en el selector del header.' : 'La build vuelve a aparecer en el selector del header.',
+      nextHidden ? t('proyectos.buildHidden') : t('proyectos.buildVisible'),
+      nextHidden ? t('proyectos.buildHiddenMessage') : t('proyectos.buildVisibleMessage'),
       'success'
     )
   }
 
   const handleDeleteBuild = async (buildId: string) => {
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite eliminar builds.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildDeletePermission'), 'warning')
       return
     }
+    if (rejectInactiveWrite(buildId)) return
     const confirmed = await confirmAction({
-      title: 'Eliminar build',
-      message: 'Se eliminará esta build y su alcance asociado. Esta acción no se puede deshacer.',
+      title: t('proyectos.deleteBuild'),
+      message: t('proyectos.deleteBuildConfirm'),
       variant: 'danger',
-      confirmLabel: 'Eliminar build'
+      confirmLabel: t('proyectos.deleteBuild')
     })
     if (!confirmed) return
     if (projectsSource === 'backend') {
@@ -321,8 +349,8 @@ export function createBuildActions({
           throw new Error(error?.detail || `Backend respondió ${response.status}`)
         }
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo eliminar build: ${error.message}.`)
-        showFeedback('No se pudo eliminar build', error.message || 'Error al eliminar la build.', 'danger')
+        setProjectSyncMessage(`${t('proyectos.buildDeleteError')}: ${error.message}.`)
+        showFeedback(t('proyectos.buildDeleteError'), error.message || t('proyectos.buildDeleteFallback'), 'danger')
         return
       }
     }
@@ -333,8 +361,8 @@ export function createBuildActions({
       }
       return nextBuilds
     })
-    setProjectSyncMessage('Build eliminada.')
-    showFeedback('Build eliminada', 'La build y su alcance asociado fueron eliminados.', 'success')
+    setProjectSyncMessage(t('proyectos.buildDeleted'))
+    showFeedback(t('proyectos.buildDeleted'), t('proyectos.buildDeletedMessage'), 'success')
   }
 
   return {

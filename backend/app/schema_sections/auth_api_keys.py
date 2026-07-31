@@ -37,6 +37,8 @@ class AuditLog(BaseModel):
     recurso_id: Optional[UUID] = None
     detalles: Optional[dict] = None
     ip_address: Optional[str] = None
+    origen: Optional[str] = None
+    correlation_id: Optional[str] = None
     fecha: datetime
 
     model_config = ConfigDict(from_attributes=True)

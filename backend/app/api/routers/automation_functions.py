@@ -61,7 +61,7 @@ async def create_funcion_automatizada(
 
 @router.get("/funciones/{master_id}/", response_model=schemas.FuncionAutomatizada)
 async def read_funcion_automatizada(
-    master_id: UUID, 
+    master_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("automatizacion.funciones", "read"))
 ):
@@ -72,7 +72,7 @@ async def read_funcion_automatizada(
 
 @router.get("/funciones/{master_id}/versions/", response_model=List[schemas.FuncionAutomatizada])
 async def read_funcion_versions(
-    master_id: UUID, 
+    master_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("automatizacion.funciones", "read"))
 ):

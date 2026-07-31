@@ -46,7 +46,7 @@ class TestRun(TestRunBase):
     creado_por: UUID
     fecha_creacion: datetime
     fecha_cierre: Optional[datetime] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- AUTOMATION RUNNERS / JOBS ---
@@ -93,7 +93,7 @@ class EjecucionCaso(EjecucionCasoBase):
     ai_reviewed_at: Optional[datetime] = None
     ai_review_note: Optional[str] = None
     fecha_ejecucion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class AttachmentRef(BaseModel):
@@ -130,7 +130,7 @@ class SnapshotPaso(BaseModel):
     error_log: Optional[str] = None
     action_references: List[AttachmentRef] = Field(default_factory=list)
     expected_references: List[AttachmentRef] = Field(default_factory=list)
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class SnapshotPasoUpdate(BaseModel):

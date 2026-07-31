@@ -99,6 +99,94 @@ PROJECTS = (
 )
 
 
+INVENTORY_SPECS = {
+    "PRJ-COMMERCE-DEMO": (
+        {
+            "asset_tag": "DEMO-COMMERCE-WEB",
+            "nombre": "Commerce Web QA Node",
+            "tipo": "Servidor",
+            "naturaleza": "virtual",
+            "estado": "Online",
+            "criticidad": "Alta",
+            "descripcion": "Nodo demo para el storefront y las pruebas QA del checkout.",
+            "ubicacion": "Demo Lab / Web",
+            "responsable": "QA Demo Team",
+            "fabricante": "Treseko Demo",
+            "modelo": "QA Node M",
+            "sistema_operativo": "Ubuntu 24.04",
+            "metadata": {"seed": SEED_MARK, "role": "web-qa"},
+            "endpoints": (("url", "https://qa-commerce.demo.treseko.local", None, "https", True),),
+        },
+        {
+            "asset_tag": "DEMO-COMMERCE-API",
+            "nombre": "Checkout API",
+            "tipo": "API",
+            "naturaleza": "digital",
+            "estado": "Activo",
+            "criticidad": "Alta",
+            "descripcion": "API demo asociada al flujo de carrito, pagos y órdenes.",
+            "ubicacion": "Demo Lab / Services",
+            "responsable": "Backend QA",
+            "fabricante": "Treseko Demo",
+            "modelo": "FastAPI Service",
+            "sistema_operativo": "Containerized Linux",
+            "metadata": {"seed": SEED_MARK, "role": "checkout-api"},
+            "endpoints": (("url", "https://api-commerce.demo.treseko.local", 443, "https", True),),
+        },
+    ),
+    "PRJ-OPS-DEMO": (
+        {
+            "asset_tag": "DEMO-OPS-MOBILE",
+            "nombre": "Operations Mobile Device",
+            "tipo": "Dispositivo movil",
+            "naturaleza": "fisico",
+            "estado": "Activo",
+            "criticidad": "Media",
+            "descripcion": "Dispositivo demo para recorridos mobile y validaciones de operaciones.",
+            "ubicacion": "Demo Lab / Mobile",
+            "responsable": "Mobile QA",
+            "fabricante": "Treseko Demo",
+            "modelo": "Android QA Device",
+            "sistema_operativo": "Android 14",
+            "metadata": {"seed": SEED_MARK, "role": "mobile-qa"},
+            "endpoints": (("hostname", "ops-mobile-demo", None, None, True),),
+        },
+        {
+            "asset_tag": "DEMO-OPS-API",
+            "nombre": "Operations API Sandbox",
+            "tipo": "API",
+            "naturaleza": "digital",
+            "estado": "Online",
+            "criticidad": "Alta",
+            "descripcion": "Sandbox de API para webhooks, operaciones y pruebas de integración.",
+            "ubicacion": "Demo Lab / API",
+            "responsable": "Integration QA",
+            "fabricante": "Treseko Demo",
+            "modelo": "Operations API",
+            "sistema_operativo": "Containerized Linux",
+            "metadata": {"seed": SEED_MARK, "role": "integration-api"},
+            "endpoints": (("url", "https://api-sandbox.demo.treseko.local", 443, "https", True), ("dns", "api-sandbox.demo.treseko.local", None, None, False)),
+        },
+        {
+            "asset_tag": "DEMO-OPS-WORKER",
+            "nombre": "Automation Worker Demo",
+            "tipo": "Nodo de ejecucion",
+            "naturaleza": "virtual",
+            "estado": "Online",
+            "criticidad": "Media",
+            "descripcion": "Worker demo para ejecuciones automatizadas de Playwright y API.",
+            "ubicacion": "Demo Lab / Automation",
+            "responsable": "Automation QA",
+            "fabricante": "Treseko Demo",
+            "modelo": "Worker Standard",
+            "sistema_operativo": "Ubuntu 24.04",
+            "metadata": {"seed": SEED_MARK, "role": "automation-worker"},
+            "endpoints": (("hostname", "automation-worker-demo", None, None, True),),
+        },
+    ),
+}
+
+
 def now_utc() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
 
@@ -735,6 +823,47 @@ async def seed_extension_catalog_and_instances(session, org: models.Organizacion
             instance.created_by = admin.id
 
 
+async def seed_inventory(session, projects: list[models.Proyecto]) -> None:
+    """Create screenshot-friendly inventory linked to the demo projects."""
+    for project in projects:
+        for spec in INVENTORY_SPECS.get(project.codigo, ()):
+            result = await session.execute(
+                select(models.InventoryAsset).where(
+                    models.InventoryAsset.proyecto_id == project.id,
+                    models.InventoryAsset.asset_tag == spec["asset_tag"],
+                )
+            )
+            asset = result.scalar_one_or_none()
+            if not asset:
+                asset = models.InventoryAsset(id=new_id(), proyecto_id=project.id, asset_tag=spec["asset_tag"])
+                session.add(asset)
+            for field in (
+                "nombre", "tipo", "naturaleza", "estado", "criticidad", "descripcion", "ubicacion",
+                "responsable", "fabricante", "modelo", "sistema_operativo",
+            ):
+                setattr(asset, field, spec[field])
+            asset.metadata_json = spec["metadata"]
+            asset.activo = True
+            await session.flush()
+            for endpoint_type, value, port, protocol, principal in spec["endpoints"]:
+                result = await session.execute(
+                    select(models.InventoryEndpoint).where(
+                        models.InventoryEndpoint.asset_id == asset.id,
+                        models.InventoryEndpoint.valor == value,
+                    )
+                )
+                endpoint = result.scalar_one_or_none()
+                if not endpoint:
+                    endpoint = models.InventoryEndpoint(id=new_id(), asset_id=asset.id, valor=value)
+                    session.add(endpoint)
+                endpoint.tipo = endpoint_type
+                endpoint.puerto = port
+                endpoint.protocolo = protocol
+                endpoint.descripcion = f"Endpoint demo {spec['asset_tag']}"
+                endpoint.principal = principal
+                endpoint.activo = True
+
+
 async def seed_project(session, org: models.Organizacion, admin: models.Usuario, spec: ProjectSpec, base_time: datetime) -> models.Proyecto:
     project = await upsert_project(session, org, admin, spec)
     components = await upsert_components(session, project, spec)
@@ -764,6 +893,7 @@ async def run(reset: bool) -> None:
         for spec in PROJECTS:
             projects.append(await seed_project(session, org, admin, spec, base_time))
         await seed_extension_catalog_and_instances(session, org, projects, admin)
+        await seed_inventory(session, projects)
         await session.commit()
 
     print("Seed demo showcase creado/actualizado correctamente")
@@ -771,7 +901,7 @@ async def run(reset: bool) -> None:
     print("Proyectos: Commerce QA Portal, Operations Mobile/API")
     print("Casos: 48")
     print("Builds: 5")
-    print("Incluye ejecuciones, bugs, evidencia sintetica y complementos demo")
+    print("Incluye ejecuciones, bugs, evidencia sintetica, inventario y complementos demo")
 
 
 def parse_args() -> argparse.Namespace:

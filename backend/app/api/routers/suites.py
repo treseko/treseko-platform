@@ -61,7 +61,7 @@ async def create_suite(
         if parent.componente_id and suite.componente_id and parent.componente_id != suite.componente_id:
             raise HTTPException(status_code=400, detail="La sub-suite debe pertenecer al mismo componente que la suite padre")
     new_suite = await crud.create_suite(db=db, suite=suite)
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -80,7 +80,7 @@ async def create_suite(
         suite_id=new_suite.id,
         payload={"suite": {"id": str(new_suite.id), "nombre": new_suite.nombre}},
     )
-    
+
     return new_suite
 
 @router.get("/proyectos/{proyecto_id}/suites/", response_model=List[schemas.Suite])
@@ -109,7 +109,7 @@ async def reorder_suites(
     exito = await crud.reorder_suites(db=db, suite_ids=reorder_request.orden)
     if not exito:
         raise HTTPException(status_code=400, detail="Error al reordenar suites")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -127,7 +127,7 @@ async def reorder_suites(
             component_id=first_suite_context.componente_id,
             payload={"suite_ids": [str(sid) for sid in reorder_request.orden]},
         )
-    
+
     return {"detail": "Suites reordenadas correctamente"}
 
 @router.patch("/suites/{suite_id}", response_model=schemas.Suite)
@@ -142,7 +142,7 @@ async def update_suite(
     updated = await crud.update_suite(db=db, suite_id=suite_id, suite_update=suite)
     if not updated:
         raise HTTPException(status_code=404, detail="Suite no encontrada")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -161,7 +161,7 @@ async def update_suite(
         suite_id=updated.id,
         payload={"suite": {"id": str(updated.id), "nombre": updated.nombre}},
     )
-    
+
     return updated
 
 @router.patch("/suites/{suite_id}/archive")
@@ -210,7 +210,7 @@ async def delete_suite(
     exito, mensaje = await crud.delete_suite(db=db, suite_id=suite_id)
     if not exito:
         raise HTTPException(status_code=400, detail=mensaje)
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -229,7 +229,7 @@ async def delete_suite(
             suite_id=suite_id,
             payload={"suite": {"id": str(suite_id), "nombre": suite_context.nombre}},
         )
-    
+
     return {"detail": mensaje}
 
 @router.post("/suites/{suite_id}/clone", response_model=schemas.SuiteCloneResponse)
@@ -262,7 +262,7 @@ async def clone_suite(
     if not clone_result:
         raise HTTPException(status_code=404, detail="Suite no encontrada")
     cloned = clone_result["suite"]
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -292,7 +292,7 @@ async def clone_suite(
             "original_id": str(suite_id),
         },
     )
-    
+
     return clone_result
 
 @router.patch("/suites/{suite_id}/move")
@@ -311,7 +311,7 @@ async def move_suite(
     exito, mensaje = await crud.move_suite(db=db, suite_id=suite_id, new_parent_id=move_request.parent_id)
     if not exito:
         raise HTTPException(status_code=400, detail=mensaje)
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -331,7 +331,7 @@ async def move_suite(
             suite_id=suite_id,
             payload={"suite": {"id": str(suite_id)}, "parent_id": str(move_request.parent_id) if move_request.parent_id else None},
         )
-    
+
     return {"detail": mensaje}
 
 # --- ENDPOINTS CASOS DE PRUEBA ---

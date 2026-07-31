@@ -12,17 +12,7 @@ async def recover_ai_execution_from_engine_log(db: AsyncSession, ejecucion_id: U
     if execution.estado_resultado != models.EstadoResultado.EJECUTANDO_AI:
         raise ValueError("Solo se pueden recuperar ejecuciones IA que siguen en ejecucion")
     engine_url = ENGINE_URL.rstrip("/")
-    headers = {}
-    internal_token = (os.getenv("AI_ENGINE_INTERNAL_TOKEN") or "").strip()
-    if not internal_token:
-        token_file = (os.getenv("AI_ENGINE_INTERNAL_TOKEN_FILE") or "").strip()
-        if token_file:
-            try:
-                internal_token = Path(token_file).read_text(encoding="utf-8").strip()
-            except OSError as exc:
-                raise ValueError("No se pudo autorizar la consulta de recuperacion al Motor IA") from exc
-    if internal_token:
-        headers["x-engine-internal-token"] = internal_token
+    headers = engine_internal_headers(current_correlation_id(str(ejecucion_id)))
     async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
         response = await client.get(f"{engine_url}/internal/executions/{ejecucion_id}/recovery-evidence", headers=headers)
     if not response.is_success:

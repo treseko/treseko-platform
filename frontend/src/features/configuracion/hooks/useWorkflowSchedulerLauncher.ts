@@ -1,6 +1,7 @@
 import { toDateTimeLocalInput } from '../../../shared/utils/dateTime'
 
 type UseWorkflowSchedulerLauncherParams = {
+  t: (key: `configuracion.${string}`, params?: Record<string, string | number>) => string
   currentProjectCases: any[]
   belongsToCurrentComponent: (test: any) => boolean
   showFeedback: (title: string, message: string, variant?: string) => void
@@ -13,6 +14,7 @@ type UseWorkflowSchedulerLauncherParams = {
 }
 
 export function useWorkflowSchedulerLauncher({
+  t,
   currentProjectCases,
   belongsToCurrentComponent,
   showFeedback,
@@ -26,13 +28,13 @@ export function useWorkflowSchedulerLauncher({
   return () => {
     const executableCases = currentProjectCases.filter(test => belongsToCurrentComponent(test))
     if (executableCases.length === 0) {
-      showFeedback('Sin casos ejecutables', 'No hay casos del componente/build activos para ejecutar con IA.', 'warning')
+      showFeedback(t('configuracion.noExecutableCases'), t('configuracion.noExecutableCasesMessage'), 'warning')
       return
     }
     setIaSchedulerOpenedFromBuilder(true)
     setSelectedTestsForIa([])
     setSchedulerSearch('')
-    setExecName(`Run IA - ${new Date().toISOString().slice(0, 10)}`)
+    setExecName(`${t('configuracion.aiRun')} - ${new Date().toISOString().slice(0, 10)}`)
     const now = new Date()
     now.setMinutes(now.getMinutes() + 5)
     setScheduledTime(toDateTimeLocalInput(now.toISOString()))

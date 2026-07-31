@@ -385,18 +385,18 @@ async def upload_attachment(
     await _enforce_storage_limit(db, file_size, solution_id=upload_project.organizacion_id)
     if not _legacy_upload_content_matches_type(file.content_type, content):
         raise HTTPException(status_code=400, detail="El contenido del archivo no coincide con el tipo declarado.")
-    
+
     # Generar nombre único usando el content-type validado, no la extension enviada por el cliente
     file_extension = LEGACY_CONTENT_TYPE_EXTENSIONS[file.content_type]
     unique_filename = f"{uuid.uuid4()}.{file_extension}"
-    
+
     # Guardar archivo
     evidence_dir = STATIC_ROOT / "evidencias"
     evidence_dir.mkdir(parents=True, exist_ok=True)
     file_path = str(evidence_dir / unique_filename)
     with open(file_path, "wb") as f:
         f.write(content)
-    
+
     # Retornar URL pública
     file_url = f"/static/evidencias/{unique_filename}"
     sha256 = hashlib.sha256(content).hexdigest()
@@ -414,7 +414,7 @@ async def upload_attachment(
     )
     db.add(attachment)
     await db.commit()
-    
+
     return {
         "url": file_url,
         "filename": unique_filename,

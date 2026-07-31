@@ -5,6 +5,7 @@ import { isValidUUID } from '../../app/validation'
 import { formatDateTime } from '../../shared/utils/dateTime'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
+type Translate = (key: string, options?: Record<string, unknown>) => string
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
 type WikiMode = 'list' | 'view' | 'edit' | 'history'
@@ -22,6 +23,7 @@ type CreateWikiActionsParams = {
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  t: Translate
 }
 
 export function createWikiActions({
@@ -36,7 +38,8 @@ export function createWikiActions({
   setWikiMode,
   setProjectSyncMessage,
   showFeedback,
-  confirmAction
+  confirmAction,
+  t
 }: CreateWikiActionsParams) {
   const loadWikiForProject = async (projectId: string) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return
@@ -54,13 +57,13 @@ export function createWikiActions({
         ...mapped
       ])
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudo cargar wiki: ${error.message}.`)
+      setProjectSyncMessage(`${t('proyectos.wikiLoadError')}: ${error.message}.`)
     }
   }
 
   const handleSaveWikiPage = async () => {
     if (!wikiFormData.title || !wikiFormData.content || !managingProjectId) {
-      showFeedback('Campos obligatorios', 'El título y el contenido son obligatorios.', 'warning')
+      showFeedback(t('proyectos.requiredFields'), t('proyectos.wikiRequiredFields'), 'warning')
       return
     }
 
@@ -96,10 +99,10 @@ export function createWikiActions({
         const page = await response.json()
         const mapped = mapBackendWikiToItem(page)
         setWikiPages(selectedWiki ? wikiPages.map(wiki => wiki.id === mapped.id ? mapped : wiki) : [...wikiPages, mapped])
-        setProjectSyncMessage('Wiki guardada y persistida en backend.')
+        setProjectSyncMessage(t('proyectos.wikiSavedBackend'))
       } catch (error: any) {
         setWikiPages(selectedWiki ? wikiPages.map(wiki => wiki.id === localPage.id ? localPage : wiki) : [...wikiPages, localPage])
-        setProjectSyncMessage(`No se pudo persistir wiki: ${error.message}. Cambio aplicado localmente.`)
+        setProjectSyncMessage(`${t('proyectos.wikiPersistError')}: ${error.message}. ${t('proyectos.localChangeApplied')}`)
       }
     } else {
       setWikiPages(selectedWiki ? wikiPages.map(wiki => wiki.id === localPage.id ? localPage : wiki) : [...wikiPages, localPage])
@@ -111,10 +114,10 @@ export function createWikiActions({
   const handleDeleteWikiPage = async (pageId: string) => {
     const page = wikiPages.find(wiki => wiki.id === pageId)
     const confirmed = await confirmAction({
-      title: 'Eliminar documento',
-      message: `Se eliminará "${page?.title || 'documento'}". Esta acción no se puede deshacer.`,
+      title: t('proyectos.deleteDocument'),
+      message: t('proyectos.deleteDocumentConfirm', { title: page?.title || t('proyectos.document') }),
       variant: 'danger',
-      confirmLabel: 'Eliminar documento'
+      confirmLabel: t('proyectos.deleteDocument')
     })
     if (!confirmed) return
     if (projectsSource === 'backend') {
@@ -125,7 +128,7 @@ export function createWikiActions({
           throw new Error(error?.detail || `Backend respondió ${response.status}`)
         }
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo eliminar wiki: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.wikiDeleteError')}: ${error.message}.`)
         return
       }
     }

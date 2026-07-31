@@ -176,9 +176,9 @@ async def update_snapshot_status(db: AsyncSession, snapshot_id: UUID, estado: mo
     # Obtener el snapshot actual
     result = await db.execute(select(models.SnapshotPaso).filter(models.SnapshotPaso.id == snapshot_id))
     db_snapshot = result.scalar_one_or_none()
-    if not db_snapshot: 
+    if not db_snapshot:
         return None
-    
+
     # Validar orden secuencial: solo permitir actualizar si el paso anterior está completado
     if db_snapshot.numero_paso > 1:
         # Buscar el paso anterior
@@ -189,18 +189,18 @@ async def update_snapshot_status(db: AsyncSession, snapshot_id: UUID, estado: mo
             )
         )
         prev_snapshot = prev_result.scalar_one_or_none()
-        
+
         # Si el paso anterior existe y no está completado, rechazar
         if prev_snapshot and prev_snapshot.estado_paso == models.EstadoResultado.SIN_CORRER:
             raise ValueError(f"Debe completar el paso {db_snapshot.numero_paso - 1} antes de continuar")
-    
+
     # Actualizar el snapshot
     db_snapshot.estado_paso = estado
-    if comentarios: 
+    if comentarios:
         db_snapshot.comentarios = comentarios
-    if evidencia_url: 
+    if evidencia_url:
         db_snapshot.evidencia_url = sanitize_evidence_url(evidencia_url)
-    
+
     await db.commit()
     await db.refresh(db_snapshot)
     return db_snapshot

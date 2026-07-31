@@ -9,11 +9,12 @@ export function createExecutionDryRunActions({
   setIaLogs,
   showFeedback,
   stringifyFeedbackMessage,
+  t,
 }: any) {
   const handleRunSavedAutomatedCaseFromEditor = async (draft: any = {}) => {
     const script = String(draft.script_automatizado || '')
     if (!script.trim()) {
-      showFeedback('Script requerido', 'Agrega un script antes de probar con worker.', 'warning')
+      showFeedback(t('ejecutarPruebas.dryRunScriptRequired'), t('ejecutarPruebas.dryRunScriptRequiredMessage'), 'warning')
       return
     }
     try {
@@ -36,23 +37,23 @@ export function createExecutionDryRunActions({
       })
       const result = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(stringifyFeedbackMessage(result?.detail || result?.message || `Backend respondio ${response.status}`))
+        throw new Error(stringifyFeedbackMessage(result?.detail || result?.message || t('configuracion.backendResponded', { status: response.status })))
       }
       setAutomationMonitor({
         show: true,
         mode: 'dry-run',
-        run: { id: result.id, nombre: 'Prueba temporal con worker' },
+        run: { id: result.id, nombre: t('ejecutarPruebas.dryRunWorkerName') },
         jobs: [{
           jobId: result.id,
           caseCode: result.payload_congelado?.case_code || draft.codigo || 'DRY-RUN',
-          caseTitle: result.payload_congelado?.case_title || draft.titulo || 'Prueba temporal del editor',
+          caseTitle: result.payload_congelado?.case_title || draft.titulo || t('ejecutarPruebas.dryRunEditorName'),
           status: result.estado
         }]
       })
     } catch (error: any) {
       showFeedback(
-        'Prueba temporal',
-        stringifyFeedbackMessage(error?.message || error || 'No se pudo enviar la prueba temporal al worker.'),
+        t('ejecutarPruebas.dryRunTitle'),
+        stringifyFeedbackMessage(error?.message || error || t('ejecutarPruebas.dryRunWorkerError')),
         'danger'
       )
     }
@@ -87,17 +88,17 @@ export function createExecutionDryRunActions({
       setAutomationMonitor({
         show: true,
         mode: 'dry-run',
-        run: { id: result.run_id, nombre: 'Prueba temporal con IA' },
+        run: { id: result.run_id, nombre: t('ejecutarPruebas.dryRunAiName') },
         jobs: [{
           jobId: result.run_id,
           progressRunId: result.run_id,
           caseCode: draft.codigo || 'AI-DRY-RUN',
-          caseTitle: draft.titulo || 'Prueba temporal con IA',
+          caseTitle: draft.titulo || t('ejecutarPruebas.dryRunAiName'),
           caseSteps: Array.isArray(draft.pasos) ? draft.pasos : [],
           status: 'RUNNING',
           framework: 'ia',
           language: 'agent',
-          logs: 'Conectando con el Motor IA...',
+          logs: t('ejecutarPruebas.dryRunConnectingAi'),
           metadata_resultado: {
             observations: result.observations,
             error_message: result.error_message,
@@ -122,8 +123,8 @@ export function createExecutionDryRunActions({
       }])
     } catch (error: any) {
       showFeedback(
-        'Dry-run IA',
-        stringifyFeedbackMessage(error?.message || error || 'No se pudo ejecutar la prueba temporal con IA.'),
+        t('ejecutarPruebas.dryRunAiTitle'),
+        stringifyFeedbackMessage(error?.message || error || t('ejecutarPruebas.dryRunAiError')),
         'danger'
       )
     } finally {

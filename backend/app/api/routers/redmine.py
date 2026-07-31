@@ -16,8 +16,8 @@ def _redacted_redmine_config(config) -> schemas.RedmineConfig:
 
 @router.post("/proyectos/{proyecto_id}/redmine/", response_model=schemas.RedmineConfig)
 async def create_redmine_config(
-    proyecto_id: UUID, 
-    config: schemas.RedmineConfigBase, 
+    proyecto_id: UUID,
+    config: schemas.RedmineConfigBase,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("redmine.configuracion", "edit"))
 ):
@@ -28,7 +28,7 @@ async def create_redmine_config(
 
 @router.get("/proyectos/{proyecto_id}/redmine/", response_model=schemas.RedmineConfig)
 async def read_redmine_config(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("redmine.configuracion", "read"))
 ):

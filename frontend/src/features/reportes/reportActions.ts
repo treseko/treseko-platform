@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
+import type { TranslationKey } from '../../i18n'
 
 type CreateReportActionsParams = {
   currentProjectId: string
@@ -10,6 +11,7 @@ type CreateReportActionsParams = {
   setProjectMetrics: Dispatch<SetStateAction<any>>
   setMetricsLoading: (loading: boolean) => void
   setProjectSyncMessage: (message: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createReportActions({
@@ -19,7 +21,8 @@ export function createReportActions({
   fetchWithAuth,
   setProjectMetrics,
   setMetricsLoading,
-  setProjectSyncMessage
+  setProjectSyncMessage,
+  t
 }: CreateReportActionsParams) {
   const loadProjectMetrics = async (buildId?: string, options?: { silent?: boolean }) => {
     if (!currentProjectId || !isValidUUID(currentProjectId) || projectsSource !== 'backend') {
@@ -41,7 +44,7 @@ export function createReportActions({
       const data = await response.json()
       setProjectMetrics(data)
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar métricas: ${error?.message || String(error)}`)
+      setProjectSyncMessage(`${t('reportes.metricsLoadError')}: ${error?.message || String(error)}`)
     } finally {
       if (!silent) setMetricsLoading(false)
     }

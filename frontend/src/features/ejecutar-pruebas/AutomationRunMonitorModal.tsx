@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, ProgressBar, Table } from 'react-bootstrap'
 import { Activity, Clock, Download, ExternalLink, ServerCog } from 'lucide-react'
+import { useI18n } from '../../i18n'
 import { API_BASE } from '../../app/constants'
 import { dateTimeMs, formatTime } from '../../shared/utils/dateTime'
 import { languageLabel } from '../casos/caseUtils'
-
+import { AutomationArtifactModal } from './AutomationArtifactModal'
 type MonitorJob = {
   jobId?: string
   executionId?: string
@@ -15,7 +16,6 @@ type MonitorJob = {
   error?: string
   progressRunId?: string
 }
-
 type AutomationRunMonitorModalProps = {
   show: boolean
   onHide: () => void
@@ -28,12 +28,10 @@ type AutomationRunMonitorModalProps = {
   onOpenHistory: () => void
   onExecutionResultsSettled?: () => void | Promise<void>
 }
-
 const ACTIVE_STATUSES = new Set(['PENDING', 'CLAIMED', 'RUNNING'])
 const SUCCESS_STATUSES = new Set(['PASSED'])
 const FAILED_STATUSES = new Set(['FAILED', 'BLOCKED'])
 const INFRA_STATUSES = new Set(['ERROR', 'TIMEOUT', 'CANCELLED', 'BLOCKED_BY_RUNNER'])
-
 const statusVariant = (status?: string) => {
   if (!status) return 'secondary'
   if (status === 'PASO') return 'success'
@@ -46,43 +44,22 @@ const statusVariant = (status?: string) => {
   if (status === 'CLAIMED') return 'info'
   return 'secondary'
 }
-
-const statusLabel = (status?: string) => {
+const statusLabel = (status: string | undefined, t: (key: any) => string) => {
   const labels: Record<string, string> = {
-    PENDING: 'Pendiente',
-    CLAIMED: 'Tomado',
-    RUNNING: 'Ejecutando',
-    PASSED: 'Paso',
-    FAILED: 'Fallo',
-    BLOCKED: 'Bloqueado',
-    PASO: 'Paso',
-    FALLO: 'Fallo',
-    BLOQUEADO: 'Bloqueado',
-    ERROR: 'Error runner',
-    TIMEOUT: 'Timeout',
-    CANCELLED: 'Cancelado',
-    BLOCKED_BY_RUNNER: 'Sin worker compatible'
+    PENDING: t('common.statusPending'), CLAIMED: t('common.statusClaimed'), RUNNING: t('common.statusRunning'), PASSED: t('common.statusPassed'), FAILED: t('common.statusFailed'), BLOCKED: t('common.statusBlocked'), PASO: t('common.statusPassed'), FALLO: t('common.statusFailed'), BLOQUEADO: t('common.statusBlocked'), ERROR: t('common.statusErrorRunner'), TIMEOUT: t('common.statusTimeout'), CANCELLED: t('common.statusCancelled'), BLOCKED_BY_RUNNER: t('common.statusNoWorker')
   }
-  return status ? labels[status] || status : 'Sin job'
+  return status ? labels[status] || status : t('common.statusNoJob')
 }
+const failureCategoryLabel = (category: string | undefined, t: (key: any) => string) => ({ passed: t('common.categoryPassed'), required_element_not_found: t('common.categoryElementMissing'), navigation_error: t('common.categoryNavigation'), expected_result_not_met: t('common.categoryExpectedMissing'), browser_action_failed: t('common.categoryBrowserAction'), model_blocked: t('common.categoryModelBlocked') }[String(category || '')] || category || t('common.categoryUnclassified'))
 
-const failureCategoryLabel = (category?: string) => ({
-  passed: 'Paso completado',
-  required_element_not_found: 'Elemento requerido no encontrado',
-  navigation_error: 'URL o navegación no disponible',
-  expected_result_not_met: 'Resultado esperado no cumplido',
-  browser_action_failed: 'Acción del navegador no ejecutada',
-  model_blocked: 'La IA bloqueó la acción',
-}[String(category || '')] || category || 'Sin clasificar')
-
-const friendlyStepDiagnosis = (step: any) => {
+const friendlyStepDiagnosis = (step: any, t: (key: any) => string) => {
   const category = String(step?.failure_category || '')
-  if (category === 'expected_result_not_met') return 'La acción se ejecutó, pero el resultado esperado no apareció en la evidencia observada.'
-  if (category === 'required_element_not_found') return 'No se encontró visible el elemento o texto requerido para continuar.'
-  if (category === 'navigation_error') return 'La navegación inicial o la URL no pudo completarse.'
-  if (category === 'browser_action_failed') return 'El navegador no pudo ejecutar la acción indicada.'
-  if (category === 'model_blocked') return 'La IA bloqueó el paso porque faltaban datos o contexto.'
-  return step?.status === 'PASO' ? 'El paso se completó según la evidencia disponible.' : 'El motor no pudo completar este paso.'
+  if (category === 'expected_result_not_met') return t('common.diagnosisExpected')
+  if (category === 'required_element_not_found') return t('common.diagnosisElement')
+  if (category === 'navigation_error') return t('common.diagnosisNavigation')
+  if (category === 'browser_action_failed') return t('common.diagnosisBrowser')
+  if (category === 'model_blocked') return t('common.diagnosisBlocked')
+  return step?.status === 'PASO' ? t('common.diagnosisPassed') : t('common.diagnosisFailed')
 }
 
 const elapsedLabel = (from?: string, to?: string) => {
@@ -108,6 +85,7 @@ export function AutomationRunMonitorModal({
   onOpenHistory,
   onExecutionResultsSettled
 }: AutomationRunMonitorModalProps) {
+  const { t } = useI18n()
   const [jobDetails, setJobDetails] = useState<Record<string, any>>({})
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
@@ -289,30 +267,30 @@ export function AutomationRunMonitorModal({
       <Modal.Header closeButton className="border-0 pb-0">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <Activity size={22} className="text-primary" />
-          {isAiDryRun ? 'Prueba temporal con IA' : isDryRun ? 'Prueba temporal' : 'Seguimiento de ejecucion automatizada'}
+          {isAiDryRun ? t('ejecutarPruebas.temporaryIaTest') : isDryRun ? 'Prueba temporal' : t('ejecutarPruebas.automationTracking')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4">
         <Alert variant="info" className="small">
           {isAiDryRun
-            ? 'No se guardara en historial ni cambios del caso. Revisa los pasos, observaciones y evidencias devueltas por el Motor IA.'
+            ? t('ejecutarPruebas.notInHistory')
             : isDryRun
               ? 'No se guardara en historial, reportes ni build. Sirve para validar la prueba antes de guardar o asignar a una build.'
             : 'Ejecucion automatizada enviada al worker. Puedes cerrar este modal; la ejecucion continuara en segundo plano.'}
         </Alert>
 
         <div className="d-grid gap-3 mb-3" style={{ gridTemplateColumns: `repeat(${isAiDryRun ? 4 : 5}, minmax(0, 1fr))` }}>
-          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">Total</div><div className="fs-4 fw-bold">{total}</div></div>
-          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">Completados</div><div className="fs-4 fw-bold">{completed}</div></div>
-          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">Pasados</div><div className="fs-4 fw-bold text-success">{passed}</div></div>
-          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{isAiDryRun ? 'Fallos' : 'Fallos funcionales'}</div><div className="fs-4 fw-bold text-danger">{functionalFailures}</div></div>
+          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.total')}</div><div className="fs-4 fw-bold">{total}</div></div>
+          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.completed')}</div><div className="fs-4 fw-bold">{completed}</div></div>
+          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.passed')}</div><div className="fs-4 fw-bold text-success">{passed}</div></div>
+          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{isAiDryRun ? 'Fallos' : t('ejecutarPruebas.functionalFailures')}</div><div className="fs-4 fw-bold text-danger">{functionalFailures}</div></div>
           {!isAiDryRun && <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">Runner/infra</div><div className="fs-4 fw-bold text-dark">{runnerProblems}</div></div>}
         </div>
 
         <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
           <div className="small text-muted">
             Run: <strong>{run?.nombre || run?.id || 'Automatizado'}</strong>
-            <span className="ms-3"><Clock size={14} /> Tiempo: {elapsedLabel(oldestCreation)}</span>
+            <span className="ms-3"><Clock size={14} /> {t('ejecutarPruebas.time')}: {elapsedLabel(oldestCreation)}</span>
           </div>
           <div className="small text-muted">Ultima actualizacion: {formatTime(lastRefresh) || '-'}</div>
         </div>
@@ -322,10 +300,10 @@ export function AutomationRunMonitorModal({
           <Table hover responsive className="mb-0 align-middle">
             <thead className="bg-light">
               <tr>
-                <th>Caso</th>
-                <th>Estado</th>
-                {isAiDryRun ? <><th>Pasos</th><th>Evidencia</th><th>Proveedor / modelo</th></> : <><th>Framework</th><th>Worker</th><th>Tiempo</th></>}
-                <th>Detalle</th>
+                <th>{t('ejecutarPruebas.case')}</th>
+                <th>{t('ejecutarPruebas.status')}</th>
+                {isAiDryRun ? <><th>Pasos</th><th>Evidencia</th><th>Proveedor / modelo</th></> : <><th>{t('ejecutarPruebas.framework')}</th><th>{t('ejecutarPruebas.worker')}</th><th>{t('ejecutarPruebas.time')}</th></>}
+                <th>{t('ejecutarPruebas.detail')}</th>
               </tr>
             </thead>
             <tbody>
@@ -351,7 +329,7 @@ export function AutomationRunMonitorModal({
                         <Badge bg="light" text="primary" className="border font-monospace me-2">{row.caseCode}</Badge>
                         <span className="fw-semibold">{row.caseTitle}</span>
                       </td>
-                      <td><Badge bg={statusVariant(row.status)}>{statusLabel(row.status)}</Badge></td>
+                      <td><Badge bg={statusVariant(row.status)}>{statusLabel(row.status, t)}</Badge></td>
                       {isAiDryRun ? <>
                         <td>{steps.length || '-'}</td>
                         <td>{artifacts.length ? `${artifacts.length} disponible${artifacts.length === 1 ? '' : 's'}` : 'Sin evidencia'}</td>
@@ -380,7 +358,7 @@ export function AutomationRunMonitorModal({
                               : `Ver ${responseLabel}`}
                           </Button>
                         ) : (
-                          <span className="text-muted">Sin log reportado</span>
+                          <span className="text-muted">{t('ejecutarPruebas.noLog')}</span>
                         )}
                       </td>
                     </tr>
@@ -389,7 +367,7 @@ export function AutomationRunMonitorModal({
                         <td colSpan={isAiDryRun ? 6 : 6} className="bg-light">
                           {isBlockedByRunner && (
                             <Alert variant="warning" className="small mb-2">
-                              No hay worker compatible para <strong>{row.framework} + {languageLabel(row.language)}</strong>. Inicia o vincula un worker que anuncie ese framework y lenguaje, y vuelve a ejecutar el dry-run o la prueba.
+                              {t('common.compatibleWorkerMissing', { framework: row.framework, language: languageLabel(row.language) })}
                             </Alert>
                           )}
                           {row.error && <Alert variant="danger" className="small mb-2">{row.error}</Alert>}
@@ -399,7 +377,7 @@ export function AutomationRunMonitorModal({
                           </pre>
                           {isAiDryRun && row.timeline?.length > 0 && (
                             <div className="border rounded-3 bg-white p-2 mb-2">
-                              <div className="text-uppercase text-muted x-small fw-bold mb-2">Actividad del Motor IA</div>
+                              <div className="text-uppercase text-muted x-small fw-bold mb-2">{t('common.engineActivity')}</div>
                               {row.timeline.map((item: any, index: number) => (
                                 <div key={`${rowKey}-timeline-${index}`} className="small border-bottom py-1">
                                   <span className="text-muted me-2">{item.agent || item.type}</span>{item.message}
@@ -409,7 +387,7 @@ export function AutomationRunMonitorModal({
                           )}
                           {artifacts.length > 0 && (
                             <div className="border rounded-3 bg-white p-2 mb-2">
-                              <div className="text-uppercase text-muted x-small fw-bold mb-2">Evidencias temporales</div>
+                              <div className="text-uppercase text-muted x-small fw-bold mb-2">{t('common.temporaryEvidence')}</div>
                               <div className="d-flex flex-wrap gap-2">
                                 {artifacts.map((artifact: any, index: number) => {
                                   const href = artifact.public_url?.startsWith('http')
@@ -436,7 +414,7 @@ export function AutomationRunMonitorModal({
                     >
                       Ver
                     </Button>
-                                        <a href={href} download={artifact.filename || `evidencia-${index + 1}`} className="btn btn-outline-secondary btn-sm x-small" title="Descargar evidencia">
+                                        <a href={href} download={artifact.filename || `evidencia-${index + 1}`}                       className="btn btn-outline-secondary btn-sm x-small" title={t('ejecutarPruebas.download')}>
                                           <Download size={13} />
                                         </a>
                                       </div>
@@ -448,40 +426,40 @@ export function AutomationRunMonitorModal({
                           )}
                           {isAiDryRun && row.resolvedContext.length > 0 && (
                             <div className="border rounded-3 bg-white p-2 mb-2">
-                              <div className="text-uppercase text-muted x-small fw-bold mb-2">Datos interpretados por el agente</div>
+                              <div className="text-uppercase text-muted x-small fw-bold mb-2">{t('common.interpretedData')}</div>
                               {row.resolvedContext.map((item: any, index: number) => (
                                 <div key={`${rowKey}-context-${index}`} className="small border-bottom py-2">
-                                  <strong>Paso {item.step ?? index + 1}:</strong>{' '}
-                                  {item.inputs?.length ? item.inputs.join('; ') : '(sin datos estructurados)'}
-                                  {item.ambiguities?.length > 0 && <div className="text-warning mt-1">Ambigüedad: {item.ambiguities.join(' | ')}</div>}
+                                  <strong>{t('common.stepNumber', { step: item.step ?? index + 1 })}</strong>{' '}
+                                  {item.inputs?.length ? item.inputs.join('; ') : t('common.noStructuredData')}
+                                  {item.ambiguities?.length > 0 && <div className="text-warning mt-1">{t('common.ambiguity')} {item.ambiguities.join(' | ')}</div>}
                                 </div>
                               ))}
                             </div>
                           )}
                           {steps.length > 0 && (
                             <div className="border rounded-3 bg-white p-2">
-                              <div className="text-uppercase text-muted x-small fw-bold mb-2">Steps devueltos por el script</div>
+                              <div className="text-uppercase text-muted x-small fw-bold mb-2">{t('common.returnedSteps')}</div>
                               {steps.map((step: any, index: number) => (
                                 <div key={`${rowKey}-step-${index}`} className="border-bottom py-2 small">
                                   {(() => {
                                     const caseStep = (Array.isArray(row.caseSteps) ? row.caseSteps : []).find((item: any) => Number(item.numero_paso ?? item.number) === Number(step.number ?? step.numero_paso ?? index + 1)) || {}
                                     return (
                                       <div className="bg-light rounded-2 p-2 mb-2">
-                                        <div><strong>Acción del caso:</strong> {caseStep.accion || caseStep.action || 'No disponible'}</div>
-                                        <div><strong>Datos usados:</strong> <span className="font-monospace">{caseStep.datos || caseStep.data || 'Sin datos'}</span></div>
-                                        <div><strong>Resultado esperado:</strong> {caseStep.resultado_esperado || caseStep.expected || 'No definido'}</div>
-                                        <div><strong>Qué observó la IA:</strong> {step.observations || step.reason || step.error_log || 'Sin observación adicional'}</div>
-                                        <div className={step.status === 'PASO' ? 'text-success' : 'text-danger'}><strong>Diagnóstico:</strong> {friendlyStepDiagnosis(step)}</div>
+                                        <div><strong>{t('common.caseActionLabel')}</strong> {caseStep.accion || caseStep.action || t('common.unavailableValue')}</div>
+                                        <div><strong>{t('common.usedDataLabel')}</strong> <span className="font-monospace">{caseStep.datos || caseStep.data || t('common.noDataValue')}</span></div>
+                                        <div><strong>{t('common.expectedResultLabel')}</strong> {caseStep.resultado_esperado || caseStep.expected || t('common.notDefinedValue')}</div>
+                                        <div><strong>{t('common.aiObservedLabel')}</strong> {step.observations || step.reason || step.error_log || t('common.noObservationValue')}</div>
+                                        <div className={step.status === 'PASO' ? 'text-success' : 'text-danger'}><strong>{t('common.diagnosisLabel')}</strong> {friendlyStepDiagnosis(step, t)}</div>
                                       </div>
                                     )
                                   })()}
                                   <div className="d-flex justify-content-between gap-3">
-                                    <span className="font-monospace">Paso {step.number ?? step.numero_paso ?? index + 1}</span>
-                                    <Badge bg={statusVariant(step.status ?? step.estado)}>{statusLabel(step.status ?? step.estado)}</Badge>
+                                    <span className="font-monospace">{t('common.stepLabel')} {step.number ?? step.numero_paso ?? index + 1}</span>
+                                    <Badge bg={statusVariant(step.status ?? step.estado)}>{statusLabel(step.status ?? step.estado, t)}</Badge>
                                   </div>
-                                  <div className="mt-1"><strong>Agente:</strong> {step.agent || 'Motor IA'} <span className="ms-3"><strong>Categoría:</strong> {failureCategoryLabel(step.failure_category)}</span></div>
-                                  <div><strong>Motivo:</strong> {step.reason || step.observations || step.observaciones || '-'}</div>
-                                  <div><strong>Acción:</strong> {step.action_executed === false ? 'No ejecutada' : step.action_summary || 'No especificada'}</div>
+                                  <div className="mt-1"><strong>{t('common.agentLabel')}</strong> {step.agent || 'Motor IA'} <span className="ms-3"><strong>{t('common.categoryLabel')}</strong> {failureCategoryLabel(step.failure_category, t)}</span></div>
+                                  <div><strong>{t('common.reasonLabel')}</strong> {step.reason || step.observations || step.observaciones || '-'}</div>
+                                  <div><strong>{t('common.actionLabel')}</strong> {step.action_executed === false ? t('common.notExecutedValue') : step.action_summary || t('common.notSpecifiedValue')}</div>
                                 </div>
                               ))}
                             </div>
@@ -506,45 +484,17 @@ export function AutomationRunMonitorModal({
         <Button variant="outline-secondary" onClick={onHide}>Seguir en esta pantalla</Button>
         <Button variant="outline-primary" onClick={onOpenWorkers}>
           <ServerCog size={16} className="me-1" />
-          Ver workers
+          {t('ejecutarPruebas.viewWorkers')}
         </Button>
         {canViewHistory && !isDryRun && (
           <Button variant="primary" onClick={onOpenHistory}>
             <ExternalLink size={16} className="me-1" />
-            Ver historial
+            {t('ejecutarPruebas.viewHistory')}
           </Button>
         )}
       </Modal.Footer>
     </Modal>
-    <Modal show={show && Boolean(selectedArtifact)} onHide={() => setSelectedArtifact(null)} centered size="xl" backdrop="static">
-      <Modal.Header closeButton>
-        <Modal.Title className="fw-bold">{selectedArtifact?.label || 'Evidencia'}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body className="text-center bg-dark">
-        {selectedArtifact?.href ? (
-          <img
-            src={selectedArtifact.href}
-            alt={selectedArtifact.label || 'Evidencia'}
-            className="img-fluid rounded"
-            style={{ maxHeight: '70vh', objectFit: 'contain' }}
-          />
-        ) : (
-          <div className="text-white">No se pudo cargar la evidencia.</div>
-        )}
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="outline-secondary" onClick={() => setSelectedArtifact(null)}>Cerrar</Button>
-        {selectedArtifact?.href && (
-          <a
-            href={selectedArtifact.href}
-            download={selectedArtifact.filename || 'evidencia.png'}
-            className="btn btn-primary"
-          >
-            Descargar
-          </a>
-        )}
-      </Modal.Footer>
-    </Modal>
+    <AutomationArtifactModal options={{ show, selectedArtifact, setSelectedArtifact, t }} />
     </>
   )
 }

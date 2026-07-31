@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { Badge, Button, Card, Col, Form, ListGroup, Modal, Row } from 'react-bootstrap'
 import { Clock, Cpu, Globe, Layers, Search, Send, Settings } from 'lucide-react'
 import { flattenSuites } from '../../testRepositoryUtils'
+import { useI18n } from '../../i18n'
 
 type IaSchedulerModalProps = {
   show: boolean
@@ -42,6 +43,7 @@ export function IaSchedulerModal({
   iaProvider,
   onLaunch
 }: IaSchedulerModalProps) {
+  const { t } = useI18n()
   const query = schedulerSearch.toLowerCase()
   const caseDisplayCode = (test: any) => test.code || test.codigo || test.caseCode || test.id?.slice(0, 8) || 'SIN-ID'
 
@@ -49,7 +51,7 @@ export function IaSchedulerModal({
     <Modal show={show} onHide={onHide} size="xl" centered backdrop="static" contentClassName="border-0 shadow-lg rounded-4 overflow-hidden">
       <Modal.Header closeButton className="bg-dark text-white border-0 py-3">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2 fs-5">
-          <Cpu size={22} className="text-info" /> Configurar despliegue de agente IA
+          <Cpu size={22} className="text-info" /> {t('motorIa.schedulerTitle')}
         </Modal.Title>
       </Modal.Header>
 
@@ -57,12 +59,12 @@ export function IaSchedulerModal({
         <Row className="g-0" style={{ height: '70vh' }}>
           <Col md={7} className="border-end border-light-subtle bg-white d-flex flex-column h-100">
             <div className="p-3 border-bottom bg-light">
-              <h6 className="fw-bold text-secondary mb-2 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>Catálogo global de pruebas</h6>
+              <h6 className="fw-bold text-secondary mb-2 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>{t('motorIa.catalogoGlobal')}</h6>
               <div className="input-group input-group-sm">
                 <span className="input-group-text bg-white text-muted border-end-0"><Search size={14} /></span>
                 <Form.Control
                   type="text"
-                  placeholder="Buscar en todas las suites por nombre o ID..."
+                  placeholder={t('motorIa.searchSuites')}
                   className="border-start-0 shadow-none ps-0"
                   value={schedulerSearch}
                   onChange={(e) => setSchedulerSearch(e.target.value)}
@@ -101,7 +103,7 @@ export function IaSchedulerModal({
                         />
                         <span className="fw-bold text-dark small">{suite.nombre}</span>
                       </div>
-                      <Badge bg="secondary" className="opacity-75">{suiteTests.length} casos</Badge>
+                      <Badge bg="secondary" className="opacity-75">{t('motorIa.casesCount', { count: suiteTests.length })}</Badge>
                     </Card.Header>
                     <ListGroup variant="flush">
                       {suiteTests.map(test => (
@@ -134,17 +136,17 @@ export function IaSchedulerModal({
 
           <Col md={5} className="d-flex flex-column bg-light h-100 p-4 overflow-auto">
             <h6 className="fw-bold text-secondary mb-3 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>
-              Planilla de despliegue
+              {t('motorIa.deploymentForm')}
             </h6>
 
             <Card className="border-0 shadow-sm rounded-3 mb-3">
               <Card.Body className="p-3">
                 <Form.Group className="mb-3">
-                  <Form.Label className="x-small fw-bold text-muted mb-1">NOMBRE DE LA EJECUCIÓN</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted mb-1">{t('motorIa.executionName')}</Form.Label>
                   <Form.Control type="text" size="sm" value={execName} onChange={(e) => setExecName(e.target.value)} className="bg-light fw-bold text-dark" />
                 </Form.Group>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted mb-1 d-flex gap-1 align-items-center"><Clock size={12} /> HORARIO PROGRAMADO</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted mb-1 d-flex gap-1 align-items-center"><Clock size={12} /> {t('motorIa.scheduledTime')}</Form.Label>
                   <Form.Control type="datetime-local" size="sm" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="bg-light text-dark" />
                 </Form.Group>
               </Card.Body>
@@ -152,17 +154,17 @@ export function IaSchedulerModal({
 
             <Card className="border-0 shadow-sm rounded-3 mb-3">
               <Card.Body className="p-3">
-                <h6 className="x-small fw-bold text-muted mb-3">CONTEXTO DE ENTORNO</h6>
+                <h6 className="x-small fw-bold text-muted mb-3">{t('motorIa.environmentContext')}</h6>
                 <div className="d-flex align-items-center justify-content-between mb-2 small">
-                  <span className="text-secondary d-flex align-items-center gap-1"><Layers size={14} /> Build activa</span>
-                  <span className="fw-bold text-dark text-truncate" style={{ maxWidth: '150px' }}>{buildsList.find(build => build.id === currentBuildId)?.name || 'N/A'}</span>
+                  <span className="text-secondary d-flex align-items-center gap-1"><Layers size={14} /> {t('motorIa.activeBuild')}</span>
+                  <span className="fw-bold text-dark text-truncate" style={{ maxWidth: '150px' }}>{buildsList.find(build => build.id === currentBuildId)?.name || t('motorIa.noBuild')}</span>
                 </div>
                 <div className="d-flex align-items-center justify-content-between mb-2 small">
-                  <span className="text-secondary d-flex align-items-center gap-1"><Globe size={14} /> Ambiente</span>
-                  <span className="fw-bold text-dark">Staging (QA)</span>
+                  <span className="text-secondary d-flex align-items-center gap-1"><Globe size={14} /> {t('motorIa.environment')}</span>
+                  <span className="fw-bold text-dark">{t('motorIa.stagingEnv')}</span>
                 </div>
                 <div className="d-flex align-items-center justify-content-between small">
-                  <span className="text-secondary d-flex align-items-center gap-1"><Settings size={14} /> Modelo NLP</span>
+                  <span className="text-secondary d-flex align-items-center gap-1"><Settings size={14} /> {t('motorIa.nlpModel')}</span>
                   <Badge bg="primary" className="fw-normal">{iaProvider.toUpperCase()}</Badge>
                 </div>
               </Card.Body>
@@ -170,20 +172,20 @@ export function IaSchedulerModal({
 
             <div className="mt-auto pt-3 border-top border-light-subtle">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold text-secondary">Total seleccionados:</span>
+                <span className="fw-bold text-secondary">{t('motorIa.totalSelected')}</span>
                 <h3 className={`m-0 fw-bold ${selectedTestsForIa.length > 0 ? 'text-primary' : 'text-danger'}`}>
                   {selectedTestsForIa.length}
                 </h3>
               </div>
               <div className="d-flex gap-2 ia-launch-actions">
-                <Button variant="outline-secondary" className="fw-bold shadow-none" onClick={onHide}>Cancelar</Button>
+                <Button variant="outline-secondary" className="fw-bold shadow-none" onClick={onHide}>{t('motorIa.cancel')}</Button>
                 <Button
                   variant="outline-primary"
                   className="fw-bold shadow-none d-flex justify-content-center align-items-center gap-2"
                   disabled={selectedTestsForIa.length === 0 || !scheduledTime}
                   onClick={() => onLaunch('scheduled')}
                 >
-                  <Clock size={16} /> Programar
+                  <Clock size={16} /> {t('motorIa.schedule')}
                 </Button>
                 <Button
                   variant="primary"
@@ -191,7 +193,7 @@ export function IaSchedulerModal({
                   disabled={selectedTestsForIa.length === 0}
                   onClick={() => onLaunch('now')}
                 >
-                  <Send size={16} /> Ejecutar ahora
+                  <Send size={16} /> {t('motorIa.executeNow')}
                 </Button>
               </div>
             </div>

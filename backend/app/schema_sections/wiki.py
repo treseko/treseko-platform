@@ -43,7 +43,7 @@ class WikiPage(WikiPageBase):
     ultima_edicion_por: Optional[UUID] = None
     fecha_creacion: datetime
     ultima_actualizacion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class WikiHistory(BaseModel):
@@ -53,7 +53,7 @@ class WikiHistory(BaseModel):
     editado_por: UUID
     fecha_edicion: datetime
     comentario_cambio: Optional[str] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- SCHEDULER ---

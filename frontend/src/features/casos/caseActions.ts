@@ -3,6 +3,7 @@ import { API_BASE } from '../../app/constants'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { isValidUUID } from '../../app/validation'
 import { mergeCasesById } from './caseUtils'
+import type { TranslationKey } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
@@ -16,6 +17,7 @@ type LoadCasesOptions = {
 }
 
 type CreateCaseActionsParams = {
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   managingProjectId: string | null
   currentProjectId: string
@@ -45,9 +47,11 @@ type CreateCaseActionsParams = {
   setShowVersionsModal: (show: boolean) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  readOnlyBuild?: boolean
 }
 
 export function createCaseActions({
+  t,
   projectsSource,
   managingProjectId,
   currentProjectId,
@@ -76,8 +80,14 @@ export function createCaseActions({
   setSelectedCompareVersionId,
   setShowVersionsModal,
   showFeedback,
-  confirmAction
+  confirmAction,
+  readOnlyBuild = false
 }: CreateCaseActionsParams) {
+  const rejectReadOnlyWrite = () => {
+    if (!readOnlyBuild) return false
+    showFeedback(t('casos.updateCaseError'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
+    return true
+  }
   const fetchCasePages = async (path: string, baseParams: URLSearchParams) => {
     let skip = 0
     let items: any[] = []
@@ -88,7 +98,7 @@ export function createCaseActions({
       const response = await fetchWithAuth(`${API_BASE}${path}?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || t('casos.backendResponse', { status: response.status }))
       }
       const payload = await response.json()
       const page = Array.isArray(payload) ? payload : (payload.items || [])
@@ -160,7 +170,7 @@ export function createCaseActions({
         })
       }
     } catch (error: any) {
-      setProjectSyncMessage(`Error al cargar casos: ${error.message}`)
+      setProjectSyncMessage(`${t('casos.loadCasesError')}: ${error.message}`)
     } finally {
       if (!silent) setCasosLoading(false)
     }
@@ -183,14 +193,15 @@ export function createCaseActions({
       setCasosSearchResults(data.items)
       setCasosTotal(data.total)
     } catch (error: any) {
-      setProjectSyncMessage(`Error al buscar casos: ${error.message}`)
+      setProjectSyncMessage(`${t('casos.searchCasesError')}: ${error.message}`)
     }
   }
 
   const handleCreateCaso = async (casoData: any) => {
+    if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'Selecciona un proyecto válido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
     try {
@@ -203,21 +214,22 @@ export function createCaseActions({
       })
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || t('casos.backendResponse', { status: response.status }))
       }
       const createdCaso = await response.json()
       await loadCasosFromBackend(projectId)
       setShowCasoModal(false)
-      setProjectSyncMessage('Caso creado correctamente.')
+      setProjectSyncMessage(t('casos.caseCreated'))
       return createdCaso
     } catch (error: any) {
-      setProjectSyncMessage(`Error al crear caso: ${error.message}`)
-      showFeedback('Error al crear caso', error.message || 'No se pudo crear el caso de prueba.', 'danger')
+      setProjectSyncMessage(`${t('casos.createCaseError')}: ${error.message}`)
+      showFeedback(t('casos.createCaseError'), error.message || t('casos.createCaseFallback'), 'danger')
       return false
     }
   }
 
   const handleUpdateCaso = async (masterId: string, casoData: any) => {
+    if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) return
     try {
@@ -227,27 +239,28 @@ export function createCaseActions({
       })
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || t('casos.backendResponse', { status: response.status }))
       }
       const updatedCaso = await response.json()
       await loadCasosFromBackend(projectId)
       setShowCasoModal(false)
       const previousVersion = selectedTest?.version || updatedCaso.version
-      setProjectSyncMessage(updatedCaso.version > previousVersion ? 'Caso ejecutado: se creó una nueva versión.' : 'Caso en borrador actualizado correctamente.')
+      setProjectSyncMessage(updatedCaso.version > previousVersion ? t('casos.caseVersionCreated') : t('casos.caseDraftUpdated'))
       return updatedCaso
     } catch (error: any) {
-      setProjectSyncMessage(`Error al actualizar caso: ${error.message}`)
-      showFeedback('Error al guardar cambios', error.message || 'No se pudieron guardar los cambios del caso.', 'danger')
+      setProjectSyncMessage(`${t('casos.updateCaseError')}: ${error.message}`)
+      showFeedback(t('casos.saveChangesError'), error.message || t('casos.updateCaseFallback'), 'danger')
       return false
     }
   }
 
   const handleDeleteCaso = async (casoId: string) => {
+    if (rejectReadOnlyWrite()) return null
     const confirmed = await confirmAction({
-      title: 'Eliminar caso de prueba',
-      message: 'Se eliminará este caso de prueba. Esta acción no se puede deshacer.',
+      title: t('casos.deleteCaseTitle'),
+      message: t('casos.deleteCaseConfirm'),
       variant: 'danger',
-      confirmLabel: 'Eliminar caso'
+      confirmLabel: t('casos.deleteCase')
     })
     if (!confirmed) return
     const projectId = managingProjectId || currentProjectId
@@ -258,17 +271,18 @@ export function createCaseActions({
       })
       if (!response.ok) {
         const error = await response.json()
-        showFeedback('No se pudo eliminar el caso', error.detail || 'No se pudo eliminar el caso.', 'danger')
+        showFeedback(t('casos.deleteCaseFailed'), error.detail || t('casos.deleteCaseFailed'), 'danger')
         return
       }
       await loadCasosFromBackend(projectId)
-      setProjectSyncMessage('Caso eliminado correctamente.')
+      setProjectSyncMessage(t('casos.caseDeleted'))
     } catch (error: any) {
       setProjectSyncMessage(`Error al eliminar caso: ${error.message}`)
     }
   }
 
   const handleCloneCaso = async (casoId: string, suiteId?: string) => {
+    if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) return
     try {
@@ -282,17 +296,18 @@ export function createCaseActions({
       }
       const clonedCaso = await response.json()
       await loadCasosFromBackend(projectId)
-      setProjectSyncMessage('Caso copiado como nueva prueba correctamente.')
-      showFeedback('Prueba copiada', 'Se creo una nueva prueba independiente. Asignala a una build para ejecutarla.', 'success')
+      setProjectSyncMessage(t('casos.caseCopied'))
+      showFeedback(t('casos.caseCopied'), t('casos.caseCopiedMessage'), 'success')
       return clonedCaso
     } catch (error: any) {
       setProjectSyncMessage(`Error al copiar caso: ${error.message}`)
-      showFeedback('Error al copiar caso', error.message || 'No se pudo copiar el caso.', 'danger')
+      showFeedback(t('casos.copyCaseError'), error.message || t('casos.copyCaseError'), 'danger')
       return false
     }
   }
 
   const handleMoveCaso = async (casoId: string, suiteId: string) => {
+    if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId) || !isValidUUID(suiteId)) return false
     try {
@@ -306,12 +321,12 @@ export function createCaseActions({
       }
       const movedCaso = await response.json()
       await loadCasosFromBackend(projectId)
-      setProjectSyncMessage('Caso movido correctamente.')
-      showFeedback('Prueba movida', 'La prueba fue movida a la suite seleccionada.', 'success')
+      setProjectSyncMessage(t('casos.caseMoved'))
+      showFeedback(t('casos.caseMoved'), t('casos.caseMovedMessage'), 'success')
       return movedCaso
     } catch (error: any) {
       setProjectSyncMessage(`Error al mover caso: ${error.message}`)
-      showFeedback('Error al mover prueba', error.message || 'No se pudo mover la prueba.', 'danger')
+      showFeedback(t('casos.moveCaseError'), error.message || t('casos.moveCaseError'), 'danger')
       return false
     }
   }

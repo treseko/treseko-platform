@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Table } from 'react-bootstrap'
 import { AlertTriangle, Eye } from 'lucide-react'
+import { useI18n } from '../../../i18n'
 import { EvidenceList } from '../RunDetailModal'
 import { getEffectiveRunExecutionMode, getExecutionModeBadge } from '../mappers/historialMappers'
 
@@ -20,6 +21,7 @@ export function HistorialRunsTable({
   canViewDetail = true,
   canViewEvidence = true,
 }: Props) {
+  const { t } = useI18n()
   return (
     <Card className="border-0 shadow-sm rounded-3 bg-white p-4 history-runs-card">
       <Table responsive hover size="sm" className="align-middle border-0 history-runs-table">
@@ -37,16 +39,16 @@ export function HistorialRunsTable({
         </colgroup>
         <thead className="bg-light">
           <tr className="x-small text-muted text-uppercase border-bottom">
-            <th className="ps-3 py-3 border-0">Run ID</th>
-            <th className="border-0 text-dark">Fecha / Hora</th>
-            <th className="border-0 text-dark">Build</th>
-            <th className="border-0 text-dark text-center">Ejecutado con</th>
-            <th className="border-0 text-dark">Ambiente / Dataset</th>
-            <th className="border-0 text-dark">Responsable</th>
-            <th className="border-0 text-dark text-center">P/F/B/S</th>
-            <th className="border-0 text-dark text-center">Evidencias</th>
-            <th className="border-0 text-dark text-center">Verdict</th>
-            <th className="border-0 text-end pe-3">Acciones</th>
+            <th className="ps-3 py-3 border-0">{t('historial.runId')}</th>
+            <th className="border-0 text-dark">{t('historial.dateTime')}</th>
+            <th className="border-0 text-dark">{t('historial.build')}</th>
+            <th className="border-0 text-dark text-center">{t('historial.executedWith')}</th>
+            <th className="border-0 text-dark">{t('historial.envDataset')}</th>
+            <th className="border-0 text-dark">{t('historial.responsible')}</th>
+            <th className="border-0 text-dark text-center">{t('historial.pfbs')}</th>
+            <th className="border-0 text-dark text-center">{t('historial.evidenceCol')}</th>
+            <th className="border-0 text-dark text-center">{t('historial.verdict')}</th>
+            <th className="border-0 text-end pe-3">{t('historial.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -74,7 +76,7 @@ export function HistorialRunsTable({
                 </td>
                 <td>
                   <div className="small text-dark">{run.environmentName || '-'}</div>
-                  <div className="x-small text-muted">{run.datasetName || 'Sin dataset'}</div>
+                  <div className="x-small text-muted">{run.datasetName || t('historial.noDataset')}</div>
                 </td>
                 <td><Badge bg="light" text="dark" className="border x-small fw-normal">{run.runner}</Badge></td>
                 <td className="text-center small fw-bold">
@@ -86,12 +88,12 @@ export function HistorialRunsTable({
                       <>
                         <EvidenceList items={visibleEvidences} onOpenEvidence={onOpenEvidence} />
                         {hiddenEvidenceCount > 0 && (
-                          <Badge bg="light" text="dark" className="border x-small" title={`${hiddenEvidenceCount} evidencia(s) adicionales en el detalle`}>
+                          <Badge bg="light" text="dark" className="border x-small" title={t('historial.additionalEvidenceTitle', { count: hiddenEvidenceCount })}>
                             +{hiddenEvidenceCount}
                           </Badge>
                         )}
                       </>
-                    ) : <span className="text-muted x-small">Sin acceso</span>}
+                    ) : <span className="text-muted x-small">{t('historial.noAccess')}</span>}
                   </div>
                 </td>
                 <td className="text-center" style={{ width: '120px' }}>
@@ -103,17 +105,17 @@ export function HistorialRunsTable({
                   <div className="d-inline-flex align-items-center justify-content-end gap-2">
                     {canViewDetail && (
                       <Button variant="outline-primary" size="sm" className="x-small d-inline-flex align-items-center gap-1" onClick={() => onOpenRunDetail(run.id || run.runId)}>
-                        <Eye size={13} /> Ver detalle
+                        <Eye size={13} /> {t('historial.viewDetail')}
                       </Button>
                     )}
                     {pendingAiReview > 0 && (
                       <span
                         className="history-ai-review-warning"
-                        title={`${pendingAiReview} ejecucion${pendingAiReview === 1 ? '' : 'es'} IA requiere${pendingAiReview === 1 ? '' : 'n'} revision`}
-                        aria-label="Revision IA pendiente"
+                        title={t('historial.pendingAiReviewTitle', { count: pendingAiReview })}
+                        aria-label={t('historial.pendingAiReview')}
                       >
                         <AlertTriangle size={13} />
-                        <span className="visually-hidden">Revision IA pendiente</span>
+                        <span className="visually-hidden">{t('historial.pendingAiReview')}</span>
                       </span>
                     )}
                   </div>
@@ -123,7 +125,7 @@ export function HistorialRunsTable({
           })}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={10} className="text-center text-muted py-5 small">No se encontraron ejecuciones con los filtros actuales.</td>
+              <td colSpan={10} className="text-center text-muted py-5 small">{t('historial.noResults')}</td>
             </tr>
           )}
         </tbody>

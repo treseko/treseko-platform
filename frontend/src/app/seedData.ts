@@ -43,11 +43,11 @@ export const initialComponents = [
 ]
 
 export const initialBuilds = [
-  { id: 'b1', projectId: 'p1', componentId: 'c1', name: 'Build v2.8.5-STABLE', active: true, hidden: false },
-  { id: 'b2', projectId: 'p1', componentId: 'c1', name: 'Build v2.8.6-BETA', active: false, hidden: false },
-  { id: 'b3', projectId: 'p2', componentId: 'c4', name: 'Build v1.0.2-RELEASE', active: true, hidden: false },
-  { id: 'b4', projectId: 'p3', componentId: 'c7', name: 'Build v0.5.0-ALPHA', active: true, hidden: false },
-  { id: 'b5', projectId: 'p4', componentId: 'c10', name: 'Build v3.1.0-RC1', active: true, hidden: false }
+  { id: 'b1', projectId: 'p1', componentId: 'c1', name: 'Build v2.8.5-STABLE', state: 'ACTIVA', active: true, hidden: false },
+  { id: 'b2', projectId: 'p1', componentId: 'c1', name: 'Build v2.8.6-BETA', state: 'HISTORICA', active: false, hidden: false },
+  { id: 'b3', projectId: 'p2', componentId: 'c4', name: 'Build v1.0.2-RELEASE', state: 'ACTIVA', active: true, hidden: false },
+  { id: 'b4', projectId: 'p3', componentId: 'c7', name: 'Build v0.5.0-ALPHA', state: 'ACTIVA', active: true, hidden: false },
+  { id: 'b5', projectId: 'p4', componentId: 'c10', name: 'Build v3.1.0-RC1', state: 'ACTIVA', active: true, hidden: false }
 ]
 
 export const initialInventoryCategories = [

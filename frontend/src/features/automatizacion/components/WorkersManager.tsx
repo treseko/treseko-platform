@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Table } from 'react-bootstrap'
 import { Activity, CheckCircle2, Cpu, HardDrive, RefreshCw, Server, ShieldOff, XCircle } from 'lucide-react'
+import { useI18n } from '../../../i18n'
 import { isValidUUID } from '../../../app/validation'
 import { formatDateTime } from '../../../shared/utils/dateTime'
 import { languageLabel } from '../../casos/caseUtils'
@@ -45,6 +46,7 @@ export function WorkersManager({
   multiWorkerEnabled = true,
   schedulerEnabled = true
 }: WorkersManagerProps) {
+  const { t } = useI18n()
   const [runners, setRunners] = useState<WorkerRunner[]>([])
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
   const [jobs, setJobs] = useState<AutomationJob[]>([])
@@ -60,7 +62,7 @@ export function WorkersManager({
       if (!response.ok) throw new Error(await response.text())
       setRunners(await response.json())
     } catch (error: any) {
-      showFeedback('No se pudieron cargar workers', error?.message || 'Error consultando runners.', 'danger')
+      showFeedback(t('automatizacion.loadWorkersErrorTitle'), error?.message || t('automatizacion.loadWorkersError'), 'danger')
     } finally {
       if (!silent) setLoading(false)
     }
@@ -77,7 +79,7 @@ export function WorkersManager({
       if (!response.ok) throw new Error(await response.text())
       setJobs(await response.json())
     } catch (error: any) {
-      showFeedback('No se pudieron cargar jobs', error?.message || 'Error consultando jobs de automatizacion.', 'danger')
+      showFeedback(t('automatizacion.loadJobsErrorTitle'), error?.message || t('automatizacion.loadJobsError'), 'danger')
     }
   }
 
@@ -96,7 +98,7 @@ export function WorkersManager({
       if (!response.ok) throw new Error(await response.text())
       setPairingRequests(await response.json())
     } catch (error: any) {
-      showFeedback('No se pudieron cargar solicitudes', error?.message || 'Error consultando vinculaciones.', 'danger')
+      showFeedback(t('automatizacion.loadPairingRequestsErrorTitle'), error?.message || t('automatizacion.loadPairingRequestsError'), 'danger')
     }
   }
 
@@ -120,10 +122,10 @@ export function WorkersManager({
       const response = await fetchWithAuth(`/api/automation-runners/pairing-requests/${request.code}/approve`, { method: 'POST' })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.detail || 'No se pudo aprobar la vinculacion.')
-      showFeedback('Worker aprobado', `${request.nombre} ya puede conectarse.`, 'success')
+      showFeedback(t('automatizacion.workerApproved'), t('automatizacion.workerApprovedMessage', { name: request.nombre }), 'success')
       await refreshAll()
     } catch (error: any) {
-      showFeedback('No se pudo aprobar', error?.message || 'Backend rechazo la vinculacion.', 'danger')
+      showFeedback(t('automatizacion.approveWorkerErrorTitle'), error?.message || t('automatizacion.approveWorkerError'), 'danger')
     } finally {
       setPairingActionCode(null)
     }
@@ -135,10 +137,10 @@ export function WorkersManager({
       const response = await fetchWithAuth(`/api/automation-runners/pairing-requests/${request.code}/deny`, { method: 'POST' })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.detail || 'No se pudo rechazar la solicitud.')
-      showFeedback('Solicitud rechazada', `${request.nombre} debera generar un nuevo codigo.`, 'warning')
+      showFeedback(t('automatizacion.pairingRequestDenied'), t('automatizacion.pairingRequestDeniedMessage', { name: request.nombre }), 'warning')
       await refreshAll()
     } catch (error: any) {
-      showFeedback('No se pudo rechazar', error?.message || 'Backend rechazo la accion.', 'danger')
+      showFeedback(t('automatizacion.denyWorkerErrorTitle'), error?.message || t('automatizacion.denyWorkerError'), 'danger')
     } finally {
       setPairingActionCode(null)
     }
@@ -147,12 +149,12 @@ export function WorkersManager({
   const revokeRunner = async (runner: WorkerRunner) => {
     const response = await fetchWithAuth(`/api/automation-runners/${runner.id}/revoke`, { method: 'POST' })
     if (response.ok) {
-      showFeedback('Worker deshabilitado', `${runner.nombre} ya no puede tomar jobs.`, 'success')
+      showFeedback(t('automatizacion.workerRevoked'), t('automatizacion.workerRevokedMessage', { name: runner.nombre }), 'success')
       refreshAll()
       return
     }
     const data = await response.json().catch(() => null)
-    showFeedback('No se pudo deshabilitar', data?.detail || 'Backend rechazo la accion.', 'danger')
+    showFeedback(t('automatizacion.revokeWorkerErrorTitle'), data?.detail || t('automatizacion.revokeWorkerError'), 'danger')
   }
 
   return (
@@ -161,26 +163,26 @@ export function WorkersManager({
         <div>
           <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
             <Server size={20} className="text-primary" />
-            Workers de automatizacion
+            {t('automatizacion.workersTitle')}
           </h6>
           <p className="small text-muted mb-0">
-            Ejecutores dedicados que toman jobs por pull mode y reportan resultados a Treseko.
+            {t('automatizacion.workersDescription')}
           </p>
         </div>
         <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => refreshAll()} disabled={loading}>
-          <RefreshCw size={14} className="me-1" /> Actualizar
+          <RefreshCw size={14} className="me-1" /> {t('automatizacion.refresh')}
         </Button>
       </div>
 
       {canViewWorkers && <Row className="g-3 mb-3">
-        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">Registrados</div><div className="h4 mb-0">{totals.total}</div></div></Col>
-        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">Online</div><div className="h4 mb-0 text-success">{totals.online}</div></div></Col>
-        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">Ocupados</div><div className="h4 mb-0 text-primary">{totals.busy}</div></div></Col>
+        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">{t('automatizacion.registered')}</div><div className="h4 mb-0">{totals.total}</div></div></Col>
+        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">{t('automatizacion.online')}</div><div className="h4 mb-0 text-success">{totals.online}</div></div></Col>
+        <Col md={4}><div className="border rounded-3 p-3 bg-light"><div className="small text-muted">{t('automatizacion.busy')}</div><div className="h4 mb-0 text-primary">{totals.busy}</div></div></Col>
       </Row>}
 
       {canViewWorkers && !multiWorkerEnabled && (
         <Alert variant="info" className="border small">
-          Community permite vincular y usar un worker local por solución. Premium habilita varios workers y su administración distribuida.
+          {t('automatizacion.communityWorkersLimit')}
         </Alert>
       )}
 
@@ -188,18 +190,18 @@ export function WorkersManager({
         <div className="border rounded-3 p-3 mb-3">
           <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
             <div>
-              <div className="fw-bold">Vinculacion asistida</div>
+              <div className="fw-bold">{t('automatizacion.assistedPairing')}</div>
               <div className="small text-muted">
-                Ejecuta <code>npm start</code> en <code>automation-worker/</code>. El worker mostrara un codigo corto, vigente por dos horas, para aprobar aqui.
+                {t('automatizacion.assistedPairingDetail', { cmd: 'npm start', dir: 'automation-worker/' })}
               </div>
             </div>
             <Button variant="outline-primary" size="sm" className="fw-bold" onClick={loadPairingRequests}>
-              <RefreshCw size={14} className="me-1" /> Solicitudes
+              <RefreshCw size={14} className="me-1" /> {t('automatizacion.requests')}
             </Button>
           </div>
           {pairingRequests.length === 0 ? (
             <Alert variant="light" className="border small mb-0">
-              No hay workers esperando vinculacion. Ejecuta <code>npm start</code> en <code>automation-worker/</code>.
+              {t('automatizacion.noWorkersWaiting', { cmd: 'npm start', dir: 'automation-worker/' })}
             </Alert>
           ) : (
             <div className="d-flex flex-column gap-2">
@@ -212,10 +214,10 @@ export function WorkersManager({
                         <span className="fw-bold">{request.nombre}</span>
                       </div>
                       <div className="small text-muted">
-                        Expira: {formatDateTime(request.expires_at)} · {getFrameworks(request.capabilities)}
+                        {t('automatizacion.expires')}: {formatDateTime(request.expires_at)} · {getFrameworks(request.capabilities)}
                       </div>
                       <div className="small text-muted">
-                        Node {request.capabilities?.node_version || 'n/d'} · Playwright {request.capabilities?.playwright_version || request.capabilities?.versions?.playwright || 'n/d'}
+                        Node {request.capabilities?.node_version || t('automatizacion.notAvailable')} · Playwright {request.capabilities?.playwright_version || request.capabilities?.versions?.playwright || t('automatizacion.notAvailable')}
                       </div>
                     </div>
                     <div className="d-flex gap-2">
@@ -226,7 +228,7 @@ export function WorkersManager({
                         onClick={() => approvePairing(request)}
                         disabled={pairingActionCode === request.code}
                       >
-                        <CheckCircle2 size={14} className="me-1" /> Aprobar
+                        <CheckCircle2 size={14} className="me-1" /> {t('automatizacion.approve')}
                       </Button>
                       <Button
                         variant="outline-danger"
@@ -235,7 +237,7 @@ export function WorkersManager({
                         onClick={() => denyPairing(request)}
                         disabled={pairingActionCode === request.code}
                       >
-                        <XCircle size={14} className="me-1" /> Rechazar
+                        <XCircle size={14} className="me-1" /> {t('automatizacion.deny')}
                       </Button>
                     </div>
                   </div>
@@ -246,19 +248,19 @@ export function WorkersManager({
         </div>
       ) : canViewWorkers ? (
         <Alert variant="light" className="border small">
-          Puedes consultar workers disponibles, pero necesitas permiso de edicion en automatizacion para vincular o revocar workers.
+          {t('automatizacion.viewOnlyWorkers')}
         </Alert>
       ) : null}
 
       {canViewWorkers && <Table hover responsive className="align-middle mb-0">
         <thead className="table-light">
           <tr>
-            <th>Worker</th>
-            <th>Estado</th>
-            <th>Capacidades</th>
-            <th>Recursos</th>
-            <th>Ultimo heartbeat</th>
-            <th className="text-end">Acciones</th>
+            <th>{t('automatizacion.worker')}</th>
+            <th>{t('automatizacion.status')}</th>
+            <th>{t('automatizacion.capabilities')}</th>
+            <th>{t('automatizacion.resources')}</th>
+            <th>{t('automatizacion.lastHeartbeat')}</th>
+            <th className="text-end">{t('automatizacion.actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -283,23 +285,23 @@ export function WorkersManager({
                     ))}
                   </div>
                   <div className="text-muted">
-                    Node {runner.capabilities?.node_version || 'n/d'} · Playwright {runner.capabilities?.playwright_version || runner.capabilities?.versions?.playwright || 'n/d'}
+                    Node {runner.capabilities?.node_version || t('automatizacion.notAvailable')} · Playwright {runner.capabilities?.playwright_version || runner.capabilities?.versions?.playwright || t('automatizacion.notAvailable')}
                   </div>
-                  <div className="text-muted">{(runner.capabilities?.browsers || []).join(', ') || 'Browsers no reportados'}</div>
+                  <div className="text-muted">{(runner.capabilities?.browsers || []).join(', ') || t('automatizacion.browsersNotReported')}</div>
                 </td>
                 <td className="small">
-                  <div><Cpu size={13} className="me-1" />Jobs activos: {runner.capabilities?.active_jobs ?? 0}</div>
-                  <div><HardDrive size={13} className="me-1" />Disco libre: {resources.disk_free_mb ? `${resources.disk_free_mb} MB` : 'n/d'}</div>
-                  <div className="text-muted">RAM usada: {resources.memory_used_mb ? `${resources.memory_used_mb} MB` : 'n/d'}</div>
+                  <div><Cpu size={13} className="me-1" />{t('automatizacion.activeJobs')}: {runner.capabilities?.active_jobs ?? 0}</div>
+                  <div><HardDrive size={13} className="me-1" />{t('automatizacion.diskFree')}: {resources.disk_free_mb ? `${resources.disk_free_mb} MB` : t('automatizacion.notAvailable')}</div>
+                  <div className="text-muted">{t('automatizacion.ramUsed')}: {resources.memory_used_mb ? `${resources.memory_used_mb} MB` : t('automatizacion.notAvailable')}</div>
                 </td>
                 <td className="small">{formatLastSeen(runner.ultimo_heartbeat)}</td>
                 <td className="text-end">
                   {canManageWorkers ? (
                     <Button variant="outline-danger" size="sm" disabled={!runner.activo} onClick={() => revokeRunner(runner)}>
-                      <ShieldOff size={14} className="me-1" /> Revocar
+                      <ShieldOff size={14} className="me-1" /> {t('automatizacion.revoke')}
                     </Button>
                   ) : (
-                    <span className="text-muted small">Solo lectura</span>
+                    <span className="text-muted small">{t('automatizacion.readOnly')}</span>
                   )}
                 </td>
               </tr>
@@ -308,7 +310,7 @@ export function WorkersManager({
           {runners.length === 0 && (
             <tr>
               <td colSpan={6} className="text-center text-muted py-4">
-                No hay workers registrados en esta base. Inicia uno desde <code>automation-worker/</code> y aprueba su codigo en esta pantalla.
+                {t('automatizacion.noWorkersRegistered', { dir: 'automation-worker/' })}
               </td>
             </tr>
           )}
@@ -318,25 +320,25 @@ export function WorkersManager({
       {canViewJobs && <div className="border-top mt-4 pt-3">
         <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
           <div>
-            <h6 className="fw-bold text-dark mb-1">Jobs recientes</h6>
+            <h6 className="fw-bold text-dark mb-1">{t('automatizacion.recentJobs')}</h6>
             <p className="small text-muted mb-0">
-              Ultimos trabajos enviados a workers. Usa esta tabla para ver si el job fue tomado, termino o fallo al reportar.
+              {t('automatizacion.recentJobsDescription')}
             </p>
           </div>
           <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={loadJobs}>
-            <RefreshCw size={14} className="me-1" /> Jobs
+            <RefreshCw size={14} className="me-1" /> {t('automatizacion.jobs')}
           </Button>
         </div>
         <Table hover responsive className="align-middle mb-0">
           <thead className="table-light">
             <tr>
-              <th>Caso</th>
-              <th>Estado</th>
-              <th>Worker</th>
-              <th>Framework</th>
-              <th>Creado</th>
-              <th>Tiempo</th>
-              <th>Diagnostico</th>
+              <th>{t('automatizacion.case')}</th>
+              <th>{t('automatizacion.status')}</th>
+              <th>{t('automatizacion.workerCol')}</th>
+              <th>{t('automatizacion.framework')}</th>
+              <th>{t('automatizacion.created')}</th>
+              <th>{t('automatizacion.time')}</th>
+              <th>{t('automatizacion.diagnostic')}</th>
             </tr>
           </thead>
           <tbody>
@@ -349,7 +351,7 @@ export function WorkersManager({
                   <td>
                     <div className="fw-bold">
                       <Badge bg="light" text="primary" className="border me-2">{payload.case_code || job.caso_id.slice(0, 8)}</Badge>
-                      {payload.case_title || 'Caso automatizado'}
+                      {payload.case_title || t('automatizacion.automatedCase')}
                     </div>
                     <div className="small text-muted">Job {job.id.slice(0, 8)}</div>
                   </td>
@@ -361,25 +363,25 @@ export function WorkersManager({
                         <div className="text-muted">{runner.id.slice(0, 8)}</div>
                       </>
                     ) : (
-                      <span className="text-muted">Sin asignar</span>
+                      <span className="text-muted">{t('automatizacion.unassigned')}</span>
                     )}
                   </td>
                   <td className="small">
-                    <div>{job.required_framework || payload.framework || 'n/d'} + {languageLabel(job.required_language || payload.language || 'javascript')}</div>
-                    <div className="text-muted">{job.required_runtime || payload.framework_version || 'compatible'}</div>
+                    <div>{job.required_framework || payload.framework || t('automatizacion.notAvailable')} + {languageLabel(job.required_language || payload.language || 'javascript')}</div>
+                    <div className="text-muted">{job.required_runtime || payload.framework_version || t('automatizacion.compatible')}</div>
                   </td>
                   <td className="small">{formatLastSeen(job.fecha_creacion)}</td>
                   <td className="small">{formatDuration(job.fecha_claim || job.fecha_creacion, job.fecha_fin)}</td>
                   <td className="small" style={{ minWidth: 260 }}>
                     {diagnostic ? (
                       <details>
-                        <summary className="text-primary fw-semibold" role="button">Ver log/error</summary>
+                        <summary className="text-primary fw-semibold" role="button">{t('automatizacion.viewLog')}</summary>
                         <pre className="bg-light border rounded-3 p-2 mt-2 mb-0 small text-wrap" style={{ maxHeight: 160, overflow: 'auto' }}>
                           {diagnostic}
                         </pre>
                       </details>
                     ) : (
-                      <span className="text-muted">Sin diagnostico reportado</span>
+                      <span className="text-muted">{t('automatizacion.noDiagnostic')}</span>
                     )}
                   </td>
                 </tr>
@@ -388,7 +390,7 @@ export function WorkersManager({
             {jobs.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
-                  Todavia no hay jobs automatizados. Inicia una ejecucion automatizada desde Ejecutar Pruebas.
+                  {t('automatizacion.noJobsYet')}
                 </td>
               </tr>
             )}
@@ -397,7 +399,7 @@ export function WorkersManager({
       </div>}
       {!schedulerEnabled && (
         <Alert variant="light" className="border small mt-4 mb-0">
-          La cola de jobs y el scheduler quedan bloqueados en Community para evitar llamadas a endpoints Premium.
+          {t('automatizacion.schedulerBlocked')}
         </Alert>
       )}
     </Card>

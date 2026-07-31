@@ -266,7 +266,7 @@ async def promote_build_case_version(db: AsyncSession, build_id: UUID, old_caso_
     db_build = build_result.scalar_one_or_none()
     if not db_build:
         return False, "Build no encontrada", []
-    if not db_build.activo:
+    if not access_control.is_build_active(db_build):
         return False, "La build esta inactiva y no permite nuevas ejecuciones", []
 
     cases_result = await db.execute(
@@ -433,9 +433,9 @@ async def delete_suite(db: AsyncSession, suite_id: UUID) -> tuple[bool, str]:
     db_suite = await get_suite(db, suite_id)
     if not db_suite:
         return False, "Suite no encontrada"
-    
+
     all_suite_ids = [suite_id] + [s.id for s in await get_all_descendant_suites(db, suite_id)]
-    
+
     for sid in all_suite_ids:
         result = await db.execute(
             select(models.CasoPrueba).filter(
@@ -447,7 +447,7 @@ async def delete_suite(db: AsyncSession, suite_id: UUID) -> tuple[bool, str]:
         for caso in casos:
             if await has_executions(db, caso.id):
                 return False, f"No se puede eliminar la suite porque el caso '{caso.titulo}' tiene ejecuciones"
-    
+
     for sid in all_suite_ids:
         result = await db.execute(select(models.Suite).filter(models.Suite.id == sid))
         suite = result.scalar_one_or_none()
@@ -459,6 +459,6 @@ async def delete_suite(db: AsyncSession, suite_id: UUID) -> tuple[bool, str]:
         .where(models.CasoPrueba.suite_id.in_(all_suite_ids))
         .values(activo=False)
     )
-    
+
     await db.commit()
     return True, "Suite eliminada correctamente"

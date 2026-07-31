@@ -53,6 +53,7 @@ export function createEjecucionActionBundle(params: any) {
     setStepResults: params.setStepResults,
     setSnapshotNotes: params.setSnapshotNotes,
     showFeedback: params.showFeedback,
+    t: params.t,
   })
 
   const ensureGeneralEvidenceSnapshot = async () => {
@@ -77,7 +78,7 @@ export function createEjecucionActionBundle(params: any) {
         prev.some(item => item.id === attachment.id) ? prev : [...prev, attachment]
       )
     } catch (error: any) {
-      params.showFeedback('No se pudo vincular evidencia', error.message || 'Error al adjuntar evidencia general.', 'danger')
+      params.showFeedback(params.t('ejecutarPruebas.evidenceLinkFailed'), error.message || params.t('ejecutarPruebas.generalEvidenceAttachFailed'), 'danger')
     }
   }
 

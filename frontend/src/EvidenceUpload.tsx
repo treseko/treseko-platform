@@ -4,6 +4,7 @@ import { FileText, Image as ImageIcon, Upload, X } from 'lucide-react'
 import { isImageAsset, resolveAssetUrl } from './shared/utils/assets'
 import { EvidenceViewerModal, type EvidenceViewerItem } from './shared/components/EvidenceViewerModal'
 import { isEvidenceAvailable } from './shared/utils/evidenceAvailability'
+import { useI18n } from './i18n'
 
 export type AttachmentMeta = {
   id: string
@@ -78,20 +79,22 @@ export const EvidenceUpload = ({
   enablePaste = true,
   compact = false,
   iconOnly = false,
-  label = 'Adjuntar evidencia',
+  label,
   onRemoveAttachment
 }: EvidenceUploadProps) => {
+  const { t } = useI18n()
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
+  const displayLabel = label || t('common.attachedEvidence')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const uploadFile = async (file: File) => {
     setError(null)
     if (file.size > maxFileSize * 1024 * 1024) {
-      setError(`El archivo supera el maximo permitido de ${maxFileSize}MB.`)
+      setError(t('common.maxFileSizeError', { size: maxFileSize }))
       return
     }
 
@@ -112,7 +115,7 @@ export const EvidenceUpload = ({
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data.detail || `Backend respondio ${response.status}`)
+        throw new Error(data.detail || t('common.backendResponded', { status: response.status }))
       }
       setUploadProgress(100)
       onUploadComplete(data)
@@ -120,7 +123,7 @@ export const EvidenceUpload = ({
         fileInputRef.current.value = ''
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al subir el archivo')
+      setError(err instanceof Error ? err.message : t('common.uploadFailed'))
     } finally {
       setUploading(false)
     }
@@ -181,9 +184,9 @@ export const EvidenceUpload = ({
               )}
               <div className="min-w-0">
                 <Button variant="link" size="sm" className={`p-0 text-start text-truncate small text-decoration-none d-block ${!isEvidenceAvailable(attachment) ? 'text-muted' : ''}`} onClick={() => openEvidenceViewer(attachment)}>
-                  {attachment.filename_original || 'archivo'}
+                  {attachment.filename_original || t('common.fileNameFallback')}
                 </Button>
-                {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark" className="x-small">Archivo no disponible</Badge>}
+                {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark" className="x-small">{t('common.evidenceFileUnavailable')}</Badge>}
               </div>
               {!disabled && onRemoveAttachment && (
                 <Button variant="link" size="sm" className="p-0 text-danger ms-auto" onClick={() => onRemoveAttachment(attachment)}>
@@ -201,9 +204,9 @@ export const EvidenceUpload = ({
             variant="outline-primary"
             size="sm"
             className="x-small rounded-pill fw-bold"
-            onClick={() => setViewerEvidence({ url: currentEvidence, filename: 'Evidencia legacy', contentType: null })}
+            onClick={() => setViewerEvidence({ url: currentEvidence, filename: t('common.legacyEvidence'), contentType: null })}
           >
-            <ImageIcon size={14} className="me-1" /> Ver evidencia legacy
+            <ImageIcon size={14} className="me-1" /> {t('common.viewLegacyEvidence')}
           </Button>
         </div>
       )}
@@ -214,29 +217,29 @@ export const EvidenceUpload = ({
         className={`${iconOnly ? 'evidence-upload-icon-btn' : compact ? 'x-small py-1 px-2' : 'w-100 py-3'} fw-bold shadow-none`}
         onClick={() => fileInputRef.current?.click()}
         disabled={disabled || uploading}
-        title={label}
-        aria-label={label}
+        title={displayLabel}
+        aria-label={displayLabel}
       >
         {iconOnly && uploading ? (
           <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
         ) : uploading ? (
           <>
             <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-            Subiendo...
+            {t('common.uploading')}
           </>
         ) : iconOnly ? (
           <Upload size={14} />
         ) : (
           <>
             <Upload size={14} className="me-2" />
-            {label}
+            {displayLabel}
           </>
         )}
       </Button>
 
       {uploading && <ProgressBar now={uploadProgress} className="mt-2" style={{ height: 4 }} />}
       {error && <Alert variant="danger" className="mt-2 mb-0 py-2 small">{error}</Alert>}
-      {enablePaste && !compact && <div className="x-small text-muted mt-1">Tambien puedes pegar imagenes con Ctrl + V.</div>}
+      {enablePaste && !compact && <div className="x-small text-muted mt-1">{t('common.pasteImagesHint')}</div>}
       <EvidenceViewerModal evidence={viewerEvidence} onHide={() => setViewerEvidence(null)} />
     </div>
   )

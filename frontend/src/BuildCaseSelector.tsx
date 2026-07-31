@@ -1,7 +1,8 @@
-import { memo, useMemo, useState, useCallback } from 'react'
+import { memo, useMemo, useState, useCallback, type CSSProperties } from 'react'
 import { Button, Form } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, Folders, FileText, Search } from 'lucide-react'
 import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
+import { useI18n } from './i18n'
 
 type BuildCaseSelectorProps = {
   suitesTree: any[]
@@ -12,6 +13,7 @@ type BuildCaseSelectorProps = {
   searchQuery?: string
   onSearchChange?: (q: string) => void
   lockedCaseIds?: string[]
+  readOnly?: boolean
 }
 
 type SuiteNodeProps = {
@@ -25,6 +27,7 @@ type SuiteNodeProps = {
   onToggleCase: (caseId: string) => void
   searchQuery: string
   lockedIds: Set<string>
+  readOnly: boolean
 }
 
 const getSuiteCaseIds = (suite: any, casosList: any[]): string[] => {
@@ -49,8 +52,10 @@ const SuiteNode = memo(({
   onToggleSuite,
   onToggleCase,
   searchQuery,
-  lockedIds
+  lockedIds,
+  readOnly
 }: SuiteNodeProps) => {
+  const { t } = useI18n()
   const isExpanded = expandedSuites[suite.id]
 
   const suiteCaseIds = useMemo(() =>
@@ -96,8 +101,8 @@ const SuiteNode = memo(({
   return (
     <div className="mb-1">
       <div
-        className="p-2 rounded-3 d-flex align-items-center gap-2 border border-transparent"
-        style={{ marginLeft: level * 16, minHeight: '38px', background: suiteColor, cursor: 'pointer' }}
+        className="execution-suite-row p-2 rounded-3 d-flex align-items-center gap-2 border border-transparent"
+        style={{ marginLeft: level * 16, minHeight: '38px', '--suite-color': suiteColor, cursor: 'pointer' } as CSSProperties}
         onClick={() => onToggleExpand(suite.id)}
       >
         <span className="flex-shrink-0 d-flex align-items-center justify-content-center" style={{ width: '16px' }}>
@@ -116,13 +121,14 @@ const SuiteNode = memo(({
           ref={el => { if (el) el.indeterminate = isIndeterminate }}
           onClick={(e) => e.stopPropagation()}
           onChange={() => onToggleSuite(suiteCaseIds)}
+          disabled={readOnly}
         />
 
         <Folders size={16} className="flex-shrink-0 text-warning" />
         <span className="app-small text-truncate flex-grow-1 text-dark">{suite.nombre}</span>
         {lockCount > 0 && (
           <span className="badge bg-success-subtle text-success border border-success-subtle x-small fw-semibold flex-shrink-0">
-            {lockCount} ejecutados
+            {t('common.executedCount', { count: lockCount })}
           </span>
         )}
         <span className="badge bg-light text-dark border x-small fw-semibold flex-shrink-0">
@@ -145,6 +151,7 @@ const SuiteNode = memo(({
               onToggleCase={onToggleCase}
               searchQuery={searchQuery}
               lockedIds={lockedIds}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -159,9 +166,9 @@ const SuiteNode = memo(({
               return (
             <div
               key={test.id}
-              className="py-1 px-2 rounded-2 d-flex align-items-center gap-2 border"
+              className="execution-suite-case-row py-1 px-2 rounded-2 d-flex align-items-center gap-2 border"
               style={{ minHeight: '28px', background: locked ? '#F8FAFC' : '#FFFFFF', borderColor: locked ? '#CBD5E1' : '#E9ECEF' }}
-              title={locked ? 'Caso ya ejecutado en esta build. No se puede quitar.' : test.title}
+              title={locked ? t('common.lockedCaseTitle') : test.title}
             >
               <input
                 type="checkbox"
@@ -174,7 +181,7 @@ const SuiteNode = memo(({
               <FileText size={12} className="flex-shrink-0 text-muted" />
               <span className="font-monospace x-small fw-bold text-secondary flex-shrink-0">{test.code || test.id.slice(0, 8).toUpperCase()}</span>
               <span className="x-small text-truncate flex-grow-1 text-dark">{test.title}</span>
-              {locked && <span className="badge bg-success-subtle text-success border border-success-subtle x-small flex-shrink-0">Ejecutado</span>}
+              {locked && <span className="badge bg-success-subtle text-success border border-success-subtle x-small flex-shrink-0">{t('common.executed')}</span>}
             </div>
           )})}
         </div>
@@ -193,8 +200,10 @@ export const BuildCaseSelector = memo(({
   onSelectionChange,
   searchQuery = '',
   onSearchChange,
-  lockedCaseIds = []
+  lockedCaseIds = [],
+  readOnly = false
 }: BuildCaseSelectorProps) => {
+  const { t } = useI18n()
   const selectedIds = useMemo(() => new Set(selectedCaseIds), [selectedCaseIds])
   const lockedIds = useMemo(() => new Set(lockedCaseIds), [lockedCaseIds])
 
@@ -209,7 +218,7 @@ export const BuildCaseSelector = memo(({
   const selectorSuites = useMemo(() => {
     const unsuitedCases = filteredCases.filter(test => !test.suiteId)
     const unsuitedRoot = unsuitedCases.length > 0
-      ? [{ id: UNSUITED_CASES_ROOT_ID, nombre: 'Casos sin suite', color: '#F8FAFC', children: [] }]
+      ? [{ id: UNSUITED_CASES_ROOT_ID, nombre: t('casos.noSuiteCases'), color: '#F8FAFC', children: [] }]
       : []
     return [...unsuitedRoot, ...suitesTree]
   }, [filteredCases, suitesTree])
@@ -271,7 +280,7 @@ export const BuildCaseSelector = memo(({
           <div className="input-group input-group-sm">
             <span className="input-group-text bg-white border-end-0"><Search size={14} className="text-muted" /></span>
             <Form.Control
-              placeholder="Buscar suite o caso..."
+              placeholder={t('common.searchSuiteOrCase')}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="border-start-0 bg-white"
@@ -285,7 +294,7 @@ export const BuildCaseSelector = memo(({
         </div>
       )}
       <div className="d-flex justify-content-between align-items-center mb-2">
-        <span className="x-small text-muted">{selectedCount} de {totalCases} casos seleccionados</span>
+        <span className="x-small text-muted">{t('common.selectedCases', { selected: selectedCount, total: totalCases })}</span>
         <div className="d-flex gap-1">
           <Button
             variant="link"
@@ -293,10 +302,11 @@ export const BuildCaseSelector = memo(({
             className="p-0 x-small text-decoration-none shadow-none"
             onClick={() => {
               const allIds = filteredCases.map(c => c.id)
-              onSelectionChange([...new Set([...selectedCaseIds, ...allIds])])
-            }}
+            onSelectionChange([...new Set([...selectedCaseIds, ...allIds])])
+          }}
+            disabled={readOnly}
           >
-            Seleccionar todos
+            {t('common.selectAll')}
           </Button>
           <span className="x-small text-muted">|</span>
           <Button
@@ -304,15 +314,16 @@ export const BuildCaseSelector = memo(({
             size="sm"
             className="p-0 x-small text-decoration-none shadow-none"
             onClick={() => onSelectionChange(selectedCaseIds.filter(id => lockedIds.has(id)))}
+            disabled={readOnly}
           >
-            Limpiar
+            {t('common.clear')}
           </Button>
         </div>
       </div>
       <div className="border rounded-3 overflow-auto p-2" style={{ maxHeight: '420px' }}>
         {selectorSuites.length === 0 ? (
           <div className="text-center text-muted small py-4">
-            No hay suites disponibles.
+            {t('common.noSuitesAvailable')}
           </div>
         ) : (
           selectorSuites.map(suite => (
@@ -328,6 +339,7 @@ export const BuildCaseSelector = memo(({
               onToggleCase={handleToggleCase}
               searchQuery={searchQuery}
               lockedIds={lockedIds}
+              readOnly={readOnly}
             />
           ))
         )}

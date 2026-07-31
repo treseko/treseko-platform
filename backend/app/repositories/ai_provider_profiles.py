@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from uuid import UUID
 import os
-from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -11,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models, schemas
 from ..services.ai_credential_crypto import decrypt_ai_credential, encrypt_ai_credential
+from ..services.error_contract import current_correlation_id
 from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
-from .repository_context import AI_ENGINE_CONFIG_KEY, DEFAULT_AI_ENGINE_CONFIG, utc_now
+from .repository_context import AI_ENGINE_CONFIG_KEY, DEFAULT_AI_ENGINE_CONFIG, engine_internal_headers, utc_now
 
 
 PROVIDER_ADAPTERS = {
@@ -297,14 +297,8 @@ async def resolved_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> di
 async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
     row = await get_ai_provider_profile(db, profile_id)
     resolved = await resolved_ai_provider_profile(db, profile_id)
-    token = os.getenv("AI_ENGINE_INTERNAL_TOKEN", "").strip()
-    token_file = os.getenv("AI_ENGINE_INTERNAL_TOKEN_FILE", "").strip()
-    if not token and token_file:
-        try:
-            token = Path(token_file).read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise RuntimeError("No se pudo leer el token interno del Motor IA") from exc
-    if not token:
+    headers = engine_internal_headers(current_correlation_id())
+    if "X-Engine-Internal-Token" not in headers:
         raise RuntimeError("El token interno del Motor IA no está configurado")
     payload = {
         "provider": resolved["provider"], "llm_endpoint": resolved["endpoint"],
@@ -315,7 +309,8 @@ async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
         async with httpx.AsyncClient(timeout=httpx.Timeout(row.request_timeout_seconds, connect=10.0)) as client:
             response = await client.post(
                 f"{os.getenv('ENGINE_URL', 'http://127.0.0.1:3010').rstrip('/')}/provider-health",
-                json=payload, headers={"X-Engine-Internal-Token": token},
+                json=payload,
+                headers=headers,
             )
     except httpx.HTTPError as exc:
         raise ValueError("No se pudo conectar con el Motor IA para probar el perfil") from exc

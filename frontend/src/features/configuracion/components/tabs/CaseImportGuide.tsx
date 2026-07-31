@@ -11,6 +11,7 @@ import {
 } from "react-bootstrap";
 import { Archive, Download, FileSpreadsheet, HelpCircle } from "lucide-react";
 import { API_BASE } from "../../../../app/constants";
+import { useI18n } from "../../../../i18n";
 
 type GuideProfile = {
   id: string;
@@ -27,41 +28,19 @@ type Props = {
   onSelectProfile?: (profileId: string) => void;
 };
 
-const profileGuidance: Record<string, string> = {
-  "treseko/tcases-v1":
-    "Usá un paquete .tcases exportado por Treseko. Conserva el árbol, las versiones, los pasos y los adjuntos incluidos en el paquete.",
-  "csv/structured-v1":
-    "Usá una fila por paso y repetí el ID para agruparlos en un caso. Es la opción indicada para una herramienta propia o no incluida en la lista.",
-  "testlink/xml-v1":
-    "En TestLink, exportá las suites como XML. Seleccioná este perfil sin editar manualmente el XML generado.",
-  "testrail/xml-v1":
-    "Exportá las secciones y casos desde TestRail en XML. Treseko reconstruirá las secciones como suites.",
-  "testrail/csv-v1":
-    "Exportá desde TestRail en CSV incluyendo ID, Title, Section y las columnas de pasos y resultados esperados.",
-  "xray/csv-v1":
-    "Usá el CSV del Test Case Importer de Xray, conservando Issue Id, Issue Type, Test Summary, Action y Result.",
-  "xray/json-v1":
-    "El JSON debe usar el contrato de resultados Xray y contener testInfo dentro de cada prueba. Un reporte que sólo tenga estados de ejecución no define casos importables.",
-  "zephyr/json-v1":
-    "Usá una respuesta de casos de Zephyr Scale Cloud API v2 con el arreglo values y sus testScript.",
-  "zephyr/xml-v1":
-    "En Zephyr Scale, generá un Project XML export. Este perfil no corresponde a XML de Zephyr Squad o Enterprise.",
-  "azure-test-plans/csv-v1":
-    "Exportá los Test Cases de Azure Test Plans en CSV e incluí ID, Work Item Type, Title, Test Step, Step Action y Step Expected.",
-  "qase/csv-v1":
-    "Exportá los casos desde Qase en CSV con suites y pasos. No elimines las filas que describen la jerarquía de suites.",
-  "qase/json-v1":
-    "Usá una exportación JSON de Qase o una respuesta API v1 de casos. La vista previa indicará qué envoltorio reconoció.",
-  "qtest/excel-v1":
-    "Exportá desde qTest en XLS o XLSX incluyendo Test Case ID, Test Case Name, Module Path y las columnas de pasos.",
-  "practitest/csv-v1":
-    "Exportá los tests desde PractiTest en CSV incluyendo Test ID, Test Name, Folder, Step Description y Expected Result.",
-  "gherkin/feature-v1":
-    "Seleccioná un archivo .feature válido. Cada Scenario o fila de Examples se convertirá en un caso de prueba.",
+const profileGuidanceKeys: Record<string, string> = {
+  "treseko/tcases-v1": "guidanceTcases", "csv/structured-v1": "guidanceCsv",
+  "testlink/xml-v1": "guidanceTestlink", "testrail/xml-v1": "guidanceTestrailXml",
+  "testrail/csv-v1": "guidanceTestrailCsv", "xray/csv-v1": "guidanceXrayCsv",
+  "xray/json-v1": "guidanceXrayJson", "zephyr/json-v1": "guidanceZephyrJson",
+  "zephyr/xml-v1": "guidanceZephyrXml", "azure-test-plans/csv-v1": "guidanceAzure",
+  "qase/csv-v1": "guidanceQaseCsv", "qase/json-v1": "guidanceQaseJson",
+  "qtest/excel-v1": "guidanceQtest", "practitest/csv-v1": "guidancePractitest",
+  "gherkin/feature-v1": "guidanceGherkin",
 };
 
 const csvFields = [
-  ["id", "Sí", "Identificador estable y único del caso, por ejemplo TC-LOGIN-001."],
+  ["id", "yes", "csvId"],
   ["title", "Sí", "Nombre visible del caso de prueba."],
   ["suite", "No", "Ruta jerárquica separada por /, por ejemplo Web/Autenticación."],
   ["description", "No", "Objetivo o alcance del caso, en texto."],
@@ -137,10 +116,12 @@ export function CaseImportGuide({
   fetchWithAuth,
   onSelectProfile,
 }: Props) {
+  const { locale, t } = useI18n();
+  const text = (es: string, en: string) => locale === "en" ? en : es;
   const [show, setShow] = useState(false);
   const [downloadingTcases, setDownloadingTcases] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const profileName = profile?.display_name || profile?.tool || "Formato externo";
+  const profileName = profile?.display_name || profile?.tool || text("Formato externo", "External format");
 
   const downloadTcasesExample = async () => {
     try {
@@ -152,7 +133,7 @@ export function CaseImportGuide({
       );
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || "No se pudo generar el ejemplo .tcases.");
+        throw new Error(body.detail || text("No se pudo generar el ejemplo .tcases.", "Could not generate the .tcases example."));
       }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -164,7 +145,7 @@ export function CaseImportGuide({
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error: any) {
-      setDownloadError(error.message || "No se pudo descargar el ejemplo.");
+      setDownloadError(error.message || text("No se pudo descargar el ejemplo.", "Could not download the example."));
     } finally {
       setDownloadingTcases(false);
     }
@@ -174,22 +155,22 @@ export function CaseImportGuide({
     <>
       <OverlayTrigger
         placement="top"
-        overlay={<Tooltip>Cómo preparar un archivo compatible</Tooltip>}
+        overlay={<Tooltip>{text("Cómo preparar un archivo compatible", "How to prepare a compatible file")}</Tooltip>}
       >
         <Button
           variant="outline-secondary"
           size="sm"
           onClick={() => setShow(true)}
-          aria-label="Abrir guía de importación de casos"
+          aria-label={text("Abrir guía de importación de casos", "Open case import guide")}
         >
           <HelpCircle size={15} className="me-1" aria-hidden="true" />
-          Guía de importación
+          {text("Guía de importación", "Import guide")}
         </Button>
       </OverlayTrigger>
 
       <Modal show={show} onHide={() => setShow(false)} size="lg" centered scrollable>
         <Modal.Header closeButton>
-          <Modal.Title className="h5">Preparar casos para importar</Modal.Title>
+          <Modal.Title className="h5">{text("Preparar casos para importar", "Prepare cases for import")}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <div className="d-flex gap-3 mb-4">
@@ -201,18 +182,18 @@ export function CaseImportGuide({
               <FileSpreadsheet size={23} />
             </span>
             <div>
-              <div className="fw-bold">Importá sin modificar el archivo original</div>
+              <div className="fw-bold">{text("Importá sin modificar el archivo original", "Import without modifying the original file")}</div>
               <div className="small text-muted">
-                Elegí la herramienta que produjo el archivo, revisá la vista previa y confirmá únicamente los casos que necesitás.
+                {text("Elegí la herramienta que produjo el archivo, revisá la vista previa y confirmá únicamente los casos que necesitás.", "Choose the tool that produced the file, review the preview, and confirm only the cases you need.")}
               </div>
             </div>
           </div>
 
           <div className="row g-2 mb-4">
             {[
-              ["1", "Exportar", "Generá el archivo desde la herramienta de origen."],
-              ["2", "Revisar", "Elegí el perfil correcto y ejecutá Vista previa."],
-              ["3", "Confirmar", "Controlá el árbol, los avisos y los casos seleccionados."],
+              ["1", text("Exportar", "Export"), text("Generá el archivo desde la herramienta de origen.", "Generate the file from the source tool.")],
+              ["2", text("Revisar", "Review"), text("Elegí el perfil correcto y ejecutá Vista previa.", "Choose the correct profile and run Preview.")],
+              ["3", text("Confirmar", "Confirm"), text("Controlá el árbol, los avisos y los casos seleccionados.", "Check the tree, warnings, and selected cases.")],
             ].map(([number, title, text]) => (
               <div className="col-md-4" key={number}>
                 <div className="border rounded-3 h-100 p-3">
@@ -229,18 +210,16 @@ export function CaseImportGuide({
               <div className="fw-bold mb-1">
                 {profileName} · {profile.version}
               </div>
-              <div>{profileGuidance[profile.id] || "Usá el archivo exportado por la herramienta y verificá su contenido en la vista previa."}</div>
+              <div>{profileGuidanceKeys[profile.id] ? t(`configuracion.${profileGuidanceKeys[profile.id]}`) : text("Usá el archivo exportado por la herramienta y verificá su contenido en la vista previa.", "Use the file exported by the tool and verify its content in the preview.")}</div>
               <div className="mt-1">
-                Extensiones admitidas: <strong>{profile.extensions.join(", ")}</strong>.
+                {text("Extensiones admitidas:", "Supported extensions:")} <strong>{profile.extensions.join(", ")}</strong>.
               </div>
             </Alert>
           )}
 
-          <h6 className="fw-bold mt-4">Adaptar otra herramienta a Treseko</h6>
+          <h6 className="fw-bold mt-4">{text("Adaptar otra herramienta a Treseko", "Adapt another tool to Treseko")}</h6>
           <p className="small text-muted">
-            Elegí el nivel de migración según la información que necesites
-            conservar. El paquete <code>.tcases</code> es el formato completo;
-            el CSV es una alternativa más sencilla para casos sin adjuntos.
+            {text("Elegí el nivel de migración según la información que necesites conservar. El paquete ", "Choose the migration level based on the information you need to preserve. The ")}<code>.tcases</code>{text(" es el formato completo; el CSV es una alternativa más sencilla para casos sin adjuntos.", " package is the complete format; CSV is a simpler alternative for cases without attachments.")}
           </p>
 
           <Accordion className="mb-3">
@@ -248,19 +227,17 @@ export function CaseImportGuide({
               <Accordion.Header>
                 <span className="d-flex align-items-center gap-2">
                   <Archive size={17} className="text-primary" />
-                  <strong>.tcases</strong> · migración completa
+                  <strong>.tcases</strong> · {text("migración completa", "complete migration")}
                 </span>
               </Accordion.Header>
               <Accordion.Body>
                 <p className="small text-muted">
-                  Es un ZIP versionado. Conserva suites anidadas, casos, pasos,
-                  versiones y archivos adjuntos. Cada JSON declarado debe tener
-                  su SHA-256 en <code>manifest.json</code>.
+                  {text("Es un ZIP versionado. Conserva suites anidadas, casos, pasos, versiones y archivos adjuntos. Cada JSON declarado debe tener su SHA-256 en ", "It is a versioned ZIP. It preserves nested suites, cases, steps, versions, and attachments. Each declared JSON must have its SHA-256 in ")}<code>manifest.json</code>.
                 </p>
                 <div className="table-responsive border rounded-3 mb-3">
                   <Table size="sm" className="mb-0 align-middle">
                     <thead className="table-light">
-                      <tr><th>Entrada</th><th>Contenido</th></tr>
+                      <tr><th>{text("Entrada", "Entry")}</th><th>{text("Contenido", "Contents")}</th></tr>
                     </thead>
                     <tbody>
                       <tr><td><code>manifest.json</code></td><td className="small">Formato, fecha, proyecto, cantidad y checksums.</td></tr>
@@ -272,14 +249,14 @@ export function CaseImportGuide({
                     </tbody>
                   </Table>
                 </div>
-                <div className="small fw-bold mb-1">Campos de cada caso</div>
+                <div className="small fw-bold mb-1">{text("Campos de cada caso", "Fields for each case")}</div>
                 <div className="small text-muted mb-2">
                   <code>external_id</code>, <code>external_version</code>, <code>suite_id</code>,
                   {" "}<code>titulo</code>, <code>descripcion</code>, <code>precondiciones</code>,
                   {" "}<code>postcondiciones</code>, <code>prioridad</code>, <code>criticidad</code>,
                   {" "}<code>tipo_prueba</code>, <code>estado_caso</code>, <code>etiquetas</code> y <code>pasos</code>.
                 </div>
-                <div className="small fw-bold mb-1">Campos de cada paso</div>
+                <div className="small fw-bold mb-1">{text("Campos de cada paso", "Fields for each step")}</div>
                 <div className="small text-muted mb-3">
                   <code>numero_paso</code>, <code>accion</code>, <code>datos</code> y
                   {" "}<code>resultado_esperado</code>. Un adjunto agrega
@@ -288,10 +265,7 @@ export function CaseImportGuide({
                   {" "}<code>sha256</code>, <code>tipo</code> y <code>archive_path</code>.
                 </div>
                 <Alert variant="secondary" className="small py-2">
-                  Valores principales: prioridad <strong>ALTA, MEDIA, BAJA</strong>;
-                  criticidad <strong>CRITICA, ALTA, MEDIA, BAJA</strong>; tipo
-                  {" "}<strong>MANUAL o AUTOMATIZADA</strong>; estado
-                  {" "}<strong>ACTIVO o ARCHIVADO</strong>.
+                  {text("Valores principales: prioridad ", "Main values: priority ")}<strong>ALTA, MEDIA, BAJA</strong>; {text("criticidad ", "severity ")}<strong>CRITICA, ALTA, MEDIA, BAJA</strong>; {text("tipo ", "type ")}<strong>MANUAL o AUTOMATIZADA</strong>; {text("estado ", "status ")}<strong>ACTIVO o ARCHIVADO</strong>.
                 </Alert>
                 {downloadError && <Alert variant="danger" className="small py-2">{downloadError}</Alert>}
                 <Button
@@ -301,7 +275,7 @@ export function CaseImportGuide({
                   disabled={downloadingTcases}
                 >
                   <Download size={14} className="me-1" aria-hidden="true" />
-                  {downloadingTcases ? "Generando…" : "Descargar ejemplo .tcases"}
+                  {downloadingTcases ? text("Generando…", "Generating…") : text("Descargar ejemplo .tcases", "Download .tcases example")}
                 </Button>
               </Accordion.Body>
             </Accordion.Item>
@@ -310,19 +284,15 @@ export function CaseImportGuide({
               <Accordion.Header>
                 <span className="d-flex align-items-center gap-2">
                   <FileSpreadsheet size={17} className="text-success" />
-                  <strong>CSV estructurado</strong> · migración simple
+                  <strong>{text("CSV estructurado", "Structured CSV")}</strong> · {text("migración simple", "simple migration")}
                 </span>
               </Accordion.Header>
               <Accordion.Body>
                 <p className="small text-muted">
-                  Generá una fila por paso y repetí los datos del caso (al menos
-                  <code>id</code>, <code>title</code> y <code>suite</code>) en cada
-                  fila. Treseko agrupa las filas del mismo <code>id</code> y ordena
-                  sus pasos por <code>step_number</code>. Seleccioná <strong>CSV estructurado</strong>;
-                  Treseko construirá las suites usando la columna <code>suite</code>.
+                  {text("Generá una fila por paso y repetí los datos del caso (al menos ", "Generate one row per step and repeat the case data (at least ")}<code>id</code>, <code>title</code>{text(" y ", " and ")}<code>suite</code>{text(") en cada fila. Treseko agrupa las filas del mismo ", ") in each row. Treseko groups rows with the same ")}<code>id</code>{text(" y ordena sus pasos por ", " and orders their steps by ")}<code>step_number</code>. {text("Seleccioná ", "Select ")}<strong>{text("CSV estructurado", "Structured CSV")}</strong>{text("; Treseko construirá las suites usando la columna ", "; Treseko will build suites using the ")}<code>suite</code>.
                 </p>
                 <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
-                  <div className="small fw-bold">Columnas admitidas</div>
+                  <div className="small fw-bold">{text("Columnas admitidas", "Supported columns")}</div>
                   <Button
                     size="sm"
                     variant="outline-primary"
@@ -332,13 +302,13 @@ export function CaseImportGuide({
                     }}
                   >
                     <Download size={14} className="me-1" aria-hidden="true" />
-                    Descargar plantilla CSV
+                    {text("Descargar plantilla CSV", "Download CSV template")}
                   </Button>
                 </div>
                 <div className="table-responsive border rounded-3">
                   <Table size="sm" className="mb-0 align-middle">
                     <thead className="table-light">
-                      <tr><th>Columna</th><th>Requerida</th><th>Uso</th></tr>
+                      <tr><th>{text("Columna", "Column")}</th><th>{text("Requerida", "Required")}</th><th>{text("Uso", "Usage")}</th></tr>
                     </thead>
                     <tbody>
                       {csvFields.map(([field, required, description]) => (
@@ -356,13 +326,11 @@ export function CaseImportGuide({
           </Accordion>
 
           <Alert variant="light" className="border small mt-3 mb-0">
-            Cambiar la extensión de un archivo no cambia su formato. Si la vista
-            previa muestra campos ignorados, casos sin pasos o una estructura
-            inesperada, cancelá la importación y corregí el archivo de origen.
+            {text("Cambiar la extensión de un archivo no cambia su formato. Si la vista previa muestra campos ignorados, casos sin pasos o una estructura inesperada, cancelá la importación y corregí el archivo de origen.", "Changing a file extension does not change its format. If the preview shows ignored fields, cases without steps, or an unexpected structure, cancel the import and correct the source file.")}
           </Alert>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="primary" onClick={() => setShow(false)}>Entendido</Button>
+          <Button variant="primary" onClick={() => setShow(false)}>{text("Entendido", "Got it")}</Button>
         </Modal.Footer>
       </Modal>
     </>

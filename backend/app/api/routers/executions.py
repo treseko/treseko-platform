@@ -71,8 +71,8 @@ async def _ensure_run_build_is_active(db: AsyncSession, run: models.TestRun | No
 
 @router.patch("/snapshots/{snapshot_id}/", response_model=schemas.SnapshotPaso)
 async def update_snapshot(
-    snapshot_id: UUID, 
-    estado: models.EstadoResultado, 
+    snapshot_id: UUID,
+    estado: models.EstadoResultado,
     comentarios: Optional[str] = None,
     evidencia_url: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -85,10 +85,10 @@ async def update_snapshot(
         await access_control.require_project_access(db, current_user, snapshot_context.proyecto_id, "edit")
         _ensure_context_build_is_active(snapshot_context)
         db_snapshot = await crud.update_snapshot_status(
-            db=db, 
-            snapshot_id=snapshot_id, 
-            estado=estado, 
-            comentarios=comentarios, 
+            db=db,
+            snapshot_id=snapshot_id,
+            estado=estado,
+            comentarios=comentarios,
             evidencia_url=evidencia_url
         )
         if db_snapshot is None:
@@ -143,7 +143,7 @@ async def update_snapshot(
                 },
                 dedupe_key=f"{event_type}:{db_snapshot.id}:{estado.value}",
             )
-            
+
         return db_snapshot
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -184,7 +184,7 @@ async def update_execution_snapshots(
 
 @router.patch("/ejecuciones/{ejecucion_id}/", response_model=schemas.EjecucionCaso)
 async def update_ejecucion(
-    ejecucion_id: UUID, 
+    ejecucion_id: UUID,
     estado: models.EstadoResultado,
     duracion: int = 0,
     comentarios: Optional[str] = None,
@@ -267,7 +267,7 @@ async def update_ejecucion(
         raise HTTPException(status_code=404, detail="Ejecución no encontrada")
     fecha_ejecucion = utc_now()
     db_ejecucion.fecha_ejecucion = fecha_ejecucion
-    
+
     # Actualizar campos de última ejecución en el caso de prueba
     logger.debug(
         "Updating case last execution result: case_id=%s status=%s",
@@ -389,7 +389,7 @@ async def update_ejecucion(
         execution_id=db_ejecucion.id,
         payload={"source": realtime_event_type},
     )
-    
+
     return db_ejecucion
 
 @router.post("/ejecuciones/{ejecucion_id}/ai-review", response_model=schemas.EjecucionCaso)

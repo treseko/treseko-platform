@@ -20,6 +20,10 @@ SECRETS_DIR="${TRESEKO_SECRETS_DIR:-/etc/treseko/secrets}"
 BUILD_WORK_DIR="${TRESEKO_BUILD_WORK_DIR:-}"
 PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-${INSTALL_DIR}/data/ms-playwright}"
 REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}"
+QA_API_BASE="${QA_API_BASE:-http://127.0.0.1:${BACKEND_PORT}}"
+QA_ORGANIZACION_ID="${QA_ORGANIZACION_ID:-}"
+QA_RUNNER_TOKEN_FILE="${QA_RUNNER_TOKEN_FILE:-/var/lib/treseko/worker/.runner-token}"
+QA_POLL_INTERVAL_MS="${QA_POLL_INTERVAL_MS:-5000}"
 TRESEKO_UPDATE_SERVER_URL="${TRESEKO_UPDATE_SERVER_URL:-https://updates.treseko.com}"
 TRESEKO_ENABLE_SELF_UPDATE_APPLY="${TRESEKO_ENABLE_SELF_UPDATE_APPLY:-false}"
 TRESEKO_UPDATE_DB_HISTORY_ENABLED="${TRESEKO_UPDATE_DB_HISTORY_ENABLED:-true}"
@@ -154,6 +158,8 @@ mkdir -p \
   "${INSTALL_DIR}/data/backups" \
   "${PLAYWRIGHT_BROWSERS_PATH}" \
   "${INSTALL_DIR}/logs"
+RUNNER_STATE_DIR="$(dirname -- "${QA_RUNNER_TOKEN_FILE}")"
+install -d -m 0750 -o "${TRESEKO_USER}" -g "${TRESEKO_USER}" "${RUNNER_STATE_DIR}"
 
 "${TRESEKO_PYTHON_BIN}" -m venv "${INSTALL_DIR}/backend/venv"
 "${INSTALL_DIR}/backend/venv/bin/pip" install --upgrade pip
@@ -240,6 +246,30 @@ Environment=ENGINE_PORT=${ENGINE_PORT}
 Environment=BACKEND_WS_URL=ws://127.0.0.1:${BACKEND_PORT}/ws/engine-sync
 Environment=AI_ENGINE_INTERNAL_TOKEN_FILE=${SECRETS_DIR}/ai-engine-internal-token
 Environment=PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
+ExecStart=${NPM_BIN} start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+cat > /etc/systemd/system/treseko-worker.service <<SYSTEMD
+[Unit]
+Description=Treseko Automation Worker
+After=network.target treseko-backend.service
+
+[Service]
+Type=simple
+User=${TRESEKO_USER}
+WorkingDirectory=${INSTALL_DIR}/worker
+Environment=NODE_ENV=production
+Environment=QA_API_BASE=${QA_API_BASE}
+Environment=QA_ORGANIZACION_ID=${QA_ORGANIZACION_ID}
+Environment=QA_RUNNER_TOKEN_FILE=${QA_RUNNER_TOKEN_FILE}
+Environment=QA_POLL_INTERVAL_MS=${QA_POLL_INTERVAL_MS}
+Environment=PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
+Environment=PATH=${INSTALL_DIR}/worker/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${NPM_BIN} start
 Restart=on-failure
 RestartSec=5
@@ -341,9 +371,10 @@ echo "Creando o asegurando admin inicial..."
 run_backend_env "${INSTALL_DIR}/backend/venv/bin/python" "${INSTALL_DIR}/backend/seed_admin.py"
 
 systemctl daemon-reload
-systemctl enable treseko-backend treseko-engine
+systemctl enable treseko-backend treseko-engine treseko-worker
 systemctl restart treseko-backend
 systemctl restart treseko-engine
+systemctl restart treseko-worker
 nginx -t
 systemctl reload nginx
 

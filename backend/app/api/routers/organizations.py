@@ -9,7 +9,7 @@ router = APIRouter(tags=["Organizaciones"])
 
 @router.post("/organizaciones/", response_model=schemas.Organizacion)
 async def create_organizacion(
-    org: schemas.OrganizacionCreate, 
+    org: schemas.OrganizacionCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_module("clientes", "edit"))
 ):

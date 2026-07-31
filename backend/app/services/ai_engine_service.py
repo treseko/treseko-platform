@@ -1,2 +1,1 @@
 """Service del Motor IA."""
-

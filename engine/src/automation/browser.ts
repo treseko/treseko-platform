@@ -9,7 +9,7 @@ export class BrowserController {
   async init(headless = false, viewport: { width: number; height: number } = { width: 1920, height: 1080 }) {
     const width = Number.isFinite(viewport.width) ? Math.max(320, Math.round(viewport.width)) : 1920;
     const height = Number.isFinite(viewport.height) ? Math.max(320, Math.round(viewport.height)) : 1080;
-    this.browser = await chromium.launch({ 
+    this.browser = await chromium.launch({
       headless,
       args: [`--window-size=${width},${height}`]
     });
@@ -59,7 +59,7 @@ export class BrowserController {
           const selector = `[data-ai-id="${elementId}"]`;
           technicalCommand = `page.locator('${selector}').click()`;
           const locator = this.page.locator(selector);
-          await locator.scrollIntoViewIfNeeded(); 
+          await locator.scrollIntoViewIfNeeded();
           await locator.waitFor({ state: 'visible', timeout: 5000 });
           await locator.click({ timeout: 5000 });
         }
@@ -99,19 +99,19 @@ export class BrowserController {
           const locator = this.page.locator(selector);
           await locator.scrollIntoViewIfNeeded();
           await locator.waitFor({ state: 'visible', timeout: 5000 });
-          
+
           console.log(`  > Typing "${action.text}" into ${elementId}`);
-          
+
           const type = await locator.getAttribute('type');
           if (type !== 'range') {
               await locator.fill('');
           }
-          
+
           await locator.click();
           await this.page.keyboard.type(action.text, { delay: 50 });
-          
+
           await this.page.keyboard.press('Tab');
-          await this.page.waitForTimeout(200); 
+          await this.page.waitForTimeout(200);
         }
         break;
       case 'drag_and_drop':
@@ -131,7 +131,7 @@ export class BrowserController {
             technicalCommand = `page.locator('${selector}').setInputFiles(...)`;
             const locator = this.page.locator(selector);
             await locator.scrollIntoViewIfNeeded();
-            
+
             // Create a dummy file for testing if it doesn't exist
             const fs = await import('fs');
             const path = await import('path');
@@ -139,7 +139,7 @@ export class BrowserController {
             if (!fs.existsSync(filePath)) {
                 fs.writeFileSync(filePath, 'fake image data');
             }
-            
+
             console.log(`  > Uploading placeholder to ${elementId}`);
             await locator.setInputFiles(filePath);
         }

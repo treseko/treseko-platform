@@ -3,6 +3,7 @@ import { Badge, Button, Col, Form, Modal, Offcanvas, Row, Table } from 'react-bo
 import { AlertCircle, Bug, Plus, Save, Trash2 } from 'lucide-react'
 import { EvidenceUpload, type AttachmentMeta } from '../../EvidenceUpload'
 import { BUG_PRIORITY_OPTIONS, formatBugPriorityOption } from '../bugs/bugPresentation'
+import { useI18n } from '../../i18n'
 
 type AdditionalContextRow = {
   key: string
@@ -50,6 +51,7 @@ export function ExecutionRedmineReporter({
   internalBugCreating,
   appUsers = [],
 }: ExecutionRedmineReporterProps) {
+  const { t } = useI18n()
   const draft = internalBugDraft || {}
   const isManualBug = Boolean(draft._context?.manual)
   const metadata = draft.metadata_json || {}
@@ -60,8 +62,8 @@ export function ExecutionRedmineReporter({
     ? draft._context.preloadedAttachmentIds.map((id: any) => String(id))
     : []
   const hasPreloadedEvidence = internalBugEvidence.some((attachment) => preloadedAttachmentIds.includes(String(attachment?.id || '')))
-  const evidenceLabel = hasPreloadedEvidence ? 'Evidencias del fallo' : 'Evidencia general'
-  const uploadLabel = hasPreloadedEvidence ? 'Adjuntar evidencia adicional' : 'Adjuntar evidencia'
+  const evidenceLabel = hasPreloadedEvidence ? t('bugs.evidence') : t('bugs.evidence')
+  const uploadLabel = t('bugs.attachEvidence')
   const updateField = (field: string, value: any) => onInternalBugDraftChange?.(field, value)
   const updateContextRow = (index: number, field: keyof AdditionalContextRow, value: string) => {
     const nextRows = additionalContextRows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row)
@@ -76,20 +78,20 @@ export function ExecutionRedmineReporter({
         <Modal.Header className="border-0 bg-warning bg-opacity-10 text-dark">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <AlertCircle size={22} className="text-warning" />
-            Fallo guardado
+            {t('bugs.statusUpdated')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="px-4 pb-2 text-dark">
           <p className="small mb-0">
-            La ejecución quedó guardada con resultado <strong>{currentExecutionCase?.estado_resultado || 'FALLO'}</strong>. Puedes dejarla pendiente o crear ahora un bug interno con el contexto QA de esta ejecución.
+            {t('bugs.executionSaved', { status: currentExecutionCase?.estado_resultado || 'FALLO' })}
           </p>
         </Modal.Body>
         <Modal.Footer className="border-0 px-4 pb-4 d-flex justify-content-end gap-2">
           <Button variant="outline-primary" className="fw-bold rounded-pill px-4 shadow-none" onClick={onDefer}>
-            Reportar después
+            {t('bugs.reportLater')}
           </Button>
           <Button variant="danger" className="fw-bold rounded-pill px-4 shadow-none" disabled={internalBugCreating} onClick={onOpenReport}>
-            <Bug size={16} className="me-2" /> {internalBugCreating ? 'Preparando...' : 'Reportar ahora'}
+            <Bug size={16} className="me-2" /> {internalBugCreating ? t('bugs.preparing') : t('bugs.reportNow')}
           </Button>
         </Modal.Footer>
       </Modal>
@@ -97,45 +99,45 @@ export function ExecutionRedmineReporter({
       <Offcanvas show={showDrawer} onHide={onHideDrawer} placement="end" style={{ width: '620px' }}>
         <Offcanvas.Header closeButton className="bg-danger text-white border-0 py-4 shadow-sm">
           <Offcanvas.Title className="fw-bold d-flex align-items-center gap-2 text-white">
-            <Bug size={24} className="text-white" /> Reportar bug interno
+            <Bug size={24} className="text-white" /> {t('bugs.reportInternalBug')}
           </Offcanvas.Title>
         </Offcanvas.Header>
         <Offcanvas.Body className="p-4 small bg-light text-dark text-start">
           <div className="alert alert-warning border-0 shadow-sm x-small mb-4 fw-bold text-start">
             {isManualBug
-              ? 'El bug se creará en el Bug Tracker interno con la build y el contexto QA seleccionados.'
-              : 'El bug se creará en el Bug Tracker interno y quedará asociado a esta ejecución.'}
+              ? t('bugs.manualBugContext')
+              : t('bugs.executionBugContext')}
           </div>
 
           <Form className="text-dark text-start" onSubmit={onSubmitInternalBug}>
             <Form.Group className="mb-3">
-              <Form.Label className="text-muted fw-bold x-small uppercase">Título del bug</Form.Label>
+              <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.titleLabel')}</Form.Label>
               <Form.Control size="sm" value={draft.titulo || ''} onChange={(e) => updateField('titulo', e.target.value)} className="bg-white border-0 shadow-sm fw-bold text-dark fs-6" required />
             </Form.Group>
 
             <Row className="g-2 mb-3">
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Severidad</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.severity')}</Form.Label>
                 <Form.Select size="sm" value={draft.severidad || 'MEDIA'} onChange={(e) => updateField('severidad', e.target.value)}>
                   {['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].map(item => <option key={item}>{item}</option>)}
                 </Form.Select>
               </Col>
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Prioridad</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.priority')}</Form.Label>
                 <Form.Select size="sm" value={draft.prioridad || 'P2'} onChange={(e) => updateField('prioridad', e.target.value)}>
                   {BUG_PRIORITY_OPTIONS.slice(0, 4).map(item => <option key={item} value={item}>{formatBugPriorityOption(item)}</option>)}
                 </Form.Select>
               </Col>
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Criticidad</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.criticality')}</Form.Label>
                 <Form.Select size="sm" value={draft.criticidad || 'MEDIA'} onChange={(e) => updateField('criticidad', e.target.value)}>
                   {['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].map(item => <option key={item}>{item}</option>)}
                 </Form.Select>
               </Col>
               <Col md={12}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Asignado a</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.assignedTo')}</Form.Label>
                 <Form.Select size="sm" value={draft.asignado_a || ''} onChange={(e) => updateField('asignado_a', e.target.value || null)}>
-                  <option value="">Sin asignar</option>
+                  <option value="">{t('bugs.unassignedLabel')}</option>
                   {appUsers.map((item: any) => <option value={item.id} key={item.id}>{item.name || item.nombre_completo || item.email}</option>)}
                 </Form.Select>
               </Col>
@@ -143,7 +145,7 @@ export function ExecutionRedmineReporter({
 
             {isManualBug && (
               <Form.Group className="mb-3">
-                <Form.Label className="text-muted fw-bold x-small uppercase">Pasos de reproducción *</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.reproductionSteps')} *</Form.Label>
                 <Form.Control
                   as="textarea"
                   rows={4}
@@ -153,50 +155,50 @@ export function ExecutionRedmineReporter({
                   placeholder="1. Abrir…&#10;2. Realizar…&#10;3. Observar el problema…"
                   required
                 />
-                <Form.Text className="text-muted">Como este bug no parte de una ejecución, describí cómo reproducirlo.</Form.Text>
+                <Form.Text className="text-muted">{t('bugs.manualReproductionHelp')}</Form.Text>
               </Form.Group>
             )}
 
             <Form.Group className="mb-3">
               <Form.Label className="text-muted fw-bold x-small uppercase d-flex justify-content-between">
-                <span>Resumen del problema</span>
-                <Badge bg="light" text="primary" className="border">Editable</Badge>
+                <span>{t('bugs.summaryDiagnostic')}</span>
+                <Badge bg="light" text="primary" className="border">{t('bugs.editable')}</Badge>
               </Form.Label>
               <Form.Control as="textarea" rows={3} value={draft.descripcion || ''} onChange={(e) => updateField('descripcion', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
             </Form.Group>
 
             <Row className="g-2 mb-3">
               <Col md={6}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Resultado esperado</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.expectedResult')}</Form.Label>
                 <Form.Control as="textarea" rows={3} value={draft.resultado_esperado || ''} onChange={(e) => updateField('resultado_esperado', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
               </Col>
               <Col md={6}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">Resultado obtenido</Form.Label>
+                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.actualResult')}</Form.Label>
                 <Form.Control as="textarea" rows={3} value={draft.resultado_obtenido || ''} onChange={(e) => updateField('resultado_obtenido', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
               </Col>
             </Row>
 
             <Form.Group className="mb-3">
-              <Form.Label className="text-muted fw-bold x-small uppercase">Notas QA opcionales</Form.Label>
+              <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.qaNotes')} ({t('common.optional')})</Form.Label>
               <Form.Control as="textarea" rows={3} value={draft.notas_qa || ''} onChange={(e) => updateField('notas_qa', e.target.value)} className="bg-white border-0 shadow-sm text-dark" />
             </Form.Group>
 
             <div className="bg-white border rounded p-3 mb-3">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="fw-bold mb-0">Contexto QA autocompletado</h6>
+                <h6 className="fw-bold mb-0">{t('bugs.qaContext')}</h6>
                 <Badge bg="light" text="dark" className="border">{displaySelectedTest?.code || displaySelectedTest?.codigo || (isManualBug ? 'Manual' : 'Caso')}</Badge>
               </div>
               <Table size="sm" bordered className="mb-0">
                 <tbody>
                   {[
-                    ['Proyecto', metadata.project_name || draft.proyecto_nombre],
-                    ['Build/version evaluada', metadata.build_name || draft.version_app || draft.build_code],
-                    ['Componente principal', metadata.component_name || draft.modulo_funcional],
-                    ['Ambiente', metadata.environment_name || draft.ambiente_nombre],
+                    [t('bugs.project'), metadata.project_name || draft.proyecto_nombre],
+                    [t('bugs.buildRequired'), metadata.build_name || draft.version_app || draft.build_code],
+                    [t('bugs.currentComponent'), metadata.component_name || draft.modulo_funcional],
+                    [t('bugs.environment'), metadata.environment_name || draft.ambiente_nombre],
                     ['URL', metadata.environment_url || draft.ambiente_url],
-                    ['Dataset', metadata.dataset_name],
-                    ['Caso', draft.case_code || displaySelectedTest?.code || displaySelectedTest?.codigo],
-                    ['Ejecución', draft.ejecucion_id],
+                    [t('bugs.dataset'), metadata.dataset_name],
+                    [t('bugs.case'), draft.case_code || displaySelectedTest?.code || displaySelectedTest?.codigo],
+                    [t('bugs.execution'), draft.ejecucion_id],
                     ['Snapshot', draft.snapshot_id],
                     ['Paso', draft.numero_paso],
                   ].map(([label, value]) => (
@@ -222,11 +224,7 @@ export function ExecutionRedmineReporter({
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>Acción</th>
-                        <th>Datos</th>
-                        <th>Esperado</th>
-                        <th>Veredicto</th>
-                        <th>Observación</th>
+                        <th>{t('bugs.action')}</th><th>{t('bugs.data')}</th><th>{t('bugs.expected')}</th><th>{t('bugs.verdict')}</th><th>{t('bugs.observation')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -248,24 +246,24 @@ export function ExecutionRedmineReporter({
 
             <div className="bg-white border rounded p-3 mb-3">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="fw-bold mb-0">Contexto adicional del sistema</h6>
+                <h6 className="fw-bold mb-0">{t('bugs.additionalContext')}</h6>
                 <Button type="button" size="sm" variant="outline-primary" onClick={addContextRow}>
-                  <Plus size={14} className="me-1" /> Agregar
+                  <Plus size={14} className="me-1" /> {t('bugs.add')}
                 </Button>
               </div>
               <div className="text-muted x-small mb-2">Ejemplos: Base de datos = PostgreSQL 16, Cache = Redis 7, API externa = sandbox.</div>
               {additionalContextRows.length === 0 && (
                 <div className="small text-muted border rounded bg-light p-2 mb-2">
-                  Sin contexto adicional. Agrega filas solo si necesitas documentar versiones o servicios relacionados.
+                  {t('bugs.noAdditionalContext')}
                 </div>
               )}
               {additionalContextRows.map((row, index) => (
                 <Row className="g-2 mb-2" key={`${index}-${row.key}`}>
                   <Col xs={5}>
-                    <Form.Control size="sm" placeholder="Componente o dato" value={row.key} onChange={(e) => updateContextRow(index, 'key', e.target.value)} />
+                    <Form.Control size="sm" placeholder={t('bugs.componentDataPlaceholder')} value={row.key} onChange={(e) => updateContextRow(index, 'key', e.target.value)} />
                   </Col>
                   <Col xs={6}>
-                    <Form.Control size="sm" placeholder="Versión / valor / ambiente" value={row.value} onChange={(e) => updateContextRow(index, 'value', e.target.value)} />
+                    <Form.Control size="sm" placeholder={t('bugs.versionValuePlaceholder')} value={row.value} onChange={(e) => updateContextRow(index, 'value', e.target.value)} />
                   </Col>
                   <Col xs={1} className="d-grid">
                     <Button type="button" size="sm" variant="outline-danger" onClick={() => removeContextRow(index)}>
@@ -289,11 +287,11 @@ export function ExecutionRedmineReporter({
             </Form.Group>
 
             <Button type="submit" variant="danger" className="w-100 fw-bold shadow-lg py-3 border-0 rounded-pill text-white shadow-none d-flex justify-content-center align-items-center gap-2" disabled={internalBugCreating}>
-              <Save size={18} /> {internalBugCreating ? 'Creando bug interno...' : (isManualBug ? 'Crear bug interno' : 'Crear bug interno y continuar')}
+              <Save size={18} /> {internalBugCreating ? t('bugs.creatingInternal') : (isManualBug ? t('bugs.createInternal') : t('bugs.createInternalContinue'))}
             </Button>
           </Form>
           <Button variant="outline-secondary" className="w-100 fw-bold mt-3 rounded-pill shadow-none" onClick={onDefer}>
-            {isManualBug ? 'Cancelar' : 'Reportar después'}
+            {isManualBug ? t('bugs.cancel') : t('bugs.reportLater')}
           </Button>
         </Offcanvas.Body>
       </Offcanvas>

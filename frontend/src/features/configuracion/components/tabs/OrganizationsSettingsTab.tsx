@@ -2,6 +2,7 @@
 import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap'
 import { ArchiveX, Building2 } from 'lucide-react'
 import { RequiredLabel } from '../../../../shared/ui/RequiredLabel'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   organizations: any[]
@@ -40,6 +41,7 @@ export function OrganizationsSettingsTab({
   canAccessModule,
   isAdmin,
 }: Props) {
+  const { t } = useI18n()
   const canEditClients = canAccessModule('clientes', 'edit')
   const canViewInactiveOrganizations = isAdmin
   const [organizationSearch, setOrganizationSearch] = useState('')
@@ -125,14 +127,14 @@ export function OrganizationsSettingsTab({
       <Card className="border-0 shadow-sm rounded-4 bg-white overflow-hidden">
         <Card.Header className="bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center responsive-card-header">
           <div>
-            <h6 className="fw-bold text-dark m-0">Clientes / Soluciones ({visibleOrganizations.length})</h6>
-            <span className="small text-muted">Solo usuarios con permiso editor pueden crear clientes o soluciones.</span>
+            <h6 className="fw-bold text-dark m-0">{t('configuracion.organizationsTitle')} ({visibleOrganizations.length})</h6>
+            <span className="small text-muted">{t('configuracion.organizationsEditorHint')}</span>
           </div>
           {canViewInactiveOrganizations && (
             <Form.Check
               type="switch"
               id="show-inactive-organizations"
-              label={inactiveToggleLoading ? 'Cargando...' : `Mostrar inactivas${inactiveCount ? ` (${inactiveCount})` : ''}`}
+              label={inactiveToggleLoading ? t('configuracion.loading') : `${t('configuracion.showInactive')}${inactiveCount ? ` (${inactiveCount})` : ''}`}
               checked={showInactiveOrganizations}
               disabled={inactiveToggleLoading}
               onChange={(event) => toggleInactiveOrganizations(event.currentTarget.checked)}
@@ -145,12 +147,12 @@ export function OrganizationsSettingsTab({
             <Form className="bg-light border rounded-3 p-3 mb-3" onSubmit={handleCreateOrganization}>
               <Row className="g-2 align-items-end">
                 <Col md={9}>
-                  <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Nombre</RequiredLabel></Form.Label>
-                  <Form.Control name="organizationName" placeholder="Ej: Nuevo cliente o solución" required />
+                  <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.name')}</RequiredLabel></Form.Label>
+                  <Form.Control name="organizationName" placeholder={t('configuracion.organizationNamePlaceholder')} required />
                 </Col>
                 <Col md={3}>
                   <Button type="submit" variant="primary" className="w-100 fw-bold">
-                    + Crear
+                    {t('configuracion.create')}
                   </Button>
                 </Col>
               </Row>
@@ -163,8 +165,8 @@ export function OrganizationsSettingsTab({
                   size="sm"
                   value={organizationSearch}
                   onChange={(event) => setOrganizationSearch(event.target.value)}
-                  placeholder="Buscar cliente o solución..."
-                  aria-label="Buscar cliente o solución"
+                  placeholder={t('configuracion.organizationSearchPlaceholder')}
+                  aria-label={t('configuracion.organizationSearchAriaLabel')}
                   className="mb-1"
                 />
                 {visibleOrganizations.map(org => (
@@ -174,9 +176,9 @@ export function OrganizationsSettingsTab({
                         <Building2 size={14} className="me-2" />{org.name}
                       </Button>
                       <div className="d-flex align-items-center gap-2">
-                        <Badge bg="light" text="dark" className="border">{projectsList.filter(project => project.orgId === org.id).length} proyectos</Badge>
-                        {org.active === false && <Badge bg="secondary">Inactiva</Badge>}
-                        {selectedOrganizationId === org.id && <Badge bg="primary">Seleccionado</Badge>}
+                        <Badge bg="light" text="dark" className="border">{projectsList.filter(project => project.orgId === org.id).length} {t('configuracion.projects')}</Badge>
+                        {org.active === false && <Badge bg="secondary">{t('configuracion.inactive')}</Badge>}
+                        {selectedOrganizationId === org.id && <Badge bg="primary">{t('configuracion.selected')}</Badge>}
                       </div>
                     </div>
                     <Row className="g-2">
@@ -185,23 +187,23 @@ export function OrganizationsSettingsTab({
                       </Col>
                       <Col md={3}>
                         <Form.Select name="organizationType" size="sm" defaultValue={org.type || 'Cliente'} disabled={!canEditClients || org.active === false}>
-                          <option value="Cliente">Cliente</option>
-                          <option value="Solucion">Solucion</option>
-                          <option value="Empresa">Empresa</option>
+                          <option value="Cliente">{t('configuracion.organizationTypeClient')}</option>
+                          <option value="Solucion">{t('configuracion.organizationTypeSolution')}</option>
+                          <option value="Empresa">{t('configuracion.organizationTypeCompany')}</option>
                         </Form.Select>
                       </Col>
                       <Col md={2}>
                         {org.active === false && canEditClients && isAdmin ? (
                           <Button type="button" size="sm" variant="outline-success" className="w-100" onClick={(event) => reactivateOrganization(event, org)}>
-                            Reactivar
+                            {t('configuracion.reactivate')}
                           </Button>
                         ) : (
-                          canEditClients && <Button type="submit" size="sm" variant="outline-primary" className="w-100">OK</Button>
+                          canEditClients && <Button type="submit" size="sm" variant="outline-primary" className="w-100">{t('configuracion.ok')}</Button>
                         )}
                       </Col>
                       <Col md={1}>
                         {org.active !== false && canEditClients && isAdmin && (
-                          <Button type="button" size="sm" variant="outline-danger" className="w-100" title="Desactivar solución" aria-label={`Desactivar ${org.name}`} onClick={(event) => deactivateOrganization(event, org)}>
+                          <Button type="button" size="sm" variant="outline-danger" className="w-100" title={t('configuracion.deactivateSolution')} aria-label={t('configuracion.deactivateOrganizationAria', { name: org.name })} onClick={(event) => deactivateOrganization(event, org)}>
                             <ArchiveX size={14} />
                           </Button>
                         )}
@@ -211,7 +213,7 @@ export function OrganizationsSettingsTab({
                 ))}
                 {visibleOrganizations.length === 0 && (
                   <div className="border rounded-3 bg-light p-4 text-center text-muted small">
-                    No se encontraron clientes o soluciones con esa busqueda.
+                    {t('configuracion.noOrganizationsFound')}
                   </div>
                 )}
               </div>
@@ -220,11 +222,11 @@ export function OrganizationsSettingsTab({
               <Card className="border bg-light h-100">
                 <Card.Header className="bg-white d-flex justify-content-between align-items-center responsive-card-header">
                   <div>
-                    <div className="fw-bold text-dark">{selectedOrganization?.name || 'Selecciona un cliente'}</div>
-                    <div className="x-small text-muted">Usuarios con acceso/interacción en este cliente o solución.</div>
+                    <div className="fw-bold text-dark">{selectedOrganization?.name || t('configuracion.selectOrganization')}</div>
+                    <div className="x-small text-muted">{t('configuracion.organizationMembersHint')}</div>
                   </div>
                   <div className="d-flex align-items-center gap-2">
-                    {selectedOrganization?.active === false && <Badge bg="secondary">Inactiva</Badge>}
+                    {selectedOrganization?.active === false && <Badge bg="secondary">{t('configuracion.inactive')}</Badge>}
                     <Badge bg="primary">{selectedOrganizationMembers.length}</Badge>
                   </div>
                 </Card.Header>
@@ -233,7 +235,7 @@ export function OrganizationsSettingsTab({
                     <Form className="border rounded-3 p-3 bg-white mb-3" onSubmit={handleAssignOrganizationMember}>
                       <Row className="g-2 align-items-end">
                         <Col md={9}>
-                          <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Usuario</RequiredLabel></Form.Label>
+                          <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.user')}</RequiredLabel></Form.Label>
                           <Form.Control
                             list="organization-member-user-options"
                             value={userAutocompleteText}
@@ -246,7 +248,7 @@ export function OrganizationsSettingsTab({
                               })
                               setOrganizationMemberForm({ ...organizationMemberForm, userId: selectedUser?.id || '' })
                             }}
-                            placeholder="Escribi nombre, email o rol..."
+                            placeholder={t('configuracion.organizationUserPlaceholder')}
                             disabled={!selectedOrganizationId}
                             required
                           />
@@ -257,7 +259,7 @@ export function OrganizationsSettingsTab({
                           </datalist>
                         </Col>
                         <Col md={3}>
-                          <Button type="submit" variant="primary" className="w-100 fw-bold" disabled={!selectedOrganizationId || !organizationMemberForm.userId}>Asignar</Button>
+                          <Button type="submit" variant="primary" className="w-100 fw-bold" disabled={!selectedOrganizationId || !organizationMemberForm.userId}>{t('configuracion.assign')}</Button>
                         </Col>
                       </Row>
                     </Form>
@@ -269,12 +271,12 @@ export function OrganizationsSettingsTab({
                           <td className="fw-bold text-dark">{member.user?.name || member.userId}</td>
                           <td className="small text-muted">{member.user?.email || ''}</td>
                           <td className="text-end">
-                            {canEditClients && <Button variant="link" size="sm" className="text-danger p-0" onClick={() => handleRemoveOrganizationMember(member.userId)}>Quitar</Button>}
+                            {canEditClients && <Button variant="link" size="sm" className="text-danger p-0" onClick={() => handleRemoveOrganizationMember(member.userId)}>{t('configuracion.remove')}</Button>}
                           </td>
                         </tr>
                       ))}
                       {selectedOrganizationMembers.length === 0 && (
-                        <tr><td colSpan={3} className="text-center py-4 text-muted small">Sin usuarios asignados.</td></tr>
+                        <tr><td colSpan={3} className="text-center py-4 text-muted small">{t('configuracion.noAssignedUsers')}</td></tr>
                       )}
                     </tbody>
                   </Table>

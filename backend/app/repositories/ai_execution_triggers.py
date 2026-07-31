@@ -1,5 +1,4 @@
 import logging
-
 from .repository_context import *
 from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
 from .ai_provider_profiles import provider_payload_for_definition
@@ -14,6 +13,37 @@ logger = logging.getLogger(__name__)
 
 def _safe_ai_error_detail(value: object) -> str:
     return sanitize_external_error(value)
+
+
+def _engine_error_metadata(response: httpx.Response, fallback_correlation_id: str) -> tuple[str, str]:
+    try:
+        payload = response.json()
+    except (ValueError, TypeError):
+        payload = {}
+    error = payload.get("error") if isinstance(payload, dict) else {}
+    error = error if isinstance(error, dict) else {}
+    code = str(error.get("error_code") or "").strip().upper()
+    correlation = str(error.get("correlation_id") or response.headers.get("x-correlation-id") or fallback_correlation_id).strip()
+    return code, correlation[:100] or fallback_correlation_id
+
+
+def _engine_error_code(response: httpx.Response, fallback_correlation_id: str) -> tuple[str, str]:
+    code, correlation = _engine_error_metadata(response, fallback_correlation_id)
+    if code.startswith("AI_PROVIDER_"):
+        return code, correlation
+    return {
+        "UNAUTHORIZED": "AI_ENGINE_UNAUTHORIZED",
+        "FORBIDDEN": "AI_ENGINE_FORBIDDEN",
+        "REQUEST_TIMEOUT": "AI_ENGINE_TIMEOUT",
+        "UPSTREAM_TIMEOUT": "AI_ENGINE_TIMEOUT",
+        "RATE_LIMITED": "AI_ENGINE_RATE_LIMITED",
+    }.get(code, {
+        401: "AI_ENGINE_UNAUTHORIZED",
+        403: "AI_ENGINE_FORBIDDEN",
+        408: "AI_ENGINE_TIMEOUT",
+        429: "AI_ENGINE_RATE_LIMITED",
+        504: "AI_ENGINE_TIMEOUT",
+    }.get(response.status_code, "AI_ENGINE_UNAVAILABLE")), correlation
 
 
 async def recover_stale_ai_executions(db: AsyncSession, *, timeout_seconds: int | None = None) -> int:
@@ -186,7 +216,9 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         if isinstance(model_capabilities, dict)
         else {}
     )
+    correlation_id = current_correlation_id(str(ejecucion_id))
     payload = {
+        "correlation_id": correlation_id,
         "execution_id": str(ejecucion_id),
         "case_id": str(case.id),
         "case_code": case.codigo,
@@ -249,7 +281,6 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
         "body": payload,
     })
 
-    # TIMEOUT: Diferenciar entre timeout de conexion y timeout de ejecucion
     timeout_seconds = int(config.get("timeout_seconds") or 900)
 
     async def ai_execution_timeout_watcher(ejec_id: UUID, timeout_seg: int):
@@ -283,24 +314,19 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
                 await timeout_db.commit()
                 logger.warning("AI execution %s failed by execution timeout (%ss)", ejec_id, timeout_seg)
 
-    # Iniciar watcher de timeout de ejecucion
     asyncio.create_task(ai_execution_timeout_watcher(ejecucion_id, timeout_seconds))
 
-    # REINTENTOS: Solo para errores de conexion, no para errores de ejecucion
     max_retries = 3
     retry_delay = 5  # segundos
 
     for attempt in range(max_retries):
         try:
-            # Timeout corto (10s) para la conexion HTTP con el engine
-            # Si el engine no acepta la peticion en 10s, es un problema de conexion
             async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-                resp = await client.post(f"{engine_url}/run-task", json=payload)
+                resp = await client.post(f"{engine_url}/run-task", json=payload, headers=engine_internal_headers(correlation_id))
                 if resp.status_code == 200:
                     logger.info("AI execution %s sent to engine (attempt %s/%s)", ejecucion_id, attempt + 1, max_retries)
                     return
                 else:
-                    # El engine respondio pero con error - no es un timeout de conexion
                     if attempt < max_retries - 1:
                         logger.warning(
                             "AI engine rejected request with HTTP %s (attempt %s/%s), retrying in %ss",
@@ -321,14 +347,46 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
                             f"El engine esta corriendo pero no acepta la tarea. "
                             f"Revisa la configuracion del engine."
                         )
+                        engine_error_code, engine_correlation_id = _engine_error_code(resp, correlation_id)
                         ejec.ai_report = {
                             **(ejec.ai_report or {}),
-                            "error_code": "AI_MODEL_UNAVAILABLE",
+                            "error_code": engine_error_code,
                             "human_review_required": True,
                             "failure_category": "model_unavailable",
+                            "correlation_id": engine_correlation_id,
                         }
                         await db.commit()
                         await _emit_ai_engine_unavailable_event(db, ejec, case, f"Engine rechazo HTTP {resp.status_code}")
+
+        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as e:
+            sanitized_error = _safe_ai_error_detail(e)
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "AI engine timeout (attempt %s/%s), retrying in %ss",
+                    attempt + 1,
+                    max_retries,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+            else:
+                ejec.estado_resultado = models.EstadoResultado.BLOQUEADO
+                ejec.execution_mode = models.ExecutionMode.IA
+                ejec.ai_human_review_required = True
+                ejec.ai_review_status = models.AiReviewStatus.REQUIERE_REVISION
+                ejec.observaciones = (
+                    f"NO SE PUEDE EJECUTAR - TIMEOUT DEL MOTOR IA: no respondió "
+                    f"tras {max_retries} intentos. Error: {sanitized_error}"
+                )
+                ejec.ai_report = {
+                    **(ejec.ai_report or {}),
+                    "error_code": "AI_ENGINE_TIMEOUT",
+                    "human_review_required": True,
+                    "failure_category": "timeout",
+                    "correlation_id": correlation_id,
+                }
+                await db.commit()
+                await _emit_ai_engine_unavailable_event(db, ejec, case, sanitized_error)
+                raise ConnectionError(f"Timeout con Motor IA: {sanitized_error}")
 
         except httpx.ConnectError as e:
             # TIMEOUT DE CONEXION: No se pudo conectar al engine
@@ -358,42 +416,11 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession):
                     "error_code": "AI_MODEL_UNAVAILABLE",
                     "human_review_required": True,
                     "failure_category": "model_unavailable",
+                    "correlation_id": correlation_id,
                 }
                 await db.commit()
                 await _emit_ai_engine_unavailable_event(db, ejec, case, sanitized_error)
                 raise ConnectionError(f"Motor IA no accesible: {sanitized_error}")
-
-        except httpx.ConnectTimeout as e:
-            # TIMEOUT DE CONEXION: El engine tardo demasiado en aceptar la conexion
-            sanitized_error = _safe_ai_error_detail(e)
-            if attempt < max_retries - 1:
-                logger.warning(
-                    "AI engine connection timeout (attempt %s/%s), retrying in %ss",
-                    attempt + 1,
-                    max_retries,
-                    retry_delay,
-                )
-                await asyncio.sleep(retry_delay)
-            else:
-                ejec.estado_resultado = models.EstadoResultado.BLOQUEADO
-                ejec.execution_mode = models.ExecutionMode.IA
-                ejec.ai_human_review_required = True
-                ejec.ai_review_status = models.AiReviewStatus.REQUIERE_REVISION
-                ejec.observaciones = (
-                    f"NO SE PUEDE EJECUTAR - TIMEOUT DE CONEXION: El Motor IA "
-                    f"no acepto la conexion tras {max_retries} intentos. "
-                    f"El engine puede estar sobrecargado o con problemas de red. "
-                    f"Error: {sanitized_error}"
-                )
-                ejec.ai_report = {
-                    **(ejec.ai_report or {}),
-                    "error_code": "AI_TIMEOUT",
-                    "human_review_required": True,
-                    "failure_category": "timeout",
-                }
-                await db.commit()
-                await _emit_ai_engine_unavailable_event(db, ejec, case, sanitized_error)
-                raise ConnectionError(f"Timeout de conexion con Motor IA: {sanitized_error}")
 
         except Exception as e:
             # Error generico - identificar si es de conexion o de ejecucion

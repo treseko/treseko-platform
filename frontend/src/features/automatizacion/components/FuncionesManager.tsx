@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Button, Modal, Form, Badge, Table, Alert } from 'react-bootstrap'
 import { Plus, Edit2, Trash2, Code, History, Save } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import { useI18n } from '../../../i18n'
 import { isValidUUID } from '../../../app/validation'
 import { formatDateTime } from '../../../shared/utils/dateTime'
 import { APP_EDITOR_FONT_SIZE } from '../../../shared/ui/typography'
@@ -34,6 +35,7 @@ type FuncionesManagerProps = {
 }
 
 export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [], fetchWithAuth, showFeedback, confirmAction, canEdit = true }: FuncionesManagerProps) => {
+  const { t } = useI18n()
   const [funciones, setFunciones] = useState<Funcion[]>([])
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -62,7 +64,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
 
   const readErrorMessage = async (response: Response) => {
     const raw = await response.text().catch(() => '')
-    if (!raw) return `Backend respondio ${response.status}`
+    if (!raw) return t('automatizacion.backendResponded', { status: response.status })
     try {
       const parsed = JSON.parse(raw)
       return parsed?.detail || parsed?.message || raw
@@ -82,10 +84,10 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         const data = await response.json()
         setFunciones(data)
       } else {
-        showFeedback('Funciones', await readErrorMessage(response), 'danger')
+        showFeedback(t('automatizacion.functionsTitle'), await readErrorMessage(response), 'danger')
       }
     } catch (error) {
-      showFeedback('Funciones', 'No se pudieron cargar las funciones.', 'danger')
+        showFeedback(t('automatizacion.functionsTitle'), t('automatizacion.loadFunctionsError'), 'danger')
     } finally {
       setLoading(false)
     }
@@ -123,7 +125,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
 
   const handleSave = async () => {
     if (formData.scope === 'COMPONENTE' && !formData.componente_id) {
-      showFeedback('Componente requerido', 'Selecciona el componente que podra usar esta funcion.', 'warning')
+      showFeedback(t('automatizacion.componentRequired'), t('automatizacion.componentRequiredMessage'), 'warning')
       return
     }
     const payload = {
@@ -142,33 +144,33 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
       const url = editingFuncion
         ? `/api/funciones/${editingFuncion.master_id}/`
         : `/api/funciones/`
-      
+
       const method = editingFuncion ? 'PUT' : 'POST'
-      
+
       const response = await fetchWithAuth(url, {
         method,
         body: JSON.stringify(payload)
       })
 
       if (response.ok) {
-        showFeedback('Éxito', editingFuncion ? 'Función actualizada' : 'Función creada', 'success')
+        showFeedback(t('automatizacion.success'), editingFuncion ? t('automatizacion.functionUpdated') : t('automatizacion.functionCreated'), 'success')
         setShowModal(false)
         loadFunciones()
       } else {
         const error = await response.json().catch(() => null)
-        showFeedback('Error', error.detail || 'Error al guardar', 'danger')
+        showFeedback(t('automatizacion.error'), error.detail || t('automatizacion.saveError'), 'danger')
       }
     } catch (error) {
-      showFeedback('Error', 'Error de conexión', 'danger')
+      showFeedback(t('automatizacion.error'), t('automatizacion.connectionError'), 'danger')
     }
   }
 
   const handleDelete = async (funcion: Funcion) => {
     const confirmed = await confirmAction({
-      title: 'Eliminar función',
-      message: `Se eliminará la función "${funcion.nombre}" y todas sus versiones.`,
+      title: t('automatizacion.deleteFunction'),
+      message: t('automatizacion.deleteFunctionConfirm', { name: funcion.nombre }),
       variant: 'danger',
-      confirmLabel: 'Eliminar función'
+      confirmLabel: t('automatizacion.deleteLabel')
     })
     if (!confirmed) return
 
@@ -178,13 +180,13 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
       })
 
       if (response.ok) {
-        showFeedback('Éxito', 'Función eliminada', 'success')
+        showFeedback(t('automatizacion.success'), t('automatizacion.functionDeleted'), 'success')
         loadFunciones()
       } else {
-        showFeedback('Error', await readErrorMessage(response), 'danger')
+        showFeedback(t('automatizacion.error'), await readErrorMessage(response), 'danger')
       }
     } catch (error: any) {
-      showFeedback('Error', error?.message || 'Error al eliminar', 'danger')
+        showFeedback(t('automatizacion.error'), error?.message || t('automatizacion.deleteError'), 'danger')
     }
   }
 
@@ -197,7 +199,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         setShowVersionsModal(true)
       }
     } catch (error) {
-      showFeedback('Error', 'Error al cargar versiones', 'danger')
+      showFeedback(t('automatizacion.error'), t('automatizacion.loadVersionsError'), 'danger')
     }
   }
 
@@ -211,12 +213,12 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         <Card.Header className="bg-white border-bottom d-flex justify-content-between align-items-center py-3">
           <h5 className="mb-0 d-flex align-items-center gap-2">
             <Code size={20} className="text-primary" />
-            Biblioteca de Funciones Automatizadas
+            {t('automatizacion.functionsTitle')}
           </h5>
           {canEdit && (
             <Button variant="primary" size="sm" onClick={handleCreate} className="d-flex align-items-center gap-2">
               <Plus size={16} />
-              Nueva Función
+              {t('automatizacion.newFunction')}
             </Button>
           )}
         </Card.Header>
@@ -224,44 +226,44 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
           {loading ? (
             <div className="text-center py-5">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t('automatizacion.loading')}</span>
               </div>
             </div>
           ) : funciones.length === 0 ? (
             <Alert variant="info" className="m-4">
-              No hay funciones creadas. Las funciones reutilizables permiten definir código que puede ser usado en múltiples casos de prueba.
+              {t('automatizacion.noFunctions')}
             </Alert>
           ) : (
             <Table hover responsive className="mb-0">
               <thead className="table-light">
                 <tr>
-                  <th>Nombre</th>
-                  <th>Alcance</th>
-                  <th>Framework</th>
-                  <th>Parámetros</th>
-                  <th>Versión</th>
-                  <th>Descripción</th>
-                  <th>Acciones</th>
+                  <th>{t('automatizacion.name')}</th>
+                  <th>{t('automatizacion.scope')}</th>
+                  <th>{t('automatizacion.framework')}</th>
+                  <th>{t('automatizacion.parameters')}</th>
+                  <th>{t('automatizacion.version')}</th>
+                  <th>{t('automatizacion.description')}</th>
+                  <th>{t('automatizacion.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {funciones.map((funcion) => (
                   <tr key={funcion.id}>
                     <td>
-                      <strong>{funcion.nombre || 'Sin nombre'}</strong>
+                      <strong>{funcion.nombre || t('automatizacion.noName')}</strong>
                       {funcion.suite_id && (
                         <Badge bg="secondary" className="ms-2 app-label">
-                          Suite
+                          {t('automatizacion.suite')}
                         </Badge>
                       )}
                     </td>
                     <td>
                       {funcion.componente_id ? (
                         <Badge bg="primary">
-                          {componentsList.find(component => component.id === funcion.componente_id)?.name || 'Componente'}
+                          {componentsList.find(component => component.id === funcion.componente_id)?.name || t('automatizacion.componentScope')}
                         </Badge>
                       ) : (
-                        <Badge bg="secondary">Proyecto</Badge>
+                        <Badge bg="secondary">{t('automatizacion.projectScope')}</Badge>
                       )}
                     </td>
                     <td>
@@ -284,7 +286,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                           variant="outline-primary"
                           size="sm"
                           onClick={() => handleViewVersions(funcion)}
-                          title="Ver versiones"
+                          title={t('automatizacion.versionHistory')}
                         >
                           <History size={14} />
                         </Button>
@@ -293,7 +295,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                             variant="outline-secondary"
                             size="sm"
                             onClick={() => handleEdit(funcion)}
-                            title="Editar"
+                            title={t('automatizacion.editFunction')}
                           >
                             <Edit2 size={14} />
                           </Button>
@@ -303,7 +305,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                             variant="outline-danger"
                             size="sm"
                             onClick={() => handleDelete(funcion)}
-                            title="Eliminar"
+                            title={t('automatizacion.deleteFunction')}
                           >
                             <Trash2 size={14} />
                           </Button>
@@ -323,35 +325,35 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="d-flex align-items-center gap-2">
             <Code size={20} className="text-primary" />
-            {editingFuncion ? 'Editar Función' : 'Nueva Función'}
+            {editingFuncion ? t('automatizacion.editFunction') : t('automatizacion.createFunction')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="pt-0">
           <Form>
             <Form.Group className="mb-3">
-              <Form.Label>Nombre de la función</Form.Label>
+              <Form.Label>{t('automatizacion.functionName')}</Form.Label>
               <Form.Control
                 type="text"
                 value={formData.nombre}
                 onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                placeholder="Ej: login, logout, navegar_a"
+                placeholder={t('automatizacion.functionNamePlaceholder')}
               />
             </Form.Group>
 
             <Form.Group className="mb-3">
-              <Form.Label>Descripción</Form.Label>
+              <Form.Label>{t('automatizacion.functionDescription')}</Form.Label>
               <Form.Control
                 type="text"
                 value={formData.descripcion}
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                placeholder="Descripción breve de lo que hace la función"
+                placeholder={t('automatizacion.functionDescriptionPlaceholder')}
               />
             </Form.Group>
 
             <div className="row">
               <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Framework</Form.Label>
+                  <Form.Label>{t('automatizacion.framework')}</Form.Label>
                   <Form.Select
                     value={formData.framework}
                     onChange={(e) => setFormData({ ...formData, framework: e.target.value })}
@@ -365,12 +367,12 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
               </div>
               <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Parámetros (separados por coma)</Form.Label>
+                  <Form.Label>{t('automatizacion.functionParameters')}</Form.Label>
                   <Form.Control
                     type="text"
                     value={formData.parametros}
                     onChange={(e) => setFormData({ ...formData, parametros: e.target.value })}
-                    placeholder="Ej: page, usuario, password"
+                    placeholder={t('automatizacion.functionParametersPlaceholder')}
                   />
                 </Form.Group>
               </div>
@@ -379,7 +381,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
             <div className="row">
               <div className="col-md-6">
                 <Form.Group className="mb-3">
-                  <Form.Label>Alcance</Form.Label>
+                  <Form.Label>{t('automatizacion.scope')}</Form.Label>
                   <Form.Select
                     value={formData.scope}
                     onChange={(e) => setFormData({
@@ -390,21 +392,21 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                         : formData.componente_id || defaultComponentId
                     })}
                   >
-                    <option value="PROYECTO">Proyecto</option>
-                    <option value="COMPONENTE">Componente</option>
+                    <option value="PROYECTO">{t('automatizacion.projectScope')}</option>
+                    <option value="COMPONENTE">{t('automatizacion.componentScope')}</option>
                   </Form.Select>
                 </Form.Group>
               </div>
               {formData.scope === 'COMPONENTE' && (
                 <div className="col-md-6">
                   <Form.Group className="mb-3">
-                    <Form.Label>Componente</Form.Label>
+                    <Form.Label>{t('automatizacion.componentScope')}</Form.Label>
                     <Form.Select
                       value={formData.componente_id}
                       onChange={(e) => setFormData({ ...formData, componente_id: e.target.value })}
                       required
                     >
-                      <option value="">Selecciona componente...</option>
+                      <option value="">{t('automatizacion.selectComponent')}</option>
                       {componentsList.filter(component => component.projectId === proyectoId).map(component => (
                         <option key={component.id} value={component.id}>{component.name}</option>
                       ))}
@@ -415,7 +417,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
             </div>
 
             <Form.Group className="mb-3">
-              <Form.Label>Código de la función</Form.Label>
+              <Form.Label>{t('automatizacion.functionCode')}</Form.Label>
               <div className="border rounded" style={{ height: '400px' }}>
                 <Editor
                   height="100%"
@@ -437,12 +439,12 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">
           <Button variant="secondary" onClick={() => setShowModal(false)}>
-            Cancelar
+            {t('automatizacion.cancel')}
           </Button>
           {canEdit && (
             <Button variant="primary" onClick={handleSave} className="d-flex align-items-center gap-2">
               <Save size={16} />
-              {editingFuncion ? 'Actualizar' : 'Crear'}
+              {editingFuncion ? t('automatizacion.update') : t('automatizacion.create')}
             </Button>
           )}
         </Modal.Footer>
@@ -453,19 +455,19 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="d-flex align-items-center gap-2">
             <History size={20} className="me-2" />
-            Historial de Versiones
+            {t('automatizacion.versionHistory')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {selectedVersions.length === 0 ? (
-            <Alert variant="info">No hay versiones registradas</Alert>
+            <Alert variant="info">{t('automatizacion.noVersions')}</Alert>
           ) : (
             <Table hover responsive>
               <thead className="table-light">
                 <tr>
-                  <th>Versión</th>
-                  <th>Fecha</th>
-                  <th>Creado por</th>
+                  <th>{t('automatizacion.versionCol')}</th>
+                  <th>{t('automatizacion.date')}</th>
+                  <th>{t('automatizacion.createdBy')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -475,7 +477,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                       <Badge bg={index === 0 ? 'primary' : 'secondary'}>
                         v{version.version}
                       </Badge>
-                      {index === 0 && <span className="ms-2 small text-muted">(actual)</span>}
+                      {index === 0 && <span className="ms-2 small text-muted">({t('automatizacion.current')})</span>}
                     </td>
                     <td>{formatDateTime(version.fecha_creacion)}</td>
                     <td className="small text-muted">{version.creado_por.slice(0, 8)}</td>
@@ -487,7 +489,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">
           <Button variant="secondary" onClick={() => setShowVersionsModal(false)}>
-            Cerrar
+            {t('automatizacion.close')}
           </Button>
         </Modal.Footer>
       </Modal>

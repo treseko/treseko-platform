@@ -2,11 +2,14 @@ import type { Dispatch, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { mergeCasesById } from '../casos/caseUtils'
+import type { TranslationKey } from '../../i18n'
+import { isBuildReadOnly } from '../../app/buildState'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
 type CreateBuildScopeActionsParams = {
   projectsSource: 'local' | 'backend'
+  buildsList: any[]
   buildCaseIds: Record<string, string[]>
   editingBuildCasesId: string | null
   buildCaseDraftIds: string[]
@@ -22,10 +25,12 @@ type CreateBuildScopeActionsParams = {
   setShowBuildCasesModal: (show: boolean) => void
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createBuildScopeActions({
   projectsSource,
+  buildsList,
   buildCaseIds,
   editingBuildCasesId,
   buildCaseDraftIds,
@@ -40,8 +45,14 @@ export function createBuildScopeActions({
   setBuildCaseSearch,
   setShowBuildCasesModal,
   setProjectSyncMessage,
-  showFeedback
+  showFeedback,
+  t
 }: CreateBuildScopeActionsParams) {
+  const isInactiveBuild = (buildId: string) => {
+    const build = buildsList.find(item => item.id === buildId)
+    return isBuildReadOnly(build)
+  }
+
   const loadBuildCases = async (buildId: string, options?: { silent?: boolean }) => {
     if (!buildId || !isValidUUID(buildId) || projectsSource !== 'backend') return []
     const silent = Boolean(options?.silent)
@@ -70,7 +81,7 @@ export function createBuildScopeActions({
       setBuildCaseIds(prev => ({ ...prev, [buildId]: ids }))
       return ids
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar casos de la build: ${error.message}`)
+      setProjectSyncMessage(`${t('proyectos.buildCasesLoadError')}: ${error.message}`)
       return []
     } finally {
       if (!silent) setBuildCasesLoadingByBuild(prev => ({ ...prev, [buildId]: false }))
@@ -88,6 +99,10 @@ export function createBuildScopeActions({
 
   const saveBuildCases = async () => {
     if (!editingBuildCasesId) return
+    if (isInactiveBuild(editingBuildCasesId)) {
+      showFeedback(t('proyectos.buildUpdateError'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
+      return
+    }
     try {
       const response = await fetchWithAuth(`${API_BASE}/builds/${editingBuildCasesId}/casos/`, {
         method: 'PUT',
@@ -105,9 +120,9 @@ export function createBuildScopeActions({
       await loadBuildCaseExecutionStatus(editingBuildCasesId, savedIds)
       setShowBuildCasesModal(false)
       setEditingBuildCasesId(null)
-      showFeedback('Build actualizada', 'Los casos asignados a la build fueron guardados.', 'success')
+      showFeedback(t('proyectos.buildUpdated'), t('proyectos.buildCasesSaved'), 'success')
     } catch (error: any) {
-      showFeedback('No se pudo guardar', error.message || 'Error al asignar casos a la build.', 'danger')
+      showFeedback(t('proyectos.saveError'), error.message || t('proyectos.buildCasesSaveError'), 'danger')
     }
   }
 
@@ -126,21 +141,21 @@ export function createBuildScopeActions({
         setCasosList(prev => mergeCasesById(prev, mappedCases))
       }
       if (previousFailedIds.length === 0) {
-        showFeedback('Sin fallos previos', 'No encontramos casos fallidos o bloqueados en builds anteriores para este componente.', 'info')
+        showFeedback(t('proyectos.noPreviousFailures'), t('proyectos.noPreviousFailuresMessage'), 'info')
         return
       }
       const nextIds = Array.from(new Set([...buildCaseDraftIds, ...previousFailedIds]))
       const addedCount = nextIds.length - buildCaseDraftIds.length
       setBuildCaseDraftIds(nextIds)
       showFeedback(
-        'Casos seleccionados',
+        t('proyectos.selectedCases'),
         addedCount > 0
-          ? `Se agregaron ${addedCount} caso(s) fallidos o bloqueados de builds anteriores. Revisa el alcance y guarda los cambios.`
-          : 'Los casos fallidos o bloqueados de builds anteriores ya estaban seleccionados.',
+          ? t('proyectos.previousFailuresAdded', { count: addedCount })
+          : t('proyectos.previousFailuresAlreadySelected'),
         'success'
       )
     } catch (error: any) {
-      showFeedback('No se pudo cargar', error.message || 'Error al buscar fallos previos.', 'danger')
+      showFeedback(t('proyectos.loadError'), error.message || t('proyectos.previousFailuresLoadError'), 'danger')
     }
   }
 

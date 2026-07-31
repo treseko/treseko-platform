@@ -3,6 +3,7 @@ import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import type { AttachmentMeta } from '../../EvidenceUpload'
 import { formatDateTime } from '../../shared/utils/dateTime'
+import type { TranslationKey } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -53,6 +54,7 @@ type CreateManualExecutionActionsParams = {
   setShowRedminePrompt: (show: boolean) => void
   setShowRedmineDrawer: (show: boolean) => void
   setRedmineBugs: Dispatch<SetStateAction<any[]>>
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
 }
 
@@ -102,6 +104,7 @@ export function createManualExecutionActions({
   setShowRedminePrompt,
   setShowRedmineDrawer,
   setRedmineBugs,
+  t,
   showFeedback
 }: CreateManualExecutionActionsParams) {
   const advanceToNextTest = async () => {
@@ -136,7 +139,7 @@ export function createManualExecutionActions({
       }
     } else {
       returnToExecutionList()
-      showFeedback('Lote completado', 'Se han ejecutado todos los casos seleccionados.', 'success')
+      showFeedback(t('ejecutarPruebas.manualBatchCompleted'), t('ejecutarPruebas.manualBatchCompletedMessage'), 'success')
     }
   }
 
@@ -146,7 +149,7 @@ export function createManualExecutionActions({
     }
     setShowRedminePrompt(false)
     setShowRedmineDrawer(false)
-    showFeedback('Reporte pendiente', 'El fallo quedó guardado. Puedes crear el bug interno más adelante desde el caso o su historial.', 'info')
+    showFeedback(t('ejecutarPruebas.internalBugReportPending'), t('ejecutarPruebas.internalBugReportPendingMessage'), 'info')
     await advanceToNextTest()
   }
 
@@ -202,13 +205,13 @@ export function createManualExecutionActions({
 
     if (backendFinalStatus === 'FALLO' || backendFinalStatus === 'BLOQUEADO') {
       if (currentExecutionCase?.id && redmineDecisionByExecution[currentExecutionCase.id]) {
-        showFeedback('Ejecución completada', `Resultado final: ${backendFinalStatus}. El reporte de bug interno ya tiene una decisión registrada para esta ejecución.`, 'success')
+        showFeedback(t('ejecutarPruebas.executionCompleted'), t('ejecutarPruebas.executionCompletedWithBugDecision', { status: backendFinalStatus }), 'success')
         await advanceToNextTest()
         return
       }
       setShowRedminePrompt(true)
     } else {
-      showFeedback('Ejecución completada', `Resultado final: ${backendFinalStatus}.`, 'success')
+      showFeedback(t('ejecutarPruebas.executionCompleted'), t('ejecutarPruebas.executionCompletedMessage', { status: backendFinalStatus }), 'success')
       await advanceToNextTest()
     }
   }
@@ -234,7 +237,7 @@ export function createManualExecutionActions({
     }
     if (executionSnapshots.length === 0) {
       if (!generalExecutionStatus || generalExecutionStatus === 'SIN_CORRER') {
-        showFeedback('Veredicto requerido', 'Selecciona un resultado general para ejecutar este caso sin pasos.', 'warning')
+        showFeedback(t('ejecutarPruebas.verdictRequired'), t('ejecutarPruebas.verdictRequiredMessage'), 'warning')
         return
       }
       if (
@@ -244,7 +247,7 @@ export function createManualExecutionActions({
         generalExecutionAttachments.length === 0 &&
         !generalExecutionSnapshot?.evidencia_url
       ) {
-        showFeedback('Documentacion requerida', 'Agrega un comentario o adjunta evidencia antes de guardar este fallo o bloqueo.', 'warning')
+        showFeedback(t('ejecutarPruebas.documentationRequired'), t('ejecutarPruebas.documentationRequiredMessage'), 'warning')
         return
       }
       try {
@@ -258,7 +261,7 @@ export function createManualExecutionActions({
         const savedExecution = await response.json()
         setCurrentExecutionCase(prev => prev ? { ...prev, ...savedExecution, estado_resultado: generalExecutionStatus } : savedExecution)
       } catch (error: any) {
-        showFeedback('No se pudo completar', error.message || 'Error al guardar la ejecución.', 'danger')
+        showFeedback(t('ejecutarPruebas.completionFailed'), error.message || t('ejecutarPruebas.saveExecutionError'), 'danger')
         return
       }
       await finalizeExecutionResult(generalExecutionStatus)
@@ -268,9 +271,9 @@ export function createManualExecutionActions({
     const completionPlan = getExecutionCompletionPlan()
     if (!completionPlan.canComplete) {
       if (completionPlan.pendingBeforeConclusion) {
-        showFeedback('Ejecución incompleta', 'Completa los pasos anteriores antes de guardar el resultado final.', 'warning')
+        showFeedback(t('ejecutarPruebas.incompleteExecution'), t('ejecutarPruebas.completePreviousSteps'), 'warning')
       } else {
-        showFeedback('Ejecución incompleta', 'Marca todos los pasos como PASO o registra un FALLO/BLOQUEO para cerrar la ejecución.', 'warning')
+        showFeedback(t('ejecutarPruebas.incompleteExecution'), t('ejecutarPruebas.completeAllSteps'), 'warning')
       }
       return
     }
@@ -286,7 +289,7 @@ export function createManualExecutionActions({
       (snapshotAttachments[conclusiveSnapshot.id] || []).length === 0 &&
       !conclusiveSnapshot.evidencia_url
     ) {
-      showFeedback('Documentacion requerida', 'Agrega un comentario o adjunta evidencia antes de guardar este fallo o bloqueo.', 'warning')
+      showFeedback(t('ejecutarPruebas.documentationRequired'), t('ejecutarPruebas.documentationRequiredMessage'), 'warning')
       return
     }
 
@@ -312,7 +315,7 @@ export function createManualExecutionActions({
       const savedExecution = await response.json()
       setCurrentExecutionCase(prev => prev ? { ...prev, ...savedExecution, estado_resultado: backendFinalStatus } : savedExecution)
     } catch (error: any) {
-      showFeedback('No se pudo completar', error.message || 'Error al guardar la ejecución.', 'danger')
+      showFeedback(t('ejecutarPruebas.completionFailed'), error.message || t('ejecutarPruebas.saveExecutionError'), 'danger')
       return
     }
 

@@ -5,6 +5,7 @@ type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
 type UseGeneralConfigurationParams = {
+  t: (key: `configuracion.${string}`, params?: Record<string, string | number>) => string
   isAuthenticated: boolean
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   defaultAttachmentConfig: any
@@ -13,6 +14,7 @@ type UseGeneralConfigurationParams = {
 }
 
 export function useGeneralConfiguration({
+  t,
   isAuthenticated,
   fetchWithAuth,
   defaultAttachmentConfig,
@@ -37,6 +39,7 @@ export function useGeneralConfiguration({
     revokeUserApiKey,
     handleApiKeyEnabledChange,
   } = createConfigurationActions({
+    t,
     isAuthenticated,
     apiKeys,
     apiKeyName,

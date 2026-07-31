@@ -1,8 +1,9 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useMemo, useState, type CSSProperties } from 'react'
 import { Button, Dropdown } from 'react-bootstrap'
 import { Archive, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FileText, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, PlusCircle, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
 import { compareTestsBySuiteOrder } from './testOrdering'
 import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
+import { useI18n } from './i18n'
 
 type SuiteTreeProps = {
   suites: any[]
@@ -86,9 +87,9 @@ const suiteMatchesQuery = (suite: any, props: SuiteTreeProps, query: string, vis
   return hasMatchingCase || (suite.children || []).some((child: any) => suiteMatchesQuery(child, props, query, nextVisited))
 }
 
-const formatCaseCount = (count: number) => `${count} ${count === 1 ? 'caso' : 'casos'}`
+const formatCaseCount = (count: number, t: (key: any, params?: any) => string) => t('common.caseCount', { count, label: t(count === 1 ? 'common.caseSingular' : 'common.casePlural') })
 
-const formatSuiteCount = (count: number) => `${count} ${count === 1 ? 'suite' : 'suites'}`
+const formatSuiteCount = (count: number, t: (key: any, params?: any) => string) => t('common.suiteCount', { count, label: t(count === 1 ? 'common.suiteSingular' : 'common.suitePlural') })
 
 const suiteIconMap: Record<string, any> = {
   folder: Folders,
@@ -128,6 +129,7 @@ const SuiteTreeNode = ({
   props: SuiteTreeProps
   visited?: Set<string>
 }) => {
+  const { t } = useI18n()
   if (!suite?.id || visited.has(suite.id)) return null
   const isUnsuitedRoot = suite.id === UNSUITED_CASES_ROOT_ID
   const childVisited = new Set(visited)
@@ -190,12 +192,12 @@ const SuiteTreeNode = ({
   const showCountChips = !showMetrics && (descendantSuiteCount > 0 || cumulativeTestCount > 0)
   const suiteColor = suite.color || '#F1F5F9'
   const SuiteIcon = suiteIconMap[suite.icono || suite.icon || 'folder'] || Folders
-  const suiteFullName = String(suite.nombre || suite.name || 'Sin nombre')
+  const suiteFullName = String(suite.nombre || suite.name || t('common.noName'))
   const suiteTooltip = isUnsuitedRoot
-    ? `Casos sin suite. Clic para ${isExpanded ? 'contraer' : 'desplegar'}.`
+    ? `${t('casos.noSuiteCases')}. ${t('common.clickTo', { action: isExpanded ? t('common.collapse') : t('common.expand') })}`
     : hasExpandableContent
-      ? `Carpeta: ${suiteFullName}. Clic para ${isExpanded ? 'contraer' : 'desplegar'}.`
-      : `Carpeta: ${suiteFullName}`
+      ? `${t('common.folder')}: ${suiteFullName}. ${t('common.clickTo', { action: isExpanded ? t('common.collapse') : t('common.expand') })}`
+      : `${t('common.folder')}: ${suiteFullName}`
   const handleSuiteToggle = () => {
     onSelectSuite(suite.id)
     onToggleSuite(suite.id)
@@ -220,8 +222,8 @@ const SuiteTreeNode = ({
         role="button"
         tabIndex={0}
         aria-expanded={hasExpandableContent ? isExpanded : undefined}
-        className={`p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${isSelected ? 'border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
-        style={{ marginLeft: level * 16, minHeight: '38px', background: suiteColor }}
+        className={`suite-tree-suite-row p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${isSelected ? 'is-selected border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
+        style={{ marginLeft: level * 16, minHeight: '38px', '--suite-color': suiteColor, cursor: 'pointer' } as CSSProperties}
         title={suiteTooltip}
         aria-label={suiteTooltip}
       >
@@ -236,17 +238,17 @@ const SuiteTreeNode = ({
         <SuiteIcon size={16} className="flex-shrink-0 me-2" style={{ color: isSelected ? '#0d6efd' : suiteIconColor(suiteColor) }} />
         <span className="app-small text-truncate flex-grow-1" title={suiteTooltip} aria-label={suiteTooltip}>{suiteFullName}</span>
         {suite.archivado && (
-          <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">ARCHIVADA</span>
+          <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">{t('common.archived')}</span>
         )}
         {showCountChips && (
           <span className="d-flex align-items-center gap-1 ms-2 flex-shrink-0">
-            {descendantSuiteCount > 0 && <BadgeLike text={formatSuiteCount(descendantSuiteCount)} tone="secondary" title={`Sub-suites incluidas: ${descendantSuiteCount}`} />}
-            {cumulativeTestCount > 0 && <BadgeLike text={formatCaseCount(cumulativeTestCount)} tone="secondary" title={`Casos incluidos: ${cumulativeTestCount}`} />}
+            {descendantSuiteCount > 0 && <BadgeLike text={formatSuiteCount(descendantSuiteCount, t)} tone="secondary" title={t('common.includedSubSuites', { count: descendantSuiteCount })} />}
+            {cumulativeTestCount > 0 && <BadgeLike text={formatCaseCount(cumulativeTestCount, t)} tone="secondary" title={t('common.includedCases', { count: cumulativeTestCount })} />}
           </span>
         )}
         {metrics && (
           <span className="d-flex align-items-center gap-1 ms-2 flex-shrink-0">
-            <BadgeLike text={formatCaseCount(metrics.total)} tone="secondary" title={`Casos incluidos: ${metrics.total}`} />
+            <BadgeLike text={formatCaseCount(metrics.total, t)} tone="secondary" title={t('common.includedCases', { count: metrics.total })} />
             <MetricBadge metrics={metrics} muted={!hasMetricResults} />
           </span>
         )}
@@ -257,28 +259,28 @@ const SuiteTreeNode = ({
               <Settings size={14} />
             </Dropdown.Toggle>
             <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
-              <Dropdown.Item onClick={() => onCreateCase(suite.id)} className="d-flex align-items-center gap-2 text-dark"><PlusCircle size={14}/> Nuevo caso de prueba</Dropdown.Item>
+              <Dropdown.Item onClick={() => onCreateCase(suite.id)} className="d-flex align-items-center gap-2 text-dark"><PlusCircle size={14}/> {t('common.newTestCase')}</Dropdown.Item>
               <Dropdown.Divider />
-              <Dropdown.Item onClick={() => onCreateSuite(suite.id)} className="d-flex align-items-center gap-2 text-dark"><FolderPlus size={14}/> Nueva Sub-carpeta</Dropdown.Item>
-              <Dropdown.Item onClick={() => onEditSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Edit size={14}/> Editar carpeta</Dropdown.Item>
+              <Dropdown.Item onClick={() => onCreateSuite(suite.id)} className="d-flex align-items-center gap-2 text-dark"><FolderPlus size={14}/> {t('common.newSubfolder')}</Dropdown.Item>
+              <Dropdown.Item onClick={() => onEditSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Edit size={14}/> {t('common.editFolder')}</Dropdown.Item>
               {onCloneSuite && (
-                <Dropdown.Item onClick={() => onCloneSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><ClipboardCopy size={14}/> Copiar suite completa</Dropdown.Item>
+                <Dropdown.Item onClick={() => onCloneSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><ClipboardCopy size={14}/> {t('common.copySuite')}</Dropdown.Item>
               )}
               {onMoveSuite && (
-                <Dropdown.Item onClick={() => onMoveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><MoveRight size={14}/> Mover carpeta</Dropdown.Item>
+                <Dropdown.Item onClick={() => onMoveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><MoveRight size={14}/> {t('common.moveFolder')}</Dropdown.Item>
               )}
               {(onArchiveSuite || onRestoreSuite) && <Dropdown.Divider />}
               {suite.archivado ? (
                 onRestoreSuite && (
-                  <Dropdown.Item onClick={() => onRestoreSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><RotateCcw size={14}/> Restaurar suite</Dropdown.Item>
+                  <Dropdown.Item onClick={() => onRestoreSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><RotateCcw size={14}/> {t('common.restoreSuite')}</Dropdown.Item>
                 )
               ) : (
                 onArchiveSuite && (
-                  <Dropdown.Item onClick={() => onArchiveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Archive size={14}/> Archivar suite</Dropdown.Item>
+                  <Dropdown.Item onClick={() => onArchiveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Archive size={14}/> {t('common.archiveSuite')}</Dropdown.Item>
                 )
               )}
               <Dropdown.Divider />
-              <Dropdown.Item onClick={() => onDeleteSuite(suite.id)} className="d-flex align-items-center gap-2 text-danger"><Trash2 size={14}/> Eliminar carpeta</Dropdown.Item>
+              <Dropdown.Item onClick={() => onDeleteSuite(suite.id)} className="d-flex align-items-center gap-2 text-danger"><Trash2 size={14}/> {t('common.deleteFolder')}</Dropdown.Item>
             </Dropdown.Menu>
           </Dropdown>
         </div>}
@@ -301,7 +303,7 @@ const SuiteTreeNode = ({
             const tone = getTestTone(test)
             const isSelectedTest = selectedTest?.id === test.id
             const testCode = test.code || test.id.slice(0, 8).toUpperCase()
-            const testFullName = String(test.title || 'Sin nombre')
+            const testFullName = String(test.title || t('common.noName'))
             const testTooltip = `${testCode} - ${testFullName}`
             const visibleTags = (test.tags || []).slice(0, 2)
             const hiddenTagCount = Math.max(0, (test.tags || []).length - visibleTags.length)
@@ -312,8 +314,8 @@ const SuiteTreeNode = ({
                 e.stopPropagation()
                 onSelectTest(test, suite.id)
               }}
-              className={`py-1 px-2 rounded-2 d-flex align-items-center gap-1 cursor-pointer border text-dark suite-tree-case-row ${isSelectedTest ? 'shadow-sm' : ''}`}
-              style={{ minHeight: '28px', background: isSelectedTest ? '#E7F1FF' : tone.bg, borderColor: isSelectedTest ? '#0D6EFD' : tone.border }}
+              className={`py-1 px-2 rounded-2 d-flex align-items-center gap-1 cursor-pointer border text-dark suite-tree-case-row ${isSelectedTest ? 'is-selected shadow-sm' : ''}`}
+              style={{ minHeight: '28px', '--case-tone-border': tone.border } as CSSProperties}
               title={testTooltip}
               aria-label={testTooltip}
             >
@@ -334,7 +336,7 @@ const SuiteTreeNode = ({
                 <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle x-small flex-shrink-0">v{test.version}-&gt;v{test.latestVersion}</span>
               )}
               {test.caseStatus === 'ARCHIVADO' && (
-                <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">ARCHIVADA</span>
+                <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">{t('common.archived')}</span>
               )}
               {showActions && <Dropdown show={openTestDropdown === test.id} onToggle={(isOpen) => onToggleTestDropdown?.(isOpen ? test.id : null)} onClick={(e) => e.stopPropagation()}>
                 <Dropdown.Toggle
@@ -342,47 +344,47 @@ const SuiteTreeNode = ({
                   type="button"
                   bsPrefix="suite-tree-case-actions-toggle"
                   className="text-muted suite-tree-case-actions d-inline-flex align-items-center justify-content-center"
-                  title="Opciones del caso"
-                  aria-label={`Opciones del caso: ${testTooltip}`}
+                  title={t('common.caseOptions')}
+                  aria-label={`${t('common.caseOptions')}: ${testTooltip}`}
                 >
                   <MoreVertical size={14} />
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
                   {onViewVersions && test.version > 1 && (
                     <Dropdown.Item onClick={() => onViewVersions(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <History size={14} /> Ver cambios
+                      <History size={14} /> {t('common.viewChanges')}
                     </Dropdown.Item>
                   )}
                   <Dropdown.Item onClick={() => onEditCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                    <Edit size={14} /> Editar caso
+                    <Edit size={14} /> {t('common.editCase')}
                   </Dropdown.Item>
                   {onCloneCase && (
                     <Dropdown.Item onClick={() => onCloneCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <ClipboardCopy size={14} /> Copiar como nueva prueba
+                      <ClipboardCopy size={14} /> {t('common.copyAsNewTest')}
                     </Dropdown.Item>
                   )}
                   {onMoveCase && (
                     <Dropdown.Item onClick={() => onMoveCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <MoveRight size={14} /> Mover prueba
+                      <MoveRight size={14} /> {t('common.moveTest')}
                     </Dropdown.Item>
                   )}
                   {(onArchiveCase || onRestoreCase) && <Dropdown.Divider />}
                   {test.caseStatus === 'ARCHIVADO' ? (
                     onRestoreCase && (
                       <Dropdown.Item onClick={() => onRestoreCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                        <RotateCcw size={14} /> Restaurar prueba
+                        <RotateCcw size={14} /> {t('common.restoreTest')}
                       </Dropdown.Item>
                     )
                   ) : (
                     onArchiveCase && (
                       <Dropdown.Item onClick={() => onArchiveCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                        <Archive size={14} /> Archivar prueba
+                        <Archive size={14} /> {t('common.archiveTest')}
                       </Dropdown.Item>
                     )
                   )}
                   <Dropdown.Divider />
                   <Dropdown.Item onClick={() => onDeleteCase(test.id)} className="d-flex align-items-center gap-2 text-danger">
-                    <Trash2 size={14} /> Eliminar caso
+                    <Trash2 size={14} /> {t('common.deleteCase')}
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>}
@@ -395,6 +397,7 @@ const SuiteTreeNode = ({
 }
 
 export const SuiteTree = memo((props: SuiteTreeProps) => {
+  const { t } = useI18n()
   const [localOpenTestDropdown, setLocalOpenTestDropdown] = useState<string | null>(null)
   const [localOpenSuiteDropdown, setLocalOpenSuiteDropdown] = useState<string | null>(null)
 
@@ -411,7 +414,7 @@ export const SuiteTree = memo((props: SuiteTreeProps) => {
   )
   const unsuitedRoot = {
     id: UNSUITED_CASES_ROOT_ID,
-    nombre: 'Casos sin suite',
+    nombre: t('casos.noSuiteCases'),
     icono: 'file-check',
     color: '#F8FAFC',
     children: []

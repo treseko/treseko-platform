@@ -26,7 +26,9 @@ async def run_ai_engine_dry_run(
         ]
     )
     test_id = run_id or f"AI-DRY-RUN-{uuid.uuid4().hex[:10]}"
+    correlation_id = current_correlation_id(test_id)
     task_payload = {
+        "correlation_id": correlation_id,
         "dry_run": True,
         "case_code": payload.codigo or "AI-DRY-RUN",
         "case_title": payload.titulo,
@@ -79,7 +81,7 @@ async def run_ai_engine_dry_run(
 
     timeout_seconds = int(config.get("timeout_seconds") or 900)
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=10.0)) as client:
-        response = await client.post(f"{ENGINE_URL.rstrip('/')}/run-task-sync", json=task_payload)
+        response = await client.post(f"{ENGINE_URL.rstrip('/')}/run-task-sync", json=task_payload, headers=engine_internal_headers(correlation_id))
     if response.status_code >= 400:
         raise ConnectionError(f"Motor IA rechazo el dry-run: HTTP {response.status_code} {response.text[:300]}")
     data = response.json()

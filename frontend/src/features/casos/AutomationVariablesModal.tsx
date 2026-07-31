@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Col, Form, Modal, Row, Tab, Tabs, Table } from 'react-bootstrap'
 import { Database, Copy, Plus, Save, Trash2 } from 'lucide-react'
+import { useI18n } from '../../i18n'
 import { API_BASE } from '../../app/constants'
 
 type AutomationVariablesModalProps = {
@@ -62,6 +63,7 @@ export function AutomationVariablesModal({
   showFeedback,
   canEdit = true
 }: AutomationVariablesModalProps) {
+  const { t } = useI18n()
   const projectEnvironments = useMemo(() => environments.filter((env: any) => env.projectId === projectId), [environments, projectId])
   const currentComponent = componentsList.find(component => component.id === componentId)
   const [selectedEnvId, setSelectedEnvId] = useState('')
@@ -129,9 +131,9 @@ export function AutomationVariablesModal({
       }
       addDatasetToState(selectedEnv.id, await response.json())
       setNewDataset({ name: '', description: '', variablesText: '', isDefault: false })
-      showFeedback('Dataset', 'Dataset guardado.', 'success')
+      showFeedback(t('casos.feedbackDataset'), t('casos.feedbackDatasetSaved'), 'success')
     } catch (error: any) {
-      showFeedback('Dataset', error.message || 'No se pudo guardar dataset.', 'danger')
+      showFeedback(t('casos.feedbackDataset'), error.message || t('casos.feedbackDatasetSaveError'), 'danger')
     } finally {
       setSavingKey('')
     }
@@ -169,9 +171,9 @@ export function AutomationVariablesModal({
         delete next[dataset.id]
         return next
       })
-      showFeedback('Dataset', 'Dataset actualizado.', 'success')
+      showFeedback(t('casos.feedbackDataset'), t('casos.feedbackDatasetUpdated'), 'success')
     } catch (error: any) {
-      showFeedback('Dataset', error.message || 'No se pudo actualizar dataset.', 'danger')
+      showFeedback(t('casos.feedbackDataset'), error.message || t('casos.feedbackDatasetUpdateError'), 'danger')
     } finally {
       setSavingKey('')
     }
@@ -189,9 +191,9 @@ export function AutomationVariablesModal({
         ...env,
         datasets: (env.datasets || []).filter((item: any) => item.id !== dataset.id)
       }))
-      showFeedback('Dataset', 'Dataset ocultado.', 'success')
+      showFeedback(t('casos.feedbackDataset'), t('casos.feedbackDatasetHidden'), 'success')
     } catch (error: any) {
-      showFeedback('Dataset', error.message || 'No se pudo ocultar dataset.', 'danger')
+      showFeedback(t('casos.feedbackDataset'), error.message || t('casos.feedbackDatasetHideError'), 'danger')
     } finally {
       setSavingKey('')
     }
@@ -211,9 +213,9 @@ export function AutomationVariablesModal({
         throw new Error(error?.detail || `Backend respondio ${response.status}`)
       }
       setComponentsList((prev: any[]) => prev.map(component => component.id === componentId ? { ...component, variables } : component))
-      showFeedback('Variables tecnicas', 'Variables del componente actualizadas.', 'success')
+      showFeedback(t('casos.feedbackTechnicalVariables'), t('casos.feedbackTechnicalVariablesUpdated'), 'success')
     } catch (error: any) {
-      showFeedback('Variables tecnicas', error.message || 'No se pudieron guardar variables.', 'danger')
+      showFeedback(t('casos.feedbackTechnicalVariables'), error.message || t('casos.feedbackTechnicalVariablesError'), 'danger')
     } finally {
       setSavingKey('')
     }
@@ -221,7 +223,7 @@ export function AutomationVariablesModal({
 
   const applyCaseData = () => {
     setCaseDataText(localCaseDataText)
-    showFeedback('Datos del caso', 'Overrides actualizados en el formulario. Guarda el caso para persistirlos.', 'success')
+    showFeedback(t('casos.feedbackCaseData'), t('casos.feedbackCaseDataUpdated'), 'success')
   }
 
   const resolvedRows = useMemo(() => {
@@ -240,9 +242,9 @@ export function AutomationVariablesModal({
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      showFeedback('Copiado', 'Variable copiada al portapapeles.', 'success')
+      showFeedback(t('casos.feedbackCopied'), t('casos.feedbackVariableCopied'), 'success')
     } catch {
-      showFeedback('Variable', text, 'info')
+      showFeedback(t('casos.feedbackCopied'), text, 'info')
     }
   }
 
@@ -251,15 +253,15 @@ export function AutomationVariablesModal({
       <Modal.Header closeButton className="border-0 pb-2">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <Database size={18} className="text-primary" />
-          Variables configuradas
+          {t('casos.configuredVariables')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="pt-0">
         <Tabs defaultActiveKey="datasets" className="mb-3">
-          <Tab eventKey="datasets" title="Ambiente y datasets">
+          <Tab eventKey="datasets" title={t('casos.environmentAndDatasets')}>
             <Row className="g-3">
               <Col md={4}>
-                <Form.Label>Ambiente</Form.Label>
+                <Form.Label>{t('common.environment')}</Form.Label>
                 <Form.Select value={selectedEnv?.id || ''} onChange={e => setSelectedEnvId(e.target.value)}>
                   {projectEnvironments.map((env: any) => <option key={env.id} value={env.id}>{env.name}</option>)}
                 </Form.Select>
@@ -267,14 +269,14 @@ export function AutomationVariablesModal({
               </Col>
               <Col md={8}>
                 <div className="border rounded-3 p-3 bg-light">
-                  <div className="fw-bold mb-2">Nuevo dataset</div>
+                  <div className="fw-bold mb-2">{t('casos.newDataset')}</div>
                   <Row className="g-2">
-                    <Col md={5}><Form.Control size="sm" placeholder="Nombre del dataset" value={newDataset.name} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, name: e.target.value })} /></Col>
-                    <Col md={7}><Form.Control size="sm" placeholder="Descripcion / uso" value={newDataset.description} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, description: e.target.value })} /></Col>
-                    <Col xs={12}><Form.Control as="textarea" rows={3} size="sm" className="font-monospace" placeholder={'usuario=qa_user\npassword=qa_password'} value={newDataset.variablesText} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, variablesText: e.target.value })} /></Col>
+                    <Col md={5}><Form.Control size="sm" placeholder={t('proyectos.datasetNamePlaceholder')} value={newDataset.name} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, name: e.target.value })} /></Col>
+                    <Col md={7}><Form.Control size="sm" placeholder={t('proyectos.datasetDescriptionPlaceholder')} value={newDataset.description} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, description: e.target.value })} /></Col>
+                    <Col xs={12}><Form.Control as="textarea" rows={3} size="sm" className="font-monospace" placeholder={t('proyectos.datasetVariablesPlaceholder')} value={newDataset.variablesText} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, variablesText: e.target.value })} /></Col>
                     <Col xs={12} className="d-flex justify-content-between">
-                      <Form.Check label="Usar como default" checked={newDataset.isDefault} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, isDefault: e.target.checked })} />
-                      {canEdit && <Button size="sm" disabled={savingKey === 'new-dataset'} onClick={saveNewDataset}><Plus size={14} className="me-1" />Crear dataset</Button>}
+                      <Form.Check label={t('casos.useAsDefault')} checked={newDataset.isDefault} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, isDefault: e.target.checked })} />
+                      {canEdit && <Button size="sm" disabled={savingKey === 'new-dataset'} onClick={saveNewDataset}><Plus size={14} className="me-1" />{t('casos.createDataset')}</Button>}
                     </Col>
                   </Row>
                 </div>
@@ -287,7 +289,7 @@ export function AutomationVariablesModal({
                   <div key={dataset.id} className="border rounded-3 p-3">
                     <div className="d-flex justify-content-between align-items-center mb-2">
                       <div className="d-flex gap-2 align-items-center">
-                        <Badge bg={dataset.isDefault ? 'success' : 'light'} text={dataset.isDefault ? undefined : 'dark'} className="border">{dataset.isDefault ? 'Default' : 'Dataset'}</Badge>
+                        <Badge bg={dataset.isDefault ? 'success' : 'light'} text={dataset.isDefault ? undefined : 'dark'} className="border">{dataset.isDefault ? t('casos.default') : t('casos.dataset')}</Badge>
                         <span className="font-monospace small">{dataset.id}</span>
                       </div>
                       <div className="d-flex gap-2">
@@ -298,29 +300,29 @@ export function AutomationVariablesModal({
                     <Row className="g-2">
                       <Col md={4}><Form.Control size="sm" value={draft.name} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, name: e.target.value } }))} /></Col>
                       <Col md={5}><Form.Control size="sm" value={draft.description} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, description: e.target.value } }))} /></Col>
-                      <Col md={3}><Form.Check label="Default" checked={draft.isDefault} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, isDefault: e.target.checked } }))} /></Col>
+                      <Col md={3}><Form.Check label={t('casos.default')} checked={draft.isDefault} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, isDefault: e.target.checked } }))} /></Col>
                       <Col xs={12}><Form.Control as="textarea" rows={3} className="font-monospace small" value={draft.variablesText} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, variablesText: e.target.value } }))} /></Col>
                     </Row>
                   </div>
                 )
               })}
-              {selectedDatasets.length === 0 && <Alert variant="info">Este ambiente no tiene datasets activos.</Alert>}
+              {selectedDatasets.length === 0 && <Alert variant="info">{t('casos.noActiveDatasets')}</Alert>}
             </div>
           </Tab>
-          <Tab eventKey="component" title="Variables del componente">
-            <Alert variant="light" className="border">Configuracion tecnica del componente actual. Ejemplos: <code>api_path</code>, <code>health_endpoint</code>, <code>service_name</code>.</Alert>
+          <Tab eventKey="component" title={t('casos.componentVariables')}>
+            <Alert variant="light" className="border">{t('casos.componentTechnicalConfig')} <code>api_path</code>, <code>health_endpoint</code>, <code>service_name</code>.</Alert>
             <Form.Control as="textarea" rows={10} className="font-monospace" value={componentVariablesText} disabled={!canEdit} onChange={e => setComponentVariablesText(e.target.value)} />
-            {canEdit && <Button className="mt-3" disabled={savingKey === 'component-vars'} onClick={saveComponentVariables}>Guardar variables tecnicas</Button>}
+            {canEdit && <Button className="mt-3" disabled={savingKey === 'component-vars'} onClick={saveComponentVariables}>{t('casos.saveTechnicalVariables')}</Button>}
           </Tab>
-          <Tab eventKey="case" title="Datos del caso">
-            <Alert variant="light" className="border">Overrides puntuales del caso. Se guardan cuando guardes el caso de prueba.</Alert>
+          <Tab eventKey="case" title={t('casos.caseData')}>
+            <Alert variant="light" className="border">{t('casos.caseOverridesHelp')}</Alert>
             <Form.Control as="textarea" rows={10} className="font-monospace" value={localCaseDataText} disabled={!canEdit} onChange={e => setLocalCaseDataText(e.target.value)} />
-            {canEdit && <Button className="mt-3" onClick={applyCaseData}>Aplicar al formulario</Button>}
+            {canEdit && <Button className="mt-3" onClick={applyCaseData}>{t('casos.applyToForm')}</Button>}
           </Tab>
-          <Tab eventKey="resolved" title="Vista resuelta">
-            {resolvedRows.length === 0 ? <Alert variant="info">No hay variables disponibles para previsualizar.</Alert> : (
+          <Tab eventKey="resolved" title={t('casos.resolvedView')}>
+            {resolvedRows.length === 0 ? <Alert variant="info">{t('common.noVariablesPreview')}</Alert> : (
               <Table responsive hover className="align-middle">
-                <thead><tr><th>Origen</th><th>Clave</th><th>Valor actual</th><th>Token</th><th></th></tr></thead>
+                <thead><tr><th>{t('common.source')}</th><th>{t('common.key')}</th><th>{t('common.currentValue')}</th><th>{t('common.token')}</th><th></th></tr></thead>
                 <tbody>
                   {resolvedRows.map((row, index) => (
                     <tr key={`${row.source}-${row.key}-${index}`}>

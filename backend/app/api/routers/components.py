@@ -8,7 +8,7 @@ router = APIRouter(tags=["Componentes"])
 
 @router.post("/componentes/", response_model=schemas.Componente)
 async def create_componente(
-    comp: schemas.ComponenteCreate, 
+    comp: schemas.ComponenteCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.componentes", "edit"))
 ):
@@ -25,7 +25,7 @@ async def create_componente(
 
 @router.get("/proyectos/{proyecto_id}/componentes/", response_model=List[schemas.Componente])
 async def read_componentes_proyecto(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -36,8 +36,8 @@ async def read_componentes_proyecto(
 
 @router.patch("/componentes/{componente_id}", response_model=schemas.Componente)
 async def update_componente(
-    componente_id: UUID, 
-    comp: schemas.ComponenteUpdate, 
+    componente_id: UUID,
+    comp: schemas.ComponenteUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.componentes", "edit"))
 ):
@@ -56,7 +56,7 @@ async def update_componente(
 
 @router.delete("/componentes/{componente_id}")
 async def delete_componente(
-    componente_id: UUID, 
+    componente_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.componentes", "edit"))
 ):

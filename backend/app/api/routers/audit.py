@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from ...main_context import *
 from ...services.edition.entitlement_service import require_feature
+from ...services import audit_context
 
 
 router = APIRouter(tags=["Auditoria"], dependencies=[Depends(require_feature("audit.advanced"))])
@@ -41,6 +42,8 @@ async def read_audit_logs(
             recurso_id=log.recurso_id,
             detalles=log.detalles,
             ip_address=log.ip_address,
+            origen=log.origen,
+            correlation_id=log.correlation_id,
             fecha=log.fecha,
         )
         for log in logs
@@ -65,7 +68,7 @@ async def audit_secret_reveal(
             "context": payload.context or "run_detail",
             "value": "[redacted]",
         },
-        ip_address=request.client.host if request.client else None,
+        **audit_context.audit_request_context(request),
     )
     return {"ok": True}
 

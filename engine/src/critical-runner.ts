@@ -13,7 +13,7 @@ const criticalSuite = [
 async function runCriticalSuite() {
   console.log('🚀 Launching CRITICAL-SMOKE Suite...');
   const suiteName = 'critical-smoke-v4';
-  
+
   for (const test of criticalSuite) {
     try {
       // @ts-ignore - test might have guidance

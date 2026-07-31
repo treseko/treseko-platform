@@ -53,6 +53,7 @@ export type ConfiguracionPageProps = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   onLoggedUserUpdated: (user: any) => void
+  onPreferencesUpdated?: (preferences: any) => void
   onBrandingUpdated: (branding: BrandingState) => void
   systemRoleItems: any[]
   customRoles: any[]

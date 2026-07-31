@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { useI18n } from '../../../i18n'
 
 type UseExecutionRunDetailParams = {
   loadTestRunDetail: (runId: string) => Promise<any>
 }
 
 export function useExecutionRunDetail({ loadTestRunDetail }: UseExecutionRunDetailParams) {
+  const { t } = useI18n()
   const [executionRunDetail, setExecutionRunDetail] = useState<any | null>(null)
   const [executionRunDetailLoading, setExecutionRunDetailLoading] = useState(false)
   const [executionRunDetailError, setExecutionRunDetailError] = useState('')
@@ -19,7 +21,7 @@ export function useExecutionRunDetail({ loadTestRunDetail }: UseExecutionRunDeta
       const data = await loadTestRunDetail(runId)
       setExecutionRunDetail(data)
     } catch (error: any) {
-      setExecutionRunDetailError(error.message || 'No se pudo cargar el detalle de la ejecucion')
+      setExecutionRunDetailError(error.message || t('historial.couldNotLoadDetail'))
     } finally {
       setExecutionRunDetailLoading(false)
     }

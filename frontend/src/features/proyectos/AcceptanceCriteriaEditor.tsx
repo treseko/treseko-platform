@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import { Button, Col, Form, Row } from "react-bootstrap";
 import type { AcceptanceCriterion } from "./types/traceability";
 
@@ -8,6 +9,7 @@ type Props = {
 };
 
 export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false }: Props) {
+  const { t } = useI18n()
   const update = (index: number, patch: Partial<AcceptanceCriterion>) => {
     onChange?.(criteria.map((criterion, itemIndex) => itemIndex === index ? { ...criterion, ...patch } : criterion));
   };
@@ -16,29 +18,29 @@ export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false 
   const remove = (index: number) => onChange?.(criteria.filter((_, itemIndex) => itemIndex !== index));
   return (
     <div className="d-flex flex-column gap-3">
-      {!criteria.length && <div className="small text-muted">Agregá al menos un criterio estructurado para que la historia pueda generar casos.</div>}
+      {!criteria.length && <div className="small text-muted">{t('proyectos.addCriteriaHint')}</div>}
       {criteria.map((criterion, index) => (
         <div className="border rounded p-2" key={criterion.local_id}>
-          <div className="d-flex justify-content-between align-items-center small text-muted mb-2"><span>Criterio {index + 1}</span>{onChange && !disabled && <Button type="button" size="sm" variant="outline-danger" onClick={() => remove(index)}>Quitar</Button>}</div>
+          <div className="d-flex justify-content-between align-items-center small text-muted mb-2"><span>{t('proyectos.criterionLabel', { index: index + 1 })}</span>{onChange && !disabled && <Button type="button" size="sm" variant="outline-danger" onClick={() => remove(index)}>{t('proyectos.remove')}</Button>}</div>
           <Form.Control
             size="sm"
             className="mb-2"
-            aria-label={`Título del criterio ${index + 1}`}
+            aria-label={t('proyectos.criterionLabel', { index: index + 1 })}
             value={criterion.title}
             disabled={disabled || !onChange}
             onChange={(event) => update(index, { title: event.target.value })}
           />
           <Row className="g-2">
             <Col md={6}>
-              <Form.Label className="small mb-1">Dado</Form.Label>
+              <Form.Label className="small mb-1">{t('proyectos.given')}</Form.Label>
               <Form.Control size="sm" value={criterion.given} disabled={disabled || !onChange} onChange={(event) => update(index, { given: event.target.value })} />
             </Col>
             <Col md={6}>
-              <Form.Label className="small mb-1">Cuando</Form.Label>
+              <Form.Label className="small mb-1">{t('proyectos.when')}</Form.Label>
               <Form.Control size="sm" value={criterion.when} disabled={disabled || !onChange} onChange={(event) => update(index, { when: event.target.value })} />
             </Col>
             <Col md={12}>
-              <Form.Label className="small mb-1">Entonces</Form.Label>
+              <Form.Label className="small mb-1">{t('proyectos.then')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={2}
@@ -48,13 +50,13 @@ export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false 
               />
             </Col>
             <Col md={12}>
-              <Form.Label className="small mb-1">Resultado observable</Form.Label>
+              <Form.Label className="small mb-1">{t('proyectos.observableResult')}</Form.Label>
               <Form.Control size="sm" value={criterion.observable_result} disabled={disabled || !onChange} onChange={(event) => update(index, { observable_result: event.target.value })} />
             </Col>
           </Row>
         </div>
       ))}
-      {onChange && !disabled && <Button type="button" size="sm" variant="outline-secondary" className="align-self-start" onClick={add}>Añadir criterio</Button>}
+      {onChange && !disabled && <Button type="button" size="sm" variant="outline-secondary" className="align-self-start" onClick={add}>{t('proyectos.addCriterion')}</Button>}
     </div>
   );
 }

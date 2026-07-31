@@ -96,7 +96,7 @@ class Suite(SuiteBase):
     activo: bool = True
     archivado: bool = False
     children: List['Suite'] = Field(default_factory=list)
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class SuiteCloneResponse(BaseModel):
@@ -127,7 +127,7 @@ class PasoCreate(PasoBase):
 class Paso(PasoBase):
     id: UUID
     caso_id: UUID
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class CasoPruebaBase(BaseModel):
@@ -217,7 +217,7 @@ class CasoPrueba(CasoPruebaBase):
     fecha_creacion: datetime
     ultima_modificacion: datetime
     activo: bool = True
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class CasoPruebaConPasos(CasoPrueba):
@@ -243,7 +243,7 @@ class CasoVersion(BaseModel):
     creado_por: UUID
     fecha_creacion: datetime
     ultima_modificacion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class CasoSearchResponse(BaseModel):

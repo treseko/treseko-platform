@@ -3,6 +3,8 @@ import { Alert, Badge, Button, Card, Col, Form, ProgressBar, Row, Spinner, Table
 import { Crown, Download, KeyRound, Lock, ShieldCheck, Upload } from 'lucide-react'
 import { API_BASE } from '../../../../app/constants'
 import { humanizePremiumError } from '../../../premium/featureAccess'
+import { useI18n } from '../../../../i18n'
+import { LicenseSettingsView } from './LicenseSettingsView'
 
 type LicenseSettingsTabProps = {
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
@@ -66,23 +68,13 @@ const COMMUNITY_LIMITS_BASE: Record<string, number> = {
   max_storage_mb: 1024,
 }
 
-const LIMIT_LABELS: Record<string, string> = {
-  max_organizations: 'Soluciones / clientes',
-  max_users: 'Usuarios',
-  max_projects: 'Proyectos',
-  max_workers: 'Workers locales',
-  max_automated_runs_per_week: 'Automatizadas por semana',
-  max_ai_runs_per_week: 'Ejecuciones IA por semana',
-  max_ai_case_generations_per_week: 'Generaciones de casos IA por semana',
-  max_storage_mb: 'Almacenamiento',
+const LIMIT_LABEL_KEYS: Record<string, string> = {
+  max_organizations: 'licenseLimitOrganizations', max_users: 'licenseLimitUsers', max_projects: 'licenseLimitProjects', max_workers: 'licenseLimitWorkers',
+  max_automated_runs_per_week: 'licenseLimitAutomatedRuns', max_ai_runs_per_week: 'licenseLimitAiRuns', max_ai_case_generations_per_week: 'licenseLimitAiCaseGenerations', max_storage_mb: 'licenseLimitStorage',
 }
 
-const LIMIT_NOTES: Record<string, string> = {
-  max_automated_runs_per_week: 'Cuenta automatizadas externas y locales en los ultimos 7 dias.',
-  max_ai_runs_per_week: 'Cuenta ejecuciones IA en los ultimos 7 dias.',
-  max_ai_case_generations_per_week: 'Cuenta sesiones de generacion de casos con IA en los ultimos 7 dias.',
-  max_workers: 'Community permite un worker local.',
-  max_storage_mb: 'Total de evidencias y adjuntos de la instancia.',
+const LIMIT_NOTE_KEYS: Record<string, string> = {
+  max_automated_runs_per_week: 'licenseNoteAutomatedRuns', max_ai_runs_per_week: 'licenseNoteAiRuns', max_ai_case_generations_per_week: 'licenseNoteAiCaseGenerations', max_workers: 'licenseNoteWorkers', max_storage_mb: 'licenseNoteStorage',
 }
 
 type TrustKeyringInfo = {
@@ -173,18 +165,14 @@ function stateBadge(state: string) {
   return 'secondary'
 }
 
-function sourceLabel(source: TrustKeyringInfo['source']) {
-  return source === 'development_override' ? 'Configuracion temporal' : 'Incluido en Treseko'
+function sourceLabel(source: TrustKeyringInfo['source'], t: (key: string, params?: Record<string, unknown>) => string) {
+  return source === 'development_override' ? t('configuracion.licenseTemporaryConfiguration') : t('configuracion.licenseIncludedInTreseko')
 }
 
-function stateLabel(state: string) {
+function stateLabel(state: string, t: (key: string, params?: Record<string, unknown>) => string) {
   const labels: Record<string, string> = {
-    active: 'Activa',
-    community: 'Community',
-    expired: 'Vencida',
-    invalid: 'Invalida',
-    revoked: 'Revocada',
-    unavailable: 'No disponible',
+    active: t('configuracion.licenseStateActive'), community: t('configuracion.licenseCommunity'), expired: t('configuracion.licenseStateExpired'),
+    invalid: t('configuracion.licenseStateInvalid'), revoked: t('configuracion.licenseStateRevoked'), unavailable: t('configuracion.licenseUnavailable'),
   }
   return labels[state] || state
 }
@@ -199,19 +187,19 @@ function planLabel(license: LicenseState) {
   return 'Community'
 }
 
-function updateChannelLabel(channel?: string) {
-  if (!channel) return 'Canal no definido'
-  if (channel.includes('stable')) return 'Canal estable'
-  if (channel.includes('rc')) return 'Canal RC'
-  if (channel.includes('beta')) return 'Canal beta'
+function updateChannelLabel(channel: string | undefined, t: (key: string, params?: Record<string, unknown>) => string) {
+  if (!channel) return t('configuracion.licenseChannelUndefined')
+  if (channel.includes('stable')) return t('configuracion.licenseChannelStable')
+  if (channel.includes('rc')) return t('configuracion.licenseChannelRc')
+  if (channel.includes('beta')) return t('configuracion.licenseChannelBeta')
   return channel
 }
 
-function formatLicenseDate(value?: string | null) {
-  if (!value) return 'No disponible'
+function formatLicenseDate(value: string | null | undefined, t: (key: string, params?: Record<string, unknown>) => string, locale: string) {
+  if (!value) return t('configuracion.licenseUnavailable')
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('es-AR', {
+  return date.toLocaleString(locale === 'en' ? 'en-US' : 'es-AR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -227,25 +215,25 @@ function daysUntil(value?: string | null) {
   return Math.ceil((date.getTime() - Date.now()) / 86400000)
 }
 
-function stateMessage(license: LicenseState) {
+function stateMessage(license: LicenseState, t: (key: string, params?: Record<string, unknown>) => string) {
   if (license.state === 'active') return null
-  if (license.state === 'expired') return 'La licencia Premium vencio. Treseko conserva los datos historicos y opera con permisos Community.'
-  if (license.state === 'revoked') return 'La licencia Premium fue revocada. El documento queda guardado como trazabilidad y las funciones Premium quedan bloqueadas.'
-  if (license.state === 'invalid') return 'La licencia instalada no pudo validarse. Treseko no habilita Premium hasta instalar un archivo firmado valido.'
-  if (license.state === 'community') return 'Treseko esta operando en Community. Puedes instalar un license.treseko Premium firmado cuando corresponda.'
+  if (license.state === 'expired') return t('configuracion.licenseMessageExpired')
+  if (license.state === 'revoked') return t('configuracion.licenseMessageRevoked')
+  if (license.state === 'invalid') return t('configuracion.licenseMessageInvalid')
+  if (license.state === 'community') return t('configuracion.licenseMessageCommunity')
   return license.reason || null
 }
 
-function formatLimitValue(key: string, value?: number) {
-  if (value === undefined || value === null) return 'Sin definir'
-  if (key === 'max_storage_mb') return `${value.toLocaleString('es-AR')} MB`
-  return value.toLocaleString('es-AR')
+function formatLimitValue(key: string, value: number | undefined, locale: string, t: (key: string, params?: Record<string, unknown>) => string) {
+  if (value === undefined || value === null) return t('configuracion.licenseUndefined')
+  if (key === 'max_storage_mb') return `${value.toLocaleString(locale === 'en' ? 'en-US' : 'es-AR')} MB`
+  return value.toLocaleString(locale === 'en' ? 'en-US' : 'es-AR')
 }
 
-function formatUsageValue(key: string, value?: number) {
+function formatUsageValue(key: string, value?: number, locale = 'es', t?: (key: string, params?: Record<string, unknown>) => string) {
   if (value === undefined || value === null) return '0'
-  if (key === 'max_storage_mb') return `${value.toLocaleString('es-AR')} MB`
-  return value.toLocaleString('es-AR')
+  if (key === 'max_storage_mb') return `${value.toLocaleString(locale === 'en' ? 'en-US' : 'es-AR')} MB`
+  return value.toLocaleString(locale === 'en' ? 'en-US' : 'es-AR')
 }
 
 function usageVariant(percent: number) {
@@ -261,12 +249,13 @@ function featureIsActive(feature: FeatureRow) {
 async function readJsonResponse(response: Response) {
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data?.detail || 'No se pudo completar la operacion')
+    throw new Error(data?.detail || 'Operation could not be completed')
   }
   return data
 }
 
 export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense, selectedOrganizationId }: LicenseSettingsTabProps) {
+  const { t, locale } = useI18n()
   const [license, setLicense] = useState<LicenseState>(emptyLicenseState)
   const [trust, setTrust] = useState<TrustState>(emptyTrustState)
   const [features, setFeatures] = useState<FeatureRow[]>([])
@@ -283,10 +272,10 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
     const keys = Array.from(new Set([...Object.keys(COMMUNITY_LIMITS_BASE), ...Object.keys(license.limits || {})]))
     return keys.map(key => ({
       key,
-      label: LIMIT_LABELS[key] || key.replaceAll('_', ' '),
+      label: LIMIT_LABEL_KEYS[key] ? t(`configuracion.${LIMIT_LABEL_KEYS[key]}`) : key.replaceAll('_', ' '),
       currentValue: license.limits?.[key],
       usage: usage.usage?.[key],
-      note: LIMIT_NOTES[key],
+      note: LIMIT_NOTE_KEYS[key] ? t(`configuracion.${LIMIT_NOTE_KEYS[key]}`) : undefined,
     }))
   }, [license.limits, usage.usage])
   const enabledPremiumCount = useMemo(
@@ -294,7 +283,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
     [premiumFeatures],
   )
   const disabledPremiumCount = premiumFeatures.length - enabledPremiumCount
-  const licenseStateMessage = useMemo(() => stateMessage(license), [license])
+  const licenseStateMessage = useMemo(() => stateMessage(license, t), [license, t])
   const hasTrustWarning = !trust.license_keyring.configured
     || !trust.server_response_keyring.configured
     || !trust.update_keyring.configured
@@ -323,7 +312,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
       setTrust(trustData)
       setUsage(usageData || { usage: {} })
     } catch (error: any) {
-      showFeedback('Licencia', error?.message || 'No se pudo cargar el estado de licencia.', 'danger')
+      showFeedback(t('configuracion.licenseTitle'), error?.message || t('configuracion.licenseLoadError'), 'danger')
     } finally {
       setLoading(false)
     }
@@ -336,7 +325,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
 
   const installLicense = async () => {
     if (!licenseJson.trim()) {
-      showFeedback('Licencia', 'Selecciona un archivo .treseko antes de instalar.', 'warning')
+      showFeedback(t('configuracion.licenseTitle'), t('configuracion.licenseSelectBeforeInstall'), 'warning')
       return
     }
     setInstalling(true)
@@ -359,24 +348,24 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
           const syncResponse = await fetchWithAuth(`${API_BASE}/system/updates/sync-premium`, { method: 'POST' })
           const syncData = await readJsonResponse(syncResponse)
           syncMessage = syncData?.available
-            ? ` Se encontró la versión ${syncData.latest_version || syncData.version} en el canal Premium.`
-            : ' Se consultó el canal Premium de actualizaciones.'
+            ? ` ${t('configuracion.licensePremiumVersionFound', { version: syncData.latest_version || syncData.version })}`
+            : ` ${t('configuracion.licensePremiumChannelChecked')}`
         } catch (syncError: any) {
-          syncMessage = ` No se pudo consultar actualizaciones Premium ahora: ${syncError?.message || 'intenta desde Actualizaciones más tarde'}.`
+          syncMessage = ` ${t('configuracion.licensePremiumUpdatesError', { error: syncError?.message || t('configuracion.licenseTryUpdatesLater') })}.`
         }
       }
       await loadLicense()
       window.dispatchEvent(new Event('treseko:license-updated'))
       const verificationMessage = data?.online_status === 'pending'
-        ? ` La firma local fue validada, pero la activación online quedó pendiente: ${data.online_reason || 'reintenta desde esta sección.'}`
-        : ' La activación online fue confirmada.'
-      showFeedback('Licencia instalada', `Treseko actualizó la edición y los entitlements activos.${verificationMessage}${syncMessage}`, data?.online_status === 'pending' ? 'warning' : 'success')
+        ? ` ${t('configuracion.licenseOnlinePending', { reason: data.online_reason || t('configuracion.licenseRetrySection') })}`
+        : ` ${t('configuracion.licenseOnlineConfirmed')}`
+      showFeedback(t('configuracion.licenseInstalled'), `${t('configuracion.licenseUpdated')}.${verificationMessage}${syncMessage}`, data?.online_status === 'pending' ? 'warning' : 'success')
     } catch (error: any) {
       const diagnostic = error instanceof SyntaxError
-        ? 'El archivo seleccionado no contiene una licencia JSON valida.'
-        : (error?.message || 'No se pudo instalar la licencia.')
+        ? t('configuracion.licenseInvalidJson')
+        : (error?.message || t('configuracion.licenseInstallError'))
       setInstallDiagnostic(diagnostic)
-      showFeedback('Licencia invalida', humanizePremiumError('No se pudo validar la licencia Premium. Revisa que sea un license.treseko firmado y vigente.'), 'danger')
+      showFeedback(t('configuracion.licenseInvalid'), humanizePremiumError(t('configuracion.licenseValidationError')), 'danger')
     } finally {
       setInstalling(false)
     }
@@ -389,11 +378,11 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
       const text = await file.text()
       setLicenseJson(text)
       setLicenseFileName(file.name)
-      showFeedback('Licencia cargada', `Se cargo ${file.name}. Revisa el contenido y pulsa Instalar licencia Premium.`, 'info')
+      showFeedback(t('configuracion.licenseLoaded'), t('configuracion.licenseFileLoaded', { name: file.name }), 'info')
     } catch (error: any) {
       setLicenseFileName('')
-      setInstallDiagnostic(error?.message || 'No se pudo leer el archivo seleccionado.')
-      showFeedback('Licencia', 'No se pudo leer el archivo .treseko seleccionado.', 'danger')
+      setInstallDiagnostic(error?.message || t('configuracion.licenseReadError'))
+      showFeedback(t('configuracion.licenseTitle'), t('configuracion.licenseReadFileError'), 'danger')
     }
   }
 
@@ -405,13 +394,13 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
             <div className="small text-muted fw-bold text-uppercase">{title}</div>
             <div className="fw-bold">{keyring.algorithm.toUpperCase()}</div>
           </div>
-          <Badge bg={keyring.configured ? 'success' : 'danger'}>
-            {keyring.configured ? 'Confiable' : 'Sin configurar'}
+            <Badge bg={keyring.configured ? 'success' : 'danger'}>
+            {keyring.configured ? t('configuracion.licenseTrusted') : t('configuracion.licenseNotConfigured')}
           </Badge>
         </div>
         <div className="d-flex flex-wrap gap-2 mb-2">
-          <Badge bg="light" text="dark" className="border">{sourceLabel(keyring.source)}</Badge>
-          <Badge bg="light" text="dark" className="border">{keyring.key_count} clave(s)</Badge>
+          <Badge bg="light" text="dark" className="border">{sourceLabel(keyring.source, t)}</Badge>
+          <Badge bg="light" text="dark" className="border">{keyring.key_count} {t('configuracion.licenseKeys')}</Badge>
         </div>
         {keyring.fingerprints.length > 0 ? (
           <div className="d-flex flex-column gap-1">
@@ -420,7 +409,7 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
             ))}
           </div>
         ) : (
-          <div className="small text-muted">Sin huellas de firma disponibles.</div>
+          <div className="small text-muted">{t('configuracion.licenseNoFingerprints')}</div>
         )}
         {keyring.errors.length > 0 && (
           <Alert variant="warning" className="small mt-2 mb-0">
@@ -431,302 +420,39 @@ export function LicenseSettingsTab({ fetchWithAuth, showFeedback, canEditLicense
     </Col>
   )
 
-  return (
-    <div className="animate__animated animate__fadeIn">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h5 className="fw-bold text-secondary text-uppercase small m-0">Licencia</h5>
-          <span className="small text-muted">Edicion activa, limites, features habilitadas y canal de actualizaciones.</span>
-        </div>
-        <Button variant="outline-primary" className="fw-bold rounded-pill" onClick={loadLicense} disabled={loading}>
-          {loading ? <Spinner size="sm" className="me-2" /> : <Download size={16} className="me-2" />}
-          Actualizar estado
-        </Button>
-      </div>
-
-      {loading ? (
-        <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
-          <div className="text-muted"><Spinner size="sm" className="me-2" /> Cargando licencia...</div>
-        </Card>
-      ) : (
-        <>
-          <Row className="g-3">
-            <Col lg={4}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
-                <Card.Body>
-                  <div className="d-flex align-items-center gap-3 mb-3">
-                    <div className="bg-primary bg-opacity-10 p-2 rounded-3"><ShieldCheck size={24} className="text-primary" /></div>
-                    <div>
-                      <div className="small text-muted fw-bold text-uppercase">Edicion actual</div>
-                      <h4 className="m-0">Treseko {license.edition === 'premium' ? 'Premium' : 'Community'}</h4>
-                      <div className="small text-muted fw-bold mt-1">Plan: {planLabel(license)}</div>
-                    </div>
-                  </div>
-                  <div className="d-flex flex-wrap gap-2 mb-3">
-                    <Badge bg={editionBadge(license.edition)}>{editionLabel(license.edition)}</Badge>
-                    <Badge bg="light" text="dark">{license.plan_custom ? 'Plan personalizado' : planLabel(license)}</Badge>
-                    {license.state !== license.edition && <Badge bg={stateBadge(license.state)}>{stateLabel(license.state)}</Badge>}
-                    <Badge bg="light" text="dark">{updateChannelLabel(license.update_channel)}</Badge>
-                  </div>
-                  {licenseStateMessage && <Alert variant={license.state === 'active' ? 'success' : 'warning'} className="small mb-2">{licenseStateMessage}</Alert>}
-                  {license.reason && license.reason !== licenseStateMessage && <Alert variant="light" className="border small mb-0">{license.reason}</Alert>}
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={8}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
-                <Card.Body>
-                  <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
-                      <div>
-                        <div className="small text-muted fw-bold text-uppercase">Limites de uso</div>
-                        <div className="small text-muted">
-                        Estos son los limites vigentes aplicados ahora por la licencia instalada.
-                        </div>
-                      </div>
-                    <Badge bg={license.edition === 'premium' ? 'success' : 'primary'}>
-                      {license.edition === 'premium' ? 'Licencia Premium activa' : 'Community local'}
-                    </Badge>
-                  </div>
-                  <Table size="sm" responsive className="align-middle small mb-0">
-                    <thead>
-                      <tr>
-                        <th>Limite</th>
-                        <th style={{ minWidth: 220 }}>Uso actual</th>
-                        <th className="text-end">Actual</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {limitRows.map(row => (
-                        <tr key={row.key}>
-                          <td>
-                            <span className="fw-bold">{row.label}</span>
-                            {row.note && <div className="text-muted">{row.note}</div>}
-                          </td>
-                          <td>
-                            <div className="d-flex align-items-center gap-2">
-                              <ProgressBar
-                                now={row.usage?.percent || 0}
-                                variant={usageVariant(row.usage?.percent || 0)}
-                                className="flex-grow-1"
-                                style={{ height: 8, minWidth: 110 }}
-                                aria-label={`Uso de ${row.label}`}
-                              />
-                              <span className="small fw-bold text-nowrap">
-                                {(row.usage?.percent || 0).toFixed(0)}%
-                              </span>
-                            </div>
-                            <div className="x-small text-muted">
-                              {formatUsageValue(row.key, row.usage?.used)} usados
-                            </div>
-                          </td>
-                          <td className="text-end fw-bold">{formatLimitValue(row.key, row.currentValue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
-
-          <Card className="border-0 shadow-sm rounded-4 bg-white mt-3">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
-                <div>
-                  <h6 className="fw-bold m-0">Periodo y verificacion</h6>
-                  <div className="small text-muted">
-                    El vencimiento define hasta cuando vale la licencia. El check online y la gracia controlan la continuidad Premium si el servidor no responde.
-                  </div>
-                </div>
-                <Badge bg={license.online_status === 'verified' ? 'success' : license.edition === 'premium' ? 'warning' : 'primary'}>
-                  {license.online_status === 'verified' ? 'Premium verificado online' : license.edition === 'premium' ? 'Premium: validación local' : 'Community'}
-                </Badge>
-              </div>
-              {license.edition === 'premium' && license.online_status !== 'verified' && (
-                <Alert variant="warning" className="small mb-3">
-                  {license.online_reason || 'La firma de la licencia es válida localmente, pero todavía no hay una confirmación online de esta instancia.'}
-                </Alert>
-              )}
-              <Row className="g-3">
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Valida hasta</div>
-                    <div className="fw-bold">{formatLicenseDate(license.valid_until || license.license?.expires_at)}</div>
-                    {daysUntil(license.valid_until || license.license?.expires_at) !== null && (
-                      <div className="small text-muted">
-                        {Math.max(daysUntil(license.valid_until || license.license?.expires_at) || 0, 0)} dias restantes
-                      </div>
-                    )}
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Activada</div>
-                    <div className="fw-bold">{formatLicenseDate(license.activated_at)}</div>
-                    <div className="small text-muted">Primera asociacion con esta instancia.</div>
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Ultimo check</div>
-                    <div className="fw-bold">{formatLicenseDate(license.last_check_at)}</div>
-                    <div className="small text-muted">Ultima respuesta firmada del servidor Premium.</div>
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Proximo check</div>
-                    <div className="fw-bold">{formatLicenseDate(license.next_check_at)}</div>
-                    {license.verification_interval_days && <div className="small text-muted">Intervalo: {license.verification_interval_days} dias</div>}
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Gracia offline hasta</div>
-                    <div className="fw-bold">{formatLicenseDate(license.grace_until)}</div>
-                    {license.grace_period_days && <div className="small text-muted">Gracia configurada: {license.grace_period_days} dias</div>}
-                  </div>
-                </Col>
-                <Col md={4}>
-                  <div className="border rounded-3 p-3 h-100">
-                    <div className="small text-muted fw-bold text-uppercase">Emitida</div>
-                    <div className="fw-bold">{formatLicenseDate(license.issued_at || license.license?.issued_at)}</div>
-                    <div className="small text-muted">Fecha firmada dentro del archivo .treseko.</div>
-                  </div>
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
-
-          <Card className="border-0 shadow-sm rounded-4 bg-white mt-3">
-            <Card.Body>
-              <div className="d-flex align-items-start gap-2 mb-3">
-                <KeyRound size={20} className="text-primary mt-1" />
-                <div>
-                  <h6 className="fw-bold m-0">Confianza y firmas</h6>
-                  <div className="small text-muted">
-                    Treseko self-hosted solo verifica licencias y manifests con claves publicas. No se exponen claves crudas ni secretos de firma.
-                  </div>
-                </div>
-              </div>
-              {hasTrustWarning && (
-                <Alert variant="warning" className="small">
-                  La instalacion verifica licencias y actualizaciones con claves publicas de Treseko. Si alguna firma aparece sin configurar, instala una licencia firmada o solicita al administrador del servidor que complete la configuracion de confianza.
-                </Alert>
-              )}
-              <Row className="g-3">
-                {renderTrustKeyring('Licencias Premium', trust.license_keyring)}
-                {renderTrustKeyring('Servidor Premium', trust.server_response_keyring)}
-                {renderTrustKeyring('Updates firmados', trust.update_keyring)}
-              </Row>
-            </Card.Body>
-          </Card>
-
-          <Row className="g-3 mt-1">
-            <Col lg={6}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
-                <Card.Body>
-                  <div className="d-flex align-items-center gap-2 mb-2">
-                    <ShieldCheck size={18} className="text-primary" />
-                    <h6 className="fw-bold m-0">Community habilitado</h6>
-                    <Badge bg="primary">{communityFeatures.length}</Badge>
-                  </div>
-                  <div className="small text-muted mb-2">
-                    Estas funciones vienen incluidas en Treseko Community aunque luego una licencia Premium eleve limites o agregue modulos.
-                  </div>
-                  <Table size="sm" responsive className="align-middle small mb-0">
-                    <tbody>
-                      {communityFeatures.map(feature => (
-                        <tr key={feature.id}>
-                          <td className="fw-bold">{feature.label}</td>
-                          <td className="text-end"><Badge bg={featureIsActive(feature) ? 'success' : 'secondary'}>{featureIsActive(feature) ? 'Incluido' : 'Bloqueado'}</Badge></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                </Card.Body>
-              </Card>
-            </Col>
-            <Col lg={6}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
-                <Card.Body>
-                  <div className="d-flex align-items-center gap-2 mb-2">
-                    <Crown size={18} className="text-warning" />
-                    <h6 className="fw-bold m-0">Premium por entitlement</h6>
-                    <Badge bg={license.edition === 'premium' && disabledPremiumCount === 0 ? 'success' : 'warning'} text={license.edition === 'premium' && disabledPremiumCount === 0 ? undefined : 'dark'}>
-                      {enabledPremiumCount}/{premiumFeatures.length}
-                    </Badge>
-                  </div>
-                  <Alert variant={license.edition === 'premium' ? 'info' : 'light'} className="border small mb-2">
-                    {license.edition === 'premium'
-                      ? 'Tu licencia Premium puede habilitar solo algunos modulos. Los que figuran como no incluidos requieren una licencia emitida con ese entitlement.'
-                      : 'Estas funciones se desbloquean al instalar una licencia Premium que incluya cada entitlement.'}
-                  </Alert>
-                  <Table size="sm" responsive className="align-middle small mb-0">
-                    <tbody>
-                      {premiumFeatures.map(feature => (
-                        <tr key={feature.id}>
-                          <td>
-                            <span className="fw-bold">{feature.label}</span>
-                            {!featureIsActive(feature) && <span className="text-muted ms-2"><Lock size={12} /> Entitlement no incluido</span>}
-                          </td>
-                          <td className="text-end">
-                            <Badge bg={featureIsActive(feature) ? 'success' : 'light'} text={featureIsActive(feature) ? undefined : 'dark'}>
-                              {featureIsActive(feature) ? 'Activo' : license.edition === 'premium' ? 'No incluido' : 'Requiere Premium'}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
-
-          <Card className="border-0 shadow-sm rounded-4 bg-white mt-3">
-            <Card.Body>
-              <div className="d-flex align-items-center justify-content-between gap-3 mb-3">
-                <div>
-                  <h6 className="fw-bold m-0">Instalar licencia Premium</h6>
-                  <div className="small text-muted">Selecciona un archivo .treseko firmado. Treseko valida firma Ed25519, key_id, vencimiento y features.</div>
-                </div>
-                <Button variant={licenseJson.trim() ? 'primary' : 'outline-primary'} className="fw-bold rounded-pill" disabled={!canEditLicense || installing || !licenseJson.trim()} onClick={installLicense}>
-                  {installing ? <Spinner size="sm" className="me-2" /> : <Upload size={16} className="me-2" />}
-                  Instalar licencia Premium
-                </Button>
-              </div>
-              {!canEditLicense && <Alert variant="light" className="border small">Necesitas permiso de edicion de licencia para instalar una clave Premium.</Alert>}
-              <div className="border rounded-3 bg-light p-3 mb-3">
-                <Form.Label className="small fw-bold mb-1">Archivo de licencia</Form.Label>
-                <Form.Control
-                  type="file"
-                  accept=".treseko,.json,application/json"
-                  disabled={!canEditLicense || installing}
-                  onChange={(event) => {
-                    const input = event.currentTarget as HTMLInputElement
-                    const file = input.files?.[0]
-                    void loadLicenseFile(file)
-                    input.value = ''
-                  }}
-                />
-                <div className="x-small text-muted mt-2">
-                  {licenseFileName ? `Archivo cargado: ${licenseFileName}` : 'Formato esperado: license.treseko o JSON firmado emitido para tu instalacion.'}
-                </div>
-              </div>
-              {installDiagnostic && (
-                <Alert variant="danger" className="small mt-3 mb-0">
-                  No se pudo validar la licencia Premium. Asegurate de cargar el archivo .treseko completo y vigente.
-                  <details className="mt-2">
-                    <summary className="fw-bold" role="button">Diagnostico tecnico</summary>
-                    <pre className="bg-light border rounded-3 p-2 mt-2 mb-0 text-wrap">{installDiagnostic}</pre>
-                  </details>
-                </Alert>
-              )}
-            </Card.Body>
-          </Card>
-        </>
-      )}
-    </div>
-  )
+  return <LicenseSettingsView options={{
+    t,
+    locale,
+    loading,
+    loadLicense,
+    license,
+    licenseStateMessage,
+    limitRows,
+    hasTrustWarning,
+    trust,
+    renderTrustKeyring,
+    communityFeatures,
+    premiumFeatures,
+    enabledPremiumCount,
+    disabledPremiumCount,
+    licenseJson,
+    canEditLicense,
+    installing,
+    installLicense,
+    licenseFileName,
+    loadLicenseFile,
+    installDiagnostic,
+    editionBadge,
+    editionLabel,
+    planLabel,
+    stateBadge,
+    stateLabel,
+    updateChannelLabel,
+    formatUsageValue,
+    formatLimitValue,
+    usageVariant,
+    formatLicenseDate,
+    daysUntil,
+    featureIsActive,
+  }} />
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
 import { Building2, Save, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '../../../../app/constants'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
@@ -10,6 +11,7 @@ type Props = {
 }
 
 export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAccessCapability }: Props) {
+  const { t } = useI18n()
   const [config, setConfig] = useState<any>({ enabled: false, provider_label: 'Active Directory', mode: 'oidc', discovery_url: '', issuer: '', client_id: '', redirect_path: '/auth/ad/callback/', scopes: ['openid', 'profile', 'email'], allowed_domains: [], auto_provision: true, default_role: 'TESTER', group_role_map: [], ldap_url: '', ldap_base_dn: '', ldap_user_attribute: 'sAMAccountName', ldap_bind_pattern: '{username}@{domain}' })
   const [groupRoleMapText, setGroupRoleMapText] = useState('[]')
   const canEdit = canAccessCapability('configuracion.sesion', 'edit')
@@ -31,7 +33,7 @@ export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAcc
       parsedGroupMap = JSON.parse(groupRoleMapText || '[]')
       if (!Array.isArray(parsedGroupMap)) throw new Error('group_role_map debe ser una lista')
     } catch (error: any) {
-      showFeedback('Active Directory', error.message || 'JSON de grupos invalido.', 'danger')
+      showFeedback(t('configuracion.adTitle'), error.message || t('configuracion.adInvalidGroupsJson'), 'danger')
       return
     }
     const response = await fetchWithAuth(`${API_BASE}/auth/ad/config/`, {
@@ -40,19 +42,19 @@ export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAcc
       body: JSON.stringify({ ...config, group_role_map: parsedGroupMap }),
     })
     if (!response.ok) {
-      showFeedback('Active Directory', await response.text(), 'danger')
+      showFeedback(t('configuracion.adTitle'), await response.text(), 'danger')
       return
     }
     const payload = await response.json()
     setConfig(payload)
     setGroupRoleMapText(JSON.stringify(payload.group_role_map || [], null, 2))
-    showFeedback('Active Directory', 'Configuracion Active Directory guardada.', 'success')
+    showFeedback(t('configuracion.adTitle'), t('configuracion.adSaved'), 'success')
   }
 
   const testConfig = async () => {
     const response = await fetchWithAuth(`${API_BASE}/auth/ad/test-config/`, { method: 'POST' })
     const payload = await response.json().catch(() => ({}))
-    showFeedback('Active Directory', payload.message || 'Prueba ejecutada.', payload.ok ? 'success' : 'danger')
+    showFeedback(t('configuracion.adTitle'), payload.message || t('configuracion.adTested'), payload.ok ? 'success' : 'danger')
   }
 
   return (
@@ -60,7 +62,7 @@ export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAcc
       <div className="d-flex justify-content-between align-items-start mb-3">
         <div>
           <h6 className="fw-bold text-dark m-0"><Building2 size={17} className="me-2" />Active Directory</h6>
-          <span className="small text-muted">Login empresarial por OIDC/SSO o LDAP directo con usuario y contrasena.</span>
+          <span className="small text-muted">{t('configuracion.adDesc')}</span>
         </div>
         <Badge bg={config.enabled ? 'success' : 'secondary'}>{config.enabled ? 'Habilitado' : 'Deshabilitado'}</Badge>
       </div>
@@ -94,8 +96,8 @@ export function ActiveDirectorySettingsTab({ fetchWithAuth, showFeedback, canAcc
         <Col md={8}><Form.Control as="textarea" rows={4} size="sm" value={groupRoleMapText} disabled={!canEdit} onChange={(e) => setGroupRoleMapText(e.target.value)} /></Col>
         {canEdit && (
           <Col md={12} className="text-end">
-            <Button size="sm" variant="outline-primary" onClick={testConfig} className="me-2"><ShieldCheck size={14} className="me-1" />Probar</Button>
-            <Button size="sm" onClick={save} className="app-save-button"><Save size={14} />Guardar</Button>
+            <Button size="sm" variant="outline-primary" onClick={testConfig} className="me-2"><ShieldCheck size={14} className="me-1" />{t('configuracion.test')}</Button>
+            <Button size="sm" onClick={save} className="app-save-button"><Save size={14} />{t('configuracion.adSave')}</Button>
           </Col>
         )}
       </Row>

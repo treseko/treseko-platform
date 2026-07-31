@@ -11,6 +11,7 @@ type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
 type CreateConfigurationActionsParams = {
+  t: (key: `configuracion.${string}`, params?: Record<string, string | number>) => string
   isAuthenticated: boolean
   apiKeys: any[]
   apiKeyName: string
@@ -25,6 +26,7 @@ type CreateConfigurationActionsParams = {
 }
 
 export function createConfigurationActions({
+  t,
   isAuthenticated,
   apiKeys,
   apiKeyName,
@@ -41,9 +43,9 @@ export function createConfigurationActions({
     if (!value) return
     try {
       await navigator.clipboard.writeText(value)
-      showFeedback('Copiado', `${label} copiado al portapapeles.`, 'success')
+      showFeedback(t('configuracion.copied'), t('configuracion.copiedMessage', { label }), 'success')
     } catch {
-      showFeedback('No se pudo copiar', 'Copia el valor manualmente.', 'warning')
+      showFeedback(t('configuracion.copyFailed'), t('configuracion.copyFailedMessage'), 'warning')
     }
   }
 
@@ -52,7 +54,7 @@ export function createConfigurationActions({
     try {
       setAttachmentConfig(await fetchAttachmentConfig(fetchWithAuth))
     } catch (error: any) {
-      showFeedback('Adjuntos no disponibles', error.message || 'No se pudo cargar la configuracion de evidencias.', 'warning')
+      showFeedback(t('configuracion.attachmentsUnavailable'), error.message || t('configuracion.loadAttachmentsError'), 'warning')
     } finally {
       setAttachmentConfigLoading(false)
     }
@@ -63,9 +65,9 @@ export function createConfigurationActions({
     try {
       const saved = await updateAttachmentConfig(fetchWithAuth, config)
       setAttachmentConfig(saved)
-      showFeedback('Adjuntos actualizados', 'La configuracion de evidencias fue guardada.', 'success')
+      showFeedback(t('configuracion.attachmentsUpdated'), t('configuracion.attachmentsUpdatedMessage'), 'success')
     } catch (error: any) {
-      showFeedback('No se pudo guardar', error.message || 'Error al guardar configuracion de adjuntos.', 'danger')
+      showFeedback(t('configuracion.saveFailed'), error.message || t('configuracion.saveAttachmentsError'), 'danger')
     } finally {
       setAttachmentConfigLoading(false)
     }
@@ -77,7 +79,7 @@ export function createConfigurationActions({
     try {
       setApiKeys(await fetchUserApiKeys(fetchWithAuth))
     } catch (error: any) {
-      showFeedback('API key no disponible', error.message || 'No se pudieron cargar las API keys.', 'warning')
+      showFeedback(t('configuracion.apiKeyUnavailable'), error.message || t('configuracion.loadApiKeysError'), 'warning')
     } finally {
       setApiKeysLoading(false)
     }
@@ -90,9 +92,9 @@ export function createConfigurationActions({
       const created = await createUserApiKeyRequest(fetchWithAuth, apiKeyName || 'Automatizacion externa')
       setNewApiKeyValue(created.api_key || '')
       setApiKeys(prev => [created, ...prev])
-      showFeedback('API key habilitada', 'La API key fue creada. Guardala ahora porque no se volvera a mostrar completa.', 'success')
+      showFeedback(t('configuracion.apiKeyEnabled'), t('configuracion.apiKeyEnabledMessage'), 'success')
     } catch (error: any) {
-      showFeedback('No se pudo crear API key', error.message || 'Error al crear API key.', 'danger')
+      showFeedback(t('configuracion.createApiKeyFailed'), error.message || t('configuracion.createApiKeyError'), 'danger')
     } finally {
       setApiKeysLoading(false)
     }
@@ -103,9 +105,9 @@ export function createConfigurationActions({
     try {
       const revoked = await revokeUserApiKeyRequest(fetchWithAuth, apiKeyId)
       setApiKeys(prev => prev.map(item => item.id === revoked.id ? revoked : item))
-      showFeedback('API key revocada', 'La API key ya no podrá reportar ejecuciones.', 'success')
+      showFeedback(t('configuracion.apiKeyRevoked'), t('configuracion.apiKeyRevokedMessage'), 'success')
     } catch (error: any) {
-      showFeedback('No se pudo revocar', error.message || 'Error al revocar API key.', 'danger')
+      showFeedback(t('configuracion.revokeApiKeyFailed'), error.message || t('configuracion.revokeApiKeyError'), 'danger')
     } finally {
       setApiKeysLoading(false)
     }
@@ -119,10 +121,10 @@ export function createConfigurationActions({
     }
     if (activeKeys.length === 0) return
     const confirmed = await confirmAction({
-      title: 'Revocar API keys',
-      message: 'Se revocaran las API keys activas de automatizacion externa. Los runners que usen esas claves dejaran de reportar.',
+      title: t('configuracion.revokeApiKeys'),
+      message: t('configuracion.revokeApiKeysMessage'),
       variant: 'danger',
-      confirmLabel: 'Revocar claves',
+      confirmLabel: t('configuracion.revokeKeys'),
     })
     if (!confirmed) return
     for (const key of activeKeys) {

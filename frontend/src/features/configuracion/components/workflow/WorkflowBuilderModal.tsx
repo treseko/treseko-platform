@@ -7,6 +7,7 @@ import { WorkflowPropertiesPanel } from './WorkflowPropertiesPanel'
 import { WorkflowRuntimePanel } from './WorkflowRuntimePanel'
 import { WorkflowSidebar } from './WorkflowSidebar'
 import { UniversalAgentCreatorModal } from './UniversalAgentCreatorModal'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   show: boolean
@@ -143,6 +144,7 @@ export function WorkflowBuilderModal({
   setWorkflowRuntimeExpanded,
   loadRuntimeTraces,
 }: Props) {
+  const { t } = useI18n()
   const [placementPreset, setPlacementPreset] = useState<AiAgentPreset | null>(null)
   const [universalCreatorOpen, setUniversalCreatorOpen] = useState(false)
   const [validationSummaryDismissed, setValidationSummaryDismissed] = useState(false)
@@ -207,12 +209,12 @@ export function WorkflowBuilderModal({
             <div className="workflow-load-warnings">
               {workflowLoadError && (
                 <div className="workflow-load-warning">
-                  <span className="fw-bold">Workflows IA:</span> {workflowLoadError}
+                  <span className="fw-bold">{t('configuracion.aiWorkflows')}:</span> {workflowLoadError}
                 </div>
               )}
               {agentPresetsError && (
                 <div className="workflow-load-warning">
-                  <span className="fw-bold">Presets IA:</span> {agentPresetsError}
+                  <span className="fw-bold">{t('configuracion.aiPresets')}:</span> {agentPresetsError}
                 </div>
               )}
             </div>
@@ -221,21 +223,21 @@ export function WorkflowBuilderModal({
             <div className="workflow-validation-summary" role="alert">
               <div className="workflow-validation-summary-header">
                 <div>
-                  <strong>Validacion del workflow</strong>
-                  <span>{workflowValidationIssues.length} hallazgo{workflowValidationIssues.length === 1 ? '' : 's'} ({validationSummary.length} tipo{validationSummary.length === 1 ? '' : 's'})</span>
+                  <strong>{t('configuracion.workflowValidationTitle')}</strong>
+                  <span>{workflowValidationIssues.length} {workflowValidationIssues.length === 1 ? t('configuracion.workflowFinding') : t('configuracion.workflowFindings')} ({validationSummary.length} {validationSummary.length === 1 ? t('configuracion.workflowType') : t('configuracion.workflowTypes')})</span>
                 </div>
-                <button type="button" className="workflow-validation-dismiss" onClick={() => setValidationSummaryDismissed(true)} aria-label="Ocultar resumen de validacion">
-                  Ocultar resumen
+                <button type="button" className="workflow-validation-dismiss" onClick={() => setValidationSummaryDismissed(true)} aria-label={t('configuracion.workflowHideValidation')}>
+                  {t('configuracion.workflowHideValidation')}
                 </button>
               </div>
               <div className="workflow-validation-summary-items">
                 {validationSummary.slice(0, 3).map((issue, index) => (
                   <div key={`${issue.severity}-${issue.message}-${index}`} className="workflow-load-warning">
-                    <span className="fw-bold text-uppercase">{issue.severity === 'error' ? 'Error' : 'Advertencia'}:</span> {issue.message}
-                    {issue.count > 1 && <span className="workflow-validation-count">{issue.count} agentes</span>}
+                    <span className="fw-bold text-uppercase">{issue.severity === 'error' ? t('configuracion.error') : t('configuracion.warning')}:</span> {issue.message}
+                    {issue.count > 1 && <span className="workflow-validation-count">{issue.count} {t('configuracion.agents')}</span>}
                   </div>
                 ))}
-                {validationSummary.length > 3 && <div className="workflow-validation-more">Y {validationSummary.length - 3} tipo(s) adicional(es). Corrige o desactiva los agentes no conectados antes de publicar.</div>}
+                {validationSummary.length > 3 && <div className="workflow-validation-more">{t('configuracion.workflowMoreValidation', { count: validationSummary.length - 3 })}</div>}
               </div>
             </div>
           )}

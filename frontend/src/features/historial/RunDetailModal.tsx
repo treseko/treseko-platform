@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useI18n, type TranslationKey } from '../../i18n'
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, Copy, Eye, FileText, History, Image as ImageIcon, Search } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
@@ -6,6 +7,9 @@ import { isImageAsset, resolveAssetUrl } from '../../shared/utils/assets'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { isEvidenceAvailable } from '../../shared/utils/evidenceAvailability'
 import { AiExecutionReportModal } from '../motor-ia/AiExecutionReportModal'
+import { RunDetailView } from './RunDetailView'
+export { EvidenceList } from './EvidenceList'
+import { EvidenceList } from './EvidenceList'
 
 type RunDetailModalProps = {
   detail: any | null
@@ -43,82 +47,46 @@ const keyValueRows = (value: any) => {
 
 type FunctionalField = { id: string, label: string, keys: string[], value: string, sourceKey: string, sensitive: boolean }
 type FunctionalGroup = { id: string, title: string, description: string, fields: FunctionalField[] }
+type Translator = (key: TranslationKey, params?: Record<string, string | number>) => string
 
 const SECRET_KEY_RE = /(password|token|secret|apikey|api_key|cookie|authorization|bearer|jwt)/i
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const technicalAliases: Record<string, string> = {
-  'ENV.ID': 'ID del ambiente',
-  'ENV.NAME': 'Nombre del ambiente',
-  'ENV.URL': 'URL del ambiente',
-  'ENV.BASE_URL': 'URL base del ambiente',
-  'ENV.VERSION': 'Version del ambiente',
-  'ENV.STATUS': 'Estado del ambiente',
-  'ENV.KEY': 'Clave del ambiente',
-  'ENV.SEED': 'Seed del ambiente',
-  ENV_KEY: 'Clave del ambiente',
-  BASE_URL: 'URL base',
-  'COMPONENT.ID': 'ID del componente',
-  'COMPONENT.CODE': 'Codigo del componente',
-  'COMPONENT.NAME': 'Nombre del componente',
-  'COMPONENT.OWNER': 'Responsable del componente',
-  'COMPONENT.SEED': 'Seed del componente',
-  'DATASET.NAME': 'Nombre del dataset',
-  'DATASET.USER': 'Usuario de prueba',
-  'DATASET.ACCOUNT': 'Cuenta de prueba',
-  'DATASET.SEED': 'Seed del dataset',
-  DATASET: 'Dataset asociado',
-  USER: 'Usuario de prueba',
-  ACCOUNT: 'Cuenta de prueba',
-  'CASE.NAME': 'Nombre del caso',
-  'CASE.DATASET': 'Dataset del caso',
-  'CASE.SEED': 'Seed del caso',
+  'ENV.ID': 'historial.environmentId', 'ENV.NAME': 'historial.environmentName', 'ENV.URL': 'historial.environmentUrl', 'ENV.BASE_URL': 'historial.environmentBaseUrl', 'ENV.VERSION': 'historial.environmentVersion', 'ENV.STATUS': 'historial.environmentStatus', 'ENV.KEY': 'historial.environmentKey', 'ENV.SEED': 'historial.environmentSeed', ENV_KEY: 'historial.environmentKey', BASE_URL: 'historial.baseUrl',
+  'COMPONENT.ID': 'historial.componentId', 'COMPONENT.CODE': 'historial.componentCode', 'COMPONENT.NAME': 'historial.componentName', 'COMPONENT.OWNER': 'historial.componentOwner', 'COMPONENT.SEED': 'historial.componentSeed',
+  'DATASET.NAME': 'historial.datasetName', 'DATASET.USER': 'historial.testUser', 'DATASET.ACCOUNT': 'historial.testAccount', 'DATASET.SEED': 'historial.datasetSeed', DATASET: 'historial.associatedDataset', USER: 'historial.testUser', ACCOUNT: 'historial.testAccount',
+  'CASE.NAME': 'historial.caseName', 'CASE.DATASET': 'historial.caseDataset', 'CASE.SEED': 'historial.caseSeed',
 }
 
-const functionalGroupDefinitions = [
+const functionalGroupDefinitions = (t: Translator) => [
   {
     id: 'environment',
-    title: 'Ambiente',
-    description: 'Contexto donde se ejecuto la prueba.',
+    title: t('historial.environment'),
+    description: t('historial.environmentDescription'),
     fields: [
-      { id: 'name', label: 'Nombre', keys: ['ENV.NAME'] },
-      { id: 'base_url', label: 'URL base', keys: ['ENV.BASE_URL', 'ENV.URL', 'BASE_URL'] },
-      { id: 'status', label: 'Estado', keys: ['ENV.STATUS'] },
-      { id: 'version', label: 'Version', keys: ['ENV.VERSION'] },
-      { id: 'key', label: 'Clave', keys: ['ENV.KEY', 'ENV_KEY'] },
-      { id: 'owner', label: 'Owner', keys: ['ENV.OWNER', 'OWNER'] },
+      { id: 'name', label: t('historial.name'), keys: ['ENV.NAME'] }, { id: 'base_url', label: t('historial.baseUrl'), keys: ['ENV.BASE_URL', 'ENV.URL', 'BASE_URL'] }, { id: 'status', label: t('historial.status'), keys: ['ENV.STATUS'] }, { id: 'version', label: t('historial.version'), keys: ['ENV.VERSION'] }, { id: 'key', label: t('historial.key'), keys: ['ENV.KEY', 'ENV_KEY'] }, { id: 'owner', label: t('historial.owner'), keys: ['ENV.OWNER', 'OWNER'] },
     ],
   },
   {
     id: 'component',
-    title: 'Componente',
-    description: 'Modulo, servicio o aplicacion bajo prueba.',
+    title: t('historial.component'), description: t('historial.componentDescription'),
     fields: [
-      { id: 'name', label: 'Nombre', keys: ['COMPONENT.NAME'] },
-      { id: 'code', label: 'Codigo', keys: ['COMPONENT.CODE'] },
-      { id: 'owner', label: 'Responsable', keys: ['COMPONENT.OWNER', 'OWNER'] },
-      { id: 'id', label: 'ID', keys: ['COMPONENT.ID'] },
+      { id: 'name', label: t('historial.name'), keys: ['COMPONENT.NAME'] }, { id: 'code', label: t('historial.code'), keys: ['COMPONENT.CODE'] }, { id: 'owner', label: t('historial.responsible'), keys: ['COMPONENT.OWNER', 'OWNER'] }, { id: 'id', label: 'ID', keys: ['COMPONENT.ID'] },
     ],
   },
   {
     id: 'dataset',
-    title: 'Dataset',
-    description: 'Datos de prueba usados para reproducir el escenario.',
+    title: t('historial.dataset'), description: t('historial.datasetDescription'),
     fields: [
-      { id: 'name', label: 'Nombre', keys: ['DATASET.NAME', 'DATASET'] },
-      { id: 'user', label: 'Usuario', keys: ['DATASET.USER', 'USER'] },
-      { id: 'account', label: 'Cuenta', keys: ['DATASET.ACCOUNT', 'ACCOUNT'] },
-      { id: 'seed', label: 'Seed', keys: ['DATASET.SEED', 'SEED'] },
+      { id: 'name', label: t('historial.name'), keys: ['DATASET.NAME', 'DATASET'] }, { id: 'user', label: t('historial.user'), keys: ['DATASET.USER', 'USER'] }, { id: 'account', label: t('historial.account'), keys: ['DATASET.ACCOUNT', 'ACCOUNT'] }, { id: 'seed', label: t('historial.seed'), keys: ['DATASET.SEED', 'SEED'] },
     ],
   },
   {
     id: 'case',
-    title: 'Caso',
-    description: 'Datos especificos del caso ejecutado.',
+    title: t('historial.case'), description: t('historial.caseDescription'),
     fields: [
-      { id: 'name', label: 'Nombre', keys: ['CASE.NAME', 'CASE.TITLE'] },
-      { id: 'dataset', label: 'Dataset asociado', keys: ['CASE.DATASET', 'DATASET'] },
-      { id: 'seed', label: 'Seed', keys: ['CASE.SEED', 'SEED'] },
+      { id: 'name', label: t('historial.name'), keys: ['CASE.NAME', 'CASE.TITLE'] }, { id: 'dataset', label: t('historial.associatedDataset'), keys: ['CASE.DATASET', 'DATASET'] }, { id: 'seed', label: t('historial.seed'), keys: ['CASE.SEED', 'SEED'] },
     ],
   },
 ]
@@ -126,9 +94,9 @@ const functionalGroupDefinitions = [
 const normalizeVariableKey = (key: string) => String(key || '').trim().toUpperCase()
 const normalizeVariableValue = (value: string) => String(value ?? '').trim()
 
-const variableLabel = (key: string) => {
+const variableLabel = (key: string, t: Translator) => {
   const normalized = normalizeVariableKey(key)
-  if (technicalAliases[normalized]) return technicalAliases[normalized]
+  if (technicalAliases[normalized]) return t(technicalAliases[normalized] as TranslationKey)
   return String(key || '')
     .replace(/^(ENV|COMPONENT|DATASET|CASE)\./i, '')
     .replace(/_/g, ' ')
@@ -146,15 +114,15 @@ const matchesQuery = (query: string, ...values: string[]) => {
   return values.some(value => String(value || '').toLowerCase().includes(normalized))
 }
 
-const buildFrozenVariableView = (value: any, query: string) => {
+const buildFrozenVariableView = (value: any, query: string, t: Translator) => {
   const rows = keyValueRows(value)
   const rowByKey = new Map(rows.map(row => [normalizeVariableKey(row.key), row]))
   const usedVisualValues = new Set<string>()
   const technicalRows = rows
-    .map(row => ({ ...row, label: variableLabel(row.key), sensitive: isSensitiveVariable(row.key, row.value) }))
+    .map(row => ({ ...row, label: variableLabel(row.key, t), sensitive: isSensitiveVariable(row.key, row.value) }))
     .filter(row => matchesQuery(query, row.label, row.key, row.value))
 
-  const groups: FunctionalGroup[] = functionalGroupDefinitions.map(group => {
+  const groups: FunctionalGroup[] = functionalGroupDefinitions(t).map(group => {
     const fields: FunctionalField[] = []
     for (const definition of group.fields) {
       const candidate = definition.keys
@@ -197,6 +165,7 @@ function FrozenValue({
   canRevealSecrets,
   revealedSecrets,
   onRevealSecret,
+  t,
 }: {
   fieldKey: string
   value: string
@@ -204,6 +173,7 @@ function FrozenValue({
   canRevealSecrets: boolean
   revealedSecrets: Record<string, boolean>
   onRevealSecret: (key: string) => void
+  t: Translator
 }) {
   const isUuid = UUID_RE.test(value)
   const isRevealed = !sensitive || revealedSecrets[fieldKey]
@@ -212,13 +182,13 @@ function FrozenValue({
     <div className="d-flex align-items-center gap-1 flex-wrap">
       <span className="font-monospace small text-break" title={isUuid ? value : undefined}>{displayValue || '-'}</span>
       {isUuid && (
-        <Button variant="light" size="sm" className="py-0 px-1 border" title="Copiar ID completo" onClick={() => navigator.clipboard?.writeText(value)}>
+        <Button variant="light" size="sm" className="py-0 px-1 border" title={t('historial.copyFullId')} onClick={() => navigator.clipboard?.writeText(value)}>
           <Copy size={12} />
         </Button>
       )}
       {sensitive && canRevealSecrets && !isRevealed && (
         <Button variant="outline-secondary" size="sm" className="py-0 px-1 x-small" onClick={() => onRevealSecret(fieldKey)}>
-          <Eye size={12} className="me-1" /> Mostrar
+          <Eye size={12} className="me-1" /> {t('historial.show')}
         </Button>
       )}
     </div>
@@ -230,11 +200,13 @@ function FrozenDataCard({
   canRevealSecrets,
   revealedSecrets,
   onRevealSecret,
+  t,
 }: {
   group: FunctionalGroup
   canRevealSecrets: boolean
   revealedSecrets: Record<string, boolean>
   onRevealSecret: (key: string) => void
+  t: Translator
 }) {
   return (
     <div className="border rounded-3 bg-white p-2 h-100">
@@ -257,12 +229,13 @@ function FrozenDataCard({
                 canRevealSecrets={canRevealSecrets}
                 revealedSecrets={revealedSecrets}
                 onRevealSecret={onRevealSecret}
+                t={t}
               />
             </div>
           ))}
         </div>
       ) : (
-        <div className="small text-muted py-1">Sin datos funcionales para esta categoria.</div>
+        <div className="small text-muted py-1">{t('historial.noFunctionalData')}</div>
       )}
     </div>
   )
@@ -276,12 +249,12 @@ const executionModeBadge = (mode?: string) => {
   return 'secondary'
 }
 
-const executionModeCopy = (mode?: string, label?: string) => {
+const executionModeCopy = (mode: string | undefined, label: string | undefined, t: Translator) => {
   const value = String(mode || '').toUpperCase()
-  if (value === 'IA') return 'Ejecutado con IA'
-  if (value === 'AUTOMATIZADA') return 'Ejecutado automatizado'
-  if (value === 'EXTERNA') return 'Ejecucion externa'
-  return label ? `Ejecutado ${label.toLowerCase()}` : 'Ejecutado manualmente'
+  if (value === 'IA') return t('historial.executedWithLabel', { label: 'IA' })
+  if (value === 'AUTOMATIZADA') return t('historial.executedWithLabel', { label: t('historial.automatedLabel') })
+  if (value === 'EXTERNA') return t('historial.externalLabel')
+  return label ? t('historial.executedWithLabel', { label: label.toLowerCase() }) : t('historial.executedManually')
 }
 
 const caseTypeBadge = (caseType?: string) => {
@@ -291,13 +264,13 @@ const caseTypeBadge = (caseType?: string) => {
   return 'secondary'
 }
 
-const caseTypeCopy = (label?: string) => `Caso ${String(label || 'Manual').toLowerCase()}`
+const caseTypeCopy = (label: string | undefined, t: Translator) => t('historial.caseLabel', { label: String(label || t('historial.manualLabel')).toLowerCase() })
 
-const runStateLabel = (state?: string) => {
+const runStateLabel = (state: string | undefined, t: Translator) => {
   const value = String(state || '').toUpperCase()
-  if (value === 'ABIERTO') return 'Run abierto'
-  if (value === 'EN_PROGRESO') return 'En curso'
-  if (value === 'CERRADO') return 'Cerrado'
+  if (value === 'ABIERTO') return t('historial.openRun')
+  if (value === 'EN_PROGRESO') return t('historial.inProgress')
+  if (value === 'CERRADO') return t('historial.closed')
   return state || '-'
 }
 
@@ -386,31 +359,6 @@ const markCaseAsReviewed = (caso: any) => ({
   },
 })
 
-export function EvidenceList({ items, onOpenEvidence }: { items: any[], onOpenEvidence: (attachment: any) => void }) {
-  if (!items?.length) return <span className="text-muted x-small"><ImageIcon size={12} className="me-1" />Sin evidencia</span>
-  return (
-    <div className="d-flex align-items-center gap-1 flex-wrap">
-      {items.map((attachment: any) => (
-        isEvidenceAvailable(attachment) && isImageAsset(attachment) ? (
-          <button
-            key={attachment.id}
-            type="button"
-            className="border rounded-2 bg-white p-0"
-            title={attachment.filename_original}
-            onClick={() => onOpenEvidence(attachment)}
-          >
-            <img src={resolveAssetUrl(attachment.public_url)} alt={attachment.filename_original} className="rounded-2" style={{ width: 32, height: 32, objectFit: 'cover' }} />
-          </button>
-        ) : (
-          <Button key={attachment.id} variant={isEvidenceAvailable(attachment) ? 'outline-secondary' : 'outline-warning'} size="sm" className="x-small py-0 px-1" title={attachment.filename_original} onClick={() => onOpenEvidence(attachment)}>
-            <FileText size={12} /> {attachment.filename_original || 'Archivo'}
-            {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark" className="ms-1">Archivo no disponible</Badge>}
-          </Button>
-        )
-      ))}
-    </div>
-  )
-}
 
 export function RunDetailModal({
   detail,
@@ -427,6 +375,7 @@ export function RunDetailModal({
   showFeedback,
   canAccessCapability,
 }: RunDetailModalProps) {
+  const { t } = useI18n()
   const [aiReportCase, setAiReportCase] = useState<any | null>(null)
   const [markingReviewIds, setMarkingReviewIds] = useState<Record<string, boolean>>({})
   const [reviewActionError, setReviewActionError] = useState('')
@@ -451,8 +400,8 @@ export function RunDetailModal({
     return cases.filter((caso: any) => getExecutionId(caso) === focusedExecutionId)
   }, [detail?.casos, focusedExecutionId, localCases])
   const frozenVariables = useMemo(
-    () => buildFrozenVariableView(detail?.variables_resueltas, frozenSearch),
-    [detail?.variables_resueltas, frozenSearch],
+    () => buildFrozenVariableView(detail?.variables_resueltas, frozenSearch, t),
+    [detail?.variables_resueltas, frozenSearch, t],
   )
   const canRevealSecrets = Boolean(canAccessCapability?.('configuracion.monitor', 'read'))
 
@@ -483,18 +432,18 @@ export function RunDetailModal({
       })
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data?.detail || 'No se pudo auditar la visualizacion del secreto.')
+        throw new Error(data?.detail || t('historial.secretAuditVisualizeError'))
       }
       setRevealedSecrets(current => ({ ...current, [variable]: true }))
     } catch (error: any) {
-      showFeedback?.('Snapshot de ejecución', error?.message || 'No se pudo registrar auditoria para mostrar el secreto.', 'danger')
+      showFeedback?.(t('historial.secretAuditTitle'), error?.message || t('historial.secretAuditError'), 'danger')
     }
   }
 
   const markAiReviewed = async (executionId: string, note = '') => {
     if (!onMarkAiReviewed) return
     if (!executionId) {
-      setReviewActionError('No se pudo marcar la revision. Falta el identificador de la ejecucion IA.')
+      setReviewActionError(t('historial.reviewMissingId'))
       return
     }
     setReviewActionError('')
@@ -518,7 +467,7 @@ export function RunDetailModal({
       setReviewConfirmCase(null)
       setReviewNote('')
     } catch (error: any) {
-      setReviewActionError(error?.message || 'No se pudo marcar la revision. Verifica que el backend este actualizado y reiniciado.')
+      setReviewActionError(error?.message || t('historial.reviewBackendError'))
     } finally {
       setMarkingReviewIds(current => {
         const next = { ...current }
@@ -528,309 +477,17 @@ export function RunDetailModal({
     }
   }
 
-  return (
-    <>
-      <Modal
-        show={!isNestedModalOpen && (!!detail || detailLoading || !!detailError)}
-        onHide={onHide}
-        size="xl"
-        centered
-        scrollable
-      >
-        <Modal.Header closeButton>
-          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
-            <History size={20} /> Detalle de ejecucion
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {detailLoading && <div className="text-center py-5"><Spinner className="mb-2" /><div className="small text-muted">Cargando detalle...</div></div>}
-          {detailError && <Alert variant="danger">{detailError}</Alert>}
-          {reviewActionError && <Alert variant="danger">{reviewActionError}</Alert>}
-          {detail && (
-            <div className="d-flex flex-column gap-3">
-            {focusError ? (
-              <Alert variant="danger" className="mb-0">
-                La ejecución seleccionada ya no está disponible dentro de este run. Vuelve al historial del caso y actualiza la página.
-              </Alert>
-            ) : focusedCase && (
-              <Alert variant="info" className="mb-0 py-2 small">
-                Mostrando ejecución de <strong>{focusedCase.codigo || focusedCase.caso_id?.slice(0, 8) || 'caso seleccionado'}</strong>.
-              </Alert>
-            )}
-            <Card className="border p-3">
-              <Row className="g-3 small">
-                <Col md={3}><div className="text-muted x-small text-uppercase fw-bold">Run</div><div className="fw-bold">{detail.nombre}</div></Col>
-                <Col md={3}><div className="text-muted x-small text-uppercase fw-bold">Build</div><div>{detail.build?.nombre || '-'}</div></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Componente</div><div>{detail.componente?.nombre || '-'}</div></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Ambiente</div><div>{detail.entorno?.nombre || '-'}</div></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Dataset</div><div>{detail.dataset?.nombre || 'Sin dataset'}</div></Col>
-                <Col md={3}><div className="text-muted x-small text-uppercase fw-bold">Ejecutor</div><div>{detail.creado_por_nombre || '-'}</div></Col>
-                <Col md={3}><div className="text-muted x-small text-uppercase fw-bold">Creacion</div><div>{formatDate(detail.fecha_creacion)}</div></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Origen del run</div><Badge bg="light" text="dark" className="border">{detail.origen}</Badge></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Estado run</div><Badge bg="secondary">{runStateLabel(detail.estado_run)}</Badge></Col>
-                <Col md={2}><div className="text-muted x-small text-uppercase fw-bold">Ejecutado con</div><Badge bg={isAiRun(detail) ? 'primary' : detail.execution_mode_summary === 'MIXTO' ? 'warning' : executionModeBadge(detail.execution_mode_summary)} text={detail.execution_mode_summary === 'MIXTO' && !isAiRun(detail) ? 'dark' : undefined}>{isAiRun(detail) ? 'IA' : detail.execution_mode_label || 'Manual'}</Badge></Col>
-              </Row>
-            </Card>
-
-            <Card className="border p-2">
-              <div className="d-flex align-items-start justify-content-between gap-2">
-                <div>
-                  <div className="fw-bold small">Snapshot de ejecución</div>
-                  <div className="x-small text-muted">
-                    Ficha tecnica de la ejecucion, con variables tecnicas disponibles en modo avanzado.
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-1 flex-shrink-0">
-                  <Badge bg="light" text="dark" className="border">{frozenVariables.visibleFunctionalCount} visibles</Badge>
-                  <Badge bg="light" text="dark" className="border">{frozenVariables.total} tecnicas</Badge>
-                  <Button variant="outline-secondary" size="sm" className="fw-bold ms-1" onClick={() => setShowExecutionSnapshot(current => !current)}>
-                    {showExecutionSnapshot ? <ChevronDown size={14} className="me-1" /> : <ChevronRight size={14} className="me-1" />}
-                    {showExecutionSnapshot ? 'Ocultar' : 'Ver'}
-                  </Button>
-                </div>
-              </div>
-              {showExecutionSnapshot && (
-                <>
-                  <div className="position-relative mt-2 mb-2">
-                    <Search size={15} className="position-absolute text-muted" style={{ left: 12, top: 10 }} />
-                    <Form.Control
-                      size="sm"
-                      className="ps-5"
-                      placeholder="Buscar variable..."
-                      value={frozenSearch}
-                      onChange={(event) => setFrozenSearch(event.target.value)}
-                    />
-                  </div>
-                  {frozenVariables.total === 0 ? (
-                    <div className="small text-muted">Sin variables congeladas.</div>
-                  ) : (
-                    <>
-                      <Row className="g-2">
-                        {frozenVariables.groups.map(group => (
-                          <Col md={6} key={group.id}>
-                            <FrozenDataCard
-                              group={group}
-                              canRevealSecrets={canRevealSecrets}
-                              revealedSecrets={revealedSecrets}
-                              onRevealSecret={revealSecret}
-                            />
-                          </Col>
-                        ))}
-                      </Row>
-                      <div className="border rounded-3 bg-light p-2 mt-2">
-                        <div className="d-flex align-items-center justify-content-between gap-2">
-                          <div>
-                            <div className="fw-bold small">Variables tecnicas</div>
-                            <div className="x-small text-muted">Diccionario original completo.</div>
-                          </div>
-                          <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={() => setShowTechnicalVariables(current => !current)}>
-                            {showTechnicalVariables ? 'Ocultar variables tecnicas' : 'Ver variables tecnicas'}
-                          </Button>
-                        </div>
-                        {showTechnicalVariables && (
-                          <div className="table-responsive mt-3">
-                            <table className="table table-sm table-bordered bg-white mb-0 small">
-                              <thead>
-                                <tr>
-                                  <th style={{ width: 260 }}>Variable</th>
-                                  <th>Valor</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {frozenVariables.technicalRows.map(row => (
-                                  <tr key={row.key}>
-                                    <td>
-                                      <div className="font-monospace">{row.key}</div>
-                                      <div className="x-small text-muted">{row.label}</div>
-                                    </td>
-                                    <td>
-                                      <FrozenValue
-                                        fieldKey={row.key}
-                                        value={row.value}
-                                        sensitive={row.sensitive}
-                                        canRevealSecrets={canRevealSecrets}
-                                        revealedSecrets={revealedSecrets}
-                                        onRevealSecret={revealSecret}
-                                      />
-                                    </td>
-                                  </tr>
-                                ))}
-                                {frozenVariables.technicalRows.length === 0 && (
-                                  <tr><td colSpan={2} className="text-muted">No hay variables que coincidan con la busqueda.</td></tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </Card>
-
-            {!focusError && displayCases.map((caso: any) => {
-              const executionMode = effectiveExecutionMode(detail, caso)
-              const executionLabel = effectiveExecutionModeLabel(executionMode, caso.execution_mode_label)
-              const executionId = getExecutionId(caso)
-              return (
-              <Card key={executionId || caso.caso_id} className="border shadow-sm">
-                <Card.Header className="bg-white d-flex justify-content-between align-items-start gap-3">
-                  <div>
-                    <div className="d-flex align-items-center gap-2">
-                      <Badge bg="light" text="primary" className="border">{caso.codigo || caso.caso_id?.slice(0, 8)}</Badge>
-                      <span className="fw-bold">{caso.titulo}</span>
-                      <Badge bg={caseTypeBadge(caso.case_type)}>{caseTypeCopy(caso.case_type_label)}</Badge>
-                      <Badge bg={executionModeBadge(executionMode)}>{executionModeCopy(executionMode, executionLabel)}</Badge>
-                      {caso.ai_review_status === 'REVISADA' && <Badge bg="success">IA revisada</Badge>}
-                      {caso.ai_human_review_required && <Badge bg="danger">Revision humana pendiente</Badge>}
-                    </div>
-                    <div className="x-small text-muted mt-1">v{caso.version_ejecutada} ejecutada - {formatDate(caso.fecha_ejecucion)} - {formatSeconds(caso.duracion_segundos)}</div>
-                  </div>
-                  <Badge bg={getStatusColor(caso.estado)}>{caso.estado}</Badge>
-                </Card.Header>
-                <Card.Body className="d-flex flex-column gap-3">
-                  {caso.has_ai_report && (
-                    <Alert variant={caso.ai_human_review_required ? 'warning' : 'info'} className="mb-0">
-                      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                        <div>
-                          <div className="fw-bold small">Reporte IA disponible</div>
-                          <div className="x-small">
-                            Consenso: {caso.ai_consensus || caso.ai_report?.consensus || caso.estado}
-                            {' · '}Confianza: {caso.ai_confidence ?? caso.ai_report.confidence ?? 0}%
-                            {caso.ai_failure_category ? ` · ${caso.ai_failure_category}` : ''}
-                          </div>
-                        </div>
-                        <div className="d-flex align-items-center gap-2">
-                          {onMarkAiReviewed && (caso.ai_human_review_required || caso.ai_review_status === 'REQUIERE_REVISION') && (
-                            <Button variant="warning" size="sm" className="fw-bold" disabled={!!markingReviewIds[executionId]} onClick={() => setReviewConfirmCase(caso)}>
-                              {markingReviewIds[executionId] && <Spinner size="sm" className="me-1" />}
-                              Marcar como revisada
-                            </Button>
-                          )}
-                          <Button variant="outline-primary" size="sm" onClick={() => setAiReportCase({
-                            execution_id: executionId,
-                            case_id: caso.caso_id,
-                            case_code: caso.codigo,
-                            case_title: caso.titulo,
-                            status: caso.estado,
-                            observations: caso.observaciones,
-                            duration_seconds: caso.duracion_segundos,
-                            confidence: caso.ai_confidence,
-                            consensus: caso.ai_consensus,
-                            failure_category: caso.ai_failure_category,
-                            error_code: caso.ai_error_code,
-                            execution_mode: executionMode,
-                            review_status: caso.ai_review_status,
-                            human_review_required: caso.ai_human_review_required,
-                            ai_report: caso.ai_report,
-                          })}>
-                            Ver reporte IA
-                          </Button>
-                        </div>
-                      </div>
-                    </Alert>
-                  )}
-                  {!caso.has_ai_report && executionMode === 'IA' && (
-                    <Alert variant="info" className="mb-0">
-                      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                        <div>
-                          <div className="fw-bold small">Reporte IA disponible</div>
-                          <div className="x-small">Ejecucion IA sin reporte estructurado. Se muestran datos reconstruidos desde la ejecucion y sus pasos.</div>
-                        </div>
-                        <div className="d-flex align-items-center gap-2">
-                          {onMarkAiReviewed && (caso.ai_human_review_required || caso.ai_review_status === 'REQUIERE_REVISION') && (
-                            <Button variant="warning" size="sm" className="fw-bold" disabled={!!markingReviewIds[executionId]} onClick={() => setReviewConfirmCase(caso)}>
-                              {markingReviewIds[executionId] && <Spinner size="sm" className="me-1" />}
-                              Marcar como revisada
-                            </Button>
-                          )}
-                          <Button variant="outline-primary" size="sm" onClick={() => setAiReportCase(buildHistoryAiReportPayload(detail, caso))}>
-                            Ver reporte IA
-                          </Button>
-                        </div>
-                      </div>
-                    </Alert>
-                  )}
-                  {(caso.descripcion || caso.precondiciones || caso.postcondiciones) && (
-                    <Row className="g-2 small">
-                      {caso.descripcion && <Col md={4}><div className="fw-bold text-muted x-small text-uppercase">Objetivo</div><div>{caso.descripcion}</div></Col>}
-                      {caso.precondiciones && <Col md={4}><div className="fw-bold text-muted x-small text-uppercase">Precondiciones</div><div>{caso.precondiciones}</div></Col>}
-                      {caso.postcondiciones && <Col md={4}><div className="fw-bold text-muted x-small text-uppercase">Postcondiciones</div><div>{caso.postcondiciones}</div></Col>}
-                    </Row>
-                  )}
-                  {(caso.dataset_resuelto || []).length > 0 && (
-                    <div>
-                      <div className="fw-bold text-muted x-small text-uppercase mb-1">Datos usados por el caso</div>
-                      <div className="d-flex flex-wrap gap-1">
-                        {caso.dataset_resuelto.map((item: any, index: number) => <Badge key={`${item.key}-${index}`} bg="light" text="dark" className="border font-monospace">{item.key}={item.value}</Badge>)}
-                      </div>
-                    </div>
-                  )}
-                  {(caso.snapshots || []).map((snapshot: any) => (
-                    <div key={snapshot.id} className="border rounded-3 p-3">
-                      <div className="d-flex justify-content-between align-items-center mb-2">
-                        <div className="fw-bold small">Paso {snapshot.numero_paso}</div>
-                        <Badge bg={getStatusColor(snapshot.estado_paso)}>{snapshot.estado_paso}</Badge>
-                      </div>
-                      <Row className="g-3 small">
-                        <Col md={4}><div className="text-muted x-small fw-bold text-uppercase">Accion</div><div>{snapshot.accion_congelada || 'Sin accion definida'}</div></Col>
-                        <Col md={4}><div className="text-muted x-small fw-bold text-uppercase">Datos resueltos</div><div className="font-monospace">{snapshot.datos_resueltos || '-'}</div></Col>
-                        <Col md={4}><div className="text-muted x-small fw-bold text-uppercase">Resultado esperado</div><div>{snapshot.resultado_esperado_congelado || '-'}</div></Col>
-                        {(snapshot.comentarios || snapshot.error_log) && <Col md={12}><div className="text-muted x-small fw-bold text-uppercase">Observaciones</div><div>{snapshot.comentarios || snapshot.error_log}</div></Col>}
-                        <Col md={6}><div className="text-muted x-small fw-bold text-uppercase mb-1">Referencias</div>{canViewEvidence ? <EvidenceList items={[...(snapshot.action_references || []), ...(snapshot.expected_references || [])]} onOpenEvidence={onOpenEvidence} /> : <span className="text-muted x-small">Sin acceso</span>}</Col>
-                        <Col md={6}><div className="text-muted x-small fw-bold text-uppercase mb-1">Evidencias</div>{canViewEvidence ? <EvidenceList items={snapshot.evidencias || []} onOpenEvidence={onOpenEvidence} /> : <span className="text-muted x-small">Sin acceso</span>}</Col>
-                      </Row>
-                    </div>
-                  ))}
-                </Card.Body>
-              </Card>
-              )
-            })}
-            </div>
-          )}
-        </Modal.Body>
-      </Modal>
-      <AiExecutionReportModal
-        show={!!aiReportCase}
-        report={aiReportCase}
-        onHide={() => setAiReportCase(null)}
-        onMarkReviewed={onMarkAiReviewed ? (executionId: string) => markAiReviewed(executionId) : undefined}
-      />
-      <Modal show={!!reviewConfirmCase} onHide={() => setReviewConfirmCase(null)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title className="fw-bold">Confirmar revision IA</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p className="small mb-3">
-            Esto registra que validaste humanamente esta ejecucion IA. No cambia el resultado de la prueba.
-          </p>
-          <Form.Group>
-            <Form.Label className="small fw-bold">Nota opcional</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={reviewNote}
-              onChange={event => setReviewNote(event.target.value)}
-              placeholder="Ej: Valide capturas, pasos y diagnostico IA."
-            />
-          </Form.Group>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="outline-secondary" onClick={() => setReviewConfirmCase(null)}>
-            Cancelar
-          </Button>
-          <Button
-            variant="warning"
-            className="fw-bold"
-            disabled={!!markingReviewIds[getExecutionId(reviewConfirmCase)]}
-            onClick={() => markAiReviewed(getExecutionId(reviewConfirmCase), reviewNote)}
-          >
-            {markingReviewIds[getExecutionId(reviewConfirmCase)] && <Spinner size="sm" className="me-1" />}
-            Confirmar revision
-          </Button>
-        </Modal.Footer>
-      </Modal>
-    </>
-  )
+  return <RunDetailView options={{
+    t, detail, detailLoading, detailError, onHide, focusedCase, focusError, displayCases,
+    canViewEvidence, onOpenEvidence, getStatusColor, runStateLabel,
+    executionModeBadge, executionModeCopy, caseTypeBadge, caseTypeCopy,
+    effectiveExecutionMode, effectiveExecutionModeLabel, getExecutionId,
+    buildHistoryAiReportPayload, markAiReviewed, markingReviewIds, reviewActionError,
+    reviewConfirmCase, setReviewConfirmCase, reviewNote, setReviewNote, aiReportCase,
+    setAiReportCase, showExecutionSnapshot, setShowExecutionSnapshot,
+    showTechnicalVariables, setShowTechnicalVariables, frozenVariables,
+    frozenSearch, setFrozenSearch, canRevealSecrets, revealedSecrets, revealSecret,
+    FrozenDataCard, FrozenValue, EvidenceList, isAiRun, onMarkAiReviewed, showFeedback,
+    focusedExecutionId, isNestedModalOpen, setRevealedSecrets, formatDate, formatSeconds,
+  }} />
 }

@@ -1,5 +1,6 @@
 import { Badge, Button } from 'react-bootstrap'
 import { Network } from 'lucide-react'
+import { useI18n } from '../../../../i18n'
 import type { AiWorkflow } from '../../types/configuracion'
 
 type Props = {
@@ -21,12 +22,13 @@ export function WorkflowSummaryCard({
   canEditAi,
   onOpenWorkflowBuilder,
 }: Props) {
+  const { t } = useI18n()
   return (
     <div className="workflow-summary-card border-top pt-3 mt-3">
       <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
         <div>
-          <h6 className="fw-bold mb-1">Flujo de agentes del motor</h6>
-          <div className="small text-muted">Workflow activo que define el orden y comportamiento de los agentes IA.</div>
+          <h6 className="fw-bold mb-1">{t('configuracion.workflowSummaryTitle')}</h6>
+          <div className="small text-muted">{t('configuracion.workflowSummaryDescription')}</div>
         </div>
         <Button
           size="sm"
@@ -36,32 +38,32 @@ export function WorkflowSummaryCard({
           disabled={!workflowDraft}
           onClick={onOpenWorkflowBuilder}
         >
-          <Network size={15} className="me-1" /> {canEditAi ? 'Editar Workflow' : 'Ver Workflow'}
+          <Network size={15} className="me-1" /> {canEditAi ? t('configuracion.workflowSummaryEditWorkflow') : t('configuracion.workflowSummaryViewWorkflow')}
         </Button>
       </div>
       <div className="workflow-summary-grid mt-3">
         <div>
-          <span className="workflow-summary-label">Workflow</span>
-          <strong>{workflowDraft?.name || 'Sin workflow cargado'}</strong>
+          <span className="workflow-summary-label">{t('configuracion.workflowLabel')}</span>
+          <strong>{workflowDraft?.name || t('configuracion.noWorkflowLoaded')}</strong>
         </div>
         <div>
-          <span className="workflow-summary-label">Version</span>
+          <span className="workflow-summary-label">{t('configuracion.workflowVersion')}</span>
           <strong>v{workflowDraft?.version || 1}</strong>
         </div>
         <div>
-          <span className="workflow-summary-label">Estado</span>
+          <span className="workflow-summary-label">{t('configuracion.workflowStatus')}</span>
           <Badge bg={workflowStatusColor(workflowDraft?.status)}>{workflowDraft?.status || 'DRAFT'}</Badge>
         </div>
         <div>
-          <span className="workflow-summary-label">Nodos</span>
+          <span className="workflow-summary-label">{t('configuracion.nodes')}</span>
           <strong>{workflowDraft?.nodes.length || 0}</strong>
         </div>
         <div>
-          <span className="workflow-summary-label">Edges</span>
+          <span className="workflow-summary-label">{t('configuracion.edges')}</span>
           <strong>{workflowDraft?.edges.length || 0}</strong>
         </div>
         <div>
-          <span className="workflow-summary-label">Actualizado</span>
+          <span className="workflow-summary-label">{t('configuracion.updated')}</span>
           <strong>{formatWorkflowDate(workflowDraft?.updated_at || workflowDraft?.created_at)}</strong>
         </div>
       </div>
@@ -69,12 +71,12 @@ export function WorkflowSummaryCard({
         <div className="workflow-load-warnings mt-3">
           {workflowLoadError && (
             <div className="workflow-load-warning">
-              <span className="fw-bold">Workflows IA:</span> {workflowLoadError}
+              <span className="fw-bold">{t('configuracion.aiWorkflows')}:</span> {workflowLoadError}
             </div>
           )}
           {agentPresetsError && (
             <div className="workflow-load-warning">
-              <span className="fw-bold">Presets IA:</span> {agentPresetsError}
+              <span className="fw-bold">{t('configuracion.aiPresets')}:</span> {agentPresetsError}
             </div>
           )}
         </div>

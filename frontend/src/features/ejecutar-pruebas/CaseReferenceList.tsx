@@ -1,5 +1,6 @@
 import { FileText, ImagePlus } from 'lucide-react'
 import type { AttachmentMeta } from '../../EvidenceUpload'
+import { useI18n } from '../../i18n'
 import { isImageAsset, resolveAssetUrl } from '../../shared/utils/assets'
 import { openInNewTab } from '../../shared/utils/openExternal'
 
@@ -14,6 +15,7 @@ export function CaseReferenceList({
   references = [],
   onZoomImage
 }: CaseReferenceListProps) {
+  const { t } = useI18n()
   if (!references.length) return null
 
   return (

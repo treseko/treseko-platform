@@ -8,6 +8,8 @@ import { fetchEvidenceSanitizationPolicy, updateEvidenceSanitizationPolicy } fro
 import { ApiKeyPanel } from '../ApiKeyPanel'
 import { SessionSettingsTab } from './SessionSettingsTab'
 import { ActiveDirectorySettingsTab } from './ActiveDirectorySettingsTab'
+import { useI18n } from '../../../../i18n'
+import { BrandingSettings } from './BrandingSettings'
 import type { AttachmentMimeGroup, AttachmentMimeOption } from '../../hooks/useAttachmentMimeOptions'
 
 const SYSTEM_TIMEZONE_OPTIONS = [
@@ -76,6 +78,7 @@ export function GeneralSettingsTab({
   fetchWithAuth,
   onBrandingUpdated,
 }: Props) {
+  const { t, locale } = useI18n()
   const canEditPreferences = canAccessCapability('configuracion.preferencias', 'edit')
   const canEditSession = canAccessCapability('configuracion.sesion', 'edit')
   const canEditAttachments = canAccessCapability('configuracion.adjuntos', 'edit')
@@ -112,7 +115,7 @@ export function GeneralSettingsTab({
       setBrandingDraft(normalized)
       onBrandingUpdated(normalized)
     } catch (error: any) {
-      showFeedback('Branding', error?.message || 'No se pudo cargar el branding.', 'warning')
+      showFeedback(t('configuracion.brandingTitle'), error?.message || t('configuracion.brandingLoadError'), 'warning')
     } finally {
       setBrandingLoading(false)
     }
@@ -135,7 +138,7 @@ export function GeneralSettingsTab({
       if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar la hora del sistema.')
       setTimeSettings({ timezone: data?.timezone || 'America/Argentina/Buenos_Aires' })
     } catch (error: any) {
-      showFeedback('Hora del sistema', error?.message || 'No se pudo cargar la configuracion horaria.', 'warning')
+      showFeedback(t('configuracion.systemTimeTitle'), error?.message || t('configuracion.systemTimeLoadError'), 'warning')
     } finally {
       setTimeSettingsLoading(false)
     }
@@ -155,7 +158,7 @@ export function GeneralSettingsTab({
         traceability_complete_enabled: Boolean(data?.traceability_complete_enabled ?? !data?.sanitization_enabled),
       })
     } catch (error: any) {
-      showFeedback('Adjuntos y evidencias', error?.message || 'No se pudo cargar la politica de sanitizacion.', 'warning')
+      showFeedback(t('configuracion.attachmentsUnavailable'), error?.message || t('configuracion.sanitizationLoadError'), 'warning')
     } finally {
       setEvidencePolicyLoading(false)
     }
@@ -190,7 +193,7 @@ export function GeneralSettingsTab({
       )
     } catch (error: any) {
       setEvidencePolicy(previous)
-      showFeedback('Adjuntos y evidencias', error?.message || 'No se pudo guardar la politica de sanitizacion.', 'danger')
+      showFeedback(t('configuracion.attachmentsUnavailable'), error?.message || t('configuracion.sanitizationSaveError'), 'danger')
     } finally {
       setEvidencePolicySaving(false)
     }
@@ -210,9 +213,9 @@ export function GeneralSettingsTab({
       }
       if (!response.ok) throw new Error(data?.detail || 'No se pudo guardar la hora del sistema.')
       setTimeSettings({ timezone: data?.timezone || timeSettings.timezone })
-      showFeedback('Hora del sistema', 'Zona horaria guardada. El Dashboard usara esta zona para calcular hoy.', 'success')
+      showFeedback(t('configuracion.systemTimeTitle'), t('configuracion.systemTimeSaved'), 'success')
     } catch (error: any) {
-      showFeedback('Hora del sistema', error?.message || 'No se pudo guardar la configuracion horaria.', 'danger')
+      showFeedback(t('configuracion.systemTimeTitle'), error?.message || t('configuracion.systemTimeSaveError'), 'danger')
     } finally {
       setTimeSettingsSaving(false)
     }
@@ -220,19 +223,19 @@ export function GeneralSettingsTab({
 
   const systemTimePreview = (() => {
     try {
-      return new Date().toLocaleString('es-AR', {
+      return new Date().toLocaleString(locale === 'en' ? 'en-US' : 'es-ES', {
         timeZone: timeSettings.timezone,
         dateStyle: 'medium',
         timeStyle: 'short',
       })
     } catch {
-      return 'Zona horaria invalida'
+      return t('configuracion.timezoneInvalid')
     }
   })()
 
   const saveBranding = async () => {
     if (!brandingDraft.effective_brand_name && !brandingDraft.brand_name) {
-      showFeedback('Branding', 'Ingresa un nombre de marca.', 'warning')
+      showFeedback(t('configuracion.brandingTitle'), t('configuracion.brandingNameRequired'), 'warning')
       return
     }
     setBrandingSaving(true)
@@ -254,9 +257,9 @@ export function GeneralSettingsTab({
       setBranding(normalized)
       setBrandingDraft(normalized)
       onBrandingUpdated(normalized)
-      showFeedback('Branding guardado', 'El branding personalizado fue actualizado.', 'success')
+      showFeedback(t('configuracion.brandingSaved'), t('configuracion.brandingSavedMessage'), 'success')
     } catch (error: any) {
-      showFeedback('Branding', error?.message || 'No se pudo guardar el branding.', 'danger')
+      showFeedback(t('configuracion.brandingTitle'), error?.message || t('configuracion.brandingSaveError'), 'danger')
     } finally {
       setBrandingSaving(false)
     }
@@ -275,9 +278,9 @@ export function GeneralSettingsTab({
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar el logo.')
       setBrandingDraft(current => ({ ...current, logo_url: data.logo_url, effective_logo_url: data.logo_url }))
-      showFeedback('Logo cargado', 'Revisa la vista previa y guarda el branding.', 'success')
+      showFeedback(t('configuracion.logoLoaded'), t('configuracion.logoLoadedMessage'), 'success')
     } catch (error: any) {
-      showFeedback('Logo de branding', error?.message || 'No se pudo cargar el logo.', 'danger')
+      showFeedback(t('configuracion.brandingLogo'), error?.message || t('configuracion.logoLoadError'), 'danger')
     } finally {
       setBrandingUploading(false)
     }
@@ -285,123 +288,15 @@ export function GeneralSettingsTab({
 
   return (
     <div className="animate__animated animate__fadeIn">
-      {canCustomizeBranding ? (
-        <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
-          <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
-            <div>
-              <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
-                <ImageIcon size={18} className="text-primary" /> Branding personalizado
-              </h6>
-              <p className="small text-muted mb-0">Define el nombre e ícono visibles en login, sidebar y navegación móvil.</p>
-            </div>
-            <Badge bg={branding.custom_branding_active ? 'success' : 'light'} text={branding.custom_branding_active ? undefined : 'dark'} className="border">
-              {branding.custom_branding_active ? 'Activo' : 'Inactivo'}
-            </Badge>
-          </div>
-          <Row className="g-4 align-items-stretch">
-            <Col lg={7}>
-              <Form onSubmit={(event) => { event.preventDefault(); void saveBranding() }}>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold small text-muted">Nombre de marca</Form.Label>
-                  <Form.Control
-                    type="text"
-                    value={brandingDraft.brand_name || ''}
-                    disabled={!canEditPreferences || brandingLoading || brandingSaving}
-                    onChange={(event) => setBrandingDraft(current => ({ ...current, brand_name: event.target.value, effective_brand_name: event.target.value }))}
-                    maxLength={80}
-                    className="bg-light border-0 shadow-sm text-dark font-sans"
-                  />
-                </Form.Group>
-                <Row className="g-2 mb-3">
-                  <Col md={6}><Form.Label className="fw-bold small text-muted">Color principal</Form.Label><Form.Control type="color" value={brandingDraft.primary_color || brandingDraft.effective_primary_color || '#172033'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, primary_color: event.target.value, effective_primary_color: event.target.value }))} /></Col>
-                  <Col md={6}><Form.Label className="fw-bold small text-muted">Color de acento</Form.Label><Form.Control type="color" value={brandingDraft.accent_color || brandingDraft.effective_accent_color || '#1677ff'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, accent_color: event.target.value, effective_accent_color: event.target.value }))} /></Col>
-                </Row>
-                <Form.Group className="mb-3">
-                  <Form.Label className="fw-bold small text-muted">Ícono / logo</Form.Label>
-                  <div className="d-flex flex-wrap align-items-center gap-2">
-                    <Form.Control
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                      disabled={!canEditPreferences || brandingUploading || brandingSaving}
-                      onChange={(event) => {
-                        const input = event.currentTarget as HTMLInputElement
-                        const file = input.files?.[0]
-                        void uploadBrandingLogo(file)
-                        input.value = ''
-                      }}
-                      className="bg-light border-0 shadow-sm text-dark font-sans"
-                      style={{ maxWidth: 360 }}
-                    />
-                    <Button variant="outline-secondary" disabled={!canEditPreferences || brandingUploading || brandingSaving} onClick={() => setBrandingDraft(current => ({ ...current, logo_url: null, effective_logo_url: DEFAULT_BRANDING.effective_logo_url }))}>
-                      Usar ícono Treseko
-                    </Button>
-                  </div>
-                  <div className="small text-muted mt-2">{brandingUploading ? 'Cargando logo...' : 'PNG, JPG, WEBP o GIF. Máximo 2 MB.'}</div>
-                </Form.Group>
-                <Form.Check
-                  type="switch"
-                  id="custom-branding-enabled"
-                  label="Activar branding personalizado"
-                  checked={Boolean(brandingDraft.enabled)}
-                  disabled={!canEditPreferences || brandingLoading || brandingSaving}
-                  onChange={(event) => setBrandingDraft(current => ({ ...current, enabled: event.target.checked }))}
-                />
-                {canEditPreferences && (
-                  <div className="text-end border-top pt-3 mt-3">
-                    <Button variant="primary" type="submit" className="px-5 fw-bold rounded-pill shadow-sm" disabled={brandingSaving || brandingUploading || brandingLoading}>
-                      <Save size={16} className="me-2" /> {brandingSaving ? 'Guardando...' : 'Guardar branding'}
-                    </Button>
-                  </div>
-                )}
-              </Form>
-            </Col>
-            <Col lg={5}>
-              <div className="border rounded-4 bg-light p-3 h-100">
-                <div className="small fw-bold text-muted text-uppercase mb-3">Vista previa</div>
-                <div className="bg-dark text-white rounded-4 p-3 shadow-sm">
-                  <div className="d-flex align-items-center gap-3">
-                    <span className="app-brand-mark flex-shrink-0" aria-hidden="true">
-                      <img
-                        src={resolveAssetUrl(brandingDraft.logo_url || brandingDraft.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url}
-                        alt=""
-                        className="app-brand-icon"
-                        onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }}
-                      />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="fw-bold fs-5 tracking-tight text-white lh-sm text-truncate">{brandingDraft.brand_name || DEFAULT_BRANDING.effective_brand_name}</div>
-                      <div className="app-edition-text text-truncate">Premium</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="small text-muted mt-3">Si desactivas el switch, se conserva la configuración pero se vuelve a mostrar Treseko.</div>
-              </div>
-            </Col>
-          </Row>
-        </Card>
-      ) : (
-        <Card className="premium-gate-card border-0 shadow-sm rounded-4 bg-white p-4">
-          <div className="d-flex justify-content-between align-items-start gap-3">
-            <div>
-              <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
-                <Crown size={18} className="text-warning" /> Branding personalizado
-              </h6>
-              <p className="small text-muted mb-0">
-                Personaliza el nombre y el ícono visible de Treseko con una licencia Premium que incluya branding personalizado.
-              </p>
-            </div>
-            <Badge bg="warning" text="dark" className="border">Premium</Badge>
-          </div>
-        </Card>
-      )}
+      <BrandingSettings options={{ t, canCustomizeBranding, branding, brandingDraft, setBrandingDraft, canEditPreferences, brandingLoading, brandingSaving, brandingUploading, uploadBrandingLogo, saveBranding }} />
       <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4">
         <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
           <div>
             <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
-              <Clock size={18} className="text-primary" /> Hora del sistema
+              <Clock size={18} className="text-primary" /> {t('configuracion.systemTimeTitle')}
             </h6>
             <p className="small text-muted mb-0">
-              Define la zona horaria usada por metricas como hoy, vencimientos y ventanas operativas.
+              {t('configuracion.systemTimeDesc')}
             </p>
           </div>
           <Badge bg="light" text="dark" className="border">{timeSettings.timezone}</Badge>
@@ -409,7 +304,7 @@ export function GeneralSettingsTab({
         <Form onSubmit={(event) => { event.preventDefault(); void saveTimeSettings() }}>
           <Row className="g-3 align-items-end">
             <Col lg={5}>
-              <Form.Label className="fw-bold small text-muted">Zona horaria</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.systemTimeZone')}</Form.Label>
               <Form.Select
                 value={timeSettings.timezone}
                 disabled={!canEditPreferences || timeSettingsLoading || timeSettingsSaving}
@@ -419,16 +314,16 @@ export function GeneralSettingsTab({
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </Form.Select>
-              <div className="small text-muted mt-1">Se guarda en el sistema. No depende del reloj del navegador.</div>
+              <div className="small text-muted mt-1">{t('configuracion.systemTimeHint')}</div>
             </Col>
             <Col lg={4} className="align-self-start">
-              <Form.Label className="fw-bold small text-muted">Hora actual de referencia</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.systemTimePreview')}</Form.Label>
               <div className="border rounded-3 bg-light px-3 py-2 fw-semibold">{systemTimePreview}</div>
             </Col>
             {canEditPreferences && (
               <Col lg={3} className="text-lg-end align-self-start pt-4">
                 <Button variant="primary" type="submit" className="px-4 fw-bold rounded-pill shadow-sm" disabled={timeSettingsLoading || timeSettingsSaving}>
-                  <Save size={16} className="me-2" /> {timeSettingsSaving ? 'Guardando...' : 'Guardar hora'}
+                  <Save size={16} className="me-2" /> {timeSettingsSaving ? t('configuracion.systemTimeSaving') : t('configuracion.systemTimeSave')}
                 </Button>
               </Col>
             )}
@@ -454,13 +349,13 @@ export function GeneralSettingsTab({
           <div className="d-flex justify-content-between align-items-start gap-3">
             <div>
               <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
-                <Crown size={18} className="text-warning" /> Active Directory / OIDC
+                <Crown size={18} className="text-warning" /> {t('configuracion.ssoPreviewTitle')}
               </h6>
               <p className="small text-muted mb-0">
-                Login empresarial con Microsoft Entra ID, AD FS u OIDC, aprovisionamiento controlado y mapeo de grupos.
+                {t('configuracion.ssoPreviewDesc')}
               </p>
             </div>
-            <Badge bg="warning" text="dark" className="border">Premium</Badge>
+            <Badge bg="warning" text="dark" className="border">{t('configuracion.premiumBadge')}</Badge>
           </div>
         </Card>
       )}
@@ -481,33 +376,33 @@ export function GeneralSettingsTab({
         <div className="d-flex justify-content-between align-items-start mb-3">
           <div>
             <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
-              <ShieldCheck size={18} className="text-primary" /> Adjuntos y evidencias
+              <ShieldCheck size={18} className="text-primary" /> {t('configuracion.attachmentsTitle')}
             </h6>
-            <span className="small text-muted">Límites globales para referencias de pasos y evidencias de ejecución.</span>
+            <span className="small text-muted">{t('configuracion.attachmentsDesc')}</span>
           </div>
-          <Badge bg="light" text="dark" className="border">{attachmentConfig.allowed_mime_types?.length || 0} tipos</Badge>
+          <Badge bg="light" text="dark" className="border">{attachmentConfig.allowed_mime_types?.length || 0} {t('configuracion.attachmentsAllowedTypes')}</Badge>
         </div>
         <div className="border rounded-4 bg-light p-3 mb-4">
           <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div className="pe-lg-4">
-              <div className="fw-bold text-dark">Modo trazabilidad completa</div>
+              <div className="fw-bold text-dark">{t('configuracion.attachmentsModeTraceability')}</div>
               <div className="small text-muted">
-                Muestra datos de prueba completos en reportes, pasos y evidencias. Usalo solo en entornos controlados.
+                {t('configuracion.attachmentsModeTraceabilityDesc')}
               </div>
               {!canManageEvidenceSanitization && (
                 <div className="x-small text-muted mt-2">
-                  Necesitas permiso para gestionar la sanitizacion de evidencias.
+                  {t('configuracion.attachmentsPermissionNeeded')}
                 </div>
               )}
             </div>
             <div className="d-flex align-items-center gap-3">
               <Badge bg={evidencePolicy.traceability_complete_enabled ? 'warning' : 'success'} text={evidencePolicy.traceability_complete_enabled ? 'dark' : undefined} className="border">
-                {evidencePolicy.traceability_complete_enabled ? 'Trazabilidad completa' : 'Modo seguro'}
+                {evidencePolicy.traceability_complete_enabled ? t('configuracion.attachmentsModeTraceabilityBadge') : t('configuracion.attachmentsModeSafe')}
               </Badge>
               <Form.Check
                 type="switch"
                 id="evidence-traceability-mode"
-                label={evidencePolicy.traceability_complete_enabled ? 'Activo' : 'Inactivo'}
+                label={evidencePolicy.traceability_complete_enabled ? t('configuracion.attachmentsActive') : t('configuracion.attachmentsInactive')}
                 checked={Boolean(evidencePolicy.traceability_complete_enabled)}
                 disabled={!canManageEvidenceSanitization || evidencePolicyLoading || evidencePolicySaving}
                 onChange={(event) => { void saveEvidencePolicy(event.target.checked) }}
@@ -516,14 +411,14 @@ export function GeneralSettingsTab({
           </div>
           {evidencePolicy.traceability_complete_enabled && (
             <Alert variant="warning" className="small mb-0 mt-3 py-2">
-              Treseko conservara y mostrara valores funcionales de prueba sin redaccion en reportes IA, snapshots y detalles de ejecucion. Las claves internas de infraestructura siguen protegidas por sus controles especificos.
+              {t('configuracion.attachmentsTraceabilityAlert')}
             </Alert>
           )}
         </div>
         <Form onSubmit={(e) => { e.preventDefault(); saveAttachmentConfig(attachmentConfig) }}>
           <Row className="g-3">
             <Col md={12}>
-              <Form.Label className="fw-bold small text-muted">Tipos permitidos</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsAllowedTypes')}</Form.Label>
               <div className="d-grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                 {attachmentMimeGroups.map(group => (
                   <div key={group.label} className="border rounded-3 bg-light p-3">
@@ -545,32 +440,32 @@ export function GeneralSettingsTab({
                 ))}
               </div>
               <div className="x-small text-muted mt-2">
-                Videos soportados para vista previa en navegador: MP4 y WEBM.
+                {t('configuracion.attachmentsVideoHint')}
               </div>
             </Col>
             <Col md={4}>
-              <Form.Label className="fw-bold small text-muted">Tamaño máximo (MB)</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxSize')}</Form.Label>
               <Form.Control type="number" min={1} max={200} value={attachmentConfig.max_file_size_mb} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_file_size_mb: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
-              <Form.Label className="fw-bold small text-muted">Máximo por paso</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxPerStep')}</Form.Label>
               <Form.Control type="number" min={1} max={50} value={attachmentConfig.max_files_per_step} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_step: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
-              <Form.Label className="fw-bold small text-muted">Máximo por snapshot</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxPerSnapshot')}</Form.Label>
               <Form.Control type="number" min={1} max={100} value={attachmentConfig.max_files_per_snapshot} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_snapshot: Number(e.target.value) })} />
             </Col>
             <Col md={6}>
-              <Form.Check type="switch" id="enable-paste" label="Permitir Ctrl + V para imágenes" checked={attachmentConfig.enable_clipboard_paste} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, enable_clipboard_paste: e.target.checked })} />
+              <Form.Check type="switch" id="enable-paste" label={t('configuracion.attachmentsEnablePaste')} checked={attachmentConfig.enable_clipboard_paste} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, enable_clipboard_paste: e.target.checked })} />
             </Col>
             <Col md={6}>
-              <Form.Check type="switch" id="require-failure-evidence" label="Requerir evidencia al fallar" checked={attachmentConfig.require_evidence_on_failure} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, require_evidence_on_failure: e.target.checked })} />
+              <Form.Check type="switch" id="require-failure-evidence" label={t('configuracion.attachmentsRequireEvidenceOnFailure')} checked={attachmentConfig.require_evidence_on_failure} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, require_evidence_on_failure: e.target.checked })} />
             </Col>
           </Row>
           {canEditAttachments && (
             <div className="text-end border-top pt-3 mt-3">
               <Button variant="primary" type="submit" className="px-4 fw-bold rounded-pill shadow-sm" disabled={attachmentConfigLoading}>
-                <Save size={16} className="me-2" /> Guardar adjuntos
+                <Save size={16} className="me-2" /> {t('configuracion.attachmentsSave')}
               </Button>
             </div>
           )}

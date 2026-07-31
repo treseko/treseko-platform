@@ -111,4 +111,6 @@ class AuditLog(Base):
     recurso_id = Column(UUID(as_uuid=True), nullable=True)
     detalles = Column(JSON, default=dict)
     ip_address = Column(String(50))
+    origen = Column(String(30), nullable=True)
+    correlation_id = Column(String(120), nullable=True, index=True)
     fecha = Column(UTCDateTime(), server_default=func.now(), index=True)

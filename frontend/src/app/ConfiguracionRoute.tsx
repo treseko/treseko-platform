@@ -32,6 +32,7 @@ type ConfiguracionRouteProps = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   onLoggedUserUpdated: (user: any) => void
+  onPreferencesUpdated?: (preferences: any) => void
   onBrandingUpdated: (branding: BrandingState) => void
   setActiveTab: (tab: any) => void
   onOpenIaScheduler: () => void
@@ -64,6 +65,7 @@ export function ConfiguracionRoute({
   loggedUser,
   fetchWithAuth,
   onLoggedUserUpdated,
+  onPreferencesUpdated,
   onBrandingUpdated,
   setActiveTab,
   onOpenIaScheduler,
@@ -122,6 +124,7 @@ export function ConfiguracionRoute({
       loggedUser={loggedUser}
       fetchWithAuth={fetchWithAuth}
       onLoggedUserUpdated={onLoggedUserUpdated}
+      onPreferencesUpdated={onPreferencesUpdated}
       onBrandingUpdated={onBrandingUpdated}
       systemRoleItems={adminUserRolesConfiguration.systemRoleItems}
       customRoles={adminUserRolesConfiguration.customRoles}

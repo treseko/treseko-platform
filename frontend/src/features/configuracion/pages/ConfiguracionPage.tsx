@@ -3,10 +3,10 @@ import { Nav, Card, Badge, Form, Button, Table, Dropdown } from 'react-bootstrap
 import { ReactFlowProvider } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Settings, Building2, Users, ShieldCheck, Link, Sliders, Save, Plus, RotateCcw, Copy, Upload, Download, Archive, Flag, Activity, User, Cpu, MoreHorizontal, BadgeCheck, Mail, Crown, DownloadCloud, ClipboardCheck } from 'lucide-react'
+import { useI18n, createLocaleFormatter } from '../../../i18n'
+import { AiSettingsSection } from '../components/tabs/AiSettingsSection'
 import { AuditSettingsTab } from '../components/tabs/AuditSettingsTab'
 import { GeneralSettingsTab } from '../components/tabs/GeneralSettingsTab'
-import { AiAgentPromptModal } from '../components/tabs/AiAgentPromptModal'
-import { AiEngineSettingsCards } from '../components/tabs/AiEngineSettingsCards'
 import { IntegrationsSettingsTab } from '../components/tabs/IntegrationsSettingsTab'
 import { OrganizationsSettingsTab } from '../components/tabs/OrganizationsSettingsTab'
 import { LicenseSettingsTab } from '../components/tabs/LicenseSettingsTab'
@@ -15,22 +15,9 @@ import { ProfileSettingsTab } from '../components/tabs/ProfileSettingsTab'
 import { RolesSettingsTab, UsersSettingsTab } from '../components/tabs/UsersRolesSettingsTab'
 import { SystemMonitorTab } from '../components/tabs/SystemMonitorTab'
 import { UpdatesSettingsTab } from '../components/tabs/UpdatesSettingsTab'
-import { WorkflowBuilderModal } from '../components/workflow/WorkflowBuilderModal'
-import {
-  fetchAiWorkflows,
-} from '../api/aiWorkflowApi'
-import { useAgentWorkflowConfig } from '../hooks/useAgentWorkflowConfig'
-import { useAiModelConfig } from '../hooks/useAiModelConfig'
 import { useAttachmentMimeOptions } from '../hooks/useAttachmentMimeOptions'
 import { useProfileSettings } from '../hooks/useProfileSettings'
-import { useWorkflowActions } from '../hooks/useWorkflowActions'
-import { useWorkflowGraphAutosave } from '../hooks/useWorkflowGraphAutosave'
-import { useWorkflowFlow } from '../hooks/useWorkflowFlow'
-import { useWorkflowLocalEdits } from '../hooks/useWorkflowLocalEdits'
-import { useWorkflowPresets } from '../hooks/useWorkflowPresets'
-import { useWorkflowRuntimeTraces } from '../hooks/useWorkflowRuntimeTraces'
-import { useWorkflowVersions } from '../hooks/useWorkflowVersions'
-import type { AiWorkflow, ConfiguracionPageProps } from '../types/configuracion'
+import type { ConfiguracionPageProps } from '../types/configuracion'
 import {
   agentActionOptions,
   capabilityVariant,
@@ -57,13 +44,14 @@ function PremiumLockedSettingsPanel({
   bullets: string[]
   onOpenLicense: () => void
 }) {
+  const { t } = useI18n()
   return (
     <div className="animate__animated animate__fadeIn">
       <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
           <div>
             <Badge bg="warning" text="dark" className="border mb-3 d-inline-flex align-items-center gap-1">
-              <Crown size={14} /> Premium
+              <Crown size={14} /> {t('configuracion.premiumBadge')}
             </Badge>
             <h5 className="fw-bold text-dark mb-2">{title}</h5>
             <p className="text-muted mb-3">{description}</p>
@@ -77,7 +65,7 @@ function PremiumLockedSettingsPanel({
             </div>
           </div>
           <Button variant="outline-primary" className="fw-bold rounded-pill px-4" onClick={onOpenLicense}>
-            Ver licencia
+            {t('configuracion.premiumLockedViewLicense')}
           </Button>
         </div>
       </Card>
@@ -138,6 +126,7 @@ function ConfiguracionPageInner({
   loggedUser,
   fetchWithAuth,
   onLoggedUserUpdated,
+  onPreferencesUpdated,
   onBrandingUpdated,
   systemRoleItems,
   customRoles,
@@ -146,6 +135,8 @@ function ConfiguracionPageInner({
   setActiveTab,
   onOpenIaScheduler,
 }: ConfiguracionPageProps) {
+  const { t, locale } = useI18n()
+  const f = useMemo(() => createLocaleFormatter(locale), [locale])
   const hasAiEngineAccess = hasSystemFeature('ai.engine') || hasSystemFeature('ai.basic_execution')
   const visibleConfigTabs = useMemo(() => {
     const canAccessNotifications = [
@@ -158,20 +149,20 @@ function ConfiguracionPageInner({
       'notificaciones.admin',
     ].some(capability => canAccessCapability(capability, 'read'))
     return [
-      { id: 'general', visible: canAccessCapability('configuracion.preferencias', 'read'), label: 'Preferencias', icon: Settings },
-      { id: 'profile', visible: canAccessCapability('configuracion.perfil', 'read'), label: 'Mi Perfil', icon: User },
-      { id: 'clients', visible: canAccessCapability('configuracion.clientes', 'read'), label: 'Clientes / Soluciones', icon: Building2 },
-      { id: 'users', visible: canAccessCapability('configuracion.usuarios', 'read'), label: 'Gestión Usuarios', icon: Users },
-      { id: 'roles', visible: canAccessCapability('configuracion.roles', 'read'), label: 'Roles', icon: ShieldCheck },
-      { id: 'notifications', visible: canAccessNotifications, label: 'Correo', icon: Mail },
-      { id: 'integrations', visible: canAccessCapability('configuracion.integraciones', 'read'), label: 'Complementos', icon: Link },
-      { id: 'ai', visible: canAccessCapability('configuracion.pruebas_ia', 'read'), label: 'Pruebas con IA', icon: Cpu },
-      { id: 'monitor', visible: canAccessCapability('configuracion.monitor', 'read'), label: 'Monitor', icon: Activity },
-      { id: 'audit', visible: canAccessCapability('configuracion.monitor', 'read'), label: 'Auditoria', icon: ClipboardCheck },
-      { id: 'license', visible: canAccessCapability('configuracion.licencia', 'read'), label: 'Licencia', icon: BadgeCheck },
-      { id: 'updates', visible: canAccessCapability('configuracion.actualizaciones', 'read'), label: 'Actualizaciones', icon: DownloadCloud },
+      { id: 'general', visible: canAccessCapability('configuracion.preferencias', 'read'), label: t('configuracion.tabGeneral'), icon: Settings },
+      { id: 'profile', visible: canAccessCapability('configuracion.perfil', 'read'), label: t('configuracion.tabProfile'), icon: User },
+      { id: 'clients', visible: canAccessCapability('configuracion.clientes', 'read'), label: t('configuracion.tabClients'), icon: Building2 },
+      { id: 'users', visible: canAccessCapability('configuracion.usuarios', 'read'), label: t('configuracion.tabUsers'), icon: Users },
+      { id: 'roles', visible: canAccessCapability('configuracion.roles', 'read'), label: t('configuracion.tabRoles'), icon: ShieldCheck },
+      { id: 'notifications', visible: canAccessNotifications, label: t('configuracion.tabNotifications'), icon: Mail },
+      { id: 'integrations', visible: canAccessCapability('configuracion.integraciones', 'read'), label: t('configuracion.tabIntegrations'), icon: Link },
+      { id: 'ai', visible: canAccessCapability('configuracion.pruebas_ia', 'read'), label: t('configuracion.tabAi'), icon: Cpu },
+      { id: 'monitor', visible: canAccessCapability('configuracion.monitor', 'read'), label: t('configuracion.tabMonitor'), icon: Activity },
+      { id: 'audit', visible: canAccessCapability('configuracion.monitor', 'read'), label: t('configuracion.tabAudit'), icon: ClipboardCheck },
+      { id: 'license', visible: canAccessCapability('configuracion.licencia', 'read'), label: t('configuracion.tabLicense'), icon: BadgeCheck },
+      { id: 'updates', visible: canAccessCapability('configuracion.actualizaciones', 'read'), label: t('configuracion.tabUpdates'), icon: DownloadCloud },
     ].filter(tab => tab.visible)
-  }, [canAccessCapability, hasSystemFeature])
+  }, [canAccessCapability, hasSystemFeature, t])
 
   useEffect(() => {
     if (visibleConfigTabs.length > 0 && !visibleConfigTabs.some(tab => tab.id === configTab)) {
@@ -179,237 +170,17 @@ function ConfiguracionPageInner({
     }
   }, [configTab, setConfigTab, visibleConfigTabs])
 
-  useEffect(() => {
-    if (configTab !== 'ai' || !hasAiEngineAccess) return
-    checkAiEngineHealth({ silent: true })
-    const timer = window.setInterval(() => {
-      checkAiEngineHealth({ silent: true })
-    }, 5000)
-    return () => window.clearInterval(timer)
-  }, [configTab, hasAiEngineAccess, checkAiEngineHealth])
-
-  const { profileDraft, setProfileDraft, saveMyProfile } = useProfileSettings({
+  const { profileDraft, setProfileDraft, saveMyProfile, saveLanguage } = useProfileSettings({
     loggedUser,
     fetchWithAuth,
     onLoggedUserUpdated,
+    onPreferencesUpdated,
     showFeedback,
+    t,
   })
   const { attachmentMimeGroups, toggleAttachmentMime } = useAttachmentMimeOptions({
     attachmentConfig,
     setAttachmentConfig,
-  })
-  const [promptAgentIndex, setPromptAgentIndex] = useState<number | null>(null)
-  const [aiWorkflows, setAiWorkflows] = useState<AiWorkflow[]>([])
-  const [workflowDraft, setWorkflowDraft] = useState<AiWorkflow | null>(null)
-  const [workflowLoading, setWorkflowLoading] = useState(false)
-  const [workflowLoadError, setWorkflowLoadError] = useState('')
-  const [workflowJsonError, setWorkflowJsonError] = useState('')
-  const {
-    setFlowNodes,
-    setFlowEdges,
-    selectedWorkflowElement,
-    setSelectedWorkflowElement,
-    workflowPropertiesTab,
-    setWorkflowPropertiesTab,
-    autoLayoutEnabled,
-    workflowBuilderOpen,
-    setWorkflowBuilderOpen,
-    workflowNodeTypes,
-    workflowEdgeDebugEnabled,
-    renderFlowNodes,
-    renderFlowEdges,
-    selectedWorkflowNode,
-    selectedWorkflowEdge,
-    refitWorkflow,
-    openWorkflowBuilder,
-    closeWorkflowProperties,
-    selectWorkflowElement,
-    switchToManualMode,
-    prepareManualPlacement,
-    switchToAutoLayoutMode,
-    syncFlowFromWorkflow,
-  } = useWorkflowFlow({
-    workflowDraft,
-    setWorkflowDraft,
-    setAiWorkflows,
-  })
-  const activeWorkflows = useMemo(() => aiWorkflows.filter(workflow => workflow.status === 'ACTIVE'), [aiWorkflows])
-  const loadAiWorkflows = async () => {
-    if (!canAccessModule('motor_ia', 'read') && !canAccessModule('configuracion', 'read')) return
-    setWorkflowLoading(true)
-    try {
-      setWorkflowLoadError('')
-      const workflows = await fetchAiWorkflows(fetchWithAuth)
-      setAiWorkflows(workflows)
-      const activeId = aiEngineConfig.active_workflow_id || workflows.find((item: AiWorkflow) => item.status === 'ACTIVE')?.id || workflows[0]?.id
-      const selected = workflows.find((item: AiWorkflow) => item.id === activeId) || workflows[0] || null
-      setWorkflowDraft(selected)
-      syncFlowFromWorkflow(selected)
-      if (selected?.id) loadWorkflowVersions(selected.id)
-    } catch (error: any) {
-      setAiWorkflows([])
-      setWorkflowDraft(null)
-      syncFlowFromWorkflow(null)
-      setWorkflowLoadError(error?.message || 'No se pudieron cargar los workflows.')
-    } finally {
-      setWorkflowLoading(false)
-    }
-  }
-
-  const {
-    workflowChangelog,
-    setWorkflowChangelog,
-    workflowVersions,
-    selectedWorkflowVersion,
-    workflowValidationIssues,
-    loadWorkflowVersions,
-    publishWorkflowVersion,
-    validateWorkflow,
-    activateWorkflowVersion,
-    rollbackWorkflow,
-  } = useWorkflowVersions({
-    fetchWithAuth,
-    workflowDraft,
-    setWorkflowDraft,
-    setAiWorkflows,
-    setWorkflowLoading,
-    setWorkflowJsonError,
-    syncFlowFromWorkflow,
-    loadAiWorkflows,
-    showFeedback,
-  })
-
-  const { agentPresets, agentPresetsError, loadAgentPresets } = useWorkflowPresets({ fetchWithAuth })
-
-  useEffect(() => {
-    if (configTab === 'ai' && hasAiEngineAccess) {
-      loadAiWorkflows()
-      loadAgentPresets()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configTab, hasAiEngineAccess])
-
-  const selectWorkflow = (workflow: AiWorkflow) => {
-    setWorkflowDraft(workflow)
-    setSelectedWorkflowElement(null)
-    syncFlowFromWorkflow(workflow)
-    loadWorkflowVersions(workflow.id)
-  }
-
-  const canEditAi = canAccessCapability('configuracion.pruebas_ia', 'edit')
-    || canAccessCapability('motor_ia.configuracion', 'edit')
-    || canAccessCapability('motor_ia.workflow_drafts', 'edit')
-  const {
-    graphSaveState,
-    undoAction: workflowUndoAction,
-    undoLastGraphOperation,
-    enqueueInsert,
-    enqueueDeleteNode,
-    enqueueDeleteEdge,
-    enqueueConnect,
-    enqueueMoveNode,
-  } = useWorkflowGraphAutosave({
-    fetchWithAuth,
-    workflowDraft,
-    setWorkflowDraft,
-    setAiWorkflows,
-    syncFlowFromWorkflow,
-    showFeedback,
-  })
-  const {
-    updateWorkflowDraft,
-    updateWorkflowNode,
-    updateWorkflowNodeConfig,
-    updateWorkflowEdge,
-    onWorkflowNodeContextMenu,
-    onWorkflowEdgeContextMenu,
-    onWorkflowNodesChange,
-    onWorkflowEdgesChange,
-    onWorkflowNodeDragStop,
-    onWorkflowConnect,
-  } = useWorkflowLocalEdits({
-    workflowDraft,
-    canEditAi,
-    autoLayoutEnabled,
-    setWorkflowDraft,
-    setAiWorkflows,
-    setFlowNodes,
-    setFlowEdges,
-    setSelectedWorkflowElement,
-    syncFlowFromWorkflow,
-    showFeedback,
-    enqueueDeleteNode,
-    enqueueDeleteEdge,
-    enqueueConnect,
-    enqueueMoveNode,
-  })
-
-
-  const {
-    saveWorkflowDraft,
-    executeCurrentWorkflow,
-    addPresetToWorkflow,
-    createWorkflow,
-    postWorkflowAction,
-    copyWorkflowAsBlocks,
-    copyWorkflowAsUniversal,
-    exportUniversalWorkflow,
-    importUniversalWorkflow,
-    createUniversalAgent,
-  } = useWorkflowActions({
-    fetchWithAuth,
-    workflowDraft,
-    aiWorkflows,
-    canEditAi,
-    onOpenIaScheduler,
-    setWorkflowDraft,
-    setAiWorkflows,
-    setWorkflowLoading,
-    syncFlowFromWorkflow,
-    enqueueInsert,
-    loadWorkflowVersions,
-    loadAiWorkflows,
-    loadAgentPresets,
-    selectWorkflow,
-    showFeedback,
-  })
-  const {
-    traceExecutionId,
-    setTraceExecutionId,
-    runtimeTraces,
-    workflowRuntimeExpanded,
-    setWorkflowRuntimeExpanded,
-    loadRuntimeTraces,
-  } = useWorkflowRuntimeTraces({
-    fetchWithAuth,
-    showFeedback,
-  })
-
-  const {
-    aiProviderOptions,
-    modelScanLoading,
-    modelScanError,
-    selectedRuntimeProvider,
-    selectedProviderMeta,
-    modelCatalog,
-    activeModelCapabilities,
-    updateAiRuntimeProvider,
-    updateActiveModelCapability,
-    scanAiModels,
-  } = useAiModelConfig({
-    aiEngineConfig,
-    setAiEngineConfig,
-    fetchWithAuth,
-    showFeedback,
-  })
-  const {
-    updateAgentWorkflowItem,
-    restoreAgentPrompt,
-    promptAgent,
-  } = useAgentWorkflowConfig({
-    aiEngineConfig,
-    setAiEngineConfig,
-    promptAgentIndex,
   })
   return (
     <>
@@ -419,8 +190,8 @@ function ConfiguracionPageInner({
       <div className="p-4 border-bottom bg-white d-flex align-items-center gap-3 flex-shrink-0 shadow-sm z-1">
         <Sliders size={28} className="text-primary flex-shrink-0" aria-hidden="true" />
         <div>
-          <h4 className="fw-bold m-0 text-dark">Configuración del Sistema</h4>
-          <span className="text-muted small">Administración de plataforma, integraciones y usuarios</span>
+          <h4 className="fw-bold m-0 text-dark">{t('configuracion.pageTitle')}</h4>
+          <span className="text-muted small">{t('configuracion.pageSubtitle')}</span>
         </div>
       </div>
 
@@ -449,6 +220,7 @@ function ConfiguracionPageInner({
               profileDraft={profileDraft}
               setProfileDraft={setProfileDraft}
               saveMyProfile={saveMyProfile}
+              saveLanguage={saveLanguage}
               canEditProfile={canAccessCapability('configuracion.perfil', 'edit')}
             />
           )}
@@ -549,150 +321,35 @@ function ConfiguracionPageInner({
 
           {configTab === 'notifications' && !hasSystemFeature('notifications.email') && (
             <PremiumLockedSettingsPanel
-              title="Correo SMTP y notificaciones"
-              description="Activa envíos por email, plantillas, reglas de entrega y auditoría de notificaciones para mantener informado al equipo."
+              title={t('configuracion.notificationsPremiumTitle')}
+              description={t('configuracion.notificationsPremiumDesc')}
               bullets={[
-                'Notificaciones por email para bugs, ejecuciones, evidencias y eventos críticos.',
-                'Reglas configurables por tipo de evento y destinatario.',
-                'Historial de entregas para auditar qué se envió y cuándo.',
+                t('configuracion.notificationsPremiumBullet1'),
+                t('configuracion.notificationsPremiumBullet2'),
+                t('configuracion.notificationsPremiumBullet3'),
               ]}
               onOpenLicense={() => setConfigTab('license')}
             />
           )}
 
 
-          {configTab === 'ai' && hasAiEngineAccess && (
-            <div className="animate__animated animate__fadeIn">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <h5 className="fw-bold text-secondary text-uppercase small m-0">Pruebas con IA</h5>
-                  <span className="small text-muted">Configuración funcional del LLM y del comportamiento del Motor IA interno.</span>
-                </div>
-              </div>
-
-              <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
-                <Form onSubmit={(e) => { e.preventDefault(); saveAiEngineConfig(aiEngineConfig) }}>
-                  <AiEngineSettingsCards
-                    aiEngineConfig={aiEngineConfig}
-                    setAiEngineConfig={setAiEngineConfig}
-                    canEditAi={canEditAi}
-                    modelScanLoading={modelScanLoading}
-                    scanAiModels={scanAiModels}
-                    selectedRuntimeProvider={selectedRuntimeProvider}
-                    updateAiRuntimeProvider={updateAiRuntimeProvider}
-                    aiProviderOptions={aiProviderOptions}
-                    selectedProviderMeta={selectedProviderMeta}
-                    modelCatalog={modelCatalog}
-                    modelScanError={modelScanError}
-                    activeModelCapabilities={activeModelCapabilities}
-                    capabilityVariant={capabilityVariant}
-                    updateActiveModelCapability={updateActiveModelCapability}
-                    aiEngineHealth={aiEngineHealth}
-                    checkAiEngineHealth={checkAiEngineHealth}
-                    aiWorkflows={aiWorkflows}
-                    onSelectWorkflow={(workflowId) => {
-                      const workflow = aiWorkflows.find(item => item.id === workflowId)
-                      if (workflow) selectWorkflow(workflow)
-                    }}
-                    workflowLoadError={workflowLoadError}
-                    agentPresetsError={agentPresetsError}
-                    workflowStatusColor={workflowStatusColor}
-                    formatWorkflowDate={formatWorkflowDate}
-                    onOpenWorkflowBuilder={openWorkflowBuilder}
-                    onOpenLogs={() => setActiveTab('motor_ia')}
-                    fetchWithAuth={fetchWithAuth}
-                    showFeedback={showFeedback}
-                  />
-
-                  <WorkflowBuilderModal
-                    show={workflowBuilderOpen}
-                    workflowDraft={workflowDraft}
-                    workflowLoading={workflowLoading || graphSaveState === 'saving'}
-                    graphSaveState={graphSaveState}
-                    workflowUndoAction={workflowUndoAction}
-                    undoLastGraphOperation={undoLastGraphOperation}
-                    canEditAi={canEditAi}
-                    onOpenIaScheduler={onOpenIaScheduler}
-                    autoLayoutEnabled={autoLayoutEnabled}
-                    workflowStatusColor={workflowStatusColor}
-                    saveWorkflowDraft={saveWorkflowDraft}
-                    validateWorkflow={validateWorkflow}
-                    publishWorkflowVersion={publishWorkflowVersion}
-                    executeCurrentWorkflow={executeCurrentWorkflow}
-                    switchToAutoLayoutMode={switchToAutoLayoutMode}
-                    switchToManualMode={switchToManualMode}
-                    prepareManualPlacement={prepareManualPlacement}
-                    reorderWorkflow={() => {
-                      if (!workflowDraft) return
-                      syncFlowFromWorkflow(workflowDraft, { forceLayout: true, persistPositions: true, reason: 'manual reorder' })
-                    }}
-                    postWorkflowAction={postWorkflowAction}
-                    copyWorkflowAsBlocks={copyWorkflowAsBlocks}
-                    copyWorkflowAsUniversal={copyWorkflowAsUniversal}
-                    exportUniversalWorkflow={exportUniversalWorkflow}
-                    importUniversalWorkflow={importUniversalWorkflow}
-                    createUniversalAgent={createUniversalAgent}
-                    closeWorkflowBuilder={() => {
-                      setSelectedWorkflowElement(null)
-                      setWorkflowBuilderOpen(false)
-                    }}
-                    refitWorkflow={refitWorkflow}
-                    workflowLoadError={workflowLoadError}
-                    agentPresetsError={agentPresetsError}
-                    activeWorkflows={aiWorkflows}
-                    agentPresets={agentPresets}
-                    selectWorkflow={selectWorkflow}
-                    createWorkflow={createWorkflow}
-                    addPresetToWorkflow={addPresetToWorkflow}
-                    workflowChangelog={workflowChangelog}
-                    setWorkflowChangelog={setWorkflowChangelog}
-                    updateWorkflowDraft={updateWorkflowDraft}
-                    renderFlowNodes={renderFlowNodes}
-                    renderFlowEdges={renderFlowEdges}
-                    workflowNodeTypes={workflowNodeTypes}
-                    workflowEdgeDebugEnabled={workflowEdgeDebugEnabled}
-                    onWorkflowNodesChange={onWorkflowNodesChange}
-                    onWorkflowEdgesChange={onWorkflowEdgesChange}
-                    onWorkflowNodeDragStop={onWorkflowNodeDragStop}
-                    onWorkflowConnect={onWorkflowConnect}
-                    onWorkflowNodeContextMenu={onWorkflowNodeContextMenu}
-                    onWorkflowEdgeContextMenu={onWorkflowEdgeContextMenu}
-                    selectedWorkflowElement={selectedWorkflowElement}
-                    selectedWorkflowNode={selectedWorkflowNode}
-                    selectedWorkflowEdge={selectedWorkflowEdge}
-                    selectWorkflowElement={selectWorkflowElement}
-                    workflowPropertiesTab={workflowPropertiesTab}
-                    setWorkflowPropertiesTab={setWorkflowPropertiesTab}
-                    updateWorkflowNode={updateWorkflowNode}
-                    updateWorkflowNodeConfig={updateWorkflowNodeConfig}
-                    updateWorkflowEdge={updateWorkflowEdge}
-                    workflowJsonError={workflowJsonError}
-                    workflowValidationIssues={workflowValidationIssues}
-                    setWorkflowJsonError={setWorkflowJsonError}
-                    closeWorkflowProperties={closeWorkflowProperties}
-                    traceExecutionId={traceExecutionId}
-                    setTraceExecutionId={setTraceExecutionId}
-                    runtimeTraces={runtimeTraces}
-                    workflowRuntimeExpanded={workflowRuntimeExpanded}
-                    setWorkflowRuntimeExpanded={setWorkflowRuntimeExpanded}
-                    loadRuntimeTraces={loadRuntimeTraces}
-                  />
-                  {canEditAi && (
-                    <div className="d-flex justify-content-end gap-2 border-top pt-3 mt-3">
-                      <Button
-                        variant="primary"
-                        type="submit"
-                        className="fw-bold rounded-pill"
-                        disabled={aiEngineConfigLoading}
-                      >
-                        <Save size={16} className="me-2" /> Guardar IA
-                      </Button>
-                    </div>
-                  )}
-                </Form>
-              </Card>
-            </div>
-          )}
+          <AiSettingsSection
+            configTab={configTab}
+            hasAiEngineAccess={hasAiEngineAccess}
+            canAccessModule={canAccessModule}
+            canAccessCapability={canAccessCapability}
+            aiEngineConfig={aiEngineConfig}
+            setAiEngineConfig={setAiEngineConfig}
+            aiEngineConfigLoading={aiEngineConfigLoading}
+            aiEngineHealth={aiEngineHealth}
+            checkAiEngineHealth={checkAiEngineHealth}
+            saveAiEngineConfig={saveAiEngineConfig}
+            fetchWithAuth={fetchWithAuth}
+            showFeedback={showFeedback}
+            t={t}
+            onOpenIaScheduler={onOpenIaScheduler}
+            setActiveTab={setActiveTab}
+          />
 
           {/* TAB 3: INTEGRACIONES */}
           {configTab === 'integrations' && (
@@ -715,12 +372,12 @@ function ConfiguracionPageInner({
 
           {configTab === 'audit' && !hasSystemFeature('audit.advanced') && (
             <PremiumLockedSettingsPanel
-              title="Auditoria avanzada y seguridad"
-              description="Consulta eventos globales de acciones sensibles, cambios de configuracion, accesos y operaciones auditadas desde un panel central."
+              title={t('configuracion.auditPremiumTitle')}
+              description={t('configuracion.auditPremiumDesc')}
               bullets={[
-                'Tabla de eventos recientes con filtros por accion, recurso, actor e IP.',
-                'Detalle JSON sanitizado para soporte, seguridad y compliance.',
-                'Exportacion de eventos filtrados para revision externa o evidencia.',
+                t('configuracion.auditPremiumBullet1'),
+                t('configuracion.auditPremiumBullet2'),
+                t('configuracion.auditPremiumBullet3'),
               ]}
               onOpenLicense={() => setConfigTab('license')}
             />
@@ -753,15 +410,6 @@ function ConfiguracionPageInner({
       </div>
     </div>
 
-    <AiAgentPromptModal
-      promptAgentIndex={promptAgentIndex}
-      promptAgent={promptAgent}
-      canEditAi={canEditAi}
-      agentActionOptions={agentActionOptions}
-      setPromptAgentIndex={setPromptAgentIndex}
-      updateAgentWorkflowItem={updateAgentWorkflowItem}
-      restoreAgentPrompt={restoreAgentPrompt}
-    />
     </>
 
   )

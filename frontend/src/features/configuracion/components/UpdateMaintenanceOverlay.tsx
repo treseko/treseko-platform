@@ -1,5 +1,6 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import type { UpdateMaintenanceState } from '../updateMaintenance'
+import { useI18n } from '../../../i18n'
 
 type UpdateMaintenanceOverlayProps = {
   state: UpdateMaintenanceState
@@ -7,10 +8,11 @@ type UpdateMaintenanceOverlayProps = {
 }
 
 export function UpdateMaintenanceOverlay({ state, onRetry }: UpdateMaintenanceOverlayProps) {
+  const { t } = useI18n()
   if (!state.active && !state.timedOut) return null
   const remainingSeconds = Math.max(0, Math.ceil((state.until - Date.now()) / 1000))
   const remainingLabel = state.timedOut
-    ? 'tiempo agotado'
+    ? t('configuracion.timeoutShort')
     : remainingSeconds > 60
     ? `${Math.ceil(remainingSeconds / 60)} min`
     : `${remainingSeconds || 1} s`
@@ -22,21 +24,21 @@ export function UpdateMaintenanceOverlay({ state, onRetry }: UpdateMaintenanceOv
           <AlertTriangle size={28} />
         </div>
         <div>
-          <h1>Actualizacion en curso</h1>
+          <h1>{t('configuracion.maintenanceTitle')}</h1>
           <p>{state.message}</p>
           <div className="update-maintenance-meta">
-            {state.timedOut ? 'Tiempo de espera agotado.' : `Reintentando automaticamente. Tiempo estimado: ${remainingLabel}.`}
+            {state.timedOut ? t('configuracion.timeoutExpired') : t('configuracion.retrying', { time: remainingLabel })}
             {state.targetVersion && (
-              <> Version destino: {state.targetVersion}.</>
+              <> {t('configuracion.targetVersion', { version: state.targetVersion })}</>
             )}
             {state.lastCheckedAt && (
-              <> Ultimo intento: {new Date(state.lastCheckedAt).toLocaleTimeString()}.</>
+              <> {t('configuracion.lastAttempt', { time: new Date(state.lastCheckedAt).toLocaleTimeString() })}</>
             )}
           </div>
         </div>
         <button type="button" className="btn btn-primary fw-bold" onClick={onRetry}>
           <RefreshCw size={16} className="me-2" />
-          Reintentar ahora
+          {t('configuracion.retryNow')}
         </button>
       </section>
     </div>

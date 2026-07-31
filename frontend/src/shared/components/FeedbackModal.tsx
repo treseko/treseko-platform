@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button, Modal, Toast, ToastContainer } from 'react-bootstrap'
+import { useI18n } from '../../i18n'
 
 type FeedbackModalState = {
   show: boolean
@@ -15,6 +16,7 @@ type FeedbackModalProps = {
 }
 
 export function FeedbackModal({ feedback, onHide }: FeedbackModalProps) {
+  const { t } = useI18n()
   useEffect(() => {
     if (!feedback.show || feedback.variant !== 'success') return
     const timer = window.setTimeout(onHide, 2600)
@@ -24,13 +26,13 @@ export function FeedbackModal({ feedback, onHide }: FeedbackModalProps) {
   if (feedback.variant === 'success') {
     return (
       <ToastContainer position="top-end" className="p-3" style={{ zIndex: 1080 }}>
-        <Toast show={feedback.show} onClose={onHide} bg="light" className="border-0 shadow">
-          <Toast.Header closeButton className="border-0">
+        <Toast show={feedback.show} onClose={onHide} className="feedback-toast border shadow">
+          <Toast.Header closeButton className="feedback-toast-header border-0">
             <CheckCircle2 size={18} className="text-success me-2" />
-            <strong className="me-auto text-dark">{feedback.title || 'Guardado'}</strong>
+            <strong className="me-auto">{feedback.title || t('common.feedbackSaved')}</strong>
           </Toast.Header>
           {feedback.message && (
-            <Toast.Body className="pt-0 text-secondary small">{feedback.message}</Toast.Body>
+            <Toast.Body className="pt-0 small">{feedback.message}</Toast.Body>
           )}
         </Toast>
       </ToastContainer>
@@ -49,7 +51,7 @@ export function FeedbackModal({ feedback, onHide }: FeedbackModalProps) {
       </Modal.Body>
       <Modal.Footer className="border-0 pt-0">
         <Button variant={feedback.variant === 'danger' ? 'danger' : feedback.variant === 'warning' ? 'warning' : 'primary'} className="fw-bold rounded-pill px-4" onClick={onHide}>
-          Entendido
+          {t('common.understood')}
         </Button>
       </Modal.Footer>
     </Modal>

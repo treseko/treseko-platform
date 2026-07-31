@@ -8,6 +8,8 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { API_BASE } from '../../app/constants'
 import { formatDateTime } from '../../shared/utils/dateTime'
+import { useI18n } from '../../i18n'
+import { BuildWindowSummary, EmptyWidget, ExecutionList, ExecutionTypeDistribution, Kpi, normalizeExecutionTypeDistribution, TrendByBuildList } from './DashboardWidgets'
 
 type DashboardPageProps = {
   currentProjectId: string
@@ -22,16 +24,16 @@ type DashboardPageProps = {
 }
 
 const WIDGETS = [
-  { id: 'quality_summary', title: 'Resumen de calidad' },
-  { id: 'my_tests_today', title: 'Mis pruebas hoy' },
-  { id: 'build_executions', title: 'Pruebas en build' },
-  { id: 'recent_executions', title: 'Ultimas ejecuciones' },
-  { id: 'build_window', title: 'Ventana de build' },
-  { id: 'trend_by_build', title: 'Tendencia por build' },
-  { id: 'open_bugs', title: 'Bugs abiertos' },
-  { id: 'average_duration', title: 'Duracion promedio' },
-  { id: 'execution_type_distribution', title: 'Tipos de ejecucion' },
-  { id: 'recent_failed_cases', title: 'Fallos recientes' },
+  { id: 'quality_summary', titleKey: 'qualitySummary' },
+  { id: 'my_tests_today', titleKey: 'myTestsToday' },
+  { id: 'build_executions', titleKey: 'buildExecutions' },
+  { id: 'recent_executions', titleKey: 'recentExecutions' },
+  { id: 'build_window', titleKey: 'buildWindow' },
+  { id: 'trend_by_build', titleKey: 'trendByBuild' },
+  { id: 'open_bugs', titleKey: 'openBugs' },
+  { id: 'average_duration', titleKey: 'averageDuration' },
+  { id: 'execution_type_distribution', titleKey: 'executionTypes' },
+  { id: 'recent_failed_cases', titleKey: 'recentFailedCases' },
 ]
 
 const DEFAULT_WIDGETS = WIDGETS.map(widget => widget.id)
@@ -141,7 +143,7 @@ const mergeChangedLayouts = (current: ResponsiveLayouts<string>, changed: Respon
 
 const statusColor = (status?: string) => status === 'PASO' ? 'success' : status === 'FALLO' ? 'danger' : status === 'BLOQUEADO' ? 'primary' : 'secondary'
 
-class WidgetErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+class WidgetErrorBoundary extends Component<{ children: ReactNode, errorText: string }, { hasError: boolean }> {
   state = { hasError: false }
 
   static getDerivedStateFromError() {
@@ -156,7 +158,7 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode }, { hasError:
 
   render() {
     if (this.state.hasError) {
-      return <div className="small text-danger">No se pudo renderizar este widget.</div>
+      return <div className="small text-danger">{this.props.errorText}</div>
     }
     return this.props.children
   }
@@ -172,6 +174,7 @@ export function DashboardPage({
   onPreferencesUpdated,
   canAccessCapability,
 }: DashboardPageProps) {
+  const { t } = useI18n()
   const profileSettings = loggedUser.profileSettings || {}
   const canPersonalizeDashboard = canAccessCapability ? canAccessCapability('dashboard.personalizar', 'edit') : true
   const [editing, setEditing] = useState(false)
@@ -272,7 +275,7 @@ export function DashboardPage({
       }
     } catch (err: any) {
       if (controller.signal.aborted || requestId !== summaryRequestSeq.current) return
-      setError(err?.message || 'No se pudo cargar el dashboard.')
+      setError(err?.message || t('dashboard.dashboardLoadError'))
     } finally {
       if (!controller.signal.aborted && requestId === summaryRequestSeq.current) {
         setLoading(false)
@@ -316,9 +319,9 @@ export function DashboardPage({
       const preferences = await response.json()
       onPreferencesUpdated(preferences)
       setEditing(false)
-      showFeedback('Dashboard guardado', 'Tu layout se aplicara a todos tus proyectos.', 'success')
+      showFeedback(t('dashboard.saveSuccessTitle'), t('dashboard.saveSuccessMessage'), 'success')
     } catch (err: any) {
-      showFeedback('No se pudo guardar', err?.message || 'Error guardando dashboard.', 'danger')
+      showFeedback(t('dashboard.saveErrorTitle'), err?.message || t('dashboard.saveErrorMessage'), 'danger')
     }
   }
 
@@ -332,15 +335,15 @@ export function DashboardPage({
   }
 
   const metricCards = [
-    { label: 'PASO', value: summary?.quality_summary?.pasados ?? 0, color: 'success' },
-    { label: 'FALLO', value: summary?.quality_summary?.fallados ?? 0, color: 'danger' },
-    { label: 'BLOQUEADO', value: summary?.quality_summary?.bloqueados ?? 0, color: 'primary' },
-    { label: 'SIN CORRER', value: summary?.quality_summary?.pendientes ?? 0, color: 'secondary' },
+    { label: t('dashboard.passed'), value: summary?.quality_summary?.pasados ?? 0, color: 'success' },
+    { label: t('dashboard.failed'), value: summary?.quality_summary?.fallados ?? 0, color: 'danger' },
+    { label: t('dashboard.blocked'), value: summary?.quality_summary?.bloqueados ?? 0, color: 'primary' },
+    { label: t('dashboard.notRun'), value: summary?.quality_summary?.pendientes ?? 0, color: 'secondary' },
   ]
 
   const buildExecutionDetail = () => {
     const failed = summary?.build_executions?.status_counts?.FALLO || 0
-    return `${failed} fallidas`
+    return t('dashboard.failedExecutions', { count: failed })
   }
   const trendData = (summary?.trend_by_build || []).map((item: any) => ({
     ...item,
@@ -356,21 +359,21 @@ export function DashboardPage({
   const renderWidget = (id: string) => {
     if (loading && !summary) return <div className="h-100 d-flex align-items-center justify-content-center"><Spinner size="sm" /></div>
     if (error && !summary) return <div className="small text-danger">{error}</div>
-    if (!summary) return <div className="small text-muted">Sin datos.</div>
+    if (!summary) return <div className="small text-muted">{t('dashboard.noData')}</div>
     switch (id) {
       case 'quality_summary':
         return <div className="dashboard-quality-grid">{metricCards.map(card => <div className={`dashboard-quality-card border-start border-4 border-${card.color} bg-light rounded-3`} key={card.label}><div className="dashboard-quality-label x-small fw-bold text-muted" title={card.label}>{card.label}</div><div className={`dashboard-quality-value fw-bold text-${card.color}`}>{card.value}</div></div>)}</div>
       case 'my_tests_today':
-        return <Kpi icon={<UserCheck />} label="Ejecuciones hoy" value={summary.my_tests_today?.count ?? 0} />
+        return <Kpi icon={<UserCheck />} label={t('dashboard.todayExecutions')} value={summary.my_tests_today?.count ?? 0} />
       case 'build_executions':
-        return <Kpi icon={<LayoutDashboard />} label="Ejecuciones en build" value={summary.build_executions?.count || 0} detail={buildExecutionDetail()} />
+        return <Kpi icon={<LayoutDashboard />} label={t('dashboard.executionsInBuild')} value={summary.build_executions?.count || 0} detail={buildExecutionDetail()} />
       case 'build_window': {
         const win = summary.build_window
-        if (!win) return <div className="small text-muted">Sin build activa.</div>
+        if (!win) return <div className="small text-muted">{t('dashboard.activeBuild')}</div>
         return <BuildWindowSummary win={win} />
       }
       case 'trend_by_build':
-        if (!hasTrendData) return <EmptyWidget message="Sin ejecuciones cerradas para graficar tendencia." />
+        if (!hasTrendData) return <EmptyWidget message={t('dashboard.noTrendExecutions')} />
         return <TrendByBuildList items={trendData} />
       case 'open_bugs':
         return <div><Kpi icon={<Bug />} label="Bugs abiertos" value={summary.open_bugs?.total || 0} />{Object.entries(summary.open_bugs?.by_severity || {}).map(([key, value]) => <Badge bg="light" text="dark" className="border me-1 mt-2" key={key}>{key}: {String(value)}</Badge>)}</div>
@@ -379,7 +382,7 @@ export function DashboardPage({
       case 'execution_type_distribution': {
         const data = normalizeExecutionTypeDistribution(summary.execution_type_distribution || {})
         if (!data.some(item => item.value > 0)) {
-          return <EmptyWidget message="Sin ejecuciones cerradas para clasificar por tipo." />
+          return <EmptyWidget message={t('dashboard.noTypeExecutions')} />
         }
         return <ExecutionTypeDistribution items={data} />
       }
@@ -388,16 +391,16 @@ export function DashboardPage({
       case 'recent_failed_cases':
         return <ExecutionList items={summary.recent_failed_cases || []} />
       default:
-        return <div className="small text-muted">Widget no disponible.</div>
+        return <div className="small text-muted">{t('dashboard.unavailableWidget')}</div>
     }
   }
 
-  const renderWidgetCard = (widget: { id: string, title: string }, mobile = false) => (
+  const renderWidgetCard = (widget: { id: string, titleKey: string }, mobile = false) => (
     <Card className={`dashboard-widget-card border-0 shadow-sm rounded-3 h-100 overflow-hidden ${mobile ? 'dashboard-mobile-card' : ''}`}>
       <Card.Header className={`bg-white border-0 d-flex justify-content-between align-items-center py-3 ${!mobile ? 'dashboard-widget-header' : ''}`}>
-        <span className="dashboard-widget-title fw-bold text-secondary d-flex align-items-center gap-2" title={widget.title}><BarChart3 size={16} /> {widget.title}</span>
+        <span className="dashboard-widget-title fw-bold text-secondary d-flex align-items-center gap-2" title={t(`dashboard.${widget.titleKey}` as any)}><BarChart3 size={16} /> {t(`dashboard.${widget.titleKey}` as any)}</span>
         {editing && !mobile && (
-          <span className="dashboard-drag-handle d-inline-flex align-items-center justify-content-center text-muted" title="Arrastrar widget">
+          <span className="dashboard-drag-handle d-inline-flex align-items-center justify-content-center text-muted" title={t('dashboard.dragWidget')}>
             <Grip size={16} />
           </span>
         )}
@@ -413,26 +416,26 @@ export function DashboardPage({
       <div className="app-page-header mb-4">
         <div>
           <h4 className="fw-bold text-primary text-decoration-none d-flex align-items-center gap-2 mb-1">
-            <LayoutDashboard size={24} /> Dashboard
+            <LayoutDashboard size={24} /> {t('navigation.dashboard')}
           </h4>
         </div>
         <div className="app-toolbar d-flex gap-2 flex-wrap justify-content-end">
           <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={() => loadSummary({ force: true })} disabled={loading || refreshing}>
             {refreshing ? <Spinner size="sm" className="me-1" /> : <RefreshCw size={14} className="me-1" />}
-            {refreshing ? 'Actualizando' : 'Actualizar'}
+            {refreshing ? t('dashboard.refreshing') : t('dashboard.refresh')}
           </Button>
-          {canPersonalizeDashboard && <Button variant={editing ? 'primary' : 'outline-primary'} size="sm" className="fw-bold" onClick={() => setEditing(!editing)}><Settings2 size={14} className="me-1" /> {editing ? 'Editando' : 'Editar dashboard'}</Button>}
-          {editing && <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={resetDashboard}><RotateCcw size={14} className="me-1" /> Restaurar</Button>}
-          {editing && <Button variant="success" size="sm" className="fw-bold" onClick={saveDashboard}><Save size={14} className="me-1" /> Guardar</Button>}
+          {canPersonalizeDashboard && <Button variant={editing ? 'primary' : 'outline-primary'} size="sm" className="fw-bold" onClick={() => setEditing(!editing)}><Settings2 size={14} className="me-1" /> {editing ? t('dashboard.editing') : t('dashboard.editDashboard')}</Button>}
+          {editing && <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={resetDashboard}><RotateCcw size={14} className="me-1" /> {t('dashboard.restore')}</Button>}
+          {editing && <Button variant="success" size="sm" className="fw-bold" onClick={saveDashboard}><Save size={14} className="me-1" /> {t('dashboard.save')}</Button>}
         </div>
       </div>
 
       {editing && (
         <Card className="border-0 shadow-sm rounded-3 p-3 mb-3">
-          <div className="fw-bold small text-muted text-uppercase mb-2">Widgets visibles</div>
+          <div className="fw-bold small text-muted text-uppercase mb-2">{t('dashboard.visibleWidgets')}</div>
           <div className="d-flex flex-wrap gap-3">
             {WIDGETS.map(widget => (
-              <Form.Check key={widget.id} type="checkbox" id={`widget-${widget.id}`} label={widget.title} checked={enabledWidgets.includes(widget.id)} onChange={(event) => toggleWidget(widget.id, event.target.checked)} />
+              <Form.Check key={widget.id} type="checkbox" id={`widget-${widget.id}`} label={t(`dashboard.${widget.titleKey}` as any)} checked={enabledWidgets.includes(widget.id)} onChange={(event) => toggleWidget(widget.id, event.target.checked)} />
             ))}
           </div>
         </Card>
@@ -459,183 +462,11 @@ export function DashboardPage({
         >
           {visibleWidgets.map(widget => (
             <div key={widget.id} className="dashboard-grid-item">
-              <WidgetErrorBoundary>{renderWidgetCard(widget)}</WidgetErrorBoundary>
+              <WidgetErrorBoundary errorText={t('dashboard.widgetError')}>{renderWidgetCard(widget)}</WidgetErrorBoundary>
             </div>
           ))}
         </ResponsiveGridLayout>
       </div>
     </div>
-  )
-}
-
-function Kpi({ icon, label, value, detail }: { icon: any, label: string, value: any, detail?: string }) {
-  return (
-    <div className="dashboard-kpi d-flex align-items-center gap-3">
-      <div className="dashboard-kpi-icon bg-primary bg-opacity-10 text-primary rounded-3 p-2 d-flex">{icon}</div>
-      <div className="dashboard-kpi-content">
-        <div className="dashboard-kpi-label small text-muted fw-bold" title={label}>{label}</div>
-        <div className="h3 fw-bold text-dark mb-0">{value}</div>
-        {detail && <div className="dashboard-kpi-detail x-small text-muted" title={detail}>{detail}</div>}
-      </div>
-    </div>
-  )
-}
-
-function BuildWindowSummary({ win }: { win: any }) {
-  const statusLabel = win.status === 'vencida'
-    ? 'Vencida'
-    : win.status === 'en_curso'
-      ? 'En curso'
-      : win.status === 'no_iniciada'
-        ? 'No iniciada'
-        : 'Sin fechas'
-  const statusVariant = win.status === 'vencida'
-    ? 'danger'
-    : win.status === 'en_curso'
-      ? 'success'
-      : win.status === 'no_iniciada'
-        ? 'info'
-        : 'secondary'
-  const startLabel = win.fecha_inicio ? formatDateTime(win.fecha_inicio) : 'Sin inicio'
-  const endLabel = win.fecha_fin ? formatDateTime(win.fecha_fin) : 'Sin fin'
-  const remainingLabel = typeof win.remaining_days === 'number'
-    ? `${win.remaining_days} dia(s) restantes`
-    : 'Sin estimacion'
-
-  return (
-    <div>
-      <div className="d-flex align-items-center justify-content-between gap-2">
-        <Badge bg={statusVariant}>{statusLabel}</Badge>
-        <span className="x-small text-muted">{remainingLabel}</span>
-      </div>
-      <h5 className="fw-bold mt-3 mb-3">{win.build_name}</h5>
-      <div className="d-grid gap-2 small">
-        <div>
-          <div className="x-small fw-bold text-muted text-uppercase">Inicio</div>
-          <div className="text-dark">{startLabel}</div>
-        </div>
-        <div>
-          <div className="x-small fw-bold text-muted text-uppercase">Fin</div>
-          <div className="text-dark">{endLabel}</div>
-        </div>
-      </div>
-      {win.progress_percent !== null && win.progress_percent !== undefined && (
-        <>
-          <ProgressBar now={win.progress_percent} className="mt-3" />
-          <div className="x-small text-muted mt-2">{Math.round(win.progress_percent)}% de la ventana transcurrida</div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function TrendByBuildList({ items }: { items: any[] }) {
-  const maxTotal = Math.max(1, ...items.map(item => item.ejecutados || item.total_asignados || 0))
-  return (
-    <div className="dashboard-trend-list">
-      {items.map((item, index) => {
-        const executed = item.ejecutados || 0
-        const assigned = item.total_asignados || 0
-        const passed = item.pasados || 0
-        const failed = item.fallados || 0
-        const blocked = item.bloqueados || 0
-        const executedWidth = Math.max(3, Math.min(100, (executed / maxTotal) * 100))
-        return (
-          <div className="dashboard-trend-row" key={item.build_id || item.build_name || `trend-${index}`}>
-            <div className="d-flex justify-content-between gap-2 align-items-start">
-              <div>
-                <div className="fw-bold text-dark">{item.build_name}</div>
-                <div className="x-small text-muted">
-                  {executed} ejecutadas de {assigned} asignadas · {Math.round(item.cobertura_porcentaje || 0)}% cobertura
-                </div>
-              </div>
-              <div className="d-flex gap-1 flex-wrap justify-content-end">
-                <Badge bg="success">{passed} PASO</Badge>
-                <Badge bg="danger">{failed} FALLO</Badge>
-                <Badge bg="primary">{blocked} BLOQUEADO</Badge>
-              </div>
-            </div>
-            <div className="dashboard-trend-track mt-2" aria-hidden="true">
-              <div className="dashboard-trend-executed" style={{ width: `${executedWidth}%` }} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-const EXECUTION_TYPE_META: Record<string, { label: string, color: string }> = {
-  manual: { label: 'Manual', color: '#0d6efd' },
-  automatizada: { label: 'Automatizada', color: '#198754' },
-  ia: { label: 'IA', color: '#6f42c1' },
-  externa: { label: 'Externa', color: '#0dcaf0' },
-}
-
-function normalizeExecutionTypeDistribution(distribution: Record<string, any>) {
-  return Object.entries(EXECUTION_TYPE_META).map(([key, meta]) => ({
-    key,
-    label: meta.label,
-    color: meta.color,
-    value: Number(distribution?.[key] || 0),
-  }))
-}
-
-function ExecutionTypeDistribution({ items }: { items: Array<{ key: string, label: string, color: string, value: number }> }) {
-  const total = items.reduce((sum, item) => sum + item.value, 0)
-  return (
-    <div className="dashboard-execution-types">
-      <div className="dashboard-execution-types-total">
-        <span className="h4 fw-bold mb-0 text-dark">{total}</span>
-        <span className="small text-muted">ejecuciones clasificadas</span>
-      </div>
-      <div className="dashboard-execution-types-list">
-        {items.map(item => {
-          const percent = total > 0 ? Math.round((item.value / total) * 100) : 0
-          return (
-            <div className="dashboard-execution-type-row" key={item.key}>
-              <div className="d-flex justify-content-between align-items-center gap-2">
-                <span className="dashboard-execution-type-label">
-                  <span className="dashboard-execution-type-dot" style={{ backgroundColor: item.color }} />
-                  {item.label}
-                </span>
-                <span className="dashboard-execution-type-value">{item.value}</span>
-              </div>
-              <div className="dashboard-execution-type-track" aria-hidden="true">
-                <div
-                  className="dashboard-execution-type-bar"
-                  style={{ width: `${percent}%`, backgroundColor: item.color }}
-                />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function EmptyWidget({ message }: { message: string }) {
-  return (
-    <div className="h-100 d-flex align-items-center justify-content-center text-center small text-muted px-3">
-      {message}
-    </div>
-  )
-}
-
-function ExecutionList({ items }: { items: any[] }) {
-  return (
-    <ListGroup variant="flush" className="small">
-      {items.slice(0, 8).map(item => (
-        <ListGroup.Item key={item.execution_id} className="dashboard-execution-row px-0 bg-transparent d-flex justify-content-between gap-3">
-          <div className="dashboard-execution-main">
-            <div className="dashboard-execution-title fw-bold text-dark" title={`${item.case_code} - ${item.case_title}`}>{item.case_code} - {item.case_title}</div>
-            <div className="dashboard-execution-meta x-small text-muted" title={`${item.executed_at ? formatDateTime(item.executed_at) : 'Sin fecha'} · ${item.duration_seconds}s`}><Clock size={12} className="me-1" />{item.executed_at ? formatDateTime(item.executed_at) : 'Sin fecha'} · {item.duration_seconds}s</div>
-          </div>
-          <Badge bg={statusColor(item.status)} className="align-self-start">{item.status}</Badge>
-        </ListGroup.Item>
-      ))}
-      {items.length === 0 && <ListGroup.Item className="px-0 bg-transparent text-muted text-center">Sin datos.</ListGroup.Item>}
-    </ListGroup>
   )
 }

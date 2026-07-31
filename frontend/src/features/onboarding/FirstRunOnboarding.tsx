@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Form, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { BarChart3, Boxes, CheckCircle2, ChevronLeft, ChevronRight, FolderKanban, Layers3, PlayCircle, Rocket, ShieldCheck, Sparkles } from 'lucide-react'
 import { API_BASE, TRESEKO_TELEMETRY_ENDPOINT } from '../../app/constants'
+import { useI18n } from '../../i18n'
 
 type FirstRunOnboardingProps = {
   loggedUser: any
@@ -71,6 +72,7 @@ function selectedClass(active: boolean) {
 }
 
 export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpdated, firstRunState, onFirstRunCompleted, systemEdition, disabled = false }: FirstRunOnboardingProps) {
+  const { t } = useI18n()
   const profileSettings = loggedUser?.profileSettings || {}
   const initialNeedsSurvey = firstRunState?.requires_onboarding === true
   const initialNeedsGuide = false
@@ -112,7 +114,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
       body: JSON.stringify({ profile_settings: nextProfileSettings }),
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.detail || 'No se pudieron guardar tus preferencias.')
+    if (!response.ok) throw new Error(data?.detail || t('onboarding.savePreferencesError'))
     onPreferencesUpdated(data)
     return data
   }
@@ -137,7 +139,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
       })
       return 'sent'
     } catch (err: any) {
-      return err?.message || 'No se pudieron enviar las respuestas.'
+      return err?.message || t('onboarding.telemetryError')
     }
   }
 
@@ -166,11 +168,11 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
         }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo guardar la configuracion inicial.')
+      if (!response.ok) throw new Error(data?.detail || t('onboarding.initialConfigError'))
       onFirstRunCompleted(data)
       setStage('guide')
     } catch (err: any) {
-      setError(err?.message || 'No se pudo guardar la encuesta.')
+      setError(err?.message || t('onboarding.surveyError'))
     } finally {
       setSaving(false)
     }
@@ -188,7 +190,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
       })
       setStage('done')
     } catch (err: any) {
-      setError(err?.message || 'No se pudo cerrar la guia.')
+      setError(err?.message || t('onboarding.closeGuideError'))
     } finally {
       setSaving(false)
     }
@@ -213,6 +215,19 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
   }
 
   const currentGuide = GUIDE_STEPS[guideIndex]
+  const guideCopy: Record<string, { title: string; text: string; chips: string[] }> = {
+    Soluciones: { title: t('onboarding.guideSolutions'), text: t('onboarding.guideSolutionsText'), chips: [t('onboarding.guideClient'), t('onboarding.guideTeam'), t('onboarding.guideQaUnit')] },
+    Proyectos: { title: t('onboarding.guideProjects'), text: t('onboarding.guideProjectsText'), chips: [t('onboarding.guideProduct'), t('onboarding.guideApp'), t('onboarding.guideInitiative')] },
+    'Componentes y Builds': { title: t('onboarding.guideComponents'), text: t('onboarding.guideComponentsText'), chips: [t('onboarding.guideModule'), t('onboarding.guideVersion'), t('onboarding.guideRelease')] },
+    'Suites, ejecuciones y reportes': { title: t('onboarding.guideSuites'), text: t('onboarding.guideSuitesText'), chips: [t('onboarding.guideCases'), t('onboarding.guideEvidence'), t('onboarding.guideReports')] },
+  }
+  const translatedGuide = guideCopy[currentGuide.title] || currentGuide
+  const optionLabels: Record<string, string> = {
+    'QA manual': t('onboarding.roleManual'), 'QA automation': t('onboarding.roleAutomation'), 'QA lead': t('onboarding.roleLead'), 'Dev/DevOps': t('onboarding.roleDev'), 'Product/Management': t('onboarding.roleProduct'), Otro: t('onboarding.other'),
+    'gestionar casos': t('onboarding.useCases'), 'ejecutar pruebas': t('onboarding.useExecute'), automatizacion: t('onboarding.useAutomation'), 'bugs/evidencias': t('onboarding.useBugs'), reportes: t('onboarding.useReports'),
+    'Nada / proceso informal': t('onboarding.toolNone'), 'Excel / Sheets': t('onboarding.toolExcel'), Jira: t('onboarding.toolJira'), 'GitHub Issues': t('onboarding.toolGithub'), 'TestRail / Zephyr / Xray': t('onboarding.toolTestRail'), 'Herramientas de automatizacion': t('onboarding.toolAutomation'),
+  }
+  const labelOption = (option: string) => optionLabels[option] || option
   const GuideIcon = currentGuide.icon
   const isLastGuideStep = guideIndex === GUIDE_STEPS.length - 1
 
@@ -231,8 +246,8 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
             <div className="d-flex align-items-center gap-3">
               <div className="onboarding-icon-badge"><Sparkles size={22} /></div>
               <div>
-                <Modal.Title className="fw-bold text-dark">Antes de empezar</Modal.Title>
-                <div className="text-muted small">Cuatro respuestas nos ayudan a configurar Treseko segun tu forma de trabajo.</div>
+                <Modal.Title className="fw-bold text-dark">{t('onboarding.beforeStart')}</Modal.Title>
+                <div className="text-muted small">{t('onboarding.intro')}</div>
               </div>
             </div>
           </Modal.Header>
@@ -242,10 +257,10 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
               <div className="col-lg-6">
                 <Card className="onboarding-card h-100">
                   <Card.Body>
-                    <div className="fw-bold mb-2">1. Rol principal</div>
+                    <div className="fw-bold mb-2">1. {t('onboarding.role')}</div>
                     <div className="onboarding-choice-grid">
                       {ROLE_OPTIONS.map(option => (
-                        <button key={option} type="button" className={selectedClass(answers.role === option)} onClick={() => setAnswers(prev => ({ ...prev, role: option }))}>{option}</button>
+                        <button key={option} type="button" className={selectedClass(answers.role === option)} onClick={() => setAnswers(prev => ({ ...prev, role: option }))}>{labelOption(option)}</button>
                       ))}
                     </div>
                   </Card.Body>
@@ -254,7 +269,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
               <div className="col-lg-6">
                 <Card className="onboarding-card h-100">
                   <Card.Body>
-                    <div className="fw-bold mb-2">2. Tamano de organizacion</div>
+                    <div className="fw-bold mb-2">2. {t('onboarding.organization')}</div>
                     <div className="onboarding-choice-grid compact">
                       {ORG_SIZE_OPTIONS.map(option => (
                         <button key={option} type="button" className={selectedClass(answers.organization_size === option)} onClick={() => setAnswers(prev => ({ ...prev, organization_size: option }))}>{option}</button>
@@ -266,28 +281,28 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
               <div className="col-lg-6">
                 <Card className="onboarding-card h-100">
                   <Card.Body>
-                    <div className="fw-bold mb-2">3. Uso esperado</div>
+                    <div className="fw-bold mb-2">3. {t('onboarding.expectedUse')}</div>
                     <div className="onboarding-choice-grid">
                       {USE_OPTIONS.map(option => (
                         <button key={option} type="button" className={selectedClass(answers.expected_uses.includes(option))} onClick={() => toggleExpectedUse(option)}>
-                          {option}
+                          {labelOption(option)}
                         </button>
                       ))}
                     </div>
-                    <div className="x-small text-muted mt-2">Puedes elegir mas de uno.</div>
+                    <div className="x-small text-muted mt-2">{t('onboarding.chooseMultiple')}</div>
                   </Card.Body>
                 </Card>
               </div>
               <div className="col-lg-6">
                 <Card className="onboarding-card h-100">
                   <Card.Body>
-                    <div className="fw-bold mb-2">4. Herramienta o flujo actual</div>
+                    <div className="fw-bold mb-2">4. {t('onboarding.currentFlow')}</div>
                     <div className="onboarding-choice-grid">
                       {CURRENT_TOOL_OPTIONS.map(option => (
-                        <button key={option} type="button" className={selectedClass(answers.current_tools.includes(option))} onClick={() => toggleCurrentTool(option)}>{option}</button>
+                        <button key={option} type="button" className={selectedClass(answers.current_tools.includes(option))} onClick={() => toggleCurrentTool(option)}>{labelOption(option)}</button>
                       ))}
                     </div>
-                    <div className="x-small text-muted mt-2">Puedes elegir mas de uno.</div>
+                    <div className="x-small text-muted mt-2">{t('onboarding.chooseMultiple')}</div>
                   </Card.Body>
                 </Card>
               </div>
@@ -297,17 +312,17 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
                 id="treseko-terms-consent"
                 checked={termsAccepted}
                 onChange={(event) => setTermsAccepted(event.target.checked)}
-                label="Acepto los terminos y condiciones de Treseko."
+                label={t('onboarding.terms')}
               />
               <Form.Check
                 id="treseko-telemetry-consent"
                 className="mt-2"
                 checked={telemetryOptIn}
                 onChange={(event) => setTelemetryOptIn(event.target.checked)}
-                label="Quiero compartir estas respuestas anonimas para ayudar a mejorar Treseko."
+                label={t('onboarding.telemetry')}
               />
               <div className="x-small text-muted mt-1">
-                Nos ayuda a priorizar integraciones, onboarding y reportes. Es opcional: Treseko funciona igual si no lo marcas. No se envia email, nombre ni IDs de proyecto. Puedes revisar los terminos en{' '}
+                {t('onboarding.telemetryHint')}{' '}
                 <a href={TERMS_URL} target="_blank" rel="noreferrer">https://treseko.com/terminos-y-condiciones</a>.
               </div>
             </div>
@@ -315,7 +330,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
           <Modal.Footer className="border-0 pt-0">
             <Button variant="primary" className="fw-bold rounded-pill px-4" disabled={!surveyValid || saving} onClick={saveSurvey}>
               {saving ? <Spinner size="sm" className="me-2" /> : <CheckCircle2 size={16} className="me-2" />}
-              Continuar
+              {t('onboarding.continue')}
             </Button>
           </Modal.Footer>
         </>
@@ -328,8 +343,8 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
               <div className="d-flex align-items-center gap-3 min-w-0">
                 <div className="onboarding-icon-badge"><Rocket size={22} /></div>
                 <div className="min-w-0">
-                  <Modal.Title className="fw-bold text-dark text-truncate">Como se ordena Treseko</Modal.Title>
-                  <div className="text-muted small">Una guia visual rapida para entender la jerarquia de trabajo.</div>
+                  <Modal.Title className="fw-bold text-dark text-truncate">{t('onboarding.guideTitle')}</Modal.Title>
+                  <div className="text-muted small">{t('onboarding.guideIntro')}</div>
                 </div>
               </div>
               <Badge bg={systemEdition === 'premium' ? 'warning' : 'primary'} text={systemEdition === 'premium' ? 'dark' : undefined}>
@@ -346,7 +361,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
                   return (
                     <div key={step.title} className={`onboarding-flow-node ${index === guideIndex ? 'is-active' : ''} ${index < guideIndex ? 'is-done' : ''}`}>
                       <div className="onboarding-flow-dot"><StepIcon size={18} /></div>
-                      <div className="onboarding-flow-label">{step.title}</div>
+                      <div className="onboarding-flow-label">{guideCopy[step.title]?.title || step.title}</div>
                     </div>
                   )
                 })}
@@ -356,33 +371,33 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
                   <div className="d-flex align-items-start gap-3">
                     <div className="onboarding-guide-icon"><GuideIcon size={34} /></div>
                     <div className="min-w-0">
-                      <h3 className="fw-bold text-dark mb-2">{currentGuide.title}</h3>
-                      <p className="text-muted mb-3">{currentGuide.text}</p>
+                      <h3 className="fw-bold text-dark mb-2">{translatedGuide.title}</h3>
+                      <p className="text-muted mb-3">{translatedGuide.text}</p>
                       <div className="d-flex flex-wrap gap-2">
-                        {currentGuide.chips.map(chip => <Badge key={chip} bg="light" text="dark" className="border">{chip}</Badge>)}
+                        {translatedGuide.chips.map(chip => <Badge key={chip} bg="light" text="dark" className="border">{chip}</Badge>)}
                       </div>
                     </div>
                   </div>
                   <div className="onboarding-hierarchy mt-4">
-                    <span>Solucion</span>
-                    <span>Proyecto</span>
-                    <span>Componente</span>
-                    <span>Build</span>
-                    <span>Casos</span>
-                    <span>Reportes</span>
+                    <span>{t('onboarding.solution')}</span>
+                    <span>{t('onboarding.project')}</span>
+                    <span>{t('onboarding.component')}</span>
+                    <span>{t('onboarding.build')}</span>
+                    <span>{t('onboarding.cases')}</span>
+                    <span>{t('onboarding.reports')}</span>
                   </div>
                   <ProgressBar now={((guideIndex + 1) / GUIDE_STEPS.length) * 100} className="mt-4 onboarding-progress" />
                 </Card.Body>
               </Card>
               <Alert variant="info" className="small border-0 onboarding-tip">
                 <ShieldCheck size={16} className="me-1" />
-                Cada usuario ve esta guia una sola vez. Luego podras volver a orientarte desde la estructura de navegacion.
+                {t('onboarding.guideTip')}
               </Alert>
             </div>
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0 d-flex justify-content-between">
             <Button variant="outline-secondary" className="fw-bold rounded-pill" disabled={guideIndex === 0 || saving} onClick={() => setGuideIndex(index => Math.max(0, index - 1))}>
-              <ChevronLeft size={16} /> Anterior
+              <ChevronLeft size={16} /> {t('onboarding.previous')}
             </Button>
             <Button
               variant="primary"
@@ -391,7 +406,7 @@ export function FirstRunOnboarding({ loggedUser, fetchWithAuth, onPreferencesUpd
               onClick={() => isLastGuideStep ? finishGuide() : setGuideIndex(index => Math.min(GUIDE_STEPS.length - 1, index + 1))}
             >
               {saving ? <Spinner size="sm" className="me-2" /> : isLastGuideStep ? <PlayCircle size={16} className="me-2" /> : null}
-              {isLastGuideStep ? 'Empezar' : 'Siguiente'}
+              {isLastGuideStep ? t('onboarding.start') : t('onboarding.next')}
               {!isLastGuideStep && <ChevronRight size={16} className="ms-1" />}
             </Button>
           </Modal.Footer>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API_BASE } from '../../../app/constants'
+import type { TranslationKey } from '../../../i18n'
 import {
   aiProviderOptions,
   defaultModelCapabilities,
@@ -13,6 +14,7 @@ type UseAiModelConfigParams = {
   setAiEngineConfig: (config: any) => void
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function useAiModelConfig({
@@ -20,6 +22,7 @@ export function useAiModelConfig({
   setAiEngineConfig,
   fetchWithAuth,
   showFeedback,
+  t,
 }: UseAiModelConfigParams) {
   const [modelScanLoading, setModelScanLoading] = useState(false)
   const [modelScanError, setModelScanError] = useState('')
@@ -79,7 +82,7 @@ export function useAiModelConfig({
           llm_endpoint: selectedRuntimeProvider === 'opencode' ? 'http://127.0.0.1:4096' : aiEngineConfig.llm_endpoint,
         }),
       })
-      if (!response.ok) throw new Error(`Backend respondio ${response.status}`)
+      if (!response.ok) throw new Error(t('configuracion.backendResponded', { status: response.status }))
       const result = await response.json()
       const scannedModels = Array.isArray(result.models) ? result.models : []
       const currentModel = String(aiEngineConfig.model || '')
@@ -108,16 +111,16 @@ export function useAiModelConfig({
         ai_execution_driver: selectedRuntimeProvider === 'opencode' ? 'opencode' : aiEngineConfig.ai_execution_driver,
       })
       if (result.status === 'ok' || result.status === 'empty') {
-        showFeedback('Modelos IA', result.detail || `${scannedModels.length} modelos detectados.`, result.status === 'ok' ? 'success' : 'warning')
+        showFeedback(t('configuracion.aiModelsTitle'), result.detail || t('configuracion.aiModelsDetected', { count: scannedModels.length }), result.status === 'ok' ? 'success' : 'warning')
       } else {
-        setModelScanError(result.detail || 'No se pudo escanear modelos.')
-        showFeedback('Modelos IA', result.detail || 'No se pudo escanear modelos.', 'warning')
+        setModelScanError(result.detail || t('configuracion.aiModelsScanError'))
+        showFeedback(t('configuracion.aiModelsTitle'), result.detail || t('configuracion.aiModelsScanError'), 'warning')
       }
       return { status: String(result.status || 'error'), models: scannedModels.length }
     } catch (error: any) {
-      const message = error?.message || 'No se pudo escanear modelos.'
+      const message = error?.message || t('configuracion.aiModelsScanError')
       setModelScanError(message)
-      showFeedback('Modelos IA', message, 'warning')
+      showFeedback(t('configuracion.aiModelsTitle'), message, 'warning')
       return { status: 'error', models: 0 }
     } finally {
       setModelScanLoading(false)

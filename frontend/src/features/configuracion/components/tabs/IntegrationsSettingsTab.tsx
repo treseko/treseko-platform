@@ -6,6 +6,7 @@ import { PremiumGate } from '../../../premium/PremiumGate'
 import { featureEnabled, type FeatureLookup } from '../../../premium/featureAccess'
 import { CasePortabilityPanel } from './CasePortabilityPanel'
 import { ExtensionInstanceDetails } from './ExtensionInstanceDetails'
+import { useI18n } from '../../../../i18n'
 
 export type ExtensionKind = 'integration' | 'plugin'
 
@@ -60,21 +61,21 @@ const statusVariant = (status?: string) => {
   return 'secondary'
 }
 
-const statusLabel = (status?: string) => ({
-  active: 'Activo',
-  configured: 'Configurado',
-  installed: 'Instalado',
-  disabled: 'Inactivo',
-  error: 'Error',
-  revoked: 'Revocado',
-} as Record<string, string>)[status || ''] || 'Instalado'
+const statusLabel = (status: string | undefined, t: (key: string) => string) => ({
+  active: t('configuracion.integrationStatusActive'),
+  configured: t('configuracion.integrationStatusConfigured'),
+  installed: t('configuracion.integrationStatusInstalled'),
+  disabled: t('configuracion.integrationStatusDisabled'),
+  error: t('configuracion.integrationStatusError'),
+  revoked: t('configuracion.integrationStatusRevoked'),
+} as Record<string, string>)[status || ''] || t('configuracion.integrationStatusInstalled')
 
-const fallbackDescription = (item: ExtensionItem) => {
+const fallbackDescription = (item: ExtensionItem, t: (key: string) => string) => {
   if (item.description) return item.description
-  if (item.id === 'redmine') return 'Integracion enterprise segura para vincular defectos y trazabilidad con Redmine.'
-  if (item.id === 'jira') return 'Conector planificado para incidencias e historias en Jira Software.'
-  if (item.id === 'github_issues') return 'Conector planificado para vincular bugs con GitHub Issues.'
-  return item.kind === 'plugin' ? 'Plugin administrado por Treseko.' : 'Integracion administrada por Treseko.'
+  if (item.id === 'redmine') return t('configuracion.integrationRedmineDescription')
+  if (item.id === 'jira') return t('configuracion.integrationJiraDescription')
+  if (item.id === 'github_issues') return t('configuracion.integrationGithubDescription')
+  return item.kind === 'plugin' ? t('configuracion.integrationPluginDescription') : t('configuracion.integrationDescription')
 }
 
 export function IntegrationsSettingsTab({
@@ -84,6 +85,7 @@ export function IntegrationsSettingsTab({
   showFeedback,
   canAccessCapability,
 }: Props) {
+  const { t } = useI18n()
   const enterpriseEnabled = featureEnabled(hasSystemFeature, 'integrations.enterprise')
   const aiEnabled = featureEnabled(hasSystemFeature, 'ai.engine')
   const [items, setItems] = useState<ExtensionItem[]>([])
@@ -111,13 +113,13 @@ export function IntegrationsSettingsTab({
     try {
       const response = await fetchWithAuth(`${API_BASE}/extensions/catalog`)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar el catalogo.')
+      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationCatalogLoadError'))
       const nextItems = data.items || []
       setItems(nextItems)
       const installed = nextItems.filter((item: ExtensionItem) => item.installed && item.instance)
       setSelectedId(prev => prev && installed.some((item: ExtensionItem) => item.id === prev) ? prev : installed[0]?.id || '')
     } catch (err: any) {
-      showFeedback('Complementos', err?.message || 'No se pudieron cargar los complementos instalados.', 'danger')
+      showFeedback(t('configuracion.integrationFeedbackTitle'), err?.message || t('configuracion.integrationInstalledLoadError'), 'danger')
     } finally {
       setLoading(false)
     }
@@ -128,7 +130,7 @@ export function IntegrationsSettingsTab({
     try {
       const response = await fetchWithAuth(`${API_BASE}/plugins/store/catalog`)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo consultar la tienda oficial.')
+      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationStoreLoadError'))
       setStoreItems(Array.isArray(data.items) ? data.items : [])
       if (canAccessCapability('plugins.configurar', 'edit')) {
         const connection = await fetchWithAuth(`${API_BASE}/plugins/store/connection`)
@@ -136,7 +138,7 @@ export function IntegrationsSettingsTab({
         if (connection.ok) setStorePaired(Boolean(connectionData.paired))
       }
     } catch (err: any) {
-      showFeedback('Tienda oficial', err?.message || 'La tienda no está disponible en este momento.', 'warning')
+      showFeedback(t('configuracion.integrationStoreTitle'), err?.message || t('configuracion.integrationStoreUnavailable'), 'warning')
     } finally {
       setStoreLoading(false)
     }
@@ -163,7 +165,7 @@ export function IntegrationsSettingsTab({
     try {
       const response = await fetchWithAuth(url, options)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo completar la accion.')
+      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationActionError'))
       await loadCatalog()
       return data
     } finally {
@@ -176,11 +178,11 @@ export function IntegrationsSettingsTab({
       setSaving(true)
       const response = await fetchWithAuth(`${API_BASE}/plugins/store/register`, { method: 'POST' })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo vincular esta instalación.')
+      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationPairError'))
       setStorePaired(true)
-      showFeedback('Tienda vinculada', 'La instalación quedó vinculada con una identidad propia y cifrada.', 'success')
+      showFeedback(t('configuracion.integrationPairSuccessTitle'), t('configuracion.integrationPairSuccess'), 'success')
     } catch (err: any) {
-      showFeedback('No se pudo vincular', err?.message || 'Revisa la disponibilidad de la tienda oficial.', 'danger')
+      showFeedback(t('configuracion.integrationPairFailedTitle'), err?.message || t('configuracion.integrationStoreCheck'), 'danger')
     } finally {
       setSaving(false)
     }
@@ -190,9 +192,9 @@ export function IntegrationsSettingsTab({
     if (!item.release_id) return
     try {
       await request(`${API_BASE}/plugins/store/releases/${item.release_id}/install`, { method: 'POST', body: JSON.stringify({}) })
-      showFeedback('Plugin instalado', `${item.manifest?.name || item.plugin_id} quedó instalado y deshabilitado hasta que lo habilites.`, 'success')
+      showFeedback(t('configuracion.integrationInstallSuccessTitle'), `${item.manifest?.name || item.plugin_id} ${t('configuracion.integrationInstallSuccess')}`, 'success')
     } catch (err: any) {
-      showFeedback('No se pudo instalar', err?.message || 'Revisa el pairing, permisos o licencia.', 'danger')
+      showFeedback(t('configuracion.integrationInstallFailedTitle'), err?.message || t('configuracion.integrationInstallCheck'), 'danger')
     }
   }
 
@@ -202,27 +204,27 @@ export function IntegrationsSettingsTab({
       setSaving(true)
       const response = await fetchWithAuth(`${API_BASE}/plugins/store/${selected.instance.id}/audit`)
       const data = await response.json().catch(() => ([]))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo consultar la auditoría.')
+      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationAuditQueryError'))
       setStoreAudit(Array.isArray(data) ? data : [])
     } catch (err: any) {
-      showFeedback('Auditoría', err?.message || 'No se pudo cargar la auditoría del plugin.', 'danger')
+      showFeedback(t('configuracion.integrationAuditTitle'), err?.message || t('configuracion.integrationAuditLoadError'), 'danger')
     } finally { setSaving(false) }
   }
 
   const uninstallStorePlugin = async () => {
-    if (!selected?.instance || !window.confirm(`¿Desinstalar ${selected.display_name}? Se conservará la auditoría.`)) return
+    if (!selected?.instance || !window.confirm(`${t('configuracion.integrationUninstallConfirmPrefix')} ${selected.display_name}? ${t('configuracion.integrationUninstallConfirmSuffix')}`)) return
     try {
       setSaving(true)
       const response = await fetchWithAuth(`${API_BASE}/plugins/store/${selected.instance.id}`, { method: 'DELETE' })
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data?.detail || 'No se pudo desinstalar el plugin.')
+        throw new Error(data?.detail || t('configuracion.integrationUninstallError'))
       }
       setStoreAudit([])
       await loadCatalog()
-      showFeedback('Plugin desinstalado', 'La instancia y sus secretos fueron eliminados; la auditoría se conserva.', 'success')
+      showFeedback(t('configuracion.integrationUninstallSuccessTitle'), t('configuracion.integrationUninstallSuccess'), 'success')
     } catch (err: any) {
-      showFeedback('No se pudo desinstalar', err?.message || 'Revisa tus permisos.', 'danger')
+      showFeedback(t('configuracion.integrationUninstallFailedTitle'), err?.message || t('configuracion.integrationPermissionsCheck'), 'danger')
     } finally { setSaving(false) }
   }
 
@@ -233,9 +235,9 @@ export function IntegrationsSettingsTab({
         method: 'PATCH',
         body: JSON.stringify({ config_json: configDraft }),
       })
-      showFeedback('Configuracion guardada', 'El complemento instalado fue actualizado.', 'success')
+      showFeedback(t('configuracion.integrationConfigSavedTitle'), t('configuracion.integrationConfigSaved'), 'success')
     } catch (err: any) {
-      showFeedback('No se pudo guardar', err?.message || 'Revisa permisos o licencia.', 'danger')
+      showFeedback(t('configuracion.integrationSaveFailedTitle'), err?.message || t('configuracion.integrationPermissionLicenseCheck'), 'danger')
     }
   }
 
@@ -247,9 +249,9 @@ export function IntegrationsSettingsTab({
         body: JSON.stringify({ secrets: { api_token: secretDraft } }),
       })
       setSecretDraft('')
-      showFeedback('Secreto configurado', 'El secreto quedo marcado como configurado sin exponerse en pantalla.', 'success')
+      showFeedback(t('configuracion.integrationSecretSavedTitle'), t('configuracion.integrationSecretSaved'), 'success')
     } catch (err: any) {
-      showFeedback('No se pudo guardar el secreto', err?.message || 'Revisa permisos o licencia.', 'danger')
+      showFeedback(t('configuracion.integrationSecretFailedTitle'), err?.message || t('configuracion.integrationPermissionLicenseCheck'), 'danger')
     }
   }
 
@@ -258,9 +260,9 @@ export function IntegrationsSettingsTab({
     const action = selected.instance.enabled ? 'disable' : 'enable'
     try {
       await request(`${API_BASE}/extensions/${selected.instance.id}/${action}`, { method: 'POST' })
-      showFeedback('Complemento actualizado', `${selected.display_name} quedo ${action === 'enable' ? 'activo' : 'inactivo'}.`, 'success')
+      showFeedback(t('configuracion.integrationUpdatedTitle'), `${selected.display_name} ${action === 'enable' ? t('configuracion.integrationEnabled') : t('configuracion.integrationDisabled')}.`, 'success')
     } catch (err: any) {
-      showFeedback('No se pudo actualizar', err?.message || 'Revisa permisos o licencia.', 'danger')
+      showFeedback(t('configuracion.integrationUpdateFailedTitle'), err?.message || t('configuracion.integrationPermissionLicenseCheck'), 'danger')
     }
   }
 
@@ -268,9 +270,9 @@ export function IntegrationsSettingsTab({
     if (!selected?.instance) return
     try {
       const data = await request(`${API_BASE}/extensions/${selected.instance.id}/test`, { method: 'POST' })
-      showFeedback('Prueba de complemento', data?.message || 'Validacion completada.', data?.ok ? 'success' : 'warning')
+      showFeedback(t('configuracion.integrationTestTitle'), data?.message || t('configuracion.integrationTestComplete'), data?.ok ? 'success' : 'warning')
     } catch (err: any) {
-      showFeedback('No se pudo probar', err?.message || 'Revisa la configuracion.', 'danger')
+      showFeedback(t('configuracion.integrationTestFailedTitle'), err?.message || t('configuracion.integrationConfigCheck'), 'danger')
     }
   }
 
@@ -288,13 +290,13 @@ export function IntegrationsSettingsTab({
   return (
     <div className="animate__animated animate__fadeIn">
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <h5 className="fw-bold text-secondary text-uppercase small m-0">Complementos instalados</h5>
+        <h5 className="fw-bold text-secondary text-uppercase small m-0">{t('configuracion.integrationInstalledTitle')}</h5>
         <div className="d-flex flex-wrap gap-2">
           <Button variant="outline-secondary" size="sm" className="fw-bold rounded-pill" onClick={loadCatalog} disabled={loading}>
-            <RefreshCw size={14} className="me-1" /> Actualizar
+            <RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}
           </Button>
           <Button variant="primary" size="sm" className="fw-bold rounded-pill" onClick={() => { setStoreVisible(value => !value); if (!storeVisible) loadOfficialStore() }}>
-            <Store size={14} className="me-1" /> Tienda
+            <Store size={14} className="me-1" /> {t('configuracion.integrationStoreShort')}
           </Button>
         </div>
       </div>
@@ -303,8 +305,8 @@ export function IntegrationsSettingsTab({
         <PremiumGate
           feature="integrations.enterprise"
           hasFeature={hasSystemFeature}
-          title="Complementos enterprise Premium"
-          description="Community puede ver capacidades bloqueadas. Premium habilita conectores enterprise, secretos y endpoints externos."
+          title={t('configuracion.integrationPremiumTitle')}
+          description={t('configuracion.integrationPremiumDescription')}
           mode="card"
           className="mb-3"
         />
@@ -315,30 +317,30 @@ export function IntegrationsSettingsTab({
           <Card.Body className="p-4">
             <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
               <div>
-                <h6 className="fw-bold text-dark mb-1">Tienda oficial de Treseko</h6>
-                <div className="small text-muted">Releases publicados por Treseko. La descarga y validación se realizan desde el backend.</div>
+                <h6 className="fw-bold text-dark mb-1">{t('configuracion.integrationStoreTitle')}</h6>
+                <div className="small text-muted">{t('configuracion.integrationStoreDescription')}</div>
               </div>
               <div className="d-flex gap-2">
                 {canAccessCapability('plugins.configurar', 'edit') && <Button variant={storePaired ? 'outline-success' : 'outline-primary'} size="sm" onClick={pairOfficialStore} disabled={saving || storePaired}>
-                  <ShieldCheck size={14} className="me-1" /> {storePaired ? 'Tienda vinculada' : 'Vincular tienda'}
+                  <ShieldCheck size={14} className="me-1" /> {storePaired ? t('configuracion.integrationStorePaired') : t('configuracion.integrationStorePair')}
                 </Button>}
-                <Button variant="outline-secondary" size="sm" onClick={loadOfficialStore} disabled={storeLoading}><RefreshCw size={14} className="me-1" /> Actualizar</Button>
+                <Button variant="outline-secondary" size="sm" onClick={loadOfficialStore} disabled={storeLoading}><RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}</Button>
               </div>
             </div>
             {storeLoading ? <div className="py-3 text-center"><Spinner size="sm" /></div> : storeItems.length === 0 ? (
-              <div className="small text-muted py-2">No hay releases oficiales disponibles para esta instalación.</div>
+              <div className="small text-muted py-2">{t('configuracion.integrationNoReleases')}</div>
             ) : (
               <Row className="g-3">
                 {storeItems.map(item => <Col md={6} key={item.release_id || item.plugin_id}>
                   <div className="border rounded-3 p-3 h-100">
                     <div className="d-flex justify-content-between gap-2"><strong>{item.manifest?.name || item.plugin_id}</strong><Badge bg="success">v{item.version}</Badge></div>
-                    <div className="small text-muted mt-1">{item.manifest?.publisher || 'Treseko'} · Compatible con {item.manifest?.compatibility?.treseko_min || '?'} a {item.manifest?.compatibility?.treseko_max || '?'}</div>
+                    <div className="small text-muted mt-1">{item.manifest?.publisher || 'Treseko'} · {t('configuracion.integrationCompatibleWith')} {item.manifest?.compatibility?.treseko_min || '?'} {t('configuracion.integrationTo')} {item.manifest?.compatibility?.treseko_max || '?'}</div>
                     {item.changelog && <div className="small mt-2">{item.changelog}</div>}
                     <div className="d-flex flex-wrap gap-2 mt-3">
                       <Button size="sm" variant="primary" onClick={() => installStoreRelease(item)} disabled={saving || !storePaired || !canAccessCapability('plugins.instalar', 'edit')}>
-                        Instalar
+                        {t('configuracion.integrationInstall')}
                       </Button>
-                      {!storePaired && <span className="small text-muted align-self-center">Vincula la tienda antes de instalar.</span>}
+                      {!storePaired && <span className="small text-muted align-self-center">{t('configuracion.integrationPairBeforeInstall')}</span>}
                     </div>
                   </div>
                 </Col>)}
@@ -360,12 +362,12 @@ export function IntegrationsSettingsTab({
             <Card.Body className="p-4 d-flex flex-column">
               <div className="d-flex justify-content-between align-items-start mb-3">
                 <div className="bg-info bg-opacity-10 p-2 rounded text-info"><Cpu size={24} /></div>
-                <Badge bg={aiEnabled ? 'success' : 'secondary'} className="px-2 py-1 shadow-sm">{aiEnabled ? 'Instalado' : 'Bloqueado'}</Badge>
+                <Badge bg={aiEnabled ? 'success' : 'secondary'} className="px-2 py-1 shadow-sm">{aiEnabled ? t('configuracion.integrationStatusInstalled') : t('configuracion.integrationBlocked')}</Badge>
               </div>
-              <h6 className="fw-bold text-dark">Motor LLM</h6>
-              <p className="small text-muted mb-4">Configuracion de modelos, tokens y workflows IA del sistema.</p>
+              <h6 className="fw-bold text-dark">{t('configuracion.integrationLlmTitle')}</h6>
+              <p className="small text-muted mb-4">{t('configuracion.integrationLlmDescription')}</p>
               <Button variant="outline-dark" size="sm" className="mt-auto fw-bold rounded-pill shadow-none" disabled={!aiEnabled} onClick={() => setConfigTab('ai')}>
-                Tokens y Modelos
+                {t('configuracion.integrationTokensModels')}
               </Button>
             </Card.Body>
           </Card>
@@ -377,18 +379,18 @@ export function IntegrationsSettingsTab({
         <Card.Body className="p-4">
           <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
             <div>
-              <h6 className="fw-bold text-dark mb-1">Administracion de complementos instalados</h6>
-              <div className="small text-muted">Solo usuarios con RBAC de integraciones/plugins pueden configurar, habilitar o guardar secretos.</div>
+              <h6 className="fw-bold text-dark mb-1">{t('configuracion.integrationManagementTitle')}</h6>
+              <div className="small text-muted">{t('configuracion.integrationManagementDescription')}</div>
             </div>
-            <Badge bg="primary" className="p-2">{installedCount} instalados</Badge>
+            <Badge bg="primary" className="p-2">{installedCount} {t('configuracion.integrationInstalledCount')}</Badge>
           </div>
 
           {!loading && builtinItems.length > 0 && (
             <div className="border rounded-3 bg-light px-3 py-2 mb-3">
-              <div className="small fw-bold text-dark mb-1">Incluidos con Treseko</div>
+              <div className="small fw-bold text-dark mb-1">{t('configuracion.integrationIncludedTitle')}</div>
               <div className="d-flex flex-wrap gap-2 align-items-center">
                 {builtinItems.map(item => <Badge key={item.id} bg="success">{item.display_name}</Badge>)}
-                <span className="small text-muted">Ya están disponibles y no requieren instalación desde la tienda.</span>
+                <span className="small text-muted">{t('configuracion.integrationIncludedDescription')}</span>
               </div>
             </div>
           )}
@@ -397,7 +399,7 @@ export function IntegrationsSettingsTab({
             <div className="py-4 text-center"><Spinner /></div>
           ) : installedItems.length === 0 ? (
             <div className="text-center text-muted small py-4">
-              No hay complementos adicionales instalados desde la tienda. Abre la tienda para instalar los disponibles.
+              {t('configuracion.integrationNoInstalled')}
             </div>
           ) : (
             <Row className="g-3">
@@ -412,9 +414,9 @@ export function IntegrationsSettingsTab({
                     >
                       <div className="d-flex justify-content-between gap-2">
                         <strong>{item.display_name}</strong>
-                        <Badge bg={statusVariant(item.instance?.status)}>{statusLabel(item.instance?.status)}</Badge>
+                        <Badge bg={statusVariant(item.instance?.status)}>{statusLabel(item.instance?.status, t)}</Badge>
                       </div>
-                      <div className="small text-muted mt-1">{fallbackDescription(item)}</div>
+                      <div className="small text-muted mt-1">{fallbackDescription(item, t)}</div>
                     </button>
                   ))}
                 </div>

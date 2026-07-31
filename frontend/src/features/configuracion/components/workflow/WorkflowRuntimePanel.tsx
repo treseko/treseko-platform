@@ -1,5 +1,6 @@
 ﻿import { Badge, Button, Form, Tab, Tabs } from 'react-bootstrap'
 import { Activity } from 'lucide-react'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   traceExecutionId: string
@@ -18,23 +19,24 @@ export function WorkflowRuntimePanel({
   setWorkflowRuntimeExpanded,
   loadRuntimeTraces,
 }: Props) {
+  const { t } = useI18n()
   return (
     <div className={`workflow-runtime ${workflowRuntimeExpanded ? 'is-expanded' : 'is-collapsed'}`}>
       <div className="workflow-runtime-header">
         <div>
-          <div className="fw-bold small"><Activity size={14} className="me-1" /> Runtime & trazabilidad</div>
-          <div className="x-small text-muted">Timeline, eventos, variables, snapshots, logs, tokens, costos y latencia.</div>
+          <div className="fw-bold small"><Activity size={14} className="me-1" /> {t('configuracion.runtimeTraceability')}</div>
+          <div className="x-small text-muted">{t('configuracion.runtimeDesc')}</div>
         </div>
         <div className="workflow-runtime-actions">
-          <Form.Label visuallyHidden htmlFor="workflow-trace-execution-id">ID de ejecución</Form.Label>
-          <Form.Control id="workflow-trace-execution-id" name="workflow_trace_execution_id" autoComplete="off" size="sm" placeholder="ID de ejecución…" value={traceExecutionId} onChange={(event) => setTraceExecutionId(event.target.value)} />
-          <Button size="sm" variant="outline-primary" className="fw-bold" type="button" onClick={loadRuntimeTraces}>Cargar</Button>
-          <Button size="sm" variant="light" type="button" onClick={() => setWorkflowRuntimeExpanded(!workflowRuntimeExpanded)}>{workflowRuntimeExpanded ? 'Contraer' : 'Expandir'}</Button>
+          <Form.Label visuallyHidden htmlFor="workflow-trace-execution-id">{t('configuracion.executionId')}</Form.Label>
+          <Form.Control id="workflow-trace-execution-id" name="workflow_trace_execution_id" autoComplete="off" size="sm" placeholder={`${t('configuracion.executionId')}…`} value={traceExecutionId} onChange={(event) => setTraceExecutionId(event.target.value)} />
+          <Button size="sm" variant="outline-primary" className="fw-bold" type="button" onClick={loadRuntimeTraces}>{t('configuracion.load')}</Button>
+          <Button size="sm" variant="light" type="button" onClick={() => setWorkflowRuntimeExpanded(!workflowRuntimeExpanded)}>{workflowRuntimeExpanded ? t('configuracion.collapse') : t('configuracion.expand')}</Button>
         </div>
       </div>
       {workflowRuntimeExpanded && (
         <Tabs defaultActiveKey="timeline" className="workflow-runtime-tabs">
-          <Tab eventKey="timeline" title="Timeline">
+          <Tab eventKey="timeline" title={t('configuracion.timeline')}>
             <div className="workflow-runtime-strip">
               {runtimeTraces.map((trace, index) => (
                 <div key={trace.id} className={`workflow-runtime-chip is-${String(trace.status || '').toLowerCase()}`}>
@@ -43,10 +45,10 @@ export function WorkflowRuntimePanel({
                   <small>{trace.status}</small>
                 </div>
               ))}
-              {runtimeTraces.length === 0 && <div className="small text-muted">Sin trazas cargadas.</div>}
+              {runtimeTraces.length === 0 && <div className="small text-muted">{t('configuracion.noTraces')}</div>}
             </div>
           </Tab>
-          <Tab eventKey="events" title="Eventos">
+          <Tab eventKey="events" title={t('configuracion.events')}>
             <div className="workflow-runtime-list">
               {runtimeTraces.map(trace => (
                 <details key={trace.id} className="workflow-runtime-item">
@@ -56,13 +58,13 @@ export function WorkflowRuntimePanel({
               ))}
             </div>
           </Tab>
-          <Tab eventKey="variables" title="Variables">
+          <Tab eventKey="variables" title={t('configuracion.variables')}>
             <pre>{JSON.stringify(runtimeTraces.at(-1)?.output_json?.sharedMemoryPatch || {}, null, 2)}</pre>
           </Tab>
-          <Tab eventKey="metrics" title="Métricas">
+          <Tab eventKey="metrics" title={t('configuracion.metrics')}>
             <pre>{JSON.stringify(runtimeTraces.map(trace => trace.metrics_json || {}), null, 2)}</pre>
           </Tab>
-          <Tab eventKey="logs" title="Logs">
+          <Tab eventKey="logs" title={t('configuracion.logs')}>
             <pre>{JSON.stringify(runtimeTraces.map(trace => ({ status: trace.status, output: trace.output_json })), null, 2)}</pre>
           </Tab>
         </Tabs>

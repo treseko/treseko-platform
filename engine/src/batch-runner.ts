@@ -11,10 +11,10 @@ interface TestCase {
 }
 
 const smokeSuite: TestCase[] = [
-  { 
-    id: 'SMOKE-01', 
-    task: 'Rellena Full Name en https://demoqa.com/text-box', 
-    url: 'https://demoqa.com/text-box', 
+  {
+    id: 'SMOKE-01',
+    task: 'Rellena Full Name en https://demoqa.com/text-box',
+    url: 'https://demoqa.com/text-box',
     expected: 'El campo de nombre debe mostrar el texto ingresado.',
     guidance: '1. Escribe "Juan Perez" en el campo Full Name. 2. Haz clic en Submit.'
   },
@@ -28,7 +28,7 @@ async function runSuite() {
   const results: { id: string, task: string, status: string, tokens: number, time: number }[] = [];
 
   console.log(`🚀 Starting Automation Suite: ${suiteName.toUpperCase()} (${smokeSuite.length} tests)\n`);
-  
+
   let suiteTotalTokens = 0;
   let suiteTotalTime = 0;
 
@@ -69,7 +69,7 @@ async function runSuite() {
       <div class="card">
         <h1>Suite Summary: ${suiteName.toUpperCase()}</h1>
         <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
-        
+
         <div class="stats">
             <div class="stat-item"><div class="stat-label">Total Tests</div><div class="stat-value">${results.length}</div></div>
             <div class="stat-item"><div class="stat-label">Total Tokens</div><div class="stat-value">${suiteTotalTokens}</div></div>

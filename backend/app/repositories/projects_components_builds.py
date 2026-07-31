@@ -274,6 +274,7 @@ async def create_build(db: AsyncSession, build: schemas.BuildCreate):
         await db.execute(
             models.Build.__table__.update()
             .where(models.Build.componente_id == build.componente_id)
+            .where(or_(models.Build.estado == "ACTIVA", models.Build.activo.is_(True)))
             .values(activo=False, estado="HISTORICA")
         )
     build_data = build.model_dump()
@@ -322,6 +323,7 @@ async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.B
             models.Build.__table__.update()
             .where(models.Build.componente_id == target_component_id)
             .where(models.Build.id != db_build.id)
+            .where(or_(models.Build.estado == "ACTIVA", models.Build.activo.is_(True)))
             .values(activo=False, estado="HISTORICA")
         )
         if db_build.fecha_inicio is None:

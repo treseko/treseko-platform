@@ -49,7 +49,7 @@ usarla y qué revisar si algo no sale como esperás.
 
 ## Versión distribuida
 
-La versión actual es `1.0.0-rc.1` y está aprobada para uso productivo.
+La versión actual es `1.0.1` y está aprobada para uso productivo.
 Consultá el [changelog](../CHANGELOG.md) para conocer los cambios incluidos.
 
 ## Enlaces oficiales

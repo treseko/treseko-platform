@@ -1,0 +1,21 @@
+import auth from './auth'
+import common from './common'
+import navigation from './navigation'
+import proyectos from './proyectos'
+import casos from './casos'
+import ejecutarPruebas from './ejecutarPruebas'
+import historial from './historial'
+import automatizacion from './automatizacion'
+import bugs from './bugs'
+import reportes from './reportes'
+import motorIa from './motorIa'
+import inventario from './inventario'
+import configuracion from './configuracion'
+import dashboard from './dashboard'
+import redmine from './redmine'
+import onboarding from './onboarding'
+import notifications from './notifications'
+import forcePasswordChange from './forcePasswordChange'
+
+const catalog = { common, auth, navigation, proyectos, casos, ejecutarPruebas, historial, automatizacion, bugs, reportes, motorIa, inventario, configuracion, dashboard, redmine, onboarding, notifications, forcePasswordChange } as const
+export default catalog

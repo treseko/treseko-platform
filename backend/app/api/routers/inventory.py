@@ -18,7 +18,7 @@ async def read_dispositivos(
 
 @router.post("/infraestructura/dispositivos/", response_model=schemas.Dispositivo)
 async def create_dispositivo(
-    dispositivo: schemas.DispositivoBase, 
+    dispositivo: schemas.DispositivoBase,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.dispositivos", "edit"))
 ):

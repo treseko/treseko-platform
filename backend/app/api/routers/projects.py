@@ -10,7 +10,7 @@ router = APIRouter(tags=["Proyectos"])
 
 @router.post("/proyectos/", response_model=schemas.Proyecto)
 async def create_proyecto(
-    proyecto: schemas.ProyectoCreate, 
+    proyecto: schemas.ProyectoCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.portfolio", "edit"))
 ):
@@ -76,7 +76,7 @@ async def read_proyectos(
 
 @router.get("/proyectos/{proyecto_id}", response_model=schemas.Proyecto)
 async def read_proyecto(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.portfolio", "read"))
 ):
@@ -154,7 +154,7 @@ async def update_proyecto(
 
 @router.get("/proyectos/{proyecto_id}/miembros/", response_model=List[schemas.ProyectoMiembro])
 async def read_proyecto_miembros(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),

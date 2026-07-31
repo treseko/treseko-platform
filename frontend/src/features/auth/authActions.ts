@@ -2,6 +2,7 @@ import type { FormEvent } from 'react'
 import { ALLOW_LOCAL_FALLBACK, API_BASE, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD } from '../../app/constants'
 import { createSessionUser, mapBackendUserToSession } from '../../app/mappers'
 import type { AuthMode, SessionUser } from '../../app/types'
+import type { TranslationKey } from '../../i18n'
 
 type CreateAuthActionsParams = {
   authMode: AuthMode
@@ -22,6 +23,7 @@ type CreateAuthActionsParams = {
   setCurrentBuildId: (buildId: string) => void
   setActiveTab: (tab: string) => void
   setIsAuthenticated: (authenticated: boolean) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createAuthActions({
@@ -42,7 +44,8 @@ export function createAuthActions({
   setCurrentCompId,
   setCurrentBuildId,
   setActiveTab,
-  setIsAuthenticated
+  setIsAuthenticated,
+  t
 }: CreateAuthActionsParams) {
   const clearWorkspaceContext = () => {
     setOrganizations([])
@@ -72,20 +75,20 @@ export function createAuthActions({
           } else if (ALLOW_LOCAL_FALLBACK) {
             persistSession(createSessionUser(loginForm.email, 'ADMIN', 'local'))
           } else {
-            throw new Error('No se pudo sincronizar el usuario con backend.')
+            throw new Error(t('auth.syncUserFailed'))
           }
         } catch {
           if (!ALLOW_LOCAL_FALLBACK || !DEV_ADMIN_PASSWORD || loginForm.email !== DEV_ADMIN_EMAIL || loginForm.password !== DEV_ADMIN_PASSWORD) {
-            throw new Error('Credenciales locales inválidas o backend no disponible.')
+            throw new Error(t('auth.invalidLocalCredentials'))
           }
           persistSession(createSessionUser(loginForm.email, 'ADMIN', 'local'))
         }
       } else {
-        if (!adConfig.enabled) throw new Error('Active Directory está deshabilitado en la configuración.')
+        if (!adConfig.enabled) throw new Error(t('auth.adDisabled'))
         if ((adConfig.mode || 'oidc') === 'ldap') {
           await loginWithAdPassword(loginForm.email, loginForm.password)
           const response = await fetchWithAuth(`${API_BASE}/users/me/`)
-          if (!response.ok) throw new Error('No se pudo sincronizar el usuario AD.')
+          if (!response.ok) throw new Error(t('auth.syncAdUserFailed'))
           persistSession(mapBackendUserToSession(await response.json()))
           setActiveTab('dashboard')
           return
@@ -95,7 +98,7 @@ export function createAuthActions({
       }
       setActiveTab('dashboard')
     } catch (error: any) {
-      setLoginError(error.message || 'No se pudo iniciar sesión.')
+      setLoginError(error.message || t('auth.loginFailed'))
     } finally {
       setLoginLoading(false)
     }

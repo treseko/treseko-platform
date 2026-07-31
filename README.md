@@ -350,7 +350,7 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión publicada: `1.0.0-rc.1`
+Versión publicada: `1.0.1`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 changelog incluido para conocer su alcance y los cambios incorporados.

@@ -1,6 +1,7 @@
 import { applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type Node, type OnConnect, type OnEdgesChange, type OnNodesChange } from '@xyflow/react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
+import type { TranslationKey } from '../../../i18n'
 
 type UseWorkflowLocalEditsParams = {
   workflowDraft: AiWorkflow | null
@@ -13,6 +14,7 @@ type UseWorkflowLocalEditsParams = {
   setSelectedWorkflowElement: (element: { type: 'node' | 'edge', id: string } | null) => void
   syncFlowFromWorkflow: (workflow: AiWorkflow | null) => void
   showFeedback: (title: string, message: string, variant?: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
   enqueueDeleteNode: (nodeId: string) => boolean
   enqueueDeleteEdge: (edgeId: string) => boolean
   enqueueConnect: (edge: AiWorkflowEdge) => boolean
@@ -30,6 +32,7 @@ export function useWorkflowLocalEdits({
   setSelectedWorkflowElement,
   syncFlowFromWorkflow,
   showFeedback,
+  t,
   enqueueDeleteNode,
   enqueueDeleteEdge,
   enqueueConnect,
@@ -72,7 +75,7 @@ export function useWorkflowLocalEdits({
     const node = workflowDraft.nodes.find(item => item.id === nodeId)
     if (!node) return
     if (node.locked) {
-      showFeedback('Workflow IA', 'Este nodo base esta bloqueado y no se puede eliminar.', 'warning')
+      showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowLockedNode'), 'warning')
       return
     }
     setSelectedWorkflowElement(null)

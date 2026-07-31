@@ -65,7 +65,7 @@ async def record_external_execution_report(
     build = build_result.scalar_one_or_none()
     if not build:
         raise ValueError("La build indicada no existe en el componente")
-    if not build.activo:
+    if not access_control.is_build_active(build):
         raise ValueError("La build indicada esta inactiva y no permite reportar ejecuciones")
 
     run = None
@@ -333,7 +333,11 @@ async def get_test_runs_proyecto(
                 models.SnapshotAttachment.attachment_id.isnot(None),
             )
             query = query.filter(evidence_filter if has_evidence else ~evidence_filter)
-        query = query.distinct()
+        # ``TestRun`` contiene columnas JSON. PostgreSQL no puede aplicar
+        # ``DISTINCT`` a una fila que las incluya porque JSON no tiene un
+        # operador de igualdad. Agrupar por la clave primaria deduplica las
+        # filas introducidas por los joins de filtros sin comparar esos campos.
+        query = query.group_by(models.TestRun.id)
 
     result = await db.execute(
         query

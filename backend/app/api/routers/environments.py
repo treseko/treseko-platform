@@ -80,7 +80,7 @@ def _public_update_fields(update_model):
 
 @router.get("/proyectos/{proyecto_id}/entornos/", response_model=List[schemas.Entorno])
 async def read_entornos(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -91,7 +91,7 @@ async def read_entornos(
 
 @router.post("/entornos/", response_model=schemas.Entorno)
 async def create_entorno(
-    entorno: schemas.EntornoCreate, 
+    entorno: schemas.EntornoCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.ambientes", "edit"))
 ):
@@ -102,8 +102,8 @@ async def create_entorno(
 
 @router.patch("/entornos/{entorno_id}", response_model=schemas.Entorno)
 async def update_entorno(
-    entorno_id: UUID, 
-    entorno: schemas.EntornoUpdate, 
+    entorno_id: UUID,
+    entorno: schemas.EntornoUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.ambientes", "edit"))
 ):
@@ -124,7 +124,7 @@ async def update_entorno(
 
 @router.delete("/entornos/{entorno_id}")
 async def delete_entorno(
-    entorno_id: UUID, 
+    entorno_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.ambientes", "edit"))
 ):

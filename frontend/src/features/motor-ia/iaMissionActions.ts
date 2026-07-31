@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { fromDateTimeLocalInput, formatDateTime } from '../../shared/utils/dateTime'
+import type { TranslationKey } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -31,8 +32,10 @@ type CreateIaMissionActionsParams = {
   setShowIaScheduler: (show: boolean) => void
   setActiveTab: (tab: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
   navigateToMotorIaOnLaunch?: boolean
   onAfterLaunch?: () => void
+  readOnlyBuild?: boolean
 }
 
 export function createIaMissionActions({
@@ -53,8 +56,10 @@ export function createIaMissionActions({
   setShowIaScheduler,
   setActiveTab,
   showFeedback,
+  t,
   navigateToMotorIaOnLaunch = true,
-  onAfterLaunch
+  onAfterLaunch,
+  readOnlyBuild = false
 }: CreateIaMissionActionsParams) {
   const waitForIaExecutionToFinish = async (runId: string, executionId: string, timeoutMs = 20 * 60 * 1000) => {
     const startedAt = Date.now()
@@ -81,10 +86,14 @@ export function createIaMissionActions({
   }
 
   const handleLaunchIaMission = async (mode: 'now' | 'scheduled' = 'now') => {
+    if (readOnlyBuild) {
+      showFeedback(t('motorIa.executionStartFailed'), 'La build histórica está en modo consulta y no admite ejecuciones IA.', 'warning')
+      return
+    }
     if (selectedTestsForIa.length === 0) return
     const scheduledIso = fromDateTimeLocalInput(scheduledTime)
     if (mode === 'scheduled' && !scheduledIso) {
-      showFeedback('Horario requerido', 'Selecciona fecha y hora para programar la misión IA.', 'warning')
+      showFeedback(t('motorIa.scheduleRequired'), t('motorIa.scheduleRequiredMessage'), 'warning')
       return
     }
     if (mode === 'scheduled' && scheduledIso) {
@@ -96,8 +105,8 @@ export function createIaMissionActions({
         setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
         setShowIaScheduler(false)
         showFeedback(
-          'Misión programada',
-          `Misión "${execName}" programada para ${formatDateTime(scheduledIso)}. Se ejecutará si esta sesión sigue abierta.`,
+          t('motorIa.missionScheduled'),
+          t('motorIa.missionScheduledMessage', { name: execName, date: formatDateTime(scheduledIso) }),
           'success'
         )
         if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
@@ -172,7 +181,7 @@ export function createIaMissionActions({
           ])
           setProjectSyncMessage(`Ejecución ${run.nombre} creada para la build activa con ${selectedTestsForIa.length} casos.`)
           setShowIaScheduler(false)
-          showFeedback('Ejecución IA iniciada', `Se iniciaron ${selectedTestsForIa.length} prueba(s) con IA ahora. Build: ${executionBuild.name || 'Sin build'}.`, 'success')
+          showFeedback(t('motorIa.executionStarted'), t('motorIa.executionStartedMessage', { count: selectedTestsForIa.length, build: executionBuild.name || t('motorIa.noBuild') }), 'success')
           if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
           onAfterLaunch?.()
 
@@ -222,33 +231,33 @@ export function createIaMissionActions({
                 ...started.filter(item => !item.ok).map(item => iaLog('error', `${item.caseTitle}: ${item.error}`, { caseCode: item.caseCode, executionId: item.executionId }))
               ])
               if (started.filter(item => item.ok).length === 0 && started.length > 0) {
-                showFeedback('IA no pudo iniciar', started.find(item => !item.ok)?.error || 'No se pudo iniciar ningun caso IA', 'danger')
+                showFeedback(t('motorIa.executionStartFailed'), started.find(item => !item.ok)?.error || t('motorIa.executionStartFailedMessage'), 'danger')
               }
             })
             .catch((error: any) => {
-              const message = error?.message || 'No se pudo completar el lanzamiento IA'
+              const message = error?.message || t('motorIa.launchFailedMessage')
               setProjectSyncMessage(`Error durante la ejecucion IA: ${message}`)
               setIaLogs(prev => [...prev, iaLog('error', `Error durante IA: ${message}`)])
-              showFeedback('IA con error', message, 'danger')
+              showFeedback(t('motorIa.executionError'), message, 'danger')
             })
           return
         }
         setProjectSyncMessage(`Ejecución ${run.nombre} creada para la build activa con ${selectedTestsForIa.length} casos.`)
       } catch (error: any) {
-        const message = error?.message || 'No se pudo iniciar la ejecucion IA'
+        const message = error?.message || t('motorIa.executionStartFailedMessage')
         setProjectSyncMessage(`No se pudo crear la ejecución de build: ${message}`)
-        setIaLogs(prev => [...prev, iaLog('error', `No se pudo iniciar IA: ${message}`)])
+        setIaLogs(prev => [...prev, iaLog('error', `${t('motorIa.executionStartFailed')}: ${message}`)])
         setShowIaScheduler(false)
         if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
         onAfterLaunch?.()
-        showFeedback('IA no pudo iniciar', message, 'danger')
+        showFeedback(t('motorIa.executionStartFailed'), message, 'danger')
         return
       }
     }
 
     setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
     setShowIaScheduler(false)
-    showFeedback('Ejecución IA iniciada', `Se iniciaron ${selectedTestsForIa.length} prueba(s) con IA ahora. Build: ${buildsList.find(build => build.id === currentBuildId)?.name || 'Sin build'}.`, 'success')
+    showFeedback(t('motorIa.executionStarted'), t('motorIa.executionStartedMessage', { count: selectedTestsForIa.length, build: buildsList.find(build => build.id === currentBuildId)?.name || t('motorIa.noBuild') }), 'success')
     if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
     onAfterLaunch?.()
   }

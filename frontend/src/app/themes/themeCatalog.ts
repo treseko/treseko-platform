@@ -1,12 +1,21 @@
+import { graphiteTheme } from './packages/graphite'
+
 export type ThemeTokenSet = {
   background: string
   surface: string
   surfaceMuted: string
+  surfaceRaised: string
+  surfaceHover: string
   border: string
+  borderStrong: string
   text: string
   muted: string
   primary: string
   accent: string
+  rowSelected: string
+  caseRowBackground: string
+  caseRowHover: string
+  caseRowText: string
 }
 
 export type ThemeDefinition = {
@@ -31,11 +40,18 @@ export const BUILTIN_THEMES: ThemeDefinition[] = [
       background: '#f6f8fb',
       surface: '#ffffff',
       surfaceMuted: '#f8fafc',
+      surfaceRaised: '#ffffff',
+      surfaceHover: '#f1f5f9',
       border: '#e2e8f0',
+      borderStrong: '#cbd5e1',
       text: '#111827',
       muted: '#64748b',
       primary: '#0d6efd',
       accent: '#198754',
+      rowSelected: '#e7f1ff',
+      caseRowBackground: '#ffffff',
+      caseRowHover: '#f8fafc',
+      caseRowText: '#111827',
     },
   },
   {
@@ -49,11 +65,18 @@ export const BUILTIN_THEMES: ThemeDefinition[] = [
       background: '#f6f8fb',
       surface: '#ffffff',
       surfaceMuted: '#f8fafc',
+      surfaceRaised: '#ffffff',
+      surfaceHover: '#f1f5f9',
       border: '#e2e8f0',
+      borderStrong: '#cbd5e1',
       text: '#111827',
       muted: '#64748b',
       primary: '#0d6efd',
       accent: '#198754',
+      rowSelected: '#e7f1ff',
+      caseRowBackground: '#ffffff',
+      caseRowHover: '#f8fafc',
+      caseRowText: '#111827',
     },
   },
   {
@@ -67,11 +90,18 @@ export const BUILTIN_THEMES: ThemeDefinition[] = [
       background: '#0f172a',
       surface: '#111827',
       surfaceMuted: '#1e293b',
+      surfaceRaised: '#162238',
+      surfaceHover: '#1b2940',
       border: '#334155',
+      borderStrong: '#3b506d',
       text: '#e5e7eb',
       muted: '#94a3b8',
       primary: '#38bdf8',
       accent: '#22c55e',
+      rowSelected: '#0d3042',
+      caseRowBackground: '#0e1828',
+      caseRowHover: '#142136',
+      caseRowText: '#dce7f5',
     },
   },
   {
@@ -85,13 +115,21 @@ export const BUILTIN_THEMES: ThemeDefinition[] = [
       background: '#fff7fb',
       surface: '#ffffff',
       surfaceMuted: '#fff1f7',
+      surfaceRaised: '#ffffff',
+      surfaceHover: '#fff1f7',
       border: '#f9a8d4',
+      borderStrong: '#ec4899',
       text: '#311827',
       muted: '#7f506b',
       primary: '#db2777',
       accent: '#8b5cf6',
+      rowSelected: '#fce7f3',
+      caseRowBackground: '#ffffff',
+      caseRowHover: '#fff1f7',
+      caseRowText: '#311827',
     },
   },
+  graphiteTheme,
 ]
 
 export const getThemeDefinition = (themeId?: string) =>

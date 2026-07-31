@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Form, Modal } from 'react-bootstrap'
 import { Cpu, Info, PlayCircle, Terminal } from 'lucide-react'
+import { useI18n } from '../../i18n'
 
 type ExecutionSelectorModalProps = {
   show: boolean
@@ -48,6 +49,7 @@ export function ExecutionSelectorModal({
   iaEnginePremiumLocked = false,
   onScheduleIa
 }: ExecutionSelectorModalProps) {
+  const { t } = useI18n()
   const hasOutdatedCases = executionModalTests.some(isOutdatedExecutionCase)
   const selectedEnvironment = environments.find(env => env.id === selectedEnvironmentId)
   const environmentDatasets = selectedEnvironment?.datasets || []
@@ -78,26 +80,26 @@ export function ExecutionSelectorModal({
   return (
     <Modal show={show} onHide={onHide} centered backdrop="static">
       <Modal.Header closeButton className="border-0 pb-0 text-dark">
-        <Modal.Title className="fw-bold text-dark">Motor de ejecución</Modal.Title>
+        <Modal.Title className="fw-bold text-dark">{t('ejecutarPruebas.executionEngine')}</Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4 d-flex flex-column gap-3 text-dark">
         <div className="small text-muted bg-light border rounded-3 p-2">
-          Casos ejecutables seleccionados: <strong className="text-dark">{executionModalTests.length}</strong>
+          {t('ejecutarPruebas.selectedCases')} <strong className="text-dark">{executionModalTests.length}</strong>
           {executionModalDiscardedCount > 0 && (
-            <span className="text-warning ms-2">({executionModalDiscardedCount} omitidos por build/componente)</span>
+            <span className="text-warning ms-2">({executionModalDiscardedCount} {t('ejecutarPruebas.discardedByBuild')})</span>
           )}
         </div>
 
         {executionModalTests.length > 0 && (
           <div className="border rounded-3 bg-white p-3">
-            <div className="x-small fw-bold text-muted text-uppercase mb-2">Casos que se ejecutarán</div>
+            <div className="x-small fw-bold text-muted text-uppercase mb-2">{t('ejecutarPruebas.casesToExecute')}</div>
             <div className="d-flex flex-column gap-2" style={{ maxHeight: '150px', overflow: 'auto' }}>
               {executionModalTests.map((test: any) => (
                 <div key={test.id} className="d-flex align-items-center gap-2 small">
                   <Badge bg="light" text="primary" className="border font-monospace">{getExecutionCaseLabel(test)}</Badge>
                   <span className="text-dark text-truncate">{test.title}</span>
                   {isOutdatedExecutionCase(test) && (
-                    <Badge bg="warning" text="dark" className="border x-small ms-auto">Actualizar a v{test.latestVersion}</Badge>
+                  <Badge bg="warning" text="dark" className="border x-small ms-auto">{t('ejecutarPruebas.updateToVersion')}{test.latestVersion}</Badge>
                   )}
                 </div>
               ))}
@@ -107,20 +109,20 @@ export function ExecutionSelectorModal({
 
         {hasOutdatedCases && (
           <Alert variant="warning" className="py-2 px-3 small mb-0 border-0">
-            Hay casos con una versión nueva disponible. Antes de ejecutar se agregará la última versión a la build actual.
+            {t('ejecutarPruebas.outdatedCases')}
           </Alert>
         )}
 
         <div className="border rounded-3 bg-light p-3">
           <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
             <div className="d-flex align-items-center gap-2">
-              <div className="x-small fw-bold text-muted text-uppercase">Ambiente de ejecución</div>
+              <div className="x-small fw-bold text-muted text-uppercase">{t('ejecutarPruebas.executionEnvironment')}</div>
               <Button
                 type="button"
                 variant="link"
                 size="sm"
                 className="p-0 text-primary shadow-none"
-                title="Ayuda de dataset por ambiente"
+                title={t('ejecutarPruebas.datasetHelp')}
                 onClick={onShowDatasetHelp}
               >
                 <Info size={14} />
@@ -133,14 +135,14 @@ export function ExecutionSelectorModal({
               value={selectedEnvironmentId}
               onChange={event => setSelectedEnvironmentId(event.target.value)}
             >
-              <option value="">Sin ambiente</option>
+              <option value="">{t('ejecutarPruebas.noEnvironment')}</option>
               {environments.map(env => (
                 <option key={env.id} value={env.id}>{env.name}</option>
               ))}
             </Form.Select>
           </div>
           <div className="d-flex align-items-center justify-content-end gap-2 mb-2">
-            <div className="x-small fw-bold text-muted text-uppercase">Dataset</div>
+            <div className="x-small fw-bold text-muted text-uppercase">{t('ejecutarPruebas.dataset')}</div>
             <Form.Select
               size="sm"
               className="fw-bold"
@@ -149,20 +151,20 @@ export function ExecutionSelectorModal({
               onChange={event => setSelectedDatasetId(event.target.value)}
               disabled={!selectedEnvironmentId || environmentDatasets.length === 0}
             >
-              <option value="">Sin dataset</option>
+              <option value="">{t('ejecutarPruebas.noDataset')}</option>
               {environmentDatasets.map((dataset: any) => (
                 <option key={dataset.id} value={dataset.id}>{dataset.name}{dataset.isDefault ? ' (default)' : ''}</option>
               ))}
             </Form.Select>
           </div>
           {datasetPreviewLoading ? (
-            <div className="bg-white border rounded-2 p-2 font-monospace x-small text-muted">Resolviendo dataset...</div>
+            <div className="bg-white border rounded-2 p-2 font-monospace x-small text-muted">{t('ejecutarPruebas.resolvingDataset')}</div>
           ) : hasPreviewData ? (
             <div className="d-flex flex-column gap-2">
               {environmentDatasetRows.length > 0 && (
                 <div>
                   <div className="x-small text-muted mb-1">
-                    Dataset del ambiente: <strong>{datasetPreview?.dataset_nombre || 'Sin nombre'}</strong>
+                    {t('ejecutarPruebas.environmentDataset')} <strong>{datasetPreview?.dataset_nombre || t('ejecutarPruebas.unnamed')}</strong>
                   </div>
                   {renderDatasetRows(environmentDatasetRows)}
                 </div>
@@ -170,31 +172,31 @@ export function ExecutionSelectorModal({
               {caseDatasetRows.length > 0 && (
                 <div>
                   <div className="x-small text-muted mb-1">
-                    Datos especificos del caso
+                    {t('ejecutarPruebas.caseDataset')}
                   </div>
                   {renderDatasetRows(caseDatasetRows)}
                 </div>
               )}
             </div>
           ) : (
-            <div className="bg-white border rounded-2 p-2 font-monospace x-small text-muted">Sin datos para previsualizar.</div>
+            <div className="bg-white border rounded-2 p-2 font-monospace x-small text-muted">{t('ejecutarPruebas.noPreviewData')}</div>
           )}
         </div>
 
-        <Button variant="outline-success" className="execution-mode-option execution-mode-option--manual p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? 'No tienes permiso para iniciar ejecuciones manuales' : undefined} onClick={() => onStart('manual')}>
+        <Button variant="outline-success" className="execution-mode-option execution-mode-option--manual p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? t('ejecutarPruebas.manualPermission') : undefined} onClick={() => onStart('manual')}>
           <div className="d-flex align-items-center gap-3">
             <PlayCircle size={32} className="text-success" />
             <div>
-              <strong className="text-dark">{hasOutdatedCases ? 'Actualizar y ejecutar manual' : 'Ejecución manual'}</strong>
+              <strong className="text-dark">{t('ejecutarPruebas.manualExecution')}</strong>
               <br />
-              <small className="text-muted">Crea run, congela snapshots y registra resultado por paso.</small>
+              <small className="text-muted">{t('ejecutarPruebas.createRunFreeze')}</small>
             </div>
           </div>
         </Button>
 
         {!canUseAutomatedExecution && (
           <Alert variant="warning" className="py-2 px-3 small mb-0 border-0">
-            Necesitas permiso de ejecucion y acceso de lectura a automatizacion para enviar pruebas a workers.
+            {t('ejecutarPruebas.executionPermission')}
           </Alert>
         )}
 
@@ -202,32 +204,32 @@ export function ExecutionSelectorModal({
           variant="outline-secondary"
           className="execution-mode-option execution-mode-option--automated p-3 text-start border-2 shadow-sm shadow-none"
           disabled={executionLoading || !canUseAutomatedExecution}
-          title={!canUseAutomatedExecution ? 'No tienes permiso para usar workers automatizados' : undefined}
+          title={!canUseAutomatedExecution ? t('ejecutarPruebas.automatedPermission') : undefined}
           onClick={() => onStart('automated')}
         >
           <div className="d-flex align-items-center gap-3">
             <Terminal size={32} className="text-secondary" />
             <div>
-              <strong className="text-dark">Ejecución automatizada</strong>
+              <strong className="text-dark">{t('ejecutarPruebas.automatedExecution')}</strong>
               <br />
-              <small className="text-muted">Crea run y despacha al motor automatizado disponible.</small>
+              <small className="text-muted">{t('ejecutarPruebas.automatedDescription')}</small>
             </div>
           </div>
         </Button>
 
         {iaEnginePremiumLocked && (
           <Alert variant="warning" className="py-2 px-3 small mb-0 border-0">
-            La ejecucion IA no esta habilitada para esta instancia. Revisa permisos o licencia antes de iniciar.
+            {t('ejecutarPruebas.iaUnavailableInstance')}
           </Alert>
         )}
 
-        <Button variant="outline-primary" className="execution-mode-option execution-mode-option--ia p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? 'Ejecucion IA no habilitada en esta instancia' : 'No tienes permiso para iniciar ejecuciones IA') : undefined} onClick={onScheduleIa}>
+        <Button variant="outline-primary" className="execution-mode-option execution-mode-option--ia p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? t('ejecutarPruebas.iaUnavailableTitle') : t('ejecutarPruebas.iaPermission')) : undefined} onClick={onScheduleIa}>
           <div className="d-flex align-items-center gap-3 text-primary">
             <Cpu size={32} className="text-primary" />
             <div>
-              <strong className="text-primary">IA Agent Engine {iaEnginePremiumLocked && <Badge bg="warning" text="dark" className="ms-1">Bloqueado</Badge>}</strong>
+              <strong className="text-primary">{t('ejecutarPruebas.iaAgentEngine')} {iaEnginePremiumLocked && <Badge bg="warning" text="dark" className="ms-1">{t('ejecutarPruebas.blockedLabel')}</Badge>}</strong>
               <br />
-              <small className="text-primary fw-bold">{iaEnginePremiumLocked ? 'Ejecucion IA no disponible en esta instancia.' : 'Ejecucion IA basica con cola y cuota semanal.'}</small>
+              <small className="text-primary fw-bold">{iaEnginePremiumLocked ? t('ejecutarPruebas.iaUnavailable') : t('ejecutarPruebas.iaDescription')}</small>
             </div>
           </div>
         </Button>

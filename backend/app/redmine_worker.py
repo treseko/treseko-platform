@@ -31,9 +31,9 @@ def send_bug_to_redmine_sync(url: str, api_key: str, project_id: str, payload: d
     try:
         # Timeout corto para no saturar el pool si Redmine está caído
         response = requests.post(
-            f"{url}/issues.json", 
-            json=payload, 
-            headers=headers, 
+            f"{url}/issues.json",
+            json=payload,
+            headers=headers,
             timeout=REDMINE_WORKER_TIMEOUT
         )
         if response.status_code == 201:
@@ -96,10 +96,10 @@ async def dispatch_redmine_bug(db_session: AsyncSession, proyecto_id: UUID, snap
     # 5. Despachar al Pool de Hilos (Fuera del Event Loop)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(
-        redmine_executor, 
-        send_bug_to_redmine_sync, 
-        config.url, 
-        config.api_key, 
-        config.project_identifier, 
+        redmine_executor,
+        send_bug_to_redmine_sync,
+        config.url,
+        config.api_key,
+        config.project_identifier,
         payload
     )

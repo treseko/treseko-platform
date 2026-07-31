@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildStepContract, evaluateStepContract, inferConventionalUiAction, parseStepData } from './step-contract.ts';
+import { buildStepContract, evaluateStepContract, inferConventionalUiAction, parseStepData, stepDataValue } from './step-contract.ts';
 
 test('parseStepData separa claves delimitadas por espacios', () => {
   assert.deepEqual(parseStepData('username=qa_user password=correct-pass'), {
@@ -26,6 +26,14 @@ test('parseStepData admite valores entre comillas', () => {
     title: 'Revision de checkout',
     severity: 'high',
   });
+});
+
+test('stepDataValue no mezcla un valor estructurado con la descripción del paso', () => {
+  assert.equal(stepDataValue({
+    number: 1,
+    data: 'expected_text=Release LAB-2026.07',
+    action: 'Validar la versión visible.',
+  }, ['expected_text']), 'Release LAB-2026.07');
 });
 
 test('un contrato parcial exige auditoria semantica y no aprueba de forma concluyente', () => {

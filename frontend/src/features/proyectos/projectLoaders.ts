@@ -110,7 +110,7 @@ export function createProjectLoaders({
     }
   }
 
-  const loadBuildsForProject = async (projectId: string, projectComponents = componentsList, componentOverride = currentCompId) => {
+  const loadBuildsForProject = async (projectId: string, projectComponents = componentsList, componentOverride = currentCompId, preferredBuildId = '') => {
     if (!projectId || projectsSource !== 'backend') return null
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/builds/`)
@@ -134,10 +134,12 @@ export function createProjectLoaders({
         setNewTestComponent(componentId)
       }
       const componentBuilds = mapped.filter((build: any) => build.componentId === componentId && !build.hidden)
-      const activeBuild = componentBuilds.find((build: any) => build.active) || componentBuilds[0]
-      setCurrentBuildId(activeBuild?.id || '')
+      const selectedBuild = componentBuilds.find((build: any) => build.id === preferredBuildId)
+        || componentBuilds.find((build: any) => build.active)
+        || componentBuilds[0]
+      setCurrentBuildId(selectedBuild?.id || '')
       await loadBuildCaseIdsForProject(projectId, mapped.map((build: any) => build.id))
-      return { builds: mapped, activeBuildId: activeBuild?.id || '', componentId }
+      return { builds: mapped, activeBuildId: selectedBuild?.id || '', componentId }
     } catch (error: any) {
       setProjectSyncMessage(`No se pudieron cargar builds: ${error.message}.`)
       return null

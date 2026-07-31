@@ -25,6 +25,7 @@ export function createProyectosActions(params: any) {
     setProjectsSource: params.setProjectsSource,
     setProjectSyncMessage: params.setProjectSyncMessage,
     showFeedback: params.showFeedback,
+    t: params.t,
   })
 
   const componentActions = createComponentActions({
@@ -44,6 +45,8 @@ export function createProyectosActions(params: any) {
     setProjectSyncMessage: params.setProjectSyncMessage,
     showFeedback: params.showFeedback,
     confirmAction: params.confirmAction,
+    t: params.t,
+    readOnlyBuild: params.readOnlyBuild,
   })
 
   const buildActions = createBuildActions({
@@ -60,7 +63,9 @@ export function createProyectosActions(params: any) {
     setCurrentBuildId: params.setCurrentBuildId,
     setProjectSyncMessage: params.setProjectSyncMessage,
     showFeedback: params.showFeedback,
+    t: params.t,
     confirmAction: params.confirmAction,
+    readOnlyBuild: params.readOnlyBuild,
   })
 
   const environmentActions = createEnvironmentActions({
@@ -70,6 +75,7 @@ export function createProyectosActions(params: any) {
     fetchWithAuth: params.fetchWithAuth,
     setEnvironments: params.setEnvironments,
     setProjectSyncMessage: params.setProjectSyncMessage,
+    t: params.t,
   })
 
   const projectMemberActions = createProjectMemberActions({
@@ -86,6 +92,7 @@ export function createProyectosActions(params: any) {
     setProjectMembers: params.setProjectMembers,
     setProjectsList: params.setProjectsList,
     setProjectMemberRemoval: params.setProjectMemberRemoval,
+    t: params.t,
   })
 
   const wikiActions = createWikiActions({
@@ -101,6 +108,7 @@ export function createProyectosActions(params: any) {
     setProjectSyncMessage: params.setProjectSyncMessage,
     showFeedback: params.showFeedback,
     confirmAction: params.confirmAction,
+    t: params.t,
   })
 
   return {

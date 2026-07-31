@@ -11,17 +11,18 @@ import { ExecutionRedmineReporter } from '../features/redmine/ExecutionRedmineRe
 import { BuildCasesModal } from '../features/proyectos/BuildCasesModal'
 import { InventoryItemModal } from '../features/inventario/InventoryItemModal'
 import { SuiteAndComponentModals } from '../features/casos/SuiteAndComponentModals'
+import { useI18n } from '../i18n'
 
 type AppModalsProps = any
 
 const closedBugStates = new Set(['RESUELTO', 'CERRADO', 'DUPLICADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE'])
 
-function getBugOriginBuild(bug: any) {
-  return bug?._display_build_name || bug?.version_app || bug?.metadata_json?.build_name || bug?.build_name || bug?.build_code || bug?.metadata_json?.build_code || 'Build origen no registrada'
+function getBugOriginBuild(bug: any, fallback = 'Build origen no registrada') {
+  return bug?._display_build_name || bug?.version_app || bug?.metadata_json?.build_name || bug?.build_name || bug?.build_code || bug?.metadata_json?.build_code || fallback
 }
 
-function getBugComponentName(bug: any) {
-  return bug?._display_component_name || bug?.modulo_funcional || bug?.metadata_json?.component_name || 'Componente no registrado'
+function getBugComponentName(bug: any, fallback = 'Componente no registrado') {
+  return bug?._display_component_name || bug?.modulo_funcional || bug?.metadata_json?.component_name || fallback
 }
 
 function getBugOccurrenceBuilds(bug: any) {
@@ -32,14 +33,15 @@ function getBugOccurrenceBuilds(bug: any) {
     .filter(Boolean)
 }
 
-function renderBugTraceText(bug: any) {
-  const origin = getBugOriginBuild(bug)
+function renderBugTraceText(bug: any, t: (key: any, variables?: Record<string, unknown>) => string) {
+  const origin = getBugOriginBuild(bug, t('common.unregisteredOriginBuild'))
   const occurrences = Array.from(new Set(getBugOccurrenceBuilds(bug)))
-  if (occurrences.length === 0) return `Detectado en ${origin}.`
-  return `Detectado en ${origin}. Se continua observando en ${occurrences.join(', ')}.`
+  if (occurrences.length === 0) return t('common.bugDetectedIn', { origin })
+  return t('common.bugStillObservedIn', { origin, occurrences: occurrences.join(', ') })
 }
 
 function RelatedBugDecisionModal(props: any) {
+  const { t } = useI18n()
   const dialog = props.relatedBugDecision || {}
   const bugs = Array.isArray(dialog.bugs) ? dialog.bugs : []
   const viewingBug = dialog.viewingBug
@@ -54,19 +56,19 @@ function RelatedBugDecisionModal(props: any) {
     <Modal show={Boolean(dialog.show)} onHide={() => props.closeRelatedBugDecision('cancel')} centered size="lg">
       <Modal.Header closeButton className="bg-warning bg-opacity-25 border-warning">
         <Modal.Title className="fs-5 fw-bold d-flex align-items-center gap-2 text-dark">
-          <AlertTriangle size={22} className="text-warning" /> Bug abierto relacionado
+          <AlertTriangle size={22} className="text-warning" /> {t('common.relatedOpenBug')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {!viewingBug ? (
           <>
             <p className="mb-3 text-dark">
-              Este caso ya tiene bugs abiertos. Si es el mismo defecto, actualiza el seguimiento para registrar que sigue ocurriendo en esta build.
+              {t('common.relatedBugInstructions')}
             </p>
             {(currentBuildLabel || currentComponentLabel) && (
               <div className="border rounded-3 bg-light p-2 mb-3 small">
-                {currentBuildLabel && <div><strong>Build actual:</strong> {currentBuildLabel}</div>}
-                {currentComponentLabel && <div><strong>Componente actual:</strong> {currentComponentLabel}</div>}
+                {currentBuildLabel && <div><strong>{t('common.currentBuild')}:</strong> {currentBuildLabel}</div>}
+                {currentComponentLabel && <div><strong>{t('common.currentComponent')}:</strong> {currentComponentLabel}</div>}
               </div>
             )}
             <div className="d-flex flex-column gap-2">
@@ -78,25 +80,25 @@ function RelatedBugDecisionModal(props: any) {
                     <div className="d-flex align-items-start justify-content-between gap-3">
                       <div className="min-w-0">
                         <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                          <Badge bg={closed ? 'secondary' : 'danger'}>{bug?.codigo || 'BUG'}</Badge>
-                          <span className="fw-bold text-dark text-truncate">{bug?.titulo || 'Bug sin titulo'}</span>
+                          <Badge bg={closed ? 'secondary' : 'danger'}>{bug?.codigo || t('common.bugCode')}</Badge>
+                          <span className="fw-bold text-dark text-truncate">{bug?.titulo || t('common.untitledBug')}</span>
                         </div>
-                        <div className="small text-muted">{renderBugTraceText(bug)}</div>
-                        <div className="x-small text-muted mt-1">Componente: {getBugComponentName(bug)}</div>
+                        <div className="small text-muted">{renderBugTraceText(bug, t)}</div>
+                        <div className="x-small text-muted mt-1">{t('common.componentLabel')}: {getBugComponentName(bug, t('common.unregisteredComponent'))}</div>
                       </div>
                       <div className="d-flex align-items-center gap-2 flex-shrink-0">
                         <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={() => props.viewRelatedBugFromDecision(bug)}>
-                          <Eye size={14} /> Ver
+                          <Eye size={14} /> {t('common.view')}
                         </Button>
                         <Button
                           variant="outline-danger"
                           size="sm"
                           className="fw-bold"
                           disabled={!canLink || Boolean(linkingBugId)}
-                          title={canLink ? 'Registrar que este bug sigue ocurriendo en esta build' : 'Guarda una ejecucion fallida o bloqueada antes de actualizar seguimiento'}
+                          title={canLink ? t('common.updateBugTrackingTitle') : t('common.saveFailedOrBlockedExecutionTitle')}
                           onClick={() => props.linkBugFromDecision(bug)}
                         >
-                          {isLinking ? <Spinner animation="border" size="sm" /> : <RefreshCw size={14} />} Actualizar seguimiento
+                          {isLinking ? <Spinner animation="border" size="sm" /> : <RefreshCw size={14} />} {t('common.updateTracking')}
                         </Button>
                       </div>
                     </div>
@@ -108,40 +110,40 @@ function RelatedBugDecisionModal(props: any) {
         ) : (
           <div>
             <Button variant="link" className="px-0 fw-bold text-decoration-none mb-3" onClick={props.backToRelatedBugDecisionList}>
-              <ArrowLeft size={16} /> Volver a bugs abiertos
+              <ArrowLeft size={16} /> {t('common.backToOpenBugs')}
             </Button>
             <div className="border rounded-3 p-3 bg-light">
               <div className="d-flex align-items-center gap-2 flex-wrap mb-2">
-                <Badge bg="danger">{viewingBug?.codigo || 'BUG'}</Badge>
-                <Badge bg="light" text="dark" className="border">{viewingBug?.estado || 'Sin estado'}</Badge>
-                <Badge bg="light" text="dark" className="border">{viewingBug?.severidad || 'Severidad N/D'}</Badge>
+                <Badge bg="danger">{viewingBug?.codigo || t('common.bugCode')}</Badge>
+                <Badge bg="light" text="dark" className="border">{viewingBug?.estado || t('common.noStatus')}</Badge>
+                <Badge bg="light" text="dark" className="border">{viewingBug?.severidad || t('common.severityNotAvailable')}</Badge>
               </div>
-              <h6 className="fw-bold text-dark mb-2">{viewingBug?.titulo || 'Bug sin titulo'}</h6>
-              <p className="small text-muted mb-3">{renderBugTraceText(viewingBug)}</p>
+              <h6 className="fw-bold text-dark mb-2">{viewingBug?.titulo || t('common.untitledBug')}</h6>
+              <p className="small text-muted mb-3">{renderBugTraceText(viewingBug, t)}</p>
               <div className="row g-3 small">
                 <div className="col-md-6">
-                  <div className="fw-bold text-uppercase x-small text-muted">Build actual seleccionada</div>
-                  <div className="text-dark">{currentBuildLabel || 'N/D'}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.selectedCurrentBuild')}</div>
+                  <div className="text-dark">{currentBuildLabel || t('common.notAvailable')}</div>
                 </div>
                 <div className="col-md-6">
-                  <div className="fw-bold text-uppercase x-small text-muted">Build origen</div>
-                  <div className="text-dark">{getBugOriginBuild(viewingBug)}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.originBuild')}</div>
+                  <div className="text-dark">{getBugOriginBuild(viewingBug, t('common.unregisteredOriginBuild'))}</div>
                 </div>
                 <div className="col-md-6">
-                  <div className="fw-bold text-uppercase x-small text-muted">Componente actual</div>
-                  <div className="text-dark">{currentComponentLabel || 'N/D'}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.currentComponent')}</div>
+                  <div className="text-dark">{currentComponentLabel || t('common.notAvailable')}</div>
                 </div>
                 <div className="col-md-6">
-                  <div className="fw-bold text-uppercase x-small text-muted">Componente origen</div>
-                  <div className="text-dark">{getBugComponentName(viewingBug)}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.originComponent')}</div>
+                  <div className="text-dark">{getBugComponentName(viewingBug, t('common.unregisteredComponent'))}</div>
                 </div>
                 <div className="col-md-6">
-                  <div className="fw-bold text-uppercase x-small text-muted">Seguimientos</div>
-                  <div className="text-dark">{getBugOccurrenceBuilds(viewingBug).join(', ') || 'Sin ocurrencias adicionales registradas'}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.tracking')}</div>
+                  <div className="text-dark">{getBugOccurrenceBuilds(viewingBug).join(', ') || t('common.noAdditionalOccurrences')}</div>
                 </div>
                 <div className="col-12">
-                  <div className="fw-bold text-uppercase x-small text-muted">Descripcion</div>
-                  <div className="text-dark text-pre-wrap">{viewingBug?.descripcion || viewingBug?.resultado_obtenido || 'Sin descripcion cargada.'}</div>
+                  <div className="fw-bold text-uppercase x-small text-muted">{t('common.description')}</div>
+                  <div className="text-dark text-pre-wrap">{viewingBug?.descripcion || viewingBug?.resultado_obtenido || t('common.noDescriptionLoaded')}</div>
                 </div>
               </div>
             </div>
@@ -150,10 +152,10 @@ function RelatedBugDecisionModal(props: any) {
       </Modal.Body>
       <Modal.Footer className="d-flex justify-content-between">
         <Button variant="outline-secondary" onClick={() => props.closeRelatedBugDecision('cancel')} disabled={Boolean(linkingBugId)}>
-          Cancelar
+          {t('common.cancel')}
         </Button>
         <Button variant="warning" className="fw-bold" onClick={() => props.closeRelatedBugDecision('create')} disabled={Boolean(linkingBugId)}>
-          <Plus size={16} /> Crear bug distinto
+          <Plus size={16} /> {t('common.createDifferentBug')}
         </Button>
       </Modal.Footer>
     </Modal>
@@ -161,6 +163,7 @@ function RelatedBugDecisionModal(props: any) {
 }
 
 export function AppModals(props: AppModalsProps) {
+  const { t } = useI18n()
   return (
     <>
       <BuildCasesModal
@@ -242,7 +245,7 @@ export function AppModals(props: AppModalsProps) {
         datasetPreviewLoading={props.executionDatasetPreviewLoading}
         getExecutionCaseLabel={props.getExecutionCaseLabel}
         isOutdatedExecutionCase={props.isOutdatedExecutionCase}
-        onShowDatasetHelp={() => props.showFeedback('Dataset por ambiente', 'El ambiente resuelve placeholders antes de ejecutar. Ejemplos: base_url={{ENV.BASE_URL}}, usuario={{ENV.USER}}, password={{ENV.PASSWORD}}, tenant={{ENV.TENANT}}. Inventario es solo catálogo operativo; el ambiente es el contexto de ejecución.', 'info')}
+        onShowDatasetHelp={() => props.showFeedback(t('common.datasetByEnvironment'), t('common.datasetByEnvironmentMessage'), 'info')}
         onStart={props.handleStartExecution}
         canStartManualExecution={props.canStartManualExecution}
         canUseAutomatedExecution={props.canUseAutomatedExecution}

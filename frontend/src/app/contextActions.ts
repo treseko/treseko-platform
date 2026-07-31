@@ -5,10 +5,11 @@ type CreateContextActionsParams = {
   projectsSource: 'local' | 'backend'
   currentProjectId: string
   currentCompId: string
+  currentBuildId: string
   projectsList: any[]
   componentsList: any[]
   loadComponentsForProject: (projectId: string) => Promise<any[] | undefined>
-  loadBuildsForProject: (projectId: string, componentsSnapshot?: any[], preferredComponentId?: string) => Promise<any>
+  loadBuildsForProject: (projectId: string, componentsSnapshot?: any[], preferredComponentId?: string, preferredBuildId?: string) => Promise<any>
   loadSuitesFromBackend: (projectId: string, componentId?: string, options?: { silent?: boolean }) => Promise<any>
   loadCasosFromBackend: (projectId?: string, componentsSnapshot?: any[], options?: any) => Promise<any>
   loadBuildCases: (buildId: string, options?: { silent?: boolean }) => Promise<string[]>
@@ -31,6 +32,7 @@ export function createContextActions({
   projectsSource,
   currentProjectId,
   currentCompId,
+  currentBuildId,
   projectsList,
   componentsList,
   loadComponentsForProject,
@@ -96,7 +98,7 @@ export function createContextActions({
 
     setCurrentCompId(componentId)
     setNewTestComponent(componentId)
-    const buildContext = await loadBuildsForProject(projectId, projectComponents, componentId)
+    const buildContext = await loadBuildsForProject(projectId, projectComponents, componentId, currentBuildId)
     const contextComponentId = buildContext?.componentId || componentId
     const activeBuildId = buildContext?.activeBuildId || ''
     await loadSuitesFromBackend(projectId, contextComponentId, options)

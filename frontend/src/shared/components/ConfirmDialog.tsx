@@ -1,5 +1,6 @@
 import { AlertTriangle, Info } from 'lucide-react'
 import { Button, Modal } from 'react-bootstrap'
+import { useI18n } from '../../i18n'
 
 export type ConfirmDialogVariant = 'danger' | 'warning' | 'info'
 
@@ -22,6 +23,7 @@ type ConfirmDialogProps = {
 }
 
 export function ConfirmDialog({ dialog, onCancel, onConfirm }: ConfirmDialogProps) {
+  const { t } = useI18n()
   const variant = dialog.variant || 'warning'
   const isInfo = variant === 'info'
   const confirmVariant = variant === 'danger' ? 'danger' : variant === 'warning' ? 'warning' : 'primary'
@@ -40,11 +42,11 @@ export function ConfirmDialog({ dialog, onCancel, onConfirm }: ConfirmDialogProp
       <Modal.Footer className="border-0 pt-0">
         {dialog.cancelLabel !== null && (
           <Button variant="outline-secondary" className="fw-bold rounded-pill px-4" onClick={onCancel}>
-            {dialog.cancelLabel || 'Cancelar'}
+            {dialog.cancelLabel || t('common.cancel')}
           </Button>
         )}
         <Button variant={confirmVariant} className="fw-bold rounded-pill px-4" onClick={onConfirm}>
-          {dialog.confirmLabel || (isInfo ? 'Entendido' : 'Confirmar')}
+          {dialog.confirmLabel || (isInfo ? t('common.understood') : t('common.confirm'))}
         </Button>
       </Modal.Footer>
     </Modal>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useReportesPreload } from '../../../app/useReportesPreload'
 import { createReportActions } from '../reportActions'
+import { useI18n } from '../../../i18n'
 
 export function useReportesMetrics({
   activeTab,
@@ -10,6 +11,7 @@ export function useReportesMetrics({
   fetchWithAuth,
   setProjectSyncMessage,
 }: any) {
+  const { t } = useI18n()
   const [projectMetrics, setProjectMetrics] = useState<any>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [expandedMetricSuites, setExpandedMetricSuites] = useState<Set<string>>(new Set())
@@ -22,6 +24,7 @@ export function useReportesMetrics({
     setProjectMetrics,
     setMetricsLoading,
     setProjectSyncMessage,
+    t,
   })
 
   useReportesPreload({

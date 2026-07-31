@@ -3,6 +3,7 @@ import { updateAiWorkflow } from '../api/aiWorkflowApi'
 import type { FetchWithAuth } from '../api/configuracionApi'
 import type { AiAgentPreset, AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
 import type { Dispatch, SetStateAction } from 'react'
+import { useI18n } from '../../../i18n'
 
 type GraphOperationType = 'insert' | 'delete-node' | 'delete-edge' | 'connect' | 'move-node'
 
@@ -43,6 +44,7 @@ export function useWorkflowGraphAutosave({
   syncFlowFromWorkflow,
   showFeedback,
 }: Params) {
+  const { t } = useI18n()
   const confirmedRef = useRef<AiWorkflow | null>(null)
   const workflowIdRef = useRef<string | null>(null)
   const queueRef = useRef<GraphOperation[]>([])
@@ -109,11 +111,11 @@ export function useWorkflowGraphAutosave({
       logGraphOperation('failed', {
         operationId: operation.id,
         type: operation.type,
-        message: error?.message || 'No se pudo guardar el cambio del diagrama.',
+        message: error?.message || t('configuracion.workflowGraphSaveError'),
       })
       publishQueuedGraph()
       setSaveState('error')
-      showFeedback('Workflow IA', error?.message || 'No se pudo guardar el cambio del diagrama.', 'danger')
+      showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowGraphSaveError'), 'danger')
     } finally {
       processingRef.current = false
       activeOperationRef.current = null
@@ -140,7 +142,7 @@ export function useWorkflowGraphAutosave({
   const registerUndo = (operation: GraphOperation) => {
     clearUndoAction()
     undoOperationRef.current = operation
-    setUndoAction({ operationId: operation.id, label: operation.undoLabel || 'Deshacer cambio' })
+    setUndoAction({ operationId: operation.id, label: operation.undoLabel || t('configuracion.workflowUndo') })
     undoTimerRef.current = window.setTimeout(clearUndoAction, 5000)
   }
 

@@ -1,5 +1,6 @@
 from .repository_context import *
 from ..services.error_sanitizer import sanitize_external_error
+from ..services.audit_context import audit_request_context
 
 async def get_scheduled_runs_proyecto(db: AsyncSession, proyecto_id: UUID, skip: int = 0, limit: int = 100):
     result = await db.execute(
@@ -75,15 +76,35 @@ async def create_audit_log(
     recurso: str,
     recurso_id: Optional[UUID] = None,
     detalles: Optional[dict] = None,
-    ip_address: Optional[str] = None
+    ip_address: Optional[str] = None,
+    origen: Optional[str] = None,
+    correlation_id: Optional[str] = None,
 ):
+    ambient_context = audit_request_context(None)
+    ip_address = ip_address or ambient_context.get("ip_address")
+    origen = origen or ambient_context.get("origen")
+    correlation_id = correlation_id or current_correlation_id()
+    safe_details = dict(detalles or {})
+    safe_details.setdefault("correlation_id", correlation_id)
+    effective_origin = origen or ("http_client" if ip_address else "unknown")
+    safe_details.setdefault(
+        "ip_context",
+        {
+            "trusted_proxy": "proxy_forwarded_ip",
+            "http_client": "direct_client_ip",
+            "internal_worker": "internal_process_no_network_ip",
+            "unknown": "request_context_unavailable",
+        }.get(effective_origin, "request_context_unavailable"),
+    )
     db_log = models.AuditLog(
         usuario_id=usuario_id,
         accion=accion,
         recurso=recurso,
         recurso_id=recurso_id,
-        detalles=_bounded_audit_details(detalles),
-        ip_address=ip_address
+        detalles=_bounded_audit_details(safe_details),
+        ip_address=ip_address,
+        origen=effective_origin,
+        correlation_id=correlation_id,
     )
     db.add(db_log)
     await db.commit()

@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { API_BASE } from '../../../app/constants'
+import type { TranslationKey } from '../../../i18n'
 
 type UseWorkflowRuntimeTracesParams = {
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function useWorkflowRuntimeTraces({
   fetchWithAuth,
   showFeedback,
+  t,
 }: UseWorkflowRuntimeTracesParams) {
   const [traceExecutionId, setTraceExecutionId] = useState('')
   const [runtimeTraces, setRuntimeTraces] = useState<any[]>([])
@@ -21,7 +24,7 @@ export function useWorkflowRuntimeTraces({
       if (!response.ok) throw new Error(await response.text())
       setRuntimeTraces(await response.json())
     } catch (error: any) {
-      showFeedback('Trazabilidad IA', error?.message || 'No se pudieron cargar las trazas.', 'danger')
+      showFeedback(t('configuracion.aiTraceabilityTitle'), error?.message || t('configuracion.aiTracesLoadError'), 'danger')
     }
   }
 

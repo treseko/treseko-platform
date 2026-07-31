@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE, ROLE_ACCESS } from '../../app/constants'
 import { mapBackendRoleToItem, mapBackendUserToItem, modulesFromPermissions, modulesFromPermissionsAndCapabilities, permissionsFromModules } from '../../app/mappers'
 import type { CapabilityId, CapabilityPermissionMap, ModuleId, ModulePermissionMap, PermissionLevel, RoleKey } from '../../app/types'
+import type { TranslationKey } from '../../i18n'
 
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
@@ -26,6 +27,7 @@ type CreateAdminUserRoleActionsParams = {
   setSystemRoleOverrides: Dispatch<SetStateAction<Partial<Record<RoleKey, ModulePermissionMap>>>>
   setProjectSyncMessage: (message: string) => void
   confirmAction: ConfirmAction
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createAdminUserRoleActions({
@@ -48,7 +50,8 @@ export function createAdminUserRoleActions({
   setCustomRoles,
   setSystemRoleOverrides,
   setProjectSyncMessage,
-  confirmAction
+  confirmAction,
+  t
 }: CreateAdminUserRoleActionsParams) {
   const loadUsersFromBackend = async () => {
     if (projectsSource !== 'backend') return
@@ -253,7 +256,7 @@ export function createAdminUserRoleActions({
       const backendUser = await response.json()
       const mapped = mapBackendUserToItem(backendUser)
       setAppUsers(editingUserId ? appUsers.map(user => user.id === editingUserId ? mapped : user) : [...appUsers, mapped])
-      setProjectSyncMessage('Usuario guardado en backend.')
+      setProjectSyncMessage(t('configuracion.userSavedBackend'))
       setShowUserModal(false)
     } catch (error: any) {
       const message = error?.message || 'Error desconocido'
@@ -262,16 +265,16 @@ export function createAdminUserRoleActions({
         setShowUserModal(false)
       }
       setUserForm((current: any) => ({ ...current, saveError: message }))
-      setProjectSyncMessage(`No se pudo persistir usuario: ${message}.`)
+      setProjectSyncMessage(`${t('configuracion.userPersistError')}: ${message}.`)
     }
   }
 
   const handleDeactivateUser = async (user: any) => {
     const confirmed = await confirmAction({
-      title: 'Inactivar usuario',
-      message: `Se inactivará a ${user.name}.`,
+      title: t('configuracion.deactivateUser'),
+      message: t('configuracion.deactivateUserConfirm', { name: user.name }),
       variant: 'warning',
-      confirmLabel: 'Inactivar usuario'
+      confirmLabel: t('configuracion.deactivateUser')
     })
     if (!confirmed) return
     try {
@@ -283,10 +286,10 @@ export function createAdminUserRoleActions({
       const backendUser = await response.json()
       const mapped = mapBackendUserToItem(backendUser)
       setAppUsers(appUsers.map(item => item.id === user.id ? mapped : item))
-      setProjectSyncMessage('Usuario inactivado en backend.')
+      setProjectSyncMessage(t('configuracion.userDeactivatedBackend'))
     } catch (error: any) {
       setAppUsers(appUsers.map(item => item.id === user.id ? { ...item, status: 'Inactivo' } : item))
-      setProjectSyncMessage(`No se pudo inactivar usuario en backend: ${error.message}. Cambio aplicado localmente.`)
+      setProjectSyncMessage(`${t('configuracion.userDeactivateError')}: ${error.message}. ${t('configuracion.localChangeApplied')}`)
     }
   }
 
@@ -396,20 +399,20 @@ export function createAdminUserRoleActions({
       const backendRole = await response.json()
       const mapped = mapBackendRoleToItem(backendRole)
       setCustomRoles(editingRoleId ? customRoles.map(role => role.id === editingRoleId ? mapped : role) : [...customRoles, mapped])
-      setProjectSyncMessage('Rol guardado en backend.')
+      setProjectSyncMessage(t('configuracion.roleSavedBackend'))
     } catch (error: any) {
       setCustomRoles(editingRoleId ? customRoles.map(role => role.id === editingRoleId ? payload : role) : [...customRoles, payload])
-      setProjectSyncMessage(`No se pudo persistir rol: ${error.message}. Cambio aplicado localmente.`)
+      setProjectSyncMessage(`${t('configuracion.rolePersistError')}: ${error.message}. ${t('configuracion.localChangeApplied')}`)
     }
     setShowRoleModal(false)
   }
 
   const handleDeactivateRole = async (role: any) => {
     const confirmed = await confirmAction({
-      title: 'Inactivar rol',
-      message: `Se inactivará el rol ${role.name}.`,
+      title: t('configuracion.deactivateRole'),
+      message: t('configuracion.deactivateRoleConfirm', { name: role.name }),
       variant: 'warning',
-      confirmLabel: 'Inactivar rol'
+      confirmLabel: t('configuracion.deactivateRole')
     })
     if (!confirmed) return
     try {
@@ -421,10 +424,10 @@ export function createAdminUserRoleActions({
       const backendRole = await response.json()
       const mapped = mapBackendRoleToItem(backendRole)
       setCustomRoles(customRoles.map(item => item.id === role.id ? mapped : item))
-      setProjectSyncMessage('Rol inactivado en backend.')
+      setProjectSyncMessage(t('configuracion.roleDeactivatedBackend'))
     } catch (error: any) {
       setCustomRoles(customRoles.map(item => item.id === role.id ? { ...item, status: 'Inactivo' } : item))
-      setProjectSyncMessage(`No se pudo inactivar rol en backend: ${error.message}. Cambio aplicado localmente.`)
+      setProjectSyncMessage(`${t('configuracion.roleDeactivateError')}: ${error.message}. ${t('configuracion.localChangeApplied')}`)
     }
   }
 

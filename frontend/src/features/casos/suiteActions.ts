@@ -1,11 +1,13 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
+import type { TranslationKey } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
 type CreateSuiteActionsParams = {
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   currentCompId: string
   managingProjectId: string | null
@@ -33,11 +35,13 @@ type CreateSuiteActionsParams = {
   setNewTestSuiteSub: (id: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  readOnlyBuild?: boolean
 }
 
 const emptySuiteForm = { nombre: '', descripcion: '', parentId: '', color: '#F1F5F9', icono: 'folder' }
 
 export function createSuiteActions({
+  t,
   projectsSource,
   currentCompId,
   managingProjectId,
@@ -64,8 +68,14 @@ export function createSuiteActions({
   setNewTestSuite,
   setNewTestSuiteSub,
   showFeedback,
-  confirmAction
+  confirmAction,
+  readOnlyBuild = false
 }: CreateSuiteActionsParams) {
+  const rejectReadOnlyWrite = () => {
+    if (!readOnlyBuild) return false
+    showFeedback(t('casos.updateSuiteError'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
+    return true
+  }
   const loadSuitesFromBackend = async (projectId: string, componentId = currentCompId, options?: { silent?: boolean }) => {
     if (!projectId || projectsSource !== 'backend') return
     const silent = Boolean(options?.silent)
@@ -76,12 +86,12 @@ export function createSuiteActions({
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/suites/?${params}`)
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || t('casos.backendResponse', { status: response.status }))
       }
       const suites = await response.json()
       setSuitesTree(suites)
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar suites: ${error.message}`)
+      setProjectSyncMessage(`${t('casos.loadSuitesError')}: ${error.message}`)
     } finally {
       if (!silent) setSuitesLoading(false)
     }
@@ -89,6 +99,7 @@ export function createSuiteActions({
 
   const handleCreateSuite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (rejectReadOnlyWrite()) return false
     const projectId = managingProjectId || currentProjectId
     const formData = new FormData(event.currentTarget)
     const submittedName = String(formData.get('nombre') || formData.get('folderName') || suiteForm.nombre || '').trim()
@@ -98,12 +109,12 @@ export function createSuiteActions({
     const submittedIcon = String(formData.get('icono') || suiteForm.icono || 'folder')
 
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'No hay proyecto seleccionado o el proyecto no es válido. Selecciona un proyecto del backend primero.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectBackendProject'), 'warning')
       return false
     }
 
     if (!submittedName) {
-      showFeedback('Nombre requerido', 'Ingresa un nombre para crear la suite.', 'warning')
+      showFeedback(t('casos.nameRequired'), t('casos.enterSuiteName'), 'warning')
       return false
     }
 
@@ -125,7 +136,7 @@ export function createSuiteActions({
         })
       })
       if (!response.ok) {
-        throw new Error(`Backend respondió ${response.status}`)
+        throw new Error(t('casos.backendResponse', { status: response.status }))
       }
       const createdSuite = await response.json()
       await loadSuitesFromBackend(projectId, componentId || '')
@@ -143,20 +154,21 @@ export function createSuiteActions({
       }
       setShowSuiteModal(false)
       setSuiteForm(emptySuiteForm)
-      setProjectSyncMessage('Suite creada correctamente.')
-      showFeedback('Suite creada', 'La carpeta fue creada correctamente.', 'success')
+      setProjectSyncMessage(t('casos.suiteCreated'))
+      showFeedback(t('casos.suiteCreatedTitle'), t('casos.folderCreated'), 'success')
     } catch (error: any) {
-      setProjectSyncMessage(`Error al crear suite: ${error.message}`)
-      showFeedback('Error al crear suite', error.message || 'No se pudo crear la carpeta.', 'danger')
+      setProjectSyncMessage(`${t('casos.createSuiteError')}: ${error.message}`)
+      showFeedback(t('casos.createSuiteError'), error.message || t('casos.createSuiteFallback'), 'danger')
     }
   }
 
   const handleUpdateSuite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (rejectReadOnlyWrite()) return false
     if (!editingSuiteId) return
     const projectId = managingProjectId || currentProjectId
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'Selecciona un proyecto válido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
 
@@ -172,31 +184,32 @@ export function createSuiteActions({
       })
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || t('casos.backendResponse', { status: response.status }))
       }
       await loadSuitesFromBackend(projectId, currentCompId)
       setShowSuiteModal(false)
       setEditingSuiteId(null)
       setSuiteForm(emptySuiteForm)
-      setProjectSyncMessage('Suite actualizada correctamente.')
-      showFeedback('Suite actualizada', 'La carpeta fue actualizada correctamente.', 'success')
+      setProjectSyncMessage(t('casos.suiteUpdated'))
+      showFeedback(t('casos.suiteUpdatedTitle'), t('casos.folderUpdated'), 'success')
     } catch (error: any) {
-      setProjectSyncMessage(`Error al actualizar suite: ${error.message}`)
-      showFeedback('Error al actualizar suite', error.message || 'No se pudo actualizar la carpeta.', 'danger')
+      setProjectSyncMessage(`${t('casos.updateSuiteError')}: ${error.message}`)
+      showFeedback(t('casos.updateSuiteError'), error.message || t('casos.updateSuiteFallback'), 'danger')
     }
   }
 
   const handleDeleteSuite = async (suiteId: string) => {
+    if (rejectReadOnlyWrite()) return false
     const confirmed = await confirmAction({
-      title: 'Eliminar carpeta',
-      message: 'Se eliminará esta suite y todas sus sub-suites. Esta acción no se puede deshacer.',
+      title: t('casos.deleteFolderTitle'),
+      message: t('casos.deleteSuiteConfirm'),
       variant: 'danger',
-      confirmLabel: 'Eliminar carpeta'
+      confirmLabel: t('casos.deleteFolder')
     })
     if (!confirmed) return
     const projectId = managingProjectId || currentProjectId
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'Selecciona un proyecto válido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
 
@@ -206,20 +219,21 @@ export function createSuiteActions({
       })
       if (!response.ok) {
         const error = await response.json()
-        showFeedback('No se pudo eliminar la suite', error.detail || 'No se pudo eliminar la suite.', 'danger')
+        showFeedback(t('casos.deleteSuiteFailed'), error.detail || t('casos.deleteSuiteFailed'), 'danger')
         return
       }
       await loadSuitesFromBackend(projectId, currentCompId)
-      setProjectSyncMessage('Suite eliminada correctamente.')
+      setProjectSyncMessage(t('casos.suiteDeleted'))
     } catch (error: any) {
       setProjectSyncMessage(`Error al eliminar suite: ${error.message}`)
     }
   }
 
   const handleCloneSuite = async (suiteId: string) => {
+    if (rejectReadOnlyWrite()) return false
     const projectId = managingProjectId || currentProjectId
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'Selecciona un proyecto válido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
 
@@ -232,16 +246,17 @@ export function createSuiteActions({
         throw new Error(error?.detail || `Backend respondió ${response.status}`)
       }
       await loadSuitesFromBackend(projectId, currentCompId)
-      setProjectSyncMessage('Suite clonada correctamente.')
+      setProjectSyncMessage(t('casos.suiteCloned'))
     } catch (error: any) {
       setProjectSyncMessage(`Error al clonar suite: ${error.message}`)
     }
   }
 
   const handleCloneSuiteComplete = async (suiteId: string, options: { nuevo_nombre?: string; parent_id?: string | null; include_cases?: boolean } = {}) => {
+    if (rejectReadOnlyWrite()) return false
     const projectId = managingProjectId || currentProjectId
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no valido', 'Selecciona un proyecto valido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return false
     }
 
@@ -276,21 +291,22 @@ export function createSuiteActions({
       }
       const suitesCount = cloneResult?.suites_copiadas ?? 1
       const casesCount = cloneResult?.casos_copiados ?? 0
-      setProjectSyncMessage('Suite copiada correctamente.')
-      showFeedback('Suite copiada', `Se copiaron ${suitesCount} suite(s) y ${casesCount} caso(s).`, 'success')
+      setProjectSyncMessage(t('casos.suiteCopied'))
+      showFeedback(t('casos.suiteCopied'), t('casos.suiteCopiedMessage', { suites: suitesCount, cases: casesCount }), 'success')
       return cloneResult
     } catch (error: any) {
       setProjectSyncMessage(`Error al copiar suite: ${error.message}`)
-      showFeedback('Error al copiar suite', error.message || 'No se pudo copiar la suite.', 'danger')
+      showFeedback(t('casos.copySuiteError'), error.message || t('casos.copySuiteError'), 'danger')
       return false
     }
   }
 
   const handleMoveSuite = async () => {
+    if (rejectReadOnlyWrite()) return false
     if (!movingSuiteId) return
     const projectId = managingProjectId || currentProjectId
     if (!isValidUUID(projectId)) {
-      showFeedback('Proyecto no válido', 'Selecciona un proyecto válido antes de continuar.', 'warning')
+      showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
 
@@ -303,21 +319,21 @@ export function createSuiteActions({
       })
       if (!response.ok) {
         const error = await response.json()
-        showFeedback('No se pudo mover la suite', error.detail || 'No se pudo mover la suite.', 'danger')
+        showFeedback(t('casos.moveSuiteError'), error.detail || t('casos.moveSuiteError'), 'danger')
         return
       }
       await loadSuitesFromBackend(projectId, currentCompId)
       setShowMoveSuiteModal(false)
       setMovingSuiteId(null)
       setMoveSuiteParentId('')
-      setProjectSyncMessage('Suite movida correctamente.')
+      setProjectSyncMessage(t('casos.suiteMoved'))
     } catch (error: any) {
       setProjectSyncMessage(`Error al mover suite: ${error.message}`)
     }
   }
 
   const handleReorderSuite = async (_suiteId: string, _direction: 'up' | 'down') => {
-    setProjectSyncMessage('Funcionalidad de reordenamiento pendiente de implementar.')
+    setProjectSyncMessage(t('casos.reorderPending'))
   }
 
   const openCreateSuiteModal = (parentId = '') => {

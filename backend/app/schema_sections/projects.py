@@ -107,7 +107,7 @@ class Componente(ComponenteBase):
     id: UUID
     codigo: Optional[str] = None
     proyecto_id: UUID
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- BUILD ---
@@ -186,7 +186,7 @@ class Proyecto(ProyectoBase):
     id: UUID
     codigo: Optional[str] = None
     fecha_creacion: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- SUITE ---
@@ -218,7 +218,7 @@ class RedmineConfigCreate(RedmineConfigBase):
 class RedmineConfig(RedmineConfigBase):
     id: UUID
     proyecto_id: UUID
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- TEST RUNS ---

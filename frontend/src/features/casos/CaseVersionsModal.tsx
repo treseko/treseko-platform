@@ -1,5 +1,6 @@
 import { Badge, Col, Modal, Row, Table } from 'react-bootstrap'
 import { History } from 'lucide-react'
+import { useI18n } from '../../i18n'
 import { formatDateTime } from '../../shared/utils/dateTime'
 
 type CaseVersionsModalProps = {
@@ -21,6 +22,7 @@ export function CaseVersionsModal({
   setSelectedCompareVersionId,
   getCasoVersionRows
 }: CaseVersionsModalProps) {
+  const { t } = useI18n()
   const currentVersion = caseVersions[0]
   const selectedVersion = currentVersion
     ? caseVersions.find(version => version.id === selectedCompareVersionId) || caseVersions[1] || currentVersion
@@ -31,21 +33,21 @@ export function CaseVersionsModal({
     <Modal show={show} onHide={onHide} centered size="xl">
       <Modal.Header closeButton className="bg-light border-bottom text-dark">
         <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
-          <History size={20} className="text-primary" /> Registro de cambios
+          <History size={20} className="text-primary" /> {t('casos.changeLog')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4 text-start">
         <div className="mb-3">
           <div className="fw-bold text-dark">{versionsCase?.code || caseVersions[0]?.codigo} {versionsCase?.title || caseVersions[0]?.titulo}</div>
-          <div className="small text-muted">Selecciona una versión para compararla contra la versión actual.</div>
+          <div className="small text-muted">{t('casos.selectVersion')}</div>
         </div>
         {caseVersions.length === 0 || !currentVersion || !selectedVersion ? (
-          <div className="text-muted small border rounded-3 p-3 bg-light">No hay versiones registradas.</div>
+          <div className="text-muted small border rounded-3 p-3 bg-light">{t('casos.noVersions')}</div>
         ) : (
           <Row className="g-3">
             <Col md={3}>
               <div className="border rounded-3 overflow-hidden">
-                <div className="bg-light border-bottom px-3 py-2 fw-bold small text-dark">Versiones</div>
+                <div className="bg-light border-bottom px-3 py-2 fw-bold small text-dark">{t('casos.versions')}</div>
                 <div className="d-flex flex-column">
                   {caseVersions.map((version, index) => (
                     <button
@@ -56,7 +58,7 @@ export function CaseVersionsModal({
                     >
                       <div className="d-flex justify-content-between align-items-center">
                         <span>v{version.version}</span>
-                        {index === 0 && <Badge bg="primary" className="x-small">Actual</Badge>}
+                        {index === 0 && <Badge bg="primary" className="x-small">{t('casos.current')}</Badge>}
                       </div>
                       <div className="x-small text-muted fw-normal mt-1">
                         {formatDateTime(version.ultima_modificacion || version.fecha_creacion)}
@@ -69,15 +71,15 @@ export function CaseVersionsModal({
             <Col md={9}>
               <div className="border rounded-3 overflow-hidden">
                 <div className="bg-light border-bottom px-3 py-2 d-flex justify-content-between align-items-center">
-                  <div className="fw-bold small text-dark">Comparación</div>
+                  <div className="fw-bold small text-dark">{t('casos.comparison')}</div>
                   <Badge bg="light" text="dark" className="border">v{selectedVersion.version} vs v{currentVersion.version}</Badge>
                 </div>
                 <Table responsive hover className="align-middle mb-0 small">
                   <thead className="table-light">
                     <tr>
-                      <th style={{ width: '150px' }}>Campo</th>
-                      <th>Versión seleccionada</th>
-                      <th>Versión actual</th>
+                      <th style={{ width: '150px' }}>{t('casos.field')}</th>
+                      <th>{t('casos.selectedVersion')}</th>
+                      <th>{t('casos.currentVersion')}</th>
                     </tr>
                   </thead>
                   <tbody>

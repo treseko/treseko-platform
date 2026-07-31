@@ -6,9 +6,22 @@ from ...main_context import *
 
 router = APIRouter(tags=["Builds"])
 
+
+def _inactive_build_update_is_lifecycle_only(current_build: models.Build, build: schemas.BuildUpdate) -> bool:
+    """Allow only the explicit inactive -> active lifecycle transition.
+
+    Historical content and metadata must remain immutable.  Reactivation is a
+    separate lifecycle operation used by the build selector, so it may only
+    carry the two state fields and must request the active state consistently.
+    """
+    if access_control.is_build_active(current_build):
+        return True
+    fields = set(build.model_fields_set)
+    return fields.issubset({"estado", "activo"}) and build.estado == "ACTIVA" and build.activo is True
+
 @router.get("/proyectos/{proyecto_id}/builds/", response_model=List[schemas.Build])
 async def read_builds_proyecto(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -19,7 +32,7 @@ async def read_builds_proyecto(
 
 @router.get("/componentes/{componente_id}/builds/", response_model=List[schemas.Build])
 async def read_builds_componente(
-    componente_id: UUID, 
+    componente_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -30,7 +43,7 @@ async def read_builds_componente(
 
 @router.post("/builds/", response_model=schemas.Build)
 async def create_build(
-    build: schemas.BuildCreate, 
+    build: schemas.BuildCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.builds", "edit"))
 ):
@@ -84,12 +97,14 @@ async def create_build(
 
 @router.patch("/builds/{build_id}", response_model=schemas.Build)
 async def update_build(
-    build_id: UUID, 
-    build: schemas.BuildUpdate, 
+    build_id: UUID,
+    build: schemas.BuildUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.builds", "edit"))
 ):
     current_build = await access_control.require_build_access(db, current_user, build_id, "edit")
+    if not _inactive_build_update_is_lifecycle_only(current_build, build):
+        raise HTTPException(status_code=409, detail="La build está inactiva. Las builds históricas solo permiten lecturas o reactivación.")
     if "componente_id" in build.model_fields_set and build.componente_id != current_build.componente_id:
         raise HTTPException(
             status_code=422,
@@ -151,11 +166,13 @@ async def update_build(
 
 @router.delete("/builds/{build_id}")
 async def delete_build(
-    build_id: UUID, 
+    build_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.builds", "edit"))
 ):
     db_build = await access_control.require_build_access(db, current_user, build_id, "edit")
+    if not access_control.is_build_active(db_build):
+        raise HTTPException(status_code=409, detail="La build está inactiva. Las builds históricas no se pueden eliminar.")
     deleted = await crud.delete_build(db=db, build_id=build_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Build no encontrada")
@@ -179,7 +196,7 @@ async def delete_build(
 
 @router.get("/builds/{build_id}/casos/", response_model=List[schemas.CasoPrueba])
 async def read_build_casos(
-    build_id: UUID, 
+    build_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -217,13 +234,13 @@ async def read_previous_failed_build_cases(
 
 @router.put("/builds/{build_id}/casos/", response_model=List[schemas.CasoPrueba])
 async def update_build_casos(
-    build_id: UUID, 
-    payload: schemas.BuildCasosUpdate, 
+    build_id: UUID,
+    payload: schemas.BuildCasosUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.build_scope", "edit"))
 ):
     db_build = await access_control.require_build_access(db, current_user, build_id, "edit")
-    if not db_build.activo:
+    if not access_control.is_build_active(db_build):
         raise HTTPException(status_code=409, detail="La build está inactiva y no permite modificar su alcance de casos")
     ok, message, casos = await crud.set_build_casos(db=db, build_id=build_id, caso_ids=payload.caso_ids)
     if not ok:
@@ -254,7 +271,7 @@ async def promote_build_case_version(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.build_scope", "edit"))
 ):
     db_build = await access_control.require_build_access(db, current_user, build_id, "edit")
-    if not db_build.activo:
+    if not access_control.is_build_active(db_build):
         raise HTTPException(status_code=409, detail="La build está inactiva y no permite promover versiones de casos")
     ok, message, casos = await crud.promote_build_case_version(
         db=db,

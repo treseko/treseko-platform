@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
+import { useI18n } from '../../../i18n'
 import { API_BASE } from '../../../app/constants'
 import { flattenSuites } from '../../../testRepositoryUtils'
 import { createExecutionSelectorActions } from '../executionSelectorActions'
 import { buildExecutionViewModel } from '../executionViewModel'
 
 export function useExecutionPreparation(params: any) {
+  const { t } = useI18n()
   const viewModel = buildExecutionViewModel({
     currentBuildId: params.currentBuildId,
     currentCompId: params.currentCompId,
@@ -122,6 +124,7 @@ export function useExecutionPreparation(params: any) {
     setScheduledTime: params.setScheduledTime,
     setShowIaScheduler: params.setShowIaScheduler,
     showFeedback: params.showFeedback,
+    t,
   })
 
   return {

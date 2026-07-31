@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import test from 'node:test';
 import path from 'node:path';
 import { deliverTerminalResult, persistPendingTerminalDelivery, terminalDeliveryId } from './terminal-callback.ts';
 
 test('persiste la entrega terminal pendiente en el runtime privado del Engine', () => {
   const previousDir = process.env.ENGINE_PENDING_DELIVERIES_DIR;
-  const directory = fs.mkdtempSync(path.join('/tmp', 'treseko-terminal-outbox-'));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'treseko-terminal-outbox-'));
   process.env.ENGINE_PENDING_DELIVERIES_DIR = directory;
   const executionId = 'cd43e6c1-a25d-4fa3-94ec-d6ff3cdd4c77';
   try {
@@ -15,7 +16,11 @@ test('persiste la entrega terminal pendiente en el runtime privado del Engine', 
     });
     const file = path.join(directory, `${executionId}.json`);
     assert.equal(fs.existsSync(file), true);
-    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    // Windows does not expose POSIX file modes. The privacy guarantee is
+    // asserted on POSIX runners, while Windows validates persistence itself.
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    }
     assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).executionId, executionId);
   } finally {
     if (previousDir === undefined) delete process.env.ENGINE_PENDING_DELIVERIES_DIR;

@@ -3,12 +3,14 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { MoreHorizontal } from 'lucide-react'
 import { getAgentUiMeta } from '../../../../modules/ai-workflow/config/agent-ui.config'
 import { getNodeStatusUiMeta } from '../../../../modules/ai-workflow/config/node-status-ui.config'
+import { useI18n } from '../../../../i18n'
 import type { AiWorkflowNode } from '../../types/configuracion'
 
 export const WorkflowNodeCard = memo(({ data, selected }: NodeProps) => {
   const node = (data as any).node as AiWorkflowNode
   const index = (data as any).index as number
   const runtimeStatus = (data as any).status as string | undefined
+  const { t } = useI18n()
   const agentMeta = getAgentUiMeta(node)
   const statusMeta = getNodeStatusUiMeta(runtimeStatus || (node.enabled === false ? 'SKIPPED' : 'PENDING'))
   const Icon = agentMeta.icon
@@ -35,7 +37,7 @@ export const WorkflowNodeCard = memo(({ data, selected }: NodeProps) => {
       </div>
       <div className="workflow-node-meta">
         <span className="workflow-node-model">{node.model_override || node.config_json?.model || `${node.timeout_sec || 60}s`}</span>
-        <span className={`workflow-node-status ${node.enabled === false ? 'is-off' : 'is-on'}`}>{node.enabled === false ? 'INACTIVO' : 'ACTIVO'}</span>
+        <span className={`workflow-node-status ${node.enabled === false ? 'is-off' : 'is-on'}`}>{node.enabled === false ? t('configuracion.inactive').toUpperCase() : t('configuracion.active').toUpperCase()}</span>
       </div>
       <Handle id="target-bottom" type="target" position={Position.Bottom} className="workflow-handle workflow-handle-bottom" />
       <Handle id="source-bottom" type="source" position={Position.Bottom} className="workflow-handle workflow-handle-bottom" />

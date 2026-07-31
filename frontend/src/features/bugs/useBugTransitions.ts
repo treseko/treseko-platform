@@ -10,7 +10,7 @@ const errorMessage = async (response: Response) => {
 
 export function useBugTransitions(options: any) {
   const { buildsList, currentBuildId, selectedBug, fetchWithAuth, showFeedback, setBugs,
-    setSelectedBug, hydrateDetailEditState, loadBugs, onBugsChanged } = options
+    setSelectedBug, hydrateDetailEditState, loadBugs, onBugsChanged, t } = options
   const [quickTransitioningBugId, setQuickTransitioningBugId] = useState<string | null>(null)
   const [transitionTarget, setTransitionTarget] = useState<{ bug: any; estado: string } | null>(null)
   const [transitionForm, setTransitionForm] = useState({ resolution_build_id: '', resolucion: '', motivo_cierre: '' })
@@ -28,10 +28,10 @@ export function useBugTransitions(options: any) {
       const updated = await response.json()
       setBugs((current: any[]) => current.map((item) => item.id === bug.id ? { ...item, ...updated } : item))
       if (selectedBug?.id === bug.id) { setSelectedBug(updated); hydrateDetailEditState(updated) }
-      showFeedback('Estado actualizado', `${updated.codigo || bug.codigo} quedó en ${updated.estado || estado}.`, 'success')
+      showFeedback(t('bugs.statusUpdated'), t('bugs.statusUpdatedMessage', { bug: updated.codigo || bug.codigo, status: updated.estado || estado }), 'success')
       onBugsChanged?.(); void loadBugs({ silent: true }); return true
     } catch (error: any) {
-      showFeedback('Bug Tracker', error?.message || 'No se pudo cambiar el estado del bug.', 'danger'); return false
+      showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.transitionError'), 'danger'); return false
     } finally { setQuickTransitioningBugId(null) }
   }
   const requestTransition = (bug: any, estado: string) => {
@@ -48,7 +48,7 @@ export function useBugTransitions(options: any) {
     if (!transitionTarget) return
     const reopening = transitionTarget.estado === 'REABIERTO'
     if ((CORRECTED.has(transitionTarget.estado) || reopening) && !transitionForm.resolution_build_id) {
-      showFeedback('Build requerida', reopening ? 'Selecciona la build donde reapareció el bug.' : 'Selecciona la build donde se corrigió el bug.', 'warning'); return
+      showFeedback(t('bugs.buildRequired'), reopening ? t('bugs.selectReappearanceBuild') : t('bugs.selectCorrectionBuild'), 'warning'); return
     }
     if (await perform(transitionTarget.bug, transitionTarget.estado, transitionForm)) setTransitionTarget(null)
   }

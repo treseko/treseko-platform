@@ -33,7 +33,7 @@ async def create_rol_personalizado(
     if existing:
         raise HTTPException(status_code=400, detail="El rol ya existe")
     new_role = await crud.create_rol_personalizado(db, role=role)
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -44,7 +44,7 @@ async def create_rol_personalizado(
         detalles={"nombre": role.nombre},
         ip_address=client_ip
     )
-    
+
     return new_role
 
 
@@ -60,7 +60,7 @@ async def update_rol_personalizado(
     updated = await crud.update_rol_personalizado(db=db, role_id=role_id, role_update=role)
     if not updated:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -81,7 +81,7 @@ async def update_rol_personalizado(
         payload={"role": {"id": str(role_id), "nombre": updated.nombre}, "actor": {"email": current_user.email}, "message": "Permisos de rol actualizados"},
         dedupe_key=f"role.permissions_changed:{role_id}:{utc_now().strftime('%Y%m%d%H%M')}",
     )
-    
+
     return updated
 
 
@@ -96,7 +96,7 @@ async def deactivate_rol_personalizado(
     updated = await crud.deactivate_rol_personalizado(db=db, role_id=role_id)
     if not updated:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
-    
+
     client_ip = request.client.host if request.client else "unknown"
     await crud.create_audit_log(
         db=db,
@@ -116,5 +116,5 @@ async def deactivate_rol_personalizado(
         payload={"role": {"id": str(role_id), "nombre": updated.nombre}, "actor": {"email": current_user.email}, "message": "Rol desactivado"},
         dedupe_key=f"role.permissions_changed:{role_id}:deactivated",
     )
-    
+
     return updated

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Spinner } from 'react-bootstrap'
 import { Box, Lock, Plug, Puzzle, RefreshCw, ShieldCheck, Store } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
+import { useI18n } from '../../i18n'
 
 type ExtensionKind = 'integration' | 'plugin'
 
@@ -42,7 +43,7 @@ const KIND_LABEL: Record<ExtensionKind, string> = {
   plugin: 'Plugin',
 }
 
-const kindLabel = (item: ExtensionItem) => item.id === 'ai_case_generator' ? 'Función nativa' : KIND_LABEL[item.kind]
+const kindLabel = (item: ExtensionItem, t: (key: any) => string) => item.id === 'ai_case_generator' ? t('redmine.nativeFeature') : t(item.kind === 'integration' ? 'redmine.integration' : 'redmine.plugin')
 
 const STATUS_LABELS: Record<string, string> = {
   planned: 'Proximamente',
@@ -74,7 +75,7 @@ const statusVariant = (status?: string) => {
   return 'secondary'
 }
 
-const extensionDescription = (item: ExtensionItem) => {
+const extensionDescription = (item: ExtensionItem, t: (key: any) => string) => {
   if (item.description) return item.description
   if (item.id === 'notification_email') return 'Notificaciones por correo ya integradas en Treseko.'
   if (item.id === 'bug_tracker') return 'Bug tracker interno ya disponible para gestionar defectos y trazabilidad QA.'
@@ -86,7 +87,7 @@ const extensionDescription = (item: ExtensionItem) => {
   if (item.id === 'excel_importer') return 'Importa casos desde Excel sin acceso directo a la base de datos.'
   if (item.id === 'custom_dashboard') return 'Agrega widgets personalizados al dashboard QA.'
   if (item.id === 'ai_case_generator') return 'Genera casos con IA bajo permisos, cuotas y auditoria.'
-  return 'Complemento seguro administrado por Treseko.'
+  return t('redmine.safeAddon')
 }
 
 export function RedminePage({
@@ -96,6 +97,7 @@ export function RedminePage({
   setActiveTab,
   setConfigTab,
 }: RedminePageProps) {
+  const { t } = useI18n()
   const [items, setItems] = useState<ExtensionItem[]>([])
   const [filter, setFilter] = useState<'all' | ExtensionKind | 'installed'>('all')
   const [loading, setLoading] = useState(false)
@@ -112,10 +114,10 @@ export function RedminePage({
     try {
       const response = await fetchWithAuth(`${API_BASE}/extensions/catalog`)
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo cargar el catalogo.')
+      if (!response.ok) throw new Error(data?.detail || t('redmine.catalogError'))
       setItems(data.items || [])
     } catch (err: any) {
-      showFeedback('Complementos', err?.message || 'No se pudo cargar el catalogo.', 'danger')
+      showFeedback(t('redmine.title'), err?.message || t('redmine.catalogError'), 'danger')
     } finally {
       setLoading(false)
     }
@@ -141,7 +143,7 @@ export function RedminePage({
             className="mt-auto fw-bold rounded-pill shadow-none"
             onClick={() => setActiveTab?.('proyectos')}
           >
-            Abrir Historias
+            {t('redmine.openStories')}
           </Button>
         )
       }
@@ -162,7 +164,7 @@ export function RedminePage({
             setActiveTab?.(item.id === 'bug_tracker' ? 'bugs' : 'configuracion')
           }}
         >
-          {item.builtin ? 'Abrir complemento' : 'Configurar instalado'}
+          {item.builtin ? t('redmine.openAddon') : t('redmine.configureInstalled')}
         </Button>
       )
     }
@@ -174,9 +176,9 @@ export function RedminePage({
           size="sm"
           className="mt-auto fw-bold rounded-pill border shadow-none"
           disabled
-          title="Este complemento estara disponible proximamente"
+          title={t('redmine.comingSoonTitle')}
         >
-          Proximamente
+          {t('redmine.comingSoon')}
         </Button>
       )
     }
@@ -187,16 +189,16 @@ export function RedminePage({
       <div className="app-page-header mb-3">
         <div>
           <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
-            <Store size={24} /> Complementos
+            <Store size={24} /> {t('redmine.title')}
           </h4>
-          <div className="small text-muted">Tienda segura de integraciones y plugins aprobados por Treseko.</div>
+          <div className="small text-muted">{t('redmine.description')}</div>
         </div>
         <div className="d-flex flex-wrap gap-2 justify-content-end">
           <Button variant="outline-secondary" size="sm" className="fw-bold" onClick={loadCatalog} disabled={loading}>
-            <RefreshCw size={14} className="me-1" /> Actualizar
+            <RefreshCw size={14} className="me-1" /> {t('redmine.refresh')}
           </Button>
           <Button variant="primary" size="sm" className="fw-bold" onClick={openInstalledSettings}>
-            <SettingsShortcutIcon /> Configuracion
+            <SettingsShortcutIcon /> {t('redmine.settings')}
           </Button>
         </div>
       </div>
@@ -205,7 +207,7 @@ export function RedminePage({
         <div className="d-flex align-items-start gap-2">
           <ShieldCheck size={18} className="mt-1 flex-shrink-0" />
           <div>
-            <strong>Modelo seguro V1.</strong> La tienda instala complementos registrados por Treseko. No ejecutan codigo externo ni acceden directo a la base de datos.
+            <strong>{t('redmine.securityModel')}</strong> {t('redmine.securityDescription')}
           </div>
         </div>
       </Alert>
@@ -213,17 +215,17 @@ export function RedminePage({
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div className="d-flex flex-wrap gap-2">
           {[
-            ['all', 'Todos'],
-            ['integration', 'Integraciones'],
-            ['plugin', 'Plugins'],
-            ['installed', 'Instalados'],
+            ['all', t('redmine.all')],
+            ['integration', t('redmine.integrations')],
+            ['plugin', t('redmine.plugins')],
+            ['installed', t('redmine.installedFilter')],
           ].map(([id, label]) => (
             <Button key={id} size="sm" variant={filter === id ? 'primary' : 'outline-secondary'} className="fw-bold rounded-pill" onClick={() => setFilter(id as any)}>
               {label}
             </Button>
           ))}
         </div>
-        <Badge bg="primary" className="fw-bold p-2">Hub de Complementos</Badge>
+        <Badge bg="primary" className="fw-bold p-2">{t('redmine.hub')}</Badge>
       </div>
 
       {loading && items.length === 0 ? (
@@ -244,16 +246,16 @@ export function RedminePage({
                       </div>
                       <div className="d-flex flex-column align-items-end gap-1">
                         <Badge bg={statusVariant(status)} className="px-2 py-1 shadow-sm">
-                          {item.builtin ? 'Instalado' : item.installed ? STATUS_LABELS[status] || status : STATUS_LABELS[item.status] || item.status}
+                          {item.builtin ? t('redmine.installed') : item.status === 'planned' ? t('redmine.planned') : item.status === 'installed' ? t('redmine.installed') : item.status === 'configured' ? t('redmine.configured') : item.status === 'active' ? t('redmine.active') : item.status === 'disabled' ? t('redmine.disabled') : item.status === 'error' ? t('redmine.error') : status}
                         </Badge>
                         {locked && <Badge bg="warning" text="dark" className="border"><Lock size={10} /> Premium</Badge>}
                       </div>
                     </div>
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <h6 className="fw-bold text-dark mb-0 text-truncate" title={item.display_name}>{item.display_name}</h6>
-                      <Badge bg="light" text="dark" className="border">{kindLabel(item)}</Badge>
+                      <Badge bg="light" text="dark" className="border">{kindLabel(item, t)}</Badge>
                     </div>
-                    <p className="small text-muted mb-4">{extensionDescription(item)}</p>
+                    <p className="small text-muted mb-4">{extensionDescription(item, t)}</p>
                     <div className="d-flex flex-wrap gap-1 mb-3">
                       {item.capabilities.slice(0, 3).map(capability => (
                         <Badge key={capability.id} bg="light" text="dark" className="border fw-normal" title={capability.id}>
@@ -270,7 +272,7 @@ export function RedminePage({
           {visibleItems.length === 0 && (
             <Col>
               <Card className="border-0 shadow-sm rounded-3">
-                <Card.Body className="text-center text-muted small">No hay complementos para este filtro.</Card.Body>
+                <Card.Body className="text-center text-muted small">{t('redmine.empty')}</Card.Body>
               </Card>
             </Col>
           )}

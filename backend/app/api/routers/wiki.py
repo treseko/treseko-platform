@@ -22,7 +22,7 @@ async def _require_wiki_page_access(
 
 @router.get("/proyectos/{proyecto_id}/wiki/", response_model=List[schemas.WikiPage])
 async def read_wiki_pages(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -33,7 +33,7 @@ async def read_wiki_pages(
 
 @router.get("/wiki/{page_id}", response_model=schemas.WikiPage)
 async def read_wiki_page(
-    page_id: UUID, 
+    page_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.wiki", "read"))
 ):
@@ -45,7 +45,7 @@ async def read_wiki_page(
 
 @router.post("/wiki/", response_model=schemas.WikiPage)
 async def create_wiki_page(
-    page: schemas.WikiPageCreate, 
+    page: schemas.WikiPageCreate,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.wiki", "edit"))
 ):
@@ -68,7 +68,7 @@ async def update_wiki_page(
 
 @router.get("/wiki/{page_id}/history/", response_model=List[schemas.WikiHistory])
 async def read_wiki_history(
-    page_id: UUID, 
+    page_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     db: AsyncSession = Depends(get_db),
@@ -79,7 +79,7 @@ async def read_wiki_history(
 
 @router.delete("/wiki/{page_id}")
 async def delete_wiki_page(
-    page_id: UUID, 
+    page_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.wiki", "edit"))
 ):

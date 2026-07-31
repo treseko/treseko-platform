@@ -22,6 +22,11 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - treseko_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   migrator:
     build:
@@ -156,10 +161,13 @@ services:
     restart: unless-stopped
     environment:
       QA_API_BASE: http://backend:8000
-      QA_RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      QA_RUNNER_TOKEN_FILE: /worker/.runner-token
       QA_ORGANIZACION_ID: ${QA_ORGANIZACION_ID:-}
-      QA_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      QA_POLL_INTERVAL_MS: ${QA_POLL_INTERVAL_MS:-5000}
       QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    pids_limit: ${WORKER_PIDS_LIMIT:-256}
+    cpus: ${WORKER_CPUS:-1.0}
     volumes:
       - treseko_worker_runtime:/worker
     depends_on:

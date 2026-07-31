@@ -42,7 +42,7 @@ def _project_package_summary(package: dict | None) -> dict:
 
 @router.get("/proyectos/{proyecto_id}/export/")
 async def export_proyecto(
-    proyecto_id: UUID, 
+    proyecto_id: UUID,
     request: Request = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.usuarios", "read"))
@@ -63,7 +63,7 @@ async def export_proyecto(
 
 @router.post("/proyectos/import/", response_model=schemas.Proyecto)
 async def import_proyecto(
-    package: dict, 
+    package: dict,
     request: Request = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.usuarios", "edit"))

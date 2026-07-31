@@ -2,6 +2,7 @@
 import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap'
 import { Edit, Key, RefreshCw, Search, Trash2, User } from 'lucide-react'
 import { API_BASE } from '../../../../app/constants'
+import { useI18n } from '../../../../i18n'
 
 type UsersSettingsTabProps = {
   adConfig: any
@@ -26,6 +27,7 @@ export function UsersSettingsTab({
   openUserModal,
   handleDeactivateUser,
 }: UsersSettingsTabProps) {
+  const { t } = useI18n()
   const [userSearch, setUserSearch] = useState('')
   const [adConfigLoadError, setAdConfigLoadError] = useState('')
   const [adSyncLoading, setAdSyncLoading] = useState(false)
@@ -51,7 +53,7 @@ export function UsersSettingsTab({
         }
       })
       .catch(() => {
-        if (!cancelled) setAdConfigLoadError('La configuracion completa de AD no esta disponible para este usuario.')
+        if (!cancelled) setAdConfigLoadError(t('configuracion.adConfigLoadError'))
       })
     return () => {
       cancelled = true
@@ -69,12 +71,12 @@ export function UsersSettingsTab({
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.detail || `Backend respondio ${response.status}`)
+        throw new Error(payload?.detail || t('configuracion.backendResponded', { status: response.status }))
       }
       setAdSyncSummary(payload)
       await loadUsersFromBackend()
     } catch (error: any) {
-      setAdSyncError(error?.message || 'No se pudo sincronizar Active Directory.')
+      setAdSyncError(error?.message || t('configuracion.adSyncError'))
     } finally {
       setAdSyncLoading(false)
     }
@@ -90,7 +92,7 @@ export function UsersSettingsTab({
 
   return (
     <div className="animate__animated animate__fadeIn">
-      <h5 className="fw-bold text-secondary mb-3 text-uppercase small">Directorio y Autenticación</h5>
+      <h5 className="fw-bold text-secondary mb-3 text-uppercase small">{t('configuracion.usersDirectoryAuthTitle')}</h5>
 
       {/* Active Directory Config */}
       <Card className="border-light-subtle shadow-sm rounded-4 bg-white mb-4">
@@ -99,12 +101,12 @@ export function UsersSettingsTab({
             <div className="d-flex align-items-center gap-2">
               <div className="bg-primary bg-opacity-10 p-2 rounded text-primary"><Key size={20} /></div>
               <div>
-                <h6 className="fw-bold m-0 text-dark">Integración Active Directory (AD / LDAP)</h6>
-                <span className="text-muted x-small">Permite a los usuarios iniciar sesión con sus credenciales de red corporativas.</span>
+                <h6 className="fw-bold m-0 text-dark">{t('configuracion.adIntegrationTitle')}</h6>
+                <span className="text-muted x-small">{t('configuracion.adIntegrationDesc')}</span>
               </div>
             </div>
             <Badge bg={adConfig.enabled ? 'primary' : 'secondary'} className="rounded-pill">
-              {adConfig.enabled ? `${adModeLabel} activo` : 'Deshabilitado'}
+              {adConfig.enabled ? t('configuracion.adModeActive', { mode: adModeLabel }) : t('configuracion.disabled')}
             </Badge>
           </div>
 
@@ -113,28 +115,28 @@ export function UsersSettingsTab({
               <Row className="g-2">
                 <Col md={6}>
                   <Form.Group>
-                    <Form.Label className="x-small fw-bold text-muted">Servidor LDAP / AD</Form.Label>
-                    <Form.Control size="sm" type="text" value={adServer} readOnly className="border-light-subtle font-monospace text-primary fw-bold" placeholder="Configurado en Active Directory" />
+                    <Form.Label className="x-small fw-bold text-muted">{t('configuracion.ldapAdServer')}</Form.Label>
+                    <Form.Control size="sm" type="text" value={adServer} readOnly className="border-light-subtle font-monospace text-primary fw-bold" placeholder={t('configuracion.configuredInAd')} />
                   </Form.Group>
                 </Col>
                 <Col md={6}>
                   <Form.Group>
-                    <Form.Label className="x-small fw-bold text-muted">Dominio Base / Dominios Permitidos</Form.Label>
-                    <Form.Control size="sm" type="text" value={adDomain} readOnly className="border-light-subtle" placeholder="Configurado en Active Directory" />
+                    <Form.Label className="x-small fw-bold text-muted">{t('configuracion.baseOrAllowedDomains')}</Form.Label>
+                    <Form.Control size="sm" type="text" value={adDomain} readOnly className="border-light-subtle" placeholder={t('configuracion.configuredInAd')} />
                   </Form.Group>
                 </Col>
               </Row>
               <div className="small text-muted mt-3">
-                Usuarios AD vinculados en Treseko: <strong>{adProvisionedUsers}</strong>. La tabla muestra usuarios creados o auto-provisionados en Treseko; no enumera todo el directorio externo.
+                {t('configuracion.adLinkedUsersNotice', { count: adProvisionedUsers })}
               </div>
               {canEditUsers && (
                 <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
                   <Button type="button" size="sm" variant="outline-primary" className="fw-bold" onClick={runAdSync} disabled={adSyncLoading}>
-                    <RefreshCw size={14} className="me-1" /> {adSyncLoading ? 'Sincronizando' : 'Sincronizar AD'}
+                    <RefreshCw size={14} className="me-1" /> {adSyncLoading ? t('configuracion.syncing') : t('configuracion.syncAd')}
                   </Button>
                   {adSyncSummary && (
                     <span className="small text-muted">
-                      Sync: {adSyncSummary.total} revisados, {adSyncSummary.updated} actualizados, {adSyncSummary.deactivated} inactivados, {adSyncSummary.errors} errores.
+                      {t('configuracion.adSyncSummary', { total: adSyncSummary.total, updated: adSyncSummary.updated, deactivated: adSyncSummary.deactivated, errors: adSyncSummary.errors })}
                     </span>
                   )}
                 </div>
@@ -150,12 +152,12 @@ export function UsersSettingsTab({
       <Card className="border-0 shadow-sm rounded-4 bg-white overflow-hidden">
         <Card.Header className="bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center responsive-card-header">
           <div>
-            <h6 className="fw-bold text-dark m-0">Directorio de Usuarios ({visibleUsers.length}/{appUsers.length})</h6>
-            <span className="x-small text-muted">Usuarios registrados en Treseko. AD se usa para autenticar; los roles se asignan desde Treseko.</span>
+            <h6 className="fw-bold text-dark m-0">{t('configuracion.usersDirectoryTitle', { visible: visibleUsers.length, total: appUsers.length })}</h6>
+            <span className="x-small text-muted">{t('configuracion.usersDirectoryDesc')}</span>
           </div>
           <div className="d-flex align-items-center gap-2">
             {canEditUsers && (
-              <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm" onClick={() => openUserModal()}>+ Nuevo Usuario Treseko</Button>
+              <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm" onClick={() => openUserModal()}>{t('configuracion.newTresekoUser')}</Button>
             )}
           </div>
         </Card.Header>
@@ -165,20 +167,20 @@ export function UsersSettingsTab({
             <Form.Control
               value={userSearch}
               onChange={(event) => setUserSearch(event.target.value)}
-              placeholder="Buscar usuario..."
-              aria-label="Buscar usuario"
+              placeholder={t('configuracion.userSearchPlaceholder')}
+              aria-label={t('configuracion.userSearchAriaLabel')}
             />
           </div>
         </div>
         <Table responsive hover className="mb-0 align-middle">
           <thead className="bg-light">
             <tr className="x-small text-muted text-uppercase">
-              <th className="px-4 py-3 border-0">Usuario</th>
-              <th className="border-0">Email</th>
-              <th className="border-0">Rol Global</th>
-              <th className="border-0">Autenticación</th>
-              <th className="border-0">Estado</th>
-              {canEditUsers && <th className="px-4 border-0 text-end">Acciones</th>}
+              <th className="px-4 py-3 border-0">{t('configuracion.user')}</th>
+              <th className="border-0">{t('configuracion.email')}</th>
+              <th className="border-0">{t('configuracion.globalRole')}</th>
+              <th className="border-0">{t('configuracion.authentication')}</th>
+              <th className="border-0">{t('configuracion.status')}</th>
+              {canEditUsers && <th className="px-4 border-0 text-end">{t('configuracion.actions')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -189,12 +191,12 @@ export function UsersSettingsTab({
                 </td>
                 <td className="small text-muted">{u.email}</td>
                 <td><Badge bg="light" text="dark" className="border fw-normal shadow-sm">{u.role}</Badge></td>
-                <td>{u.auth === 'AD' ? <Badge bg="primary" className="x-small">AD vinculado</Badge> : <Badge bg="secondary" className="x-small">Local</Badge>}</td>
+                <td>{u.auth === 'AD' ? <Badge bg="primary" className="x-small">{t('configuracion.adLinked')}</Badge> : <Badge bg="secondary" className="x-small">{t('configuracion.local')}</Badge>}</td>
                 <td><span className={`small fw-bold ${u.status === 'Activo' ? 'text-success' : 'text-danger'}`}>{u.status}</span></td>
                 {canEditUsers && (
                   <td className="px-4 text-end d-flex gap-2 justify-content-end">
-                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openUserModal(u)}><Edit size={14} /></Button>
-                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" disabled={u.email === loggedUser.email} title={u.email === loggedUser.email ? 'No puedes inactivar tu propia cuenta' : 'Inactivar usuario'} onClick={() => handleDeactivateUser(u)}><Trash2 size={14} /></Button>
+                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openUserModal(u)} title={t('configuracion.editUser')} aria-label={t('configuracion.editUser')}><Edit size={14} /></Button>
+                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" disabled={u.email === loggedUser.email} title={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} aria-label={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} onClick={() => handleDeactivateUser(u)}><Trash2 size={14} /></Button>
                   </td>
                 )}
               </tr>
@@ -202,14 +204,14 @@ export function UsersSettingsTab({
             {appUsers.length > 0 && visibleUsers.length === 0 && (
               <tr>
                 <td colSpan={canEditUsers ? 6 : 5} className="text-center py-4 text-muted small">
-                  No hay usuarios que coincidan con la busqueda.
+                  {t('configuracion.noMatchingUsers')}
                 </td>
               </tr>
             )}
             {appUsers.length === 0 && (
               <tr>
                 <td colSpan={canEditUsers ? 6 : 5} className="text-center py-4 text-muted small">
-                  No hay usuarios cargados. Usa actualizar para recargar el directorio.
+                  {t('configuracion.noUsersLoaded')}
                 </td>
               </tr>
             )}
@@ -235,45 +237,46 @@ export function RolesSettingsTab({
   openRoleModal,
   handleDeactivateRole,
 }: RolesSettingsTabProps) {
+  const { t } = useI18n()
   return (
     <div className="animate__animated animate__fadeIn">
       <Card className="border-0 shadow-sm rounded-4 bg-white overflow-hidden">
         <Card.Header className="bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center responsive-card-header">
           <div>
-            <h6 className="fw-bold text-dark m-0">Roles ({systemRoleItems.length + customRoles.length})</h6>
-            <span className="small text-muted">Edita QA Lead, Tester y Viewer. Admin queda fijo.</span>
+            <h6 className="fw-bold text-dark m-0">{t('configuracion.rolesTitle', { count: systemRoleItems.length + customRoles.length })}</h6>
+            <span className="small text-muted">{t('configuracion.rolesDesc')}</span>
           </div>
           {canEditRoles && (
-            <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm" onClick={() => openRoleModal()}>+ Nuevo Rol</Button>
+            <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm" onClick={() => openRoleModal()}>+ {t('configuracion.newRole')}</Button>
           )}
         </Card.Header>
         <Table responsive hover className="mb-0 align-middle">
           <thead className="bg-light">
             <tr className="x-small text-muted text-uppercase">
-              <th className="px-4 py-3 border-0">Rol</th>
-              <th className="border-0">Descripción</th>
-              <th className="border-0">Módulos</th>
-              <th className="border-0">Estado</th>
-              {canEditRoles && <th className="px-4 border-0 text-end">Acciones</th>}
+              <th className="px-4 py-3 border-0">{t('configuracion.role')}</th>
+              <th className="border-0">{t('configuracion.description')}</th>
+              <th className="border-0">{t('configuracion.modules')}</th>
+              <th className="border-0">{t('configuracion.status')}</th>
+              {canEditRoles && <th className="px-4 border-0 text-end">{t('configuracion.actions')}</th>}
             </tr>
           </thead>
           <tbody>
             {[...systemRoleItems, ...customRoles].map(role => (
               <tr key={role.id} className="border-bottom">
                 <td className="px-4 fw-bold text-dark">{role.name}</td>
-                <td className="small text-muted">{role.description || 'Sin descripción'}</td>
-                <td className="small text-muted">{role.modules.length} asignados</td>
+                <td className="small text-muted">{role.description || t('configuracion.noDescription')}</td>
+                <td className="small text-muted">{t('configuracion.assignedModules', { count: role.modules.length })}</td>
                 <td><span className={`small fw-bold ${role.status === 'Activo' ? 'text-success' : 'text-danger'}`}>{role.status}</span></td>
                 {canEditRoles && (
                   <td className="px-4 text-end d-flex gap-2 justify-content-end">
-                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openRoleModal(role)}><Edit size={14} /></Button>
+                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openRoleModal(role)} title={t('configuracion.editRole')} aria-label={t('configuracion.editRole')}><Edit size={14} /></Button>
                     {!role.systemRole && <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" onClick={() => handleDeactivateRole(role)}><Trash2 size={14} /></Button>}
                   </td>
                 )}
               </tr>
             ))}
             {systemRoleItems.length + customRoles.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-4 text-muted small">No hay roles personalizados creados.</td></tr>
+              <tr><td colSpan={5} className="text-center py-4 text-muted small">{t('configuracion.noCustomRoles')}</td></tr>
             )}
           </tbody>
         </Table>

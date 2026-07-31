@@ -10,7 +10,7 @@ router = APIRouter(tags=["legacy_automation_execution"])
 
 @router.post("/ejecuciones/{ejecucion_id}/automatizar/")
 async def trigger_ai_run(
-    ejecucion_id: UUID, 
+    ejecucion_id: UUID,
     background_tasks: BackgroundTasks,
     request: Optional[schemas.AutomationExecutionRequest] = None,
     db: AsyncSession = Depends(get_db),
@@ -28,14 +28,16 @@ async def trigger_ai_run(
         .outerjoin(models.Build, models.Build.id == models.TestRun.build_id)
         .join(models.Proyecto, models.Proyecto.id == models.TestRun.proyecto_id)
         .filter(models.EjecucionCaso.id == ejecucion_id)
-        .with_for_update()
+        # PostgreSQL cannot lock every table of a LEFT JOIN.  Only the
+        # execution row is mutable in this transition, so lock that row.
+        .with_for_update(of=models.EjecucionCaso)
     )
     row = result.first()
     if not row:
         raise HTTPException(status_code=404, detail="Ejecucion no encontrada")
     ejecucion, caso, run, build, project = row
     await access_control.require_project_access(db, current_user, run.proyecto_id, "edit")
-    if run.build_id and build and not build.activo:
+    if run.build_id and build and not access_control.is_build_active(build):
         raise HTTPException(
             status_code=409,
             detail="La build está inactiva. No se pueden iniciar pruebas automatizadas ni IA sobre una build cerrada.",
@@ -212,6 +214,8 @@ async def trigger_ai_run(
 async def ejecutar_caso_automatizada(
     caso_id: UUID,
     test_run_id: UUID,
+    # Conservado para compatibilidad con integraciones que invocan esta ruta
+    # directamente. La creación del job ya la gestiona el servicio de workers.
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.automatizada", "edit"))
@@ -226,41 +230,42 @@ async def ejecutar_caso_automatizada(
             detail="Necesitas permiso de automatizacion para ejecutar pruebas automatizadas",
         )
 
-    result = await db.execute(
-        select(models.CasoPrueba, models.TestRun)
-        .filter(models.CasoPrueba.id == caso_id, models.TestRun.id == test_run_id)
-    )
-    row = result.first()
-    
-    if not row:
+    # Caso y run no tienen una relación directa para un JOIN seguro. Consultarlos
+    # de forma independiente evita el producto cartesiano y luego validamos que
+    # ambos pertenezcan al mismo proyecto.
+    caso = await db.get(models.CasoPrueba, caso_id)
+    run = await db.get(models.TestRun, test_run_id)
+    if not caso or not run:
         raise HTTPException(status_code=404, detail="Caso o run no encontrado")
-    caso, run = row
     if caso.proyecto_id != run.proyecto_id:
         raise HTTPException(status_code=400, detail="El caso no pertenece al proyecto del run")
     await access_control.require_project_access(db, current_user, run.proyecto_id, "edit")
     if run.build_id:
         build = (await db.execute(select(models.Build).filter(models.Build.id == run.build_id))).scalar_one_or_none()
-        if build and not build.activo:
+        if build and not access_control.is_build_active(build):
             raise HTTPException(
                 status_code=409,
                 detail="La build está inactiva. No se pueden iniciar pruebas automatizadas sobre una build cerrada.",
             )
-    
+
     if caso.tipo_prueba != models.TipoPrueba.AUTOMATIZADA:
         raise HTTPException(status_code=400, detail="El caso no es de tipo AUTOMATIZADA")
-    
+
     if not caso.script_automatizado:
         raise HTTPException(status_code=400, detail="El caso no tiene script automatizado")
-    
-    from .worker import ejecutar_caso_automatizado as worker_ejecutar
-    
-    # Ejecutar en background
-    background_tasks.add_task(
-        worker_ejecutar,
-        caso_id=caso_id,
-        test_run_id=test_run_id,
-        usuario_id=current_user.id
-    )
+
+    execution = (await db.execute(
+        select(models.EjecucionCaso).where(
+            models.EjecucionCaso.caso_id == caso_id,
+            models.EjecucionCaso.test_run_id == test_run_id,
+        )
+    )).scalar_one_or_none()
+    if not execution:
+        raise HTTPException(status_code=404, detail="La ejecución del caso no existe en este run")
+    try:
+        job = await crud.create_automation_job_for_execution(db, execution.id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     build = None
     if run and run.build_id:
         build = (await db.execute(select(models.Build).filter(models.Build.id == run.build_id))).scalar_one_or_none()
@@ -272,11 +277,14 @@ async def ejecutar_caso_automatizada(
         build_id=run.build_id if run else None,
         case_id=caso.id,
         run_id=test_run_id,
-        payload={"execution": {"mode": "AUTOMATIZADA"}},
+        execution_id=execution.id,
+        payload={"execution": {"id": str(execution.id), "mode": "AUTOMATIZADA"}, "automation_job": {"id": str(job.id)}},
     )
-    
+
     return {
-        "message": "Ejecución automatizada iniciada en segundo plano",
+        "message": "Job de automatización creado para worker dedicado",
         "caso_id": str(caso_id),
-        "test_run_id": str(test_run_id)
+        "test_run_id": str(test_run_id),
+        "job_id": str(job.id),
+        "status": job.estado.value if hasattr(job.estado, "value") else str(job.estado),
     }

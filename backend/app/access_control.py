@@ -17,6 +17,11 @@ PROJECT_READ_ONLY_ROLES = {
 }
 
 
+def is_build_active(build: models.Build) -> bool:
+    """A build is writable/executable only when both lifecycle fields agree."""
+    return build.activo is True and build.estado == "ACTIVA"
+
+
 def _forbidden():
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -122,6 +127,13 @@ async def require_build_access(
     if not db_build:
         _not_found("Build")
     await require_project_access(db, user, db_build.proyecto_id, level)
+    return db_build
+
+
+async def require_active_build_access(db: AsyncSession, user: models.Usuario, build_id: UUID, level: str = "edit"):
+    db_build = await require_build_access(db, user, build_id, level)
+    if not is_build_active(db_build):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La build está inactiva. Las builds históricas solo permiten lecturas.")
     return db_build
 
 

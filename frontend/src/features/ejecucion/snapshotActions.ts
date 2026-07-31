@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { AttachmentMeta } from '../../EvidenceUpload'
 import { API_BASE } from '../../app/constants'
+import type { TranslationKey } from '../../i18n'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -14,6 +15,7 @@ type CreateSnapshotActionsParams = {
   setStepResults: Dispatch<SetStateAction<Record<number, string>>>
   setSnapshotNotes: Dispatch<SetStateAction<Record<number, string>>>
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createSnapshotActions({
@@ -25,7 +27,8 @@ export function createSnapshotActions({
   setSnapshotAttachments,
   setStepResults,
   setSnapshotNotes,
-  showFeedback
+  showFeedback,
+  t
 }: CreateSnapshotActionsParams) {
   const persistExecutionSnapshots = async (snapshotsToSave: any[]) => {
     if (!currentExecutionCase?.id || snapshotsToSave.length === 0) return []
@@ -84,7 +87,7 @@ export function createSnapshotActions({
     })
     if (!response.ok) {
       const error = await response.json().catch(() => null)
-      showFeedback('No se pudo vincular evidencia', error?.detail || `Backend respondió ${response.status}`, 'danger')
+      showFeedback(t('ejecutarPruebas.evidenceLinkFailed'), error?.detail || t('configuracion.backendResponded', { status: response.status }), 'danger')
       return false
     }
     const link = await response.json()

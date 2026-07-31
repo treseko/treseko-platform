@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { BotMessageSquare, FileCode, Plus } from 'lucide-react'
 import { Button, Form, Modal } from 'react-bootstrap'
+import { useI18n } from '../../../../i18n'
 
 type Props = {
   show: boolean
@@ -26,6 +27,7 @@ function keyFromName(value: string) {
 }
 
 export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [template, setTemplate] = useState<keyof typeof templates>('llm')
@@ -73,16 +75,15 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <BotMessageSquare size={20} className="text-primary" />
-            Crear agente universal
+            {t('configuracion.universalAgentCreateTitle')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="pt-0 d-flex flex-column gap-3">
           <div className="small text-muted">
-            El agente se crea como borrador con un contrato portable. No puede incluir
-            código ni secretos.
+            {t('configuracion.universalAgentDraftDescription')}
           </div>
           <Form.Group>
-            <Form.Label>Nombre</Form.Label>
+            <Form.Label>{t('configuracion.universalAgentName')}</Form.Label>
             <Form.Control
               value={name}
               onChange={event => setName(event.target.value)}
@@ -90,47 +91,47 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
               maxLength={150}
               autoFocus
             />
-            <Form.Text>Key: {key || 'se genera desde el nombre'}</Form.Text>
+            <Form.Text>{t('configuracion.universalAgentKey')}: {key || t('configuracion.universalAgentKeyGenerated')}</Form.Text>
           </Form.Group>
           <Form.Group>
-            <Form.Label>Descripción</Form.Label>
+            <Form.Label>{t('configuracion.universalAgentDescription')}</Form.Label>
             <Form.Control as="textarea" rows={2} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} />
           </Form.Group>
           <Form.Group>
-            <Form.Label>Plantilla segura</Form.Label>
+            <Form.Label>{t('configuracion.universalAgentTemplate')}</Form.Label>
             <Form.Select
               value={template}
               onChange={event => setTemplate(event.target.value as keyof typeof templates)}
             >
               {Object.entries(templates).map(([value, item]) => (
                 <option key={value} value={value}>
-                  {item.label}
+                  {t(`configuracion.universalAgentTemplate${value[0].toUpperCase()}${value.slice(1)}` as any)}
                 </option>
               ))}
             </Form.Select>
-            <Form.Text>Capabilities: {selected.capabilities.join(', ')}</Form.Text>
+            <Form.Text>{t('configuracion.universalAgentCapabilities')}: {selected.capabilities.join(', ')}</Form.Text>
           </Form.Group>
           {selected.strategy !== 'none' && (
             <Form.Group>
-              <Form.Label>Instrucciones</Form.Label>
+              <Form.Label>{t('configuracion.universalAgentInstructions')}</Form.Label>
               <Form.Control
                 as="textarea"
                 rows={4}
                 value={instructions}
                 onChange={event => setInstructions(event.target.value)}
-                placeholder="Objetivo y límites específicos del agente."
+                placeholder={t('configuracion.universalAgentInstructionsPlaceholder')}
               />
-              <Form.Text>La política de seguridad nativa se mantiene fuera de estas instrucciones.</Form.Text>
+              <Form.Text>{t('configuracion.universalAgentSecurityPolicyHint')}</Form.Text>
             </Form.Group>
           )}
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">
           <Button variant="outline-secondary" onClick={onHide}>
-            Cancelar
+            {t('common.cancel')}
           </Button>
           <Button type="submit" disabled={!key || saving} variant="primary" className="d-flex align-items-center gap-2">
             <FileCode size={16} />
-            {saving ? 'Creando...' : 'Crear borrador'}
+            {saving ? t('configuracion.universalAgentCreating') : t('configuracion.universalAgentCreateDraft')}
           </Button>
         </Modal.Footer>
       </Form>

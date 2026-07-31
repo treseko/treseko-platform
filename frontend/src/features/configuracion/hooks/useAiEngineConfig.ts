@@ -5,6 +5,7 @@ import {
   updateAiEngineConfig,
   type FetchWithAuth,
 } from '../api/configuracionApi'
+import { useI18n } from '../../../i18n'
 
 type UseAiEngineConfigParams = {
   isAuthenticated: boolean
@@ -27,6 +28,7 @@ export function useAiEngineConfig({
   setIaLogs,
   showFeedback,
 }: UseAiEngineConfigParams) {
+  const { t } = useI18n()
   const [aiEngineConfig, setAiEngineConfig] = useState(defaultConfig)
   const [aiEngineConfigLoading, setAiEngineConfigLoading] = useState(false)
   const [aiEngineHealth, setAiEngineHealth] = useState<any>(null)
@@ -63,7 +65,7 @@ export function useAiEngineConfig({
       setIaProvider(normalized.provider || 'openai-compatible')
       setIaTemp(Number(normalized.temperature ?? 0.1))
     } catch (error: any) {
-      showFeedback('Motor IA', error.message || 'No se pudo cargar la configuracion IA.', 'danger')
+      showFeedback(t('configuracion.aiTitle'), error.message || t('configuracion.aiLoadError'), 'danger')
     } finally {
       setAiEngineConfigLoading(false)
     }
@@ -76,9 +78,9 @@ export function useAiEngineConfig({
       setAiEngineConfig(saved)
       setIaProvider(saved.provider || 'openai-compatible')
       setIaTemp(Number(saved.temperature ?? 0.1))
-      showFeedback('Motor IA', 'Configuración de pruebas con IA guardada.', 'success')
+      showFeedback(t('configuracion.aiTitle'), t('configuracion.aiSaved'), 'success')
     } catch (error: any) {
-      showFeedback('Motor IA', error.message || 'No se pudo guardar la configuracion IA.', 'danger')
+      showFeedback(t('configuracion.aiTitle'), error.message || t('configuracion.aiSaveError'), 'danger')
     } finally {
       setAiEngineConfigLoading(false)
     }
@@ -98,10 +100,10 @@ export function useAiEngineConfig({
       }
       return health
     } catch (error: any) {
-      const health = { status: 'error', detail: error.message || 'Motor IA no disponible' }
+      const health = { status: 'error', detail: error.message || t('configuracion.aiUnavailable') }
       setAiEngineHealth(health)
       if (!options.silent) {
-        showFeedback('Motor IA', health.detail, 'danger')
+        showFeedback(t('configuracion.aiTitle'), health.detail, 'danger')
       }
       return health
     }

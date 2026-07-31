@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from '../../../app/constants'
+import type { TranslationKey } from '../../../i18n'
+import type { Locale } from '../../../i18n'
 
 type UseProfileSettingsParams = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   onLoggedUserUpdated: (user: any) => void
+  onPreferencesUpdated?: (preferences: any) => void
   showFeedback: (title: string, message: string, variant?: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 const createProfileDraft = (loggedUser: any) => ({
@@ -21,7 +25,9 @@ export function useProfileSettings({
   loggedUser,
   fetchWithAuth,
   onLoggedUserUpdated,
+  onPreferencesUpdated,
   showFeedback,
+  t,
 }: UseProfileSettingsParams) {
   const [profileDraft, setProfileDraft] = useState(() => createProfileDraft(loggedUser))
 
@@ -56,15 +62,31 @@ export function useProfileSettings({
       if (!prefResponse.ok) throw new Error(await prefResponse.text())
       const preferences = await prefResponse.json()
       onLoggedUserUpdated({ ...updatedUser, ...preferences })
-      showFeedback('Perfil actualizado', 'Tus preferencias personales fueron guardadas.', 'success')
+      showFeedback(t('configuracion.profileUpdated'), t('configuracion.profileSavedMessage'), 'success')
     } catch (error: any) {
-      showFeedback('No se pudo guardar', error?.message || 'Revisa los datos del perfil.', 'danger')
+      showFeedback(t('configuracion.profileSaveError'), error?.message || t('configuracion.profileSaveFallback'), 'danger')
     }
+  }
+
+  const saveLanguage = (language: Locale) => {
+    void fetchWithAuth(`${API_BASE}/users/me/language`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(await response.text())
+      const preferences = await response.json()
+      if (onPreferencesUpdated) onPreferencesUpdated(preferences)
+      else onLoggedUserUpdated({ ...loggedUser, ...preferences })
+    }).catch((error: any) => {
+      showFeedback(t('configuracion.profileSaveError'), error?.message || t('configuracion.profileSaveFallback'), 'danger')
+    })
   }
 
   return {
     profileDraft,
     setProfileDraft,
     saveMyProfile,
+    saveLanguage,
   }
 }

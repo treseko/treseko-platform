@@ -2,11 +2,13 @@ import { API_BASE } from '../../app/constants'
 import { mapBackendUserToSession } from '../../app/mappers'
 import type { SessionUser } from '../../app/types'
 import type { Dispatch, SetStateAction } from 'react'
+import type { TranslationKey } from '../../i18n'
 
 type CreateAuthClientParams = {
   setLoggedUser: Dispatch<SetStateAction<SessionUser>>
   setIsAuthenticated: (authenticated: boolean) => void
   setLoginError: (error: string) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 function isFormDataBody(body: BodyInit | null | undefined): body is FormData {
@@ -53,11 +55,12 @@ function serializeSessionUser(user: SessionUser) {
 export function createAuthClient({
   setLoggedUser,
   setIsAuthenticated,
-  setLoginError
+  setLoginError,
+  t
 }: CreateAuthClientParams) {
   const persistAccessToken = (accessToken: string) => {
     if (!accessToken) {
-      throw new Error('El backend no devolvió un token de sesión válido.')
+      throw new Error(t('auth.invalidSessionToken'))
     }
     localStorage.setItem('qa_access_token', accessToken)
     localStorage.setItem('qa_session_expires_at', getJwtExpiresAt(accessToken))
@@ -76,7 +79,7 @@ export function createAuthClient({
 
     if (!response.ok) {
       const error = await response.json().catch(() => null)
-      throw new Error(error?.detail || 'No se pudo iniciar sesión en backend.')
+      throw new Error(error?.detail || t('auth.backendLoginFailed'))
     }
 
     const data = await response.json()
@@ -93,7 +96,7 @@ export function createAuthClient({
 
     if (!response.ok) {
       const error = await response.json().catch(() => null)
-      throw new Error(error?.detail || 'No se pudo iniciar sesión con Active Directory.')
+      throw new Error(error?.detail || t('auth.adLoginFailed'))
     }
 
     const data = await response.json()
@@ -118,16 +121,16 @@ export function createAuthClient({
   }
 
   const responseWithoutToken = () => new Response(
-    JSON.stringify({ detail: 'Sesión sin token de backend.' }),
+    JSON.stringify({ detail: t('auth.backendTokenMissing') }),
     { status: 401, headers: { 'Content-Type': 'application/json' } }
   )
 
   const responseTemporaryAuthUnavailable = () => new Response(
-    JSON.stringify({ detail: 'No se pudo validar la sesion con backend. Intenta nuevamente.' }),
+    JSON.stringify({ detail: t('auth.backendSessionValidationFailed') }),
     { status: 503, headers: { 'Content-Type': 'application/json' } }
   )
 
-  const clearBackendSession = (message = 'Sesion expirada. Por favor, inicia sesion nuevamente.') => {
+  const clearBackendSession = (message = t('auth.sessionExpired')) => {
     setLoginError(message)
     setIsAuthenticated(false)
     localStorage.removeItem('qa_session_active')
@@ -139,7 +142,7 @@ export function createAuthClient({
   const authHeaders = async () => {
     const token = getStoredAccessToken()
     if (!token) {
-      throw new Error('Sesión sin token de backend.')
+      throw new Error(t('auth.backendTokenMissing'))
     }
     return {
       'Authorization': `Bearer ${token}`,
@@ -153,7 +156,7 @@ export function createAuthClient({
       if (hasValidStoredSession()) {
         return responseTemporaryAuthUnavailable()
       }
-      clearBackendSession('Sesion expirada. Inicia sesion nuevamente.')
+      clearBackendSession(t('auth.sessionExpired'))
       return responseWithoutToken()
     }
     const mergedOptions = {
@@ -190,7 +193,7 @@ export function createAuthClient({
         return
       }
       if (localStorage.getItem('qa_session_active') === 'true') {
-        clearBackendSession('Sesion sin token de backend. Inicia sesion nuevamente.')
+        clearBackendSession(t('auth.backendTokenMissing'))
       }
       return
     }

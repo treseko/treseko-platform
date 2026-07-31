@@ -244,12 +244,29 @@ async def update_my_preferences(db: AsyncSession, user: models.Usuario, preferen
         project_theme_overrides=user.project_theme_overrides or {},
     )
 
+async def update_my_language(db: AsyncSession, user: models.Usuario, language: str):
+    profile_settings = dict(user.profile_settings or {})
+    profile_settings["language"] = language
+    schemas.validate_preference_json_payload(
+        profile_settings,
+        max_bytes=schemas.MAX_PROFILE_SETTINGS_BYTES,
+        label="La configuracion de perfil",
+    )
+    user.profile_settings = profile_settings
+    await db.commit()
+    await db.refresh(user)
+    return schemas.UserPreferences(
+        personal_theme=user.personal_theme or "system",
+        profile_settings=user.profile_settings or {},
+        project_theme_overrides=user.project_theme_overrides or {},
+    )
+
 async def change_my_password(db: AsyncSession, user: models.Usuario, new_hashed_password: str):
     profile_settings = dict(user.profile_settings or {})
     security = dict(profile_settings.get("security") or {})
     security["force_password_change"] = False
     security.pop("force_password_change_reason", None)
-    security["password_changed_at"] = datetime.utcnow().isoformat() + "Z"
+    security["password_changed_at"] = utc_now().isoformat().replace("+00:00", "Z")
     profile_settings["security"] = security
     user.hashed_password = new_hashed_password
     user.session_version = int(user.session_version or 0) + 1

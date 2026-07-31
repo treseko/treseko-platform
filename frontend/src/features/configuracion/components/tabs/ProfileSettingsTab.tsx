@@ -1,6 +1,7 @@
 ﻿import { Button, Card, Col, Form, Row } from 'react-bootstrap'
 import { Check, Save } from 'lucide-react'
 import { BUILTIN_THEMES } from '../../../../app/themes/themeCatalog'
+import { useI18n } from '../../../../i18n'
 
 type ProfileDraft = {
   nombre_completo: string
@@ -16,6 +17,7 @@ type Props = {
   profileDraft: ProfileDraft
   setProfileDraft: (draft: ProfileDraft) => void
   saveMyProfile: (event: any) => void
+  saveLanguage: (language: 'es' | 'en') => void
   canEditProfile?: boolean
 }
 
@@ -24,11 +26,13 @@ export function ProfileSettingsTab({
   profileDraft,
   setProfileDraft,
   saveMyProfile,
+  saveLanguage,
   canEditProfile = true,
 }: Props) {
+  const { t, locale, setLocale } = useI18n()
   return (
     <div className="animate__animated animate__fadeIn">
-      <h5 className="fw-bold text-secondary mb-3 text-uppercase small">Perfil y preferencias personales</h5>
+      <h5 className="fw-bold text-secondary mb-3 text-uppercase small">{t('configuracion.profileTitle')}</h5>
       <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
         <Form onSubmit={saveMyProfile}>
           <div className="d-flex align-items-center gap-3 mb-4">
@@ -40,47 +44,55 @@ export function ProfileSettingsTab({
             </div>
             <div>
               <h6 className="fw-bold text-dark mb-1">{loggedUser.email}</h6>
-              <div className="small text-muted">Avatar por Gravatar con fallback de iniciales. No se suben imagenes en V1.</div>
+              <div className="small text-muted">{t('configuracion.profileAvatarFallback')}</div>
             </div>
           </div>
           <Row className="g-3">
             <Col md={6}>
-              <Form.Label className="fw-bold small text-muted">Nombre completo</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileName')}</Form.Label>
               <Form.Control value={profileDraft.nombre_completo} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, nombre_completo: e.target.value })} />
             </Col>
             <Col md={6}>
-              <Form.Label className="fw-bold small text-muted">Nombre visible</Form.Label>
-              <Form.Control value={profileDraft.display_name} placeholder="Opcional" disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, display_name: e.target.value })} />
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileDisplayName')}</Form.Label>
+              <Form.Control value={profileDraft.display_name} placeholder={t('configuracion.profileDisplayNamePlaceholder')} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, display_name: e.target.value })} />
             </Col>
             <Col md={4}>
-              <Form.Label className="fw-bold small text-muted">Avatar</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileAvatar')}</Form.Label>
               <Form.Select value={profileDraft.avatar_provider} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, avatar_provider: e.target.value })}>
-                <option value="gravatar">Gravatar</option>
-                <option value="none">Iniciales</option>
+                <option value="gravatar">{t('configuracion.profileAvatarGravatar')}</option>
+                <option value="none">{t('configuracion.profileAvatarInitials')}</option>
               </Form.Select>
-              <Form.Text muted>Gravatar usa el email de tu cuenta; iniciales no requiere imagen externa.</Form.Text>
+              <Form.Text muted>{t('configuracion.profileAvatarHint')}</Form.Text>
             </Col>
             <Col md={4} className="opacity-75">
-              <Form.Label className="fw-bold small text-muted">Densidad UI <span className="badge bg-light text-secondary border ms-1">Próximamente</span></Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileDensity')} <span className="badge bg-light text-secondary border ms-1">{t('configuracion.unknown')}</span></Form.Label>
               <Form.Select value={profileDraft.density} disabled>
-                <option value="comfortable">Comfortable</option>
-                <option value="compact">Compacta</option>
+                <option value="comfortable">{t('configuracion.profileDensityComfortable')}</option>
+                <option value="compact">{t('configuracion.profileDensityCompact')}</option>
               </Form.Select>
-              <Form.Text muted>Esta preferencia todavía no modifica la interfaz.</Form.Text>
+              <Form.Text muted>{t('configuracion.profileDensityDisabled')}</Form.Text>
             </Col>
-            <Col md={4} className="opacity-75">
-              <Form.Label className="fw-bold small text-muted">Idioma <span className="badge bg-light text-secondary border ms-1">Próximamente</span></Form.Label>
-              <Form.Select value={profileDraft.language} disabled>
-                <option value="es">Español</option>
-                <option value="en">English</option>
+            <Col md={4}>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileLanguage')}</Form.Label>
+              <Form.Select value={locale} onChange={(e) => { const next = e.target.value as 'es' | 'en'; setLocale(next); saveLanguage(next) }}>
+                <option value="es">{t('configuracion.languageSpanish')}</option>
+                <option value="en">{t('configuracion.languageEnglish')}</option>
               </Form.Select>
-              <Form.Text muted>La traducción completa se habilitará en una versión futura.</Form.Text>
+              <Form.Text muted>{t('configuracion.profileLanguageHint')}</Form.Text>
             </Col>
             <Col xs={12}>
-              <Form.Label className="fw-bold small text-muted">Tema global</Form.Label>
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.profileTheme')}</Form.Label>
               <div className="theme-picker-grid">
                 {BUILTIN_THEMES.map(theme => {
                   const selected = profileDraft.personal_theme === theme.id
+                  const themeCopy: Record<string, [string, string]> = {
+                    system: [t('configuracion.themeSystem'), t('configuracion.themeSystemDescription')],
+                    light: [t('configuracion.themeLight'), t('configuracion.themeLightDescription')],
+                    dark: [t('configuracion.themeDark'), t('configuracion.themeDarkDescription')],
+                    'pink-panther': [t('configuracion.themePink'), t('configuracion.themePinkDescription')],
+                    graphite: [t('configuracion.themeGraphite'), t('configuracion.themeGraphiteDescription')],
+                  }
+                  const [themeName, themeDescription] = themeCopy[theme.id] || [theme.name, theme.description]
                   return (
                     <button
                       type="button"
@@ -95,10 +107,10 @@ export function ProfileSettingsTab({
                       </span>
                       <span className="theme-choice-copy">
                         <span className="theme-choice-title">
-                          {theme.name}
+                          {themeName}
                           {selected && <Check size={14} />}
                         </span>
-                        <span className="theme-choice-description">{theme.description}</span>
+                        <span className="theme-choice-description">{themeDescription}</span>
                       </span>
                     </button>
                   )
@@ -108,7 +120,7 @@ export function ProfileSettingsTab({
           </Row>
           {canEditProfile && (
             <div className="text-end border-top pt-3 mt-4">
-              <Button variant="primary" type="submit" className="px-4 fw-bold rounded-pill shadow-sm"><Save size={16} className="me-2" /> Guardar mi perfil</Button>
+              <Button variant="primary" type="submit" className="px-4 fw-bold rounded-pill shadow-sm"><Save size={16} className="me-2" /> {t('configuracion.profileSave')}</Button>
             </div>
           )}
         </Form>

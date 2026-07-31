@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useI18n } from '../../../i18n'
 import { Button, Spinner } from 'react-bootstrap'
 import { History, Search } from 'lucide-react'
 import { HistorialFilters } from '../components/HistorialFilters'
@@ -60,6 +61,7 @@ export function HistorialRunsPage({
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [detail, setDetail] = useState<any | null>(null)
+  const { t } = useI18n()
 
   const datasets = useMemo(() => {
     return environments.flatMap((env: any) => (env.datasets || []).map((dataset: any) => ({
@@ -86,7 +88,7 @@ export function HistorialRunsPage({
       const data = await onLoadRunDetail(runId)
       setDetail(data)
     } catch (error: any) {
-      setDetailError(error.message || 'No se pudo cargar el detalle del run')
+      setDetailError(error.message || t('historial.couldNotLoadDetail'))
     } finally {
       setDetailLoading(false)
     }
@@ -124,8 +126,8 @@ export function HistorialRunsPage({
   if (!currentProjectId) {
     return (
       <WorkspaceContextEmptyState
-        message="Selecciona una solución y un proyecto para continuar."
-        detail="El historial de ejecuciones aparecerá cuando tengas un proyecto seleccionado."
+        message={t('historial.selectSolutionAndProject')}
+        detail={t('historial.historyWillAppear')}
       />
     )
   }
@@ -134,10 +136,10 @@ export function HistorialRunsPage({
     <div className="p-4 animate__animated animate__fadeIn text-dark text-start">
       <div className="d-flex align-items-center justify-content-between mb-4 gap-3 flex-wrap">
         <h4 className="fw-bold text-primary d-flex align-items-center gap-2 m-0">
-          <History size={24} /> Historial de Ejecuciones
+          <History size={24} /> {t('historial.pageTitle')}
         </h4>
         <Button variant="outline-primary" size="sm" className="d-flex align-items-center gap-2" onClick={() => applyFilters()} disabled={loading}>
-          {loading ? <Spinner size="sm" /> : <Search size={15} />} Buscar
+          {loading ? <Spinner size="sm" /> : <Search size={15} />} {t('historial.search')}
         </Button>
       </div>
 

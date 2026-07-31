@@ -27,6 +27,14 @@ async def update_my_preferences(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+@router.patch("/users/me/language", response_model=schemas.UserPreferences)
+async def update_my_language(
+    payload: schemas.UserLanguageUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_active_user),
+):
+    return await crud.update_my_language(db, current_user, payload.language)
+
 
 @router.patch("/users/me/password", response_model=schemas.UserPasswordChangeResponse)
 async def change_my_password(

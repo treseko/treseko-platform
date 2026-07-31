@@ -3,6 +3,7 @@ import logging
 from zoneinfo import ZoneInfo
 
 from ..services.error_sanitizer import sanitize_external_error
+from ..services.error_contract import correlation_headers, current_correlation_id
 
 
 logger = logging.getLogger(__name__)
@@ -365,7 +366,12 @@ async def _legacy_trigger_ai_execution_unused(ejecucion_id: UUID, db: AsyncSessi
     }
     try:
         async with httpx.AsyncClient(timeout=LEGACY_AI_ENGINE_TIMEOUT) as client:
-            resp = await client.post(f"{ENGINE_URL}/run-task", json=payload)
+            correlation_id = current_correlation_id(str(ejecucion_id))
+            resp = await client.post(
+                f"{ENGINE_URL}/run-task",
+                json={**payload, "correlation_id": correlation_id},
+                headers=engine_internal_headers(correlation_id),
+            )
             if resp.status_code == 200:
                 logger.info("IA iniciada para ejecución %s", ejecucion_id)
             else:

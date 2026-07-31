@@ -195,7 +195,7 @@ async def clone_suite_recursive(db: AsyncSession, original_id: UUID, new_parent_
     original = result.scalar_one_or_none()
     if not original:
         return
-    
+
     cloned = models.Suite(
         proyecto_id=original.proyecto_id,
         componente_id=original.componente_id,
@@ -208,7 +208,7 @@ async def clone_suite_recursive(db: AsyncSession, original_id: UUID, new_parent_
     )
     db.add(cloned)
     await db.flush()
-    
+
     result = await db.execute(
         select(models.Suite).filter(models.Suite.parent_id == original_id, models.Suite.activo == True)
     )
@@ -220,27 +220,27 @@ async def move_suite(db: AsyncSession, suite_id: UUID, new_parent_id: Optional[U
     db_suite = await get_suite(db, suite_id)
     if not db_suite:
         return False, "Suite no encontrada"
-    
+
     if new_parent_id:
         if new_parent_id == suite_id:
             return False, "No se puede mover una suite a sí misma"
-        
+
         descendants = await get_all_descendant_suites(db, suite_id)
         if any(d.id == new_parent_id for d in descendants):
             return False, "No se puede mover una suite a uno de sus descendientes"
-        
+
         result = await db.execute(select(models.Suite).filter(models.Suite.id == new_parent_id))
         new_parent = result.scalar_one_or_none()
         if not new_parent:
             return False, "Suite padre no encontrada"
-        
+
         if new_parent.proyecto_id != db_suite.proyecto_id:
             return False, "No se puede mover a una suite de otro proyecto"
         if db_suite.componente_id and new_parent.componente_id and db_suite.componente_id != new_parent.componente_id:
             return False, "No se puede mover a una suite de otro componente"
         if not db_suite.componente_id and new_parent.componente_id:
             db_suite.componente_id = new_parent.componente_id
-    
+
     db_suite.parent_id = new_parent_id
     await db.commit()
     await db.refresh(db_suite)
@@ -412,7 +412,7 @@ async def get_casos_proyecto(db: AsyncSession, proyecto_id: UUID, include_archiv
     if user_ids:
         users_result = await db.execute(select(models.Usuario).filter(models.Usuario.id.in_(user_ids)))
         users_by_id = {user.id: user for user in users_result.scalars().all()}
-    
+
     # Enriquecer con información de última ejecución
     casos_enriquecidos = []
     for caso in casos:
@@ -443,16 +443,16 @@ async def get_casos_proyecto(db: AsyncSession, proyecto_id: UUID, include_archiv
             "fecha_creacion": caso.fecha_creacion,
             "ultima_modificacion": caso.ultima_modificacion,
         }
-        
+
         # Obtener información del usuario que ejecutó
         if caso.ultima_ejecucion_por:
             user = users_by_id.get(caso.ultima_ejecucion_por)
             if user:
                 caso_dict["ultima_ejecucion_por_nombre"] = user.nombre_completo
                 caso_dict["ultima_ejecucion_por_email"] = user.email
-        
+
         casos_enriquecidos.append(caso_dict)
-    
+
     return casos_enriquecidos
 
 async def get_caso(db: AsyncSession, caso_id: UUID):
@@ -475,10 +475,10 @@ async def delete_caso(db: AsyncSession, caso_id: UUID) -> tuple[bool, str]:
     db_caso = await get_caso(db, caso_id)
     if not db_caso:
         return False, "Caso no encontrado"
-    
+
     if await has_executions(db, caso_id):
         return False, f"No se puede eliminar el caso porque tiene ejecuciones"
-    
+
     db_caso.activo = False
     await db.commit()
     return True, "Caso eliminado correctamente"

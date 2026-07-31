@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import test, { after, before } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { runQaSteps } from './step-runner.ts';
 import type { QAEngineStep } from './action-types.ts';
 
 const fixtureUrl = 'http://127.0.0.1:19221';
+const fixtureDirectory = fileURLToPath(new URL('./fixtures/ai-agent-campaign/', import.meta.url));
+const fixtureServer = `${fixtureDirectory}fixture-server.mjs`;
+const campaignCases = `${fixtureDirectory}cases.json`;
 let fixture: ChildProcess;
 let browser: Browser;
 let context: BrowserContext;
@@ -23,7 +27,7 @@ async function waitForFixture(): Promise<void> {
 }
 
 before(async () => {
-  fixture = spawn(process.execPath, ['../tools/ai-agent-campaign/fixture-server.mjs'], {
+  fixture = spawn(process.execPath, [fixtureServer], {
     cwd: process.cwd(),
     env: { ...process.env, AI_CAMPAIGN_FIXTURE_PORT: '19221' },
     stdio: 'ignore',
@@ -42,7 +46,7 @@ after(async () => {
 });
 
 test('los 25 casos tienen un resultado determinista sin delegar hechos observables al LLM', async () => {
-  const raw = await readFile('../tools/ai-agent-campaign/cases.json', 'utf8');
+  const raw = await readFile(campaignCases, 'utf8');
   const cases = JSON.parse(raw) as Array<{
     code: string;
     title: string;
@@ -63,6 +67,7 @@ test('los 25 casos tienen un resultado determinista sin delegar hechos observabl
       planStepAction: async () => {
         throw new Error(`El caso ${definition.code} delego una accion determinista al LLM`);
       },
+      sendAgentExecutionResult: async () => undefined,
     };
     try {
       const result = await runQaSteps(page, forbiddenAi as any, steps, {

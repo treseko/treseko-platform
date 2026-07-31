@@ -34,6 +34,35 @@ def _decode(value: str) -> bytes:
     try: return base64.b64decode(value, validate=True)
     except Exception as exc: raise HTTPException(status_code=422, detail="El archivo codificado no es válido") from exc
 
+
+async def _require_active_import_build(db: AsyncSession, current_user: models.Usuario, build_id: UUID, project_id: UUID, component_id: UUID):
+    build = await access_control.require_build_access(db, current_user, build_id, "edit")
+    if build.proyecto_id != project_id or build.componente_id != component_id:
+        raise HTTPException(status_code=422, detail="La build destino no pertenece al componente seleccionado")
+    if not access_control.is_build_active(build):
+        raise HTTPException(status_code=409, detail="La build está inactiva. No se puede importar ni modificar contenido en una build histórica.")
+    return build
+
+
+async def _require_active_rollback_targets(db: AsyncSession, batch: models.CaseImportBatch) -> None:
+    case_ids = [UUID(value) for value in (batch.created_case_ids or [])]
+    if not case_ids:
+        return
+    inactive_build_id = await db.scalar(
+        select(models.Build.id)
+        .join(models.BuildCaso, models.BuildCaso.build_id == models.Build.id)
+        .where(
+            models.BuildCaso.caso_id.in_(case_ids),
+            (models.Build.activo.is_(False) | (models.Build.estado != "ACTIVA")),
+        )
+        .limit(1)
+    )
+    if inactive_build_id:
+        raise HTTPException(
+            status_code=409,
+            detail="El lote contiene casos asignados a una build inactiva. No se puede revertir contenido histórico.",
+        )
+
 @router.get("/profiles")
 async def read_profiles(current_user: models.Usuario = Depends(auth.get_current_active_user)):
     _capability(current_user, "read")
@@ -77,8 +106,7 @@ async def import_cases(project_id: UUID, payload: ImportPayload, request: Reques
     component = await db.get(models.Componente, payload.component_id)
     if not component or component.proyecto_id != project_id: raise HTTPException(status_code=422, detail="El componente destino no pertenece al proyecto")
     if payload.build_id:
-        build = await db.get(models.Build, payload.build_id)
-        if not build or build.proyecto_id != project_id or build.componente_id != component.id: raise HTTPException(status_code=422, detail="La build destino no pertenece al componente seleccionado")
+        await _require_active_import_build(db, current_user, payload.build_id, project_id, component.id)
     try:
         case_portability.validate_file_extension(payload.profile_id, payload.file_name)
         batch = await case_portability.commit_import(db, project_id, payload.profile_id, _decode(payload.content_base64), payload.file_name, current_user.id, payload.selected_external_ids, payload.component_id, payload.build_id)
@@ -101,6 +129,7 @@ async def rollback_import(batch_id: UUID, db: AsyncSession = Depends(get_db), cu
     _capability(current_user, "edit"); batch = await db.get(models.CaseImportBatch, batch_id)
     if not batch: raise HTTPException(status_code=404, detail="Lote de importación no encontrado")
     await access_control.require_project_access(db, current_user, batch.proyecto_id, "edit")
+    await _require_active_rollback_targets(db, batch)
     try: batch = await case_portability.rollback_batch(db, batch, current_user.id)
     except case_portability.PortabilityError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
     await create_audit_log(db, current_user.id, "case_portability.rolled_back", "case_import_batch", batch.id, {"project_id": str(batch.proyecto_id)})

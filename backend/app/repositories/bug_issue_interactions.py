@@ -57,8 +57,12 @@ async def add_bug_attachment(db: AsyncSession, bug_id: UUID, payload: schemas.Bu
         db.add(link)
     bug.updated_at = utc_now()
     await db.commit()
-    await db.refresh(link)
-    return link
+    result = await db.execute(
+        select(models.BugAttachment)
+        .options(selectinload(models.BugAttachment.attachment))
+        .filter(models.BugAttachment.id == link.id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_bug_attachments(db: AsyncSession, bug_id: UUID):
@@ -91,7 +95,7 @@ async def create_bug_from_snapshot(db: AsyncSession, snapshot_id: UUID, payload:
     if not row:
         return None
     snapshot, execution, run, case, build = row
-    if build and not build.activo:
+    if build and not access_control.is_build_active(build):
         raise ValueError("La build está inactiva. No se pueden reportar bugs sobre una build cerrada.")
     if snapshot.estado_paso not in {models.EstadoResultado.FALLO, models.EstadoResultado.BLOQUEADO} and execution.estado_resultado not in {models.EstadoResultado.FALLO, models.EstadoResultado.BLOQUEADO}:
         raise ValueError("Solo se puede crear bug directo desde snapshot fallido o bloqueado.")

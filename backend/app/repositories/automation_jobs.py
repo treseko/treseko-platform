@@ -27,10 +27,8 @@ async def create_automation_job_for_execution(
         raise ValueError("Proyecto no encontrado")
 
     if run.build_id:
-        build_active = (
-            await db.execute(select(models.Build.activo).filter(models.Build.id == run.build_id))
-        ).scalar_one_or_none()
-        if build_active is False:
+        build = (await db.execute(select(models.Build).filter(models.Build.id == run.build_id))).scalar_one_or_none()
+        if build is None or not access_control.is_build_active(build):
             raise ValueError("La build está inactiva. No se pueden crear jobs de automatización sobre una build cerrada.")
 
     case_result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == execution.caso_id))
@@ -267,6 +265,9 @@ async def list_automation_jobs(
             models.TestRun.proyecto_id == proyecto_id,
             models.Build.proyecto_id == proyecto_id,
             models.CasoPrueba.proyecto_id == proyecto_id,
+            # Dry-runs do not have a run/build/case row. Their controlled
+            # project scope is intentionally frozen in the job payload.
+            models.AutomationJob.payload_congelado["proyecto_id"].as_string() == str(proyecto_id),
         ))
     elif accessible_project_ids is not None:
         if not accessible_project_ids:

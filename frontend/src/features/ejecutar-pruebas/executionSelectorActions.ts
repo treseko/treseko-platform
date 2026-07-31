@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { toDateTimeLocalInput } from '../../shared/utils/dateTime'
+import type { TranslationKey } from '../../i18n/types'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -20,6 +21,7 @@ type CreateExecutionSelectorActionsParams = {
   setScheduledTime: (time: string) => void
   setShowIaScheduler: (show: boolean) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createExecutionSelectorActions({
@@ -38,27 +40,28 @@ export function createExecutionSelectorActions({
   setExecName,
   setScheduledTime,
   setShowIaScheduler,
-  showFeedback
+  showFeedback,
+  t
 }: CreateExecutionSelectorActionsParams) {
   const openExecutionSelector = () => {
     if (filteredTests.length === 0) {
       if (suiteBuildMissingCount > 0) {
-        showFeedback('Sin casos ejecutables', `${suiteBuildMissingCount} caso(s) de esta suite no están asignados a la build activa. Asígnalos desde Proyectos > Componentes y Builds.`, 'warning')
+        showFeedback(t('ejecutarPruebas.noExecutableCases'), t('ejecutarPruebas.missingBuildCases', { count: suiteBuildMissingCount }), 'warning')
       } else if (suiteComponentMismatchCount > 0) {
-        showFeedback('Sin casos ejecutables', `${suiteComponentMismatchCount} caso(s) pertenecen a otro componente. Cambia el componente o la build activa.`, 'warning')
+        showFeedback(t('ejecutarPruebas.noExecutableCases'), t('ejecutarPruebas.componentMismatchCases', { count: suiteComponentMismatchCount }), 'warning')
       } else {
-        showFeedback('Sin casos ejecutables', 'La suite seleccionada no tiene casos ejecutables para la build activa.', 'warning')
+        showFeedback(t('ejecutarPruebas.noExecutableCases'), t('ejecutarPruebas.noExecutableCasesMessage'), 'warning')
       }
       return
     }
     const selectedExecutableTestIds = selectedExecutionTestIds.filter(testId => filteredExecutionTestIds.includes(testId))
     if (selectedExecutableTestIds.length === 0) {
-      showFeedback('Selección requerida', 'Selecciona al menos un caso ejecutable antes de iniciar la ejecución.', 'warning')
+      showFeedback(t('ejecutarPruebas.selectionRequired'), t('ejecutarPruebas.selectionRequiredMessage'), 'warning')
       return
     }
     setExecutionModalCaseIds(selectedExecutableTestIds)
     if (selectedExecutionDiscardedCount > 0) {
-      showFeedback('Selección ajustada', `${selectedExecutionDiscardedCount} caso(s) fueron omitidos porque no pertenecen al componente/build activos.`, 'info')
+      showFeedback(t('ejecutarPruebas.selectionAdjusted'), t('ejecutarPruebas.selectionAdjustedMessage', { count: selectedExecutionDiscardedCount }), 'info')
     }
     setShowExecSelector(true)
   }
@@ -80,7 +83,7 @@ export function createExecutionSelectorActions({
     setSelectedTestsForIa(executionModalTests.length > 0 ? executionModalTests.map(test => test.id) : filteredTests.map(test => test.id))
     setExecutionModalCaseIds(null)
     setSchedulerSearch('')
-    setExecName(`Run IA - ${new Date().toISOString().slice(0, 10)}`)
+    setExecName(`${t('ejecutarPruebas.iaRunName')} - ${new Date().toISOString().slice(0, 10)}`)
     const now = new Date()
     now.setMinutes(now.getMinutes() + 5)
     setScheduledTime(toDateTimeLocalInput(now.toISOString()))

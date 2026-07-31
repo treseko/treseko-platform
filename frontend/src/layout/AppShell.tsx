@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeft,
-  Bell,
-  BellOff,
   Building2,
   Check,
   ChevronRight,
@@ -19,7 +17,10 @@ import { Badge, Button, Dropdown, Nav } from 'react-bootstrap'
 import type { ModuleId, SessionUser } from '../app/types'
 import { DEFAULT_BRANDING, type BrandingState } from '../app/branding'
 import { resolveAssetUrl } from '../shared/utils/assets'
-import { API_BASE } from '../app/constants'
+import { useI18n } from '../i18n'
+import { isBuildReadOnly } from '../app/buildState'
+import { useAppNotifications } from './useAppNotifications'
+import { NotificationInbox } from './NotificationInbox'
 
 export type SidebarItem = {
   id: ModuleId
@@ -80,15 +81,14 @@ export function AppShell({
   systemEdition = 'community',
   branding = DEFAULT_BRANDING
 }: AppShellProps) {
+  const { t, locale } = useI18n()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [notifications, setNotifications] = useState<any[]>([])
-  const [notificationsLoading, setNotificationsLoading] = useState(false)
-  const [notificationPreferences, setNotificationPreferences] = useState<any[]>([])
   const activeOrganizations = organizations.filter(org => org.active !== false)
   const currentOrg = activeOrganizations.find(org => org.id === currentOrgId)
   const currentProject = projectsList.find(project => project.id === currentProjectId)
   const currentComponent = componentsList.find(component => component.id === currentCompId)
   const currentBuild = buildsList.find(build => build.id === currentBuildId)
+  const currentBuildReadOnly = isBuildReadOnly(currentBuild)
   const projectComponents = componentsList.filter(component => component.projectId === currentProjectId)
   const currentOrgIsActive = activeOrganizations.some(org => org.id === currentOrgId)
   const orgProjects = currentOrgIsActive ? projectsList.filter(project => project.orgId === currentOrgId) : []
@@ -96,170 +96,12 @@ export function AppShell({
   const editionLabel = systemEdition === 'premium' ? 'Premium' : 'Community'
   const brandName = branding.effective_brand_name || DEFAULT_BRANDING.effective_brand_name
   const brandLogoUrl = resolveAssetUrl(branding.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url
-  const globalInAppPreference = notificationPreferences.find(item => !item.event_type && item.channel === 'in_app')
-  const muteUntilValue = globalInAppPreference?.quiet_hours_json?.mute_until
-  const muteUntil = muteUntilValue ? new Date(muteUntilValue) : null
-  const notificationsDisabled = globalInAppPreference?.enabled === false || globalInAppPreference?.frequency === 'never'
-  const notificationsMuted = !!muteUntil && muteUntil.getTime() > Date.now()
+  const notificationState = useAppNotifications({ loggedUserId: loggedUser.id, loggedUserEmail: loggedUser.email, locale, t })
 
   const navigateMobile = (moduleId: ModuleId) => {
     onModuleNavigation(moduleId)
     setMobileMenuOpen(false)
   }
-
-  const loadNotifications = async () => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token) return
-    setNotificationsLoading(true)
-    try {
-      const response = await fetch(`${API_BASE}/notifications/inbox/?limit=10`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (!response.ok) return
-      setNotifications(await response.json())
-    } catch {
-    } finally {
-      setNotificationsLoading(false)
-    }
-  }
-
-  const loadNotificationPreferences = async () => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token) return
-    try {
-      const response = await fetch(`${API_BASE}/users/me/notification-preferences/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (!response.ok) return
-      setNotificationPreferences(await response.json())
-    } catch {
-    }
-  }
-
-  const saveNotificationMute = async (hours: number | null) => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token) return
-    const otherPreferences = notificationPreferences.filter(item => !(item.event_type === null && item.channel === 'in_app'))
-    const muteUntilIso = hours ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null
-    const nextPreference = {
-      event_type: null,
-      channel: 'in_app',
-      enabled: true,
-      frequency: 'immediate',
-      quiet_hours_json: muteUntilIso ? { mute_until: muteUntilIso } : {},
-    }
-    try {
-      const response = await fetch(`${API_BASE}/users/me/notification-preferences/`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([...otherPreferences.map(({ event_type, channel, enabled, frequency, quiet_hours_json }: any) => ({
-          event_type,
-          channel,
-          enabled,
-          frequency,
-          quiet_hours_json,
-        })), nextPreference])
-      })
-      if (response.ok) {
-        setNotificationPreferences(await response.json())
-      }
-    } catch {
-    }
-  }
-
-  const setNotificationsDisabled = async (disabled: boolean) => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token) return
-    const otherPreferences = notificationPreferences.filter(item => !(item.event_type === null && item.channel === 'in_app'))
-    const nextPreference = {
-      event_type: null,
-      channel: 'in_app',
-      enabled: !disabled,
-      frequency: disabled ? 'never' : 'immediate',
-      quiet_hours_json: {},
-    }
-    try {
-      const response = await fetch(`${API_BASE}/users/me/notification-preferences/`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([...otherPreferences.map(({ event_type, channel, enabled, frequency, quiet_hours_json }: any) => ({
-          event_type,
-          channel,
-          enabled,
-          frequency,
-          quiet_hours_json,
-        })), nextPreference])
-      })
-      if (response.ok) {
-        setNotificationPreferences(await response.json())
-      }
-    } catch {
-    }
-  }
-
-  const markNotificationRead = async (notification: any) => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token || notification?.read_at) return
-    try {
-      const response = await fetch(`${API_BASE}/notifications/inbox/${notification.id}/read/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (response.ok) {
-        await loadNotifications()
-      }
-    } catch {
-    }
-  }
-
-  const notificationTypeLabel = (type?: string) => ({
-    ADMINISTRATIVA: 'Administrativa',
-    CALIDAD: 'Calidad',
-    IA: 'IA',
-    PROYECTO: 'Proyecto',
-    REPORTE: 'Reporte',
-    SEGURIDAD: 'Seguridad',
-  }[String(type || '').toUpperCase()] || 'General')
-
-  const notificationVariant = (type?: string) => ({
-    ADMINISTRATIVA: 'secondary',
-    CALIDAD: 'warning',
-    IA: 'primary',
-    PROYECTO: 'info',
-    REPORTE: 'success',
-    SEGURIDAD: 'danger',
-  }[String(type || '').toUpperCase()] || 'secondary') as any
-
-  const notificationTime = (value?: string) => {
-    if (!value) return ''
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
-  }
-
-  const markAllNotificationsRead = async () => {
-    const token = localStorage.getItem('qa_access_token')
-    if (!token) return
-    try {
-      const response = await fetch(`${API_BASE}/notifications/inbox/read-all/`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (response.ok) {
-        await loadNotifications()
-      }
-    } catch {
-    }
-  }
-
-  useEffect(() => {
-    void loadNotifications()
-    void loadNotificationPreferences()
-    const timer = window.setInterval(() => { void loadNotifications() }, 60000)
-    return () => window.clearInterval(timer)
-  }, [loggedUser.id, loggedUser.email])
-
-  const unreadNotifications = notifications.filter(item => !item.read_at).length
 
   return (
     <div className="app-shell vh-100 d-flex bg-light text-dark overflow-hidden font-sans">
@@ -268,7 +110,7 @@ export function AppShell({
           variant="dark"
           className="app-mobile-menu-button border border-secondary shadow-none"
           onClick={() => setMobileMenuOpen(true)}
-          aria-label="Abrir menu"
+          aria-label={t('common.openMenu')}
         >
           <Menu size={20} />
         </Button>
@@ -279,12 +121,12 @@ export function AppShell({
           <div className="fw-bold text-white lh-sm text-truncate">{brandName}</div>
           <div className="app-edition-text text-truncate">{editionLabel}</div>
           <div className="x-small text-white-50 text-truncate">
-            {currentProject?.name || 'Sin Proyecto'} {currentBuild?.name ? `- ${currentBuild.name}` : ''}
+          {currentProject?.name || t('common.noProject')} {currentBuild?.name ? `- ${currentBuild.name}` : ''}
           </div>
         </div>
       </div>
 
-      {mobileMenuOpen && <button type="button" className="app-mobile-scrim" aria-label="Cerrar menu" onClick={() => setMobileMenuOpen(false)} />}
+      {mobileMenuOpen && <button type="button" className="app-mobile-scrim" aria-label={t('common.closeMenu')} onClick={() => setMobileMenuOpen(false)} />}
       <div className={`app-mobile-drawer bg-dark text-white ${mobileMenuOpen ? 'is-open' : ''}`}>
         <div className="d-flex align-items-center justify-content-between p-3 border-bottom border-secondary">
           <div className="d-flex align-items-center gap-2 min-w-0">
@@ -296,16 +138,16 @@ export function AppShell({
               <div className="app-edition-text text-truncate">{editionLabel}</div>
             </div>
           </div>
-          <Button variant="dark" size="sm" className="border border-secondary shadow-none" onClick={() => setMobileMenuOpen(false)} aria-label="Cerrar menu">
+          <Button variant="dark" size="sm" className="border border-secondary shadow-none" onClick={() => setMobileMenuOpen(false)} aria-label={t('common.closeMenu')}>
             <X size={18} />
           </Button>
         </div>
 
         <div className="p-3 border-bottom border-secondary">
-          <div className="x-small text-secondary fw-bold text-uppercase mb-2">Contexto</div>
+          <div className="x-small text-secondary fw-bold text-uppercase mb-2">{t('common.context')}</div>
           <Dropdown className="mb-2">
             <Dropdown.Toggle variant="dark" className="w-100 border border-secondary d-flex justify-content-between align-items-center shadow-none">
-              <span className="text-truncate">{currentOrg?.name || 'Seleccione cliente'}</span>
+              <span className="text-truncate">{currentOrg?.name || t('common.selectClient')}</span>
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {activeOrganizations.map(org => (
@@ -317,7 +159,7 @@ export function AppShell({
           </Dropdown>
           <Dropdown className="mb-2">
             <Dropdown.Toggle variant="dark" className="w-100 border border-secondary d-flex justify-content-between align-items-center shadow-none">
-              <span className="text-truncate">{currentProject?.name || 'Sin Proyecto'}</span>
+              <span className="text-truncate">{currentProject?.name || t('common.noProject')}</span>
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {orgProjects.map(project => (
@@ -329,12 +171,14 @@ export function AppShell({
           </Dropdown>
           <Dropdown>
             <Dropdown.Toggle variant="dark" className="w-100 border border-secondary d-flex justify-content-between align-items-center shadow-none">
-              <span className="text-truncate">{currentBuild?.name || 'Sin Build'}</span>
+              <span className="text-truncate">{currentBuild?.name || t('common.noBuild')}</span>
+              {currentBuildReadOnly && <Badge bg="warning" text="dark" className="ms-1">{t('common.readOnly')}</Badge>}
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {sortBuildsNewestFirst(visibleBuilds).map(build => (
                 <Dropdown.Item key={build.id} active={build.id === currentBuildId} onClick={() => onBuildChange(build)}>
                   {build.name}
+                  {isBuildReadOnly(build) && <Badge bg="warning" text="dark" className="ms-2">{t('common.readOnly')}</Badge>}
                 </Dropdown.Item>
               ))}
             </Dropdown.Menu>
@@ -352,7 +196,7 @@ export function AppShell({
                 className="border-0 d-flex align-items-center text-start gap-3 p-2 shadow-none"
               >
                 <Icon size={18} />
-                <span className="small fw-medium text-white">{item.label}</span>
+                <span className="small fw-medium text-white">{t(`navigation.${item.id}`)}</span>
               </Button>
             )
           })}
@@ -369,7 +213,7 @@ export function AppShell({
             <div className="text-white fw-bold small text-truncate">{loggedUser.name}</div>
             <div className="text-secondary x-small text-truncate">{loggedUser.roleLabel || loggedUser.role}</div>
           </div>
-          <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={onLogout}>
+          <Button variant="link" className="text-secondary p-1 shadow-none" title={t('auth.logout')} aria-label={t('auth.logout')} onClick={onLogout}>
             <LogOut size={16} />
           </Button>
         </div>
@@ -392,7 +236,7 @@ export function AppShell({
           <Button
             variant="dark"
             className="w-100 border border-secondary d-flex align-items-center justify-content-center shadow-none"
-            title={sidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
+            title={sidebarCollapsed ? t('common.expandMenu') : t('common.collapseMenu')}
             onClick={() => setSidebarCollapsed(prev => !prev)}
           >
             {sidebarCollapsed ? <ChevronRight size={18} /> : <ArrowLeft size={18} />}
@@ -407,10 +251,10 @@ export function AppShell({
                 key={item.id}
                 variant={activeTab === item.id ? 'primary' : 'dark'}
                 onClick={() => onModuleNavigation(item.id)}
-                title={item.label}
+                title={t(`navigation.${item.id}`)}
                 className={`border-0 d-flex align-items-center mb-1 p-2 shadow-none ${sidebarCollapsed ? 'justify-content-center' : 'text-start gap-3'}`}
               >
-                <Icon size={18} /> {!sidebarCollapsed && <span className="small fw-medium text-white">{item.label}</span>}
+                <Icon size={18} /> {!sidebarCollapsed && <span className="small fw-medium text-white">{t(`navigation.${item.id}`)}</span>}
               </Button>
             )
           })}
@@ -423,12 +267,12 @@ export function AppShell({
                 <div className="d-flex align-items-center gap-2 text-truncate">
                   <Building2 size={16} className="text-primary" />
                   <span className="fw-bold text-truncate text-white small">
-                    {currentOrg?.name || 'Seleccione cliente'}
+                    {currentOrg?.name || t('common.selectClient')}
                   </span>
                 </div>
               </Dropdown.Toggle>
               <Dropdown.Menu className="sidebar-org-menu bg-dark border-secondary shadow-lg w-100 py-1" style={{ minWidth: '240px' }}>
-                <div className="px-3 py-1 text-muted x-small uppercase fw-bold border-bottom border-secondary mb-1">CLIENTES / EMPRESAS</div>
+                <div className="px-3 py-1 text-muted x-small uppercase fw-bold border-bottom border-secondary mb-1">{t('common.clientsCompanies')}</div>
                 {activeOrganizations.map(org => (
                   <Dropdown.Item
                     key={org.id}
@@ -441,7 +285,7 @@ export function AppShell({
                   </Dropdown.Item>
                 ))}
                 {activeOrganizations.length === 0 && (
-                  <div className="px-3 py-2 text-muted x-small">Sin clientes disponibles.</div>
+                  <div className="px-3 py-2 text-muted x-small">{t('common.noClientsAvailable')}</div>
                 )}
               </Dropdown.Menu>
             </Dropdown>
@@ -462,7 +306,7 @@ export function AppShell({
             </div>
           )}
           {!sidebarCollapsed && (
-            <Button variant="link" className="text-secondary p-1 shadow-none" title="Cerrar sesión" aria-label="Cerrar sesión" onClick={onLogout}>
+            <Button variant="link" className="text-secondary p-1 shadow-none" title={t('auth.logout')} aria-label={t('auth.logout')} onClick={onLogout}>
               <LogOut size={16} />
             </Button>
           )}
@@ -477,7 +321,7 @@ export function AppShell({
               <span>{currentOrg?.name}</span>
               <span className="mx-2 text-muted opacity-50">/</span>
               <Folders size={14} className="text-primary me-1" />
-              <span className="text-dark fw-bold text-truncate" title={currentProject?.name || 'Sin Proyecto'}>{currentProject?.name || 'Sin Proyecto'}</span>
+              <span className="text-dark fw-bold text-truncate" title={currentProject?.name || t('common.noProject')}>{currentProject?.name || t('common.noProject')}</span>
             </div>
 
             <Dropdown className="ms-3">
@@ -488,10 +332,10 @@ export function AppShell({
                 className="border d-flex align-items-center gap-1 x-small fw-bold py-1 px-2 shadow-none text-dark bg-white"
               >
                 <Layers size={12} className="text-secondary" />
-                Componente: <span className="text-primary">{currentComponent?.name || 'Sin Componente'}</span>
+                {t('common.component')}: <span className="text-primary">{currentComponent?.name || t('common.noComponent')}</span>
               </Dropdown.Toggle>
               <Dropdown.Menu className="shadow-lg py-1 border text-start">
-                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">COMPONENTES DEL PROYECTO</div>
+                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">{t('common.projectComponents')}</div>
                 {projectComponents.map(component => (
                   <Dropdown.Item
                     key={component.id}
@@ -504,7 +348,7 @@ export function AppShell({
                   </Dropdown.Item>
                 ))}
                 {projectComponents.length === 0 && (
-                  <div className="px-3 py-2 text-muted x-small">Sin componentes. Créalos en Proyectos.</div>
+                  <div className="px-3 py-2 text-muted x-small">{t('common.noComponentsCreateInProjects')}</div>
                 )}
               </Dropdown.Menu>
             </Dropdown>
@@ -512,12 +356,12 @@ export function AppShell({
 
           <div className="app-shell-actions d-flex align-items-center gap-2">
             <Dropdown>
-              <Dropdown.Toggle variant="light" size="sm" className="app-shell-project-toggle border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none" title={currentProject?.name || 'Ninguno'}>
+          <Dropdown.Toggle variant="light" size="sm" className="app-shell-project-toggle border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none" title={currentProject?.name || t('common.none')}>
                 <Folders size={14} className="text-primary" />
-                Proyecto: <span className="text-dark text-truncate">{currentProject?.name || 'Ninguno'}</span>
+                {t('navigation.projects')}: <span className="text-dark text-truncate">{currentProject?.name || t('common.none')}</span>
               </Dropdown.Toggle>
               <Dropdown.Menu className="shadow-lg py-1 border text-start" align="end" style={{ minWidth: '220px' }}>
-                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">CAMBIAR DE PROYECTO</div>
+                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">{t('common.changeProject')}</div>
                 {orgProjects.map(project => (
                   <Dropdown.Item
                     key={project.id}
@@ -535,10 +379,11 @@ export function AppShell({
             <Dropdown>
               <Dropdown.Toggle variant="light" size="sm" className="border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none">
                 <PlayCircle size={14} className="text-warning" />
-                Build: <span className="text-primary">{currentBuild?.name || 'Sin Build'}</span>
+                {t('common.build')}: <span className="text-primary">{currentBuild?.name || t('common.noBuild')}</span>
+                {currentBuildReadOnly && <Badge bg="warning" text="dark" className="ms-1">{t('common.readOnly')}</Badge>}
               </Dropdown.Toggle>
               <Dropdown.Menu className="shadow-lg py-1 border text-start" align="end" style={{ minWidth: '200px' }}>
-                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">BUILD EN EJECUCIÓN (TESTLINK)</div>
+                <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">{t('common.buildInExecution')}</div>
                 {sortBuildsNewestFirst(visibleBuilds).map(build => (
                   <Dropdown.Item
                     key={build.id}
@@ -548,98 +393,17 @@ export function AppShell({
                   >
                     <Check size={12} className={build.id === currentBuildId ? 'text-primary' : 'text-transparent'} />
                     {build.name}
-                    {!build.active && <Badge bg="light" text="secondary" className="ms-auto border">Inactiva</Badge>}
+                    {!build.active && <Badge bg="light" text="secondary" className="ms-auto border">{t('common.inactive')}</Badge>}
+                    {isBuildReadOnly(build) && <Badge bg="warning" text="dark" className="ms-auto">{t('common.readOnly')}</Badge>}
                   </Dropdown.Item>
                 ))}
                 {visibleBuilds.length === 0 && (
-                  <div className="px-3 py-2 text-muted x-small">Sin builds visibles para este componente.</div>
+                  <div className="px-3 py-2 text-muted x-small">{t('common.noBuildsForComponent')}</div>
                 )}
               </Dropdown.Menu>
             </Dropdown>
 
-            <Dropdown onToggle={(isOpen) => { if (isOpen) { void loadNotifications(); void loadNotificationPreferences() } }}>
-                <Dropdown.Toggle
-                  variant="link"
-                  size="sm"
-                  className="p-0 border-0 shadow-none position-relative d-inline-flex align-items-center text-decoration-none"
-                  title="Notificaciones"
-                >
-                  {notificationsMuted || notificationsDisabled ? (
-                    <BellOff size={18} className="text-muted cursor-pointer ms-1 hover-text-primary transition-all" />
-                  ) : (
-                    <Bell size={18} className={unreadNotifications ? 'text-primary cursor-pointer ms-1 transition-all' : 'text-muted cursor-pointer ms-1 hover-text-primary transition-all'} />
-                  )}
-                  {unreadNotifications > 0 && !notificationsMuted && !notificationsDisabled && (
-                    <Badge bg="danger" pill className="position-absolute top-0 start-100 translate-middle x-small">
-                      {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                    </Badge>
-                  )}
-                </Dropdown.Toggle>
-                <Dropdown.Menu className="notification-inbox-menu shadow-lg border text-start p-0" align="end">
-                  <div className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
-                    <div>
-                      <div className="fw-bold small">Notificaciones</div>
-                      <div className="x-small text-muted">
-                        {notificationsDisabled
-                          ? 'Desactivadas'
-                          : notificationsMuted && muteUntil
-                            ? `Silenciadas hasta ${muteUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                            : `${unreadNotifications} sin leer`}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="link"
-                      className="p-0 text-decoration-none"
-                      disabled={!unreadNotifications}
-                      onClick={markAllNotificationsRead}
-                    >
-                      Marcar leidas
-                    </Button>
-                  </div>
-                  <div className="px-3 py-2 border-bottom bg-light">
-                    <div className="x-small fw-bold text-muted text-uppercase mb-2">Silenciar nuevas notificaciones</div>
-                    <div className="d-flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline-secondary" disabled={notificationsDisabled} onClick={() => saveNotificationMute(1)}>1 h</Button>
-                      <Button size="sm" variant="outline-secondary" disabled={notificationsDisabled} onClick={() => saveNotificationMute(8)}>8 h</Button>
-                      <Button size="sm" variant="outline-secondary" disabled={notificationsDisabled} onClick={() => saveNotificationMute(24)}>24 h</Button>
-                      <Button size="sm" variant={notificationsDisabled ? 'primary' : 'outline-danger'} onClick={() => setNotificationsDisabled(!notificationsDisabled)}>
-                        {notificationsDisabled ? 'Activar' : 'Desactivar'}
-                      </Button>
-                    </div>
-                    {notificationsDisabled && (
-                      <div className="x-small text-muted mt-2">No se enviaran nuevas notificaciones internas hasta volver a activar.</div>
-                    )}
-                  </div>
-                  <div className="notification-inbox-list">
-                    {notificationsLoading && (
-                      <div className="px-3 py-3 small text-muted">Cargando notificaciones...</div>
-                    )}
-                    {!notificationsLoading && notifications.length === 0 && (
-                      <div className="px-3 py-3 small text-muted">No tenes notificaciones internas.</div>
-                    )}
-                    {!notificationsLoading && notifications.map(notification => (
-                      <button
-                        key={notification.id}
-                        type="button"
-                        className={`notification-inbox-item btn btn-link w-100 text-start text-decoration-none border-bottom rounded-0 px-3 py-2 ${notification.read_at ? 'bg-white text-muted' : 'bg-light text-dark'}`}
-                        onClick={() => markNotificationRead(notification)}
-                      >
-                        <div className="d-flex justify-content-between gap-2">
-                          <span className="fw-semibold notification-inbox-title">{notification.title}</span>
-                          {!notification.read_at && <Badge bg="primary">Nueva</Badge>}
-                        </div>
-                        <div className="small text-muted notification-inbox-message">{notification.message}</div>
-                        <div className="notification-inbox-meta">
-                          <Badge bg={notificationVariant(notification.notification_type)}>{notificationTypeLabel(notification.notification_type)}</Badge>
-                          {notification.actor_name && <span>Por {notification.actor_name}</span>}
-                          <time dateTime={notification.created_at}>{notificationTime(notification.created_at)}</time>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </Dropdown.Menu>
-            </Dropdown>
+            <NotificationInbox state={notificationState} locale={locale} t={t} />
           </div>
         </header>
 

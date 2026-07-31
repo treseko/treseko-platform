@@ -4,10 +4,10 @@ from .repository_context import *
 async def ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> None:
     if not bug.build_id:
         return
-    build_active = (
-        await db.execute(select(models.Build.activo).filter(models.Build.id == bug.build_id))
+    build = (
+        await db.execute(select(models.Build).filter(models.Build.id == bug.build_id))
     ).scalar_one_or_none()
-    if build_active is not False:
+    if build is None or access_control.is_build_active(build):
         return
     if bug.caso_id:
         bug_case = (
@@ -19,7 +19,11 @@ async def ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> 
                     select(models.Build.id)
                     .join(models.BuildCaso, models.BuildCaso.build_id == models.Build.id)
                     .join(models.CasoPrueba, models.CasoPrueba.id == models.BuildCaso.caso_id)
-                    .filter(models.Build.proyecto_id == bug.proyecto_id, models.Build.activo == True)  # noqa: E712
+                    .filter(
+                        models.Build.proyecto_id == bug.proyecto_id,
+                        models.Build.activo.is_(True),
+                        models.Build.estado == "ACTIVA",
+                    )
                     .filter(models.CasoPrueba.master_id == bug_case.master_id)
                     .limit(1)
                 )
@@ -36,7 +40,7 @@ async def ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> 
             await db.execute(
                 select(models.Build.id)
                 .filter(models.Build.id.in_(occurrence_build_ids), models.Build.proyecto_id == bug.proyecto_id)
-                .filter(models.Build.activo == True)  # noqa: E712
+                .filter(models.Build.activo.is_(True), models.Build.estado == "ACTIVA")
                 .limit(1)
             )
         ).scalar_one_or_none()

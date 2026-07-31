@@ -5,6 +5,8 @@ import { API_BASE } from '../../app/constants'
 import { RBAC_CAPABILITIES } from '../../app/rbac/rbacCatalog'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import type { CapabilityId, PermissionLevel, RoleKey } from '../../app/types'
+import { useI18n } from '../../i18n'
+import { RoleModal } from './RoleModal'
 
 type AdminModalsProps = {
   showRoleModal: boolean
@@ -69,6 +71,7 @@ export function AdminModals({
   setProjectMemberRemoval,
   confirmRemoveProjectMember
 }: AdminModalsProps) {
+  const { t } = useI18n()
   const [projectMemberUserText, setProjectMemberUserText] = useState('')
   const [rolePermissionGroupKey, setRolePermissionGroupKey] = useState('')
   const [adLookupQuery, setAdLookupQuery] = useState('')
@@ -76,7 +79,56 @@ export function AdminModals({
   const [adLookupMessage, setAdLookupMessage] = useState('')
   const [adLookupResults, setAdLookupResults] = useState<any[]>([])
   const activeAssignableUsers = useMemo(() => assignableUsers.filter(user => user.status !== 'Inactivo'), [assignableUsers])
-  const getAssignableUserLabel = (user: any) => `${user.name || user.email || user.id} - ${user.email || 'sin email'}${user.role || user.baseRole ? ` (${user.role || user.baseRole})` : ''}`
+  const getAssignableUserLabel = (user: any) => `${user.name || user.email || user.id} - ${user.email || t('configuracion.noEmail')}${user.role || user.baseRole ? ` (${user.role || user.baseRole})` : ''}`
+  const getCapabilityLabel = (capability: { id: string; label: string }) => {
+    const bugLabels: Record<string, string> = {
+      'bugs.ver': 'configuracion.rbacBugsView', 'bugs.crear': 'configuracion.rbacBugsCreate', 'bugs.editar': 'configuracion.rbacBugsEdit',
+      'bugs.triage': 'configuracion.rbacBugsTriage', 'bugs.asignar': 'configuracion.rbacBugsAssign', 'bugs.comentar': 'configuracion.rbacBugsComment',
+      'bugs.adjuntos': 'configuracion.rbacBugsEvidence', 'bugs.vincular_externo': 'configuracion.rbacBugsExternal', 'bugs.exportar': 'configuracion.rbacBugsExport', 'bugs.admin': 'configuracion.rbacBugsAdmin',
+    }
+    const projectLabels: Record<string, string> = {
+      'proyectos.portfolio': 'configuracion.rbacProjectsPortfolio', 'proyectos.componentes': 'configuracion.rbacProjectsComponents', 'proyectos.builds': 'configuracion.rbacProjectsBuilds', 'proyectos.build_scope': 'configuracion.rbacProjectsBuildScope', 'proyectos.equipo': 'configuracion.rbacProjectsTeam', 'proyectos.ambientes': 'configuracion.rbacProjectsEnvironments', 'proyectos.datasets': 'configuracion.rbacProjectsDatasets', 'proyectos.wiki': 'configuracion.rbacProjectsWiki',
+    }
+    if (projectLabels[capability.id]) return t(projectLabels[capability.id] as any)
+    const automationLabels: Record<string, string> = {
+      'automatizacion.workers': 'configuracion.rbacAutomationWorkers', 'automatizacion.jobs': 'configuracion.rbacAutomationJobs', 'automatizacion.funciones': 'configuracion.rbacAutomationFunctions', 'automatizacion.validacion_scripts': 'configuracion.rbacAutomationScripts',
+    }
+    if (automationLabels[capability.id]) return t(automationLabels[capability.id] as any)
+    const executionLabels: Record<string, string> = {
+      'ejecutar.ver': 'configuracion.rbacExecutionView', 'ejecutar.manual': 'configuracion.rbacExecutionManual', 'ejecutar.automatizada': 'configuracion.rbacExecutionAutomated', 'ejecutar.ia': 'configuracion.rbacExecutionAi', 'ejecutar.evidencias': 'configuracion.rbacExecutionEvidence', 'ejecutar.historial_build': 'configuracion.rbacExecutionHistory',
+      'crear_pruebas.suites': 'configuracion.rbacCasesSuites', 'crear_pruebas.casos': 'configuracion.rbacCasesCases', 'crear_pruebas.pasos': 'configuracion.rbacCasesSteps', 'crear_pruebas.versiones': 'configuracion.rbacCasesVersions', 'crear_pruebas.adjuntos': 'configuracion.rbacCasesAttachments', 'crear_pruebas.scripts': 'configuracion.rbacCasesScripts',
+    }
+    if (executionLabels[capability.id]) return t(executionLabels[capability.id] as any)
+    const inventoryReportLabels: Record<string, string> = {
+      'inventario.ambientes': 'configuracion.rbacInventoryEnvironments', 'inventario.dispositivos': 'configuracion.rbacInventoryDevices', 'inventario.nodos': 'configuracion.rbacInventoryNodes', 'inventario.categorias': 'configuracion.rbacInventoryCategories',
+      'reportes.ver': 'configuracion.rbacReportsView', 'reportes.exportar': 'configuracion.rbacReportsExport', 'reportes.compartir': 'configuracion.rbacReportsShare', 'reportes.configurar': 'configuracion.rbacReportsConfigure',
+    }
+    if (inventoryReportLabels[capability.id]) return t(inventoryReportLabels[capability.id] as any)
+    const integrationLabels: Record<string, string> = {
+      'redmine.ver': 'configuracion.rbacRedmineView', 'redmine.configuracion': 'configuracion.rbacRedmineConfigure', 'redmine.reportar': 'configuracion.rbacRedmineReport', 'redmine.vinculos': 'configuracion.rbacRedmineLinks',
+      'integraciones.catalogo': 'configuracion.rbacIntegrationsCatalog', 'integraciones.ver_estado': 'configuracion.rbacIntegrationsStatus', 'integraciones.test_conexion': 'configuracion.rbacIntegrationsTest', 'integraciones.configurar': 'configuracion.rbacIntegrationsConfigure', 'integraciones.secretos': 'configuracion.rbacIntegrationsSecrets', 'integraciones.webhooks': 'configuracion.rbacIntegrationsWebhooks', 'integraciones.auditoria': 'configuracion.rbacIntegrationsAudit',
+    }
+    if (integrationLabels[capability.id]) return t(integrationLabels[capability.id] as any)
+    const remainingLabels: Record<string, string> = {
+      'plugins.catalogo': 'configuracion.rbacPluginsCatalog', 'plugins.instalar': 'configuracion.rbacPluginsInstall', 'plugins.desinstalar': 'configuracion.rbacPluginsUninstall', 'plugins.habilitar': 'configuracion.rbacPluginsEnable', 'plugins.configurar': 'configuracion.rbacPluginsConfigure', 'plugins.gestionar_secretos': 'configuracion.rbacPluginsSecrets', 'plugins.auditoria': 'configuracion.rbacPluginsAudit',
+      'historial.ver': 'configuracion.rbacHistoryView', 'historial.detalle': 'configuracion.rbacHistoryDetail', 'historial.evidencias': 'configuracion.rbacHistoryEvidence',
+      'notificaciones.ver': 'configuracion.rbacNotificationsView', 'notificaciones.inbox': 'configuracion.rbacNotificationsInbox', 'notificaciones.configuracion': 'configuracion.rbacNotificationsConfigure', 'notificaciones.reglas': 'configuracion.rbacNotificationsRules', 'notificaciones.plantillas': 'configuracion.rbacNotificationsTemplates', 'notificaciones.auditoria': 'configuracion.rbacNotificationsAudit', 'notificaciones.admin': 'configuracion.rbacNotificationsAdmin',
+    }
+    if (remainingLabels[capability.id]) return t(remainingLabels[capability.id] as any)
+    const aiLabels: Record<string, string> = {
+      'motor_ia.ver': 'configuracion.rbacAiView', 'motor_ia.configuracion': 'configuracion.rbacAiConfigure', 'motor_ia.workflows': 'configuracion.rbacAiWorkflows', 'motor_ia.logs': 'configuracion.rbacAiLogs', 'motor_ia.scheduler': 'configuracion.rbacAiScheduler',
+    }
+    if (aiLabels[capability.id]) return t(aiLabels[capability.id] as any)
+    const baseLabels: Record<string, string> = {
+      'dashboard.ver': 'configuracion.rbacDashboardView', 'dashboard.personalizar': 'configuracion.rbacDashboardCustomize', 'configuracion.preferencias': 'configuracion.rbacConfigPreferences', 'configuracion.perfil': 'configuracion.rbacConfigProfile', 'configuracion.clientes': 'configuracion.rbacConfigClients', 'configuracion.usuarios': 'configuracion.rbacConfigUsers', 'configuracion.roles': 'configuracion.rbacConfigRoles', 'configuracion.integraciones': 'configuracion.rbacConfigIntegrations', 'configuracion.pruebas_ia': 'configuracion.rbacConfigAiTests', 'configuracion.monitor': 'configuracion.rbacConfigMonitor', 'configuracion.api_keys': 'configuracion.rbacConfigApiKeys', 'configuracion.sesion': 'configuracion.rbacConfigSession', 'configuracion.adjuntos': 'configuracion.rbacConfigAttachments', 'configuracion.licencia': 'configuracion.rbacConfigLicense',
+    }
+    if (baseLabels[capability.id]) return t(baseLabels[capability.id] as any)
+    const providerLabels: Record<string, string> = {
+      'plugins.provider.ai_case_generator.generar_casos': 'configuracion.rbacProviderGenerateCases', 'plugins.provider.case_portability.importar_casos': 'configuracion.rbacProviderPortableCases',
+    }
+    if (providerLabels[capability.id]) return t(providerLabels[capability.id] as any)
+    return bugLabels[capability.id] ? t(bugLabels[capability.id] as any) : capability.label
+  }
   const rolePermissionGroups = useMemo(
     () => RBAC_CAPABILITIES.map((group, index) => ({ ...group, groupKey: `${group.module}:${index}` })),
     []
@@ -124,13 +176,13 @@ export function AdminModals({
     }))
     setAdLookupQuery(payload.email || payload.username || queryFallback)
     setAdLookupResults([])
-    setAdLookupMessage(`Usuario AD seleccionado${payload.username ? `: ${payload.username}` : ''}.`)
+    setAdLookupMessage(t('configuracion.adSelected', { username: payload.username ? `: ${payload.username}` : '' }))
   }
 
   const lookupAdUser = async () => {
     const query = adLookupQuery.trim() || userForm.email.trim()
     if (!query) {
-      setAdLookupMessage('Ingresa email, UPN o usuario de AD para buscar.')
+      setAdLookupMessage(t('configuracion.adLookupRequired'))
       return
     }
     setAdLookupLoading(true)
@@ -143,7 +195,7 @@ export function AdminModals({
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) {
-        throw new Error(payload?.detail || `Backend respondio ${response.status}`)
+        throw new Error(payload?.detail || t('configuracion.backendResponded', { status: response.status }))
       }
       const results = Array.isArray(payload?.results) ? payload.results : []
       if (payload?.found && payload.email) {
@@ -153,14 +205,14 @@ export function AdminModals({
       if (results.length > 0) {
         setUserForm((current: any) => ({ ...current, auth: 'AD', adLookupVerified: false }))
         setAdLookupResults(results)
-        setAdLookupMessage(`Se encontraron ${results.length} coincidencia${results.length === 1 ? '' : 's'}. Selecciona una para vincularla.`)
+        setAdLookupMessage(t('configuracion.adMatches', { count: results.length }))
         return
       }
-      throw new Error('El usuario no existe en Active Directory/LDAP')
+      throw new Error(t('configuracion.adUserNotFound'))
     } catch (error: any) {
       setUserForm((current: any) => ({ ...current, adLookupVerified: false }))
       setAdLookupResults([])
-      setAdLookupMessage(error?.message || 'No se pudo buscar el usuario en AD.')
+      setAdLookupMessage(error?.message || t('configuracion.adLookupError'))
     } finally {
       setAdLookupLoading(false)
     }
@@ -168,141 +220,25 @@ export function AdminModals({
 
   return (
     <>
-      <Modal show={showRoleModal} onHide={() => setShowRoleModal(false)} centered size="xl" backdrop="static" dialogClassName="role-editor-modal">
-        <Modal.Header closeButton className="bg-light border-bottom text-dark">
-          <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
-            <ShieldCheck size={20} className="text-primary" /> {editingRoleId ? 'Editar rol' : 'Nuevo rol'}
-          </Modal.Title>
-        </Modal.Header>
-        <Form onSubmit={handleSaveRole}>
-          <Modal.Body className="p-4 text-start">
-            <Row className="g-2">
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Nombre del rol</RequiredLabel></Form.Label>
-                  <Form.Control value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} required disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm" placeholder="Ej: Auditor externo" />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Estado</Form.Label>
-                  <Form.Select value={roleForm.status} onChange={(e) => setRoleForm({ ...roleForm, status: e.target.value })} disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm">
-                    <option value="Activo">Activo</option>
-                    <option value="Inactivo">Inactivo</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={12}>
-                <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Descripción</Form.Label>
-                  <Form.Control as="textarea" rows={2} value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} className="bg-light shadow-sm" placeholder="Alcance funcional del rol..." />
-                </Form.Group>
-              </Col>
-            </Row>
-            <div className="mt-4">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <div>
-                  <div className="x-small fw-bold text-muted text-uppercase">Modulos y capacidades del rol</div>
-                  <div className="small text-muted">El modulo muestra la seccion; cada capacidad habilita pantallas y acciones internas.</div>
-                </div>
-                <Badge bg="light" text="dark" className="border">
-                  {Object.values(roleForm.capabilities || {}).filter(level => level === 'read' || level === 'edit').length} capacidades
-                </Badge>
-              </div>
-              <div className="role-permission-workbench border rounded-3 bg-light p-2">
-                <Row className="g-2">
-                  <Col md={4} lg={3}>
-                    <div className="role-permission-nav d-flex flex-column gap-1">
-                      {rolePermissionGroups.map(group => {
-                        const moduleLevel = roleForm.permissions[group.module] || 'none'
-                        const assignedCount = group.capabilities.filter(capability => ['read', 'edit'].includes(roleForm.capabilities?.[capability.id] || '')).length
-                        const isSelected = selectedRolePermissionGroup?.groupKey === group.groupKey
-                        return (
-                          <Button
-                            key={group.groupKey}
-                            type="button"
-                            variant={isSelected ? 'primary' : 'light'}
-                            className={`role-permission-nav-item text-start border d-flex justify-content-between align-items-center gap-2 ${isSelected ? 'text-white' : 'text-dark'}`}
-                            onClick={() => setRolePermissionGroupKey(group.groupKey)}
-                          >
-                            <span className="min-w-0">
-                              <span className="d-block fw-bold small text-truncate">{group.moduleLabel}</span>
-                              <span className={`d-block x-small ${isSelected ? 'text-white-50' : 'text-muted'}`}>{moduleLevel === 'none' ? 'Modulo sin acceso' : `Modulo: ${moduleLevel === 'edit' ? 'Edicion' : 'Lectura'}`}</span>
-                            </span>
-                            <Badge bg={isSelected ? 'light' : assignedCount ? 'primary' : 'secondary'} text={isSelected ? 'primary' : undefined} className="flex-shrink-0">
-                              {assignedCount}
-                            </Badge>
-                          </Button>
-                        )
-                      })}
-                    </div>
-                  </Col>
-                  <Col md={8} lg={9}>
-                    {selectedRolePermissionGroup && (() => {
-                      const group = selectedRolePermissionGroup
-                      const moduleLevel = roleForm.permissions[group.module] || 'none'
-                      const childLevels = group.capabilities.map(capability => roleForm.capabilities?.[capability.id] || 'none')
-                      const mixed = new Set(childLevels).size > 1
-                      return (
-                        <div className="role-permission-panel bg-white border rounded-3 p-3">
-                          <div className="d-flex align-items-center justify-content-between gap-3 mb-3">
-                            <div className="min-w-0">
-                              <div className="fw-bold text-dark">{group.moduleLabel}</div>
-                              <div className="x-small text-muted">{mixed ? 'Capacidades mixtas' : 'Capacidades uniformes'}</div>
-                            </div>
-                            <Form.Select
-                              size="sm"
-                              value={moduleLevel}
-                              onChange={(e) => setRoleModulePermission(group.module, e.target.value as PermissionLevel)}
-                              className="shadow-none flex-shrink-0"
-                              style={{ maxWidth: 170 }}
-                            >
-                              <option value="none">Sin acceso</option>
-                              <option value="read">Lectura</option>
-                              <option value="edit">Edicion</option>
-                            </Form.Select>
-                          </div>
-                          <Row className="g-2">
-                            {group.capabilities.map(capability => (
-                              <Col lg={6} key={capability.id}>
-                                <div className="d-flex align-items-center justify-content-between gap-2 bg-light border rounded-2 p-2">
-                                  <span className="small text-dark">{capability.label}</span>
-                                  <Form.Select
-                                    size="sm"
-                                    value={roleForm.capabilities?.[capability.id] || 'none'}
-                                    onChange={(e) => setRoleCapabilityPermission(capability.id, e.target.value as PermissionLevel)}
-                                    className="shadow-none flex-shrink-0"
-                                    style={{ width: 132 }}
-                                  >
-                                    <option value="none">Sin acceso</option>
-                                    <option value="read">Lectura</option>
-                                    <option value="edit">Edicion</option>
-                                  </Form.Select>
-                                </div>
-                              </Col>
-                            ))}
-                          </Row>
-                        </div>
-                      )
-                    })()}
-                  </Col>
-                </Row>
-              </div>
-            </div>
-          </Modal.Body>
-          <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
-            <Button variant="outline-secondary" onClick={() => setShowRoleModal(false)} className="fw-bold shadow-none rounded-pill px-4">Cancelar</Button>
-            <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4">
-              <Save size={16} className="me-2" /> Guardar rol
-            </Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
+      <RoleModal options={{
+        showRoleModal,
+        setShowRoleModal,
+        editingRoleId,
+        roleForm,
+        setRoleForm,
+        setRoleModulePermission,
+        setRoleCapabilityPermission,
+        handleSaveRole,
+        rolePermissionGroups,
+        selectedRolePermissionGroup,
+        setRolePermissionGroupKey,
+        getCapabilityLabel,
+      }} />
 
       <Modal show={showUserModal} onHide={() => setShowUserModal(false)} centered size="lg" backdrop="static">
         <Modal.Header closeButton className="bg-light border-bottom text-dark">
           <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
-            <Users size={20} className="text-primary" /> {editingUserId ? 'Editar usuario' : 'Nuevo usuario'}
+            <Users size={20} className="text-primary" /> {editingUserId ? t('configuracion.editUser') : t('configuracion.newUser')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleSaveUser}>
@@ -316,7 +252,7 @@ export function AdminModals({
               {userForm.auth === 'AD' && (
                 <Col xs={12}>
                   <div className="p-3 rounded-3 border bg-light">
-                    <Form.Label className="x-small fw-bold text-muted">Buscar usuario en Active Directory</Form.Label>
+                    <Form.Label className="x-small fw-bold text-muted">{t('configuracion.searchAdUser')}</Form.Label>
                     <div className="d-flex gap-2">
                       <Form.Control
                         value={adLookupQuery}
@@ -325,7 +261,7 @@ export function AdminModals({
                           setAdLookupResults([])
                           setUserForm((current: any) => ({ ...current, adLookupVerified: false }))
                         }}
-                        placeholder="Nombre, email, UPN o usuario. Ej: ana, carla"
+                        placeholder={t('configuracion.searchAdPlaceholder')}
                         className="bg-white shadow-sm"
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') {
@@ -335,7 +271,7 @@ export function AdminModals({
                         }}
                       />
                       <Button type="button" variant="outline-primary" className="fw-bold" onClick={lookupAdUser} disabled={adLookupLoading}>
-                        <Search size={16} className="me-2" /> {adLookupLoading ? 'Buscando' : 'Buscar'}
+                        <Search size={16} className="me-2" /> {adLookupLoading ? t('configuracion.searching') : t('configuracion.search')}
                       </Button>
                     </div>
                     {adLookupResults.length > 0 && (
@@ -370,7 +306,7 @@ export function AdminModals({
               )}
               <Col md={6}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Nombre completo</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('configuracion.fullName')}</Form.Label>
                   <Form.Control value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value, saveError: '' })} className="bg-light shadow-sm" />
                 </Form.Group>
               </Col>
@@ -382,14 +318,14 @@ export function AdminModals({
               </Col>
               <Col md={6}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Contraseña local</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('configuracion.localPassword')}</Form.Label>
                   <Form.Control
                     type="password"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value, saveError: '' })}
                     disabled={userForm.auth === 'AD'}
                     className="bg-light shadow-sm"
-                    placeholder={userForm.auth === 'AD' ? 'Validada por Active Directory' : editingUserId ? 'Dejar vacía para conservar' : 'Contraseña inicial'}
+                    placeholder={userForm.auth === 'AD' ? t('configuracion.adPasswordValidated') : editingUserId ? t('configuracion.passwordKeepExisting') : t('configuracion.initialPassword')}
                   />
                 </Form.Group>
               </Col>
@@ -397,15 +333,15 @@ export function AdminModals({
                 <Form.Check
                   type="switch"
                   id="send-welcome"
-                  label={userForm.auth === 'AD' ? 'Enviar instrucciones de acceso corporativo' : 'Enviar bienvenida y enlace para definir contraseña'}
+                  label={userForm.auth === 'AD' ? t('configuracion.sendCorporateAccessInstructions') : t('configuracion.sendWelcomePasswordLink')}
                   checked={!!userForm.sendWelcome}
                   onChange={(event) => setUserForm({ ...userForm, sendWelcome: event.target.checked, saveError: '' })}
                 />
-                <div className="x-small text-muted mt-1">No se envían contraseñas por correo.</div>
+                <div className="x-small text-muted mt-1">{t('configuracion.passwordsNotEmailed')}</div>
               </Col>}
               <Col md={4}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Rol</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('configuracion.role')}</Form.Label>
                   <Form.Select
                     value={userForm.roleCustomId ? `custom:${userForm.roleCustomId}` : userForm.role}
                     onChange={(e) => {
@@ -422,7 +358,7 @@ export function AdminModals({
                     <option value="QA_LEAD">QA_LEAD (sistema)</option>
                     <option value="TESTER">TESTER (sistema)</option>
                     <option value="VIEWER">VIEWER (sistema)</option>
-                    {customRoles.length > 0 && <option disabled>--- Roles personalizados ---</option>}
+                    {customRoles.length > 0 && <option disabled>{t('configuracion.customRolesOption')}</option>}
                     {customRoles.filter(role => role.status === 'Activo').map(role => (
                       <option key={role.id} value={`custom:${role.id}`}>{role.name}</option>
                     ))}
@@ -431,7 +367,7 @@ export function AdminModals({
               </Col>
               <Col md={4}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Autenticación</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('configuracion.authentication')}</Form.Label>
                   <Form.Select value={userForm.auth} onChange={(e) => setUserForm({ ...userForm, auth: e.target.value, adLookupVerified: false })} className="bg-light shadow-sm">
                     <option value="Local">Local</option>
                     <option value="AD">Active Directory</option>
@@ -440,25 +376,25 @@ export function AdminModals({
               </Col>
               <Col md={4}>
                 <Form.Group>
-                  <Form.Label className="x-small fw-bold text-muted">Estado</Form.Label>
+                  <Form.Label className="x-small fw-bold text-muted">{t('configuracion.status')}</Form.Label>
                   <Form.Select value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value })} className="bg-light shadow-sm">
-                    <option value="Activo">Activo</option>
-                    <option value="Inactivo">Inactivo</option>
+                    <option value="Activo">{t('configuracion.active')}</option>
+                    <option value="Inactivo">{t('configuracion.inactive')}</option>
                   </Form.Select>
                 </Form.Group>
               </Col>
             </Row>
             {userForm.auth === 'AD' && (
               <Alert variant="info" className="small mb-0 mt-3 py-2">
-                Este registro vincula un usuario existente del directorio corporativo con roles de Treseko. Busca y valida el usuario en AD antes de guardar. La contrasena no se guarda ni se modifica en Treseko.
+                {t('configuracion.adUserInfo')}
               </Alert>
             )}
 
           </Modal.Body>
           <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
-            <Button variant="outline-secondary" onClick={() => setShowUserModal(false)} className="fw-bold shadow-none rounded-pill px-4">Cancelar</Button>
+            <Button variant="outline-secondary" onClick={() => setShowUserModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('configuracion.cancel')}</Button>
             <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4" disabled={userForm.auth === 'AD' && !userForm.adLookupVerified}>
-              <Save size={16} className="me-2" /> Guardar usuario
+              <Save size={16} className="me-2" /> {t('configuracion.saveUser')}
             </Button>
           </Modal.Footer>
         </Form>
@@ -466,19 +402,19 @@ export function AdminModals({
 
       <Modal show={showProjectMemberModal} onHide={() => setShowProjectMemberModal(false)} centered backdrop="static">
         <Modal.Header closeButton className="bg-light border-bottom text-dark">
-          <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
-            <Users size={20} className="text-primary" /> Asignar usuario al proyecto
+            <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
+            <Users size={20} className="text-primary" /> {t('configuracion.assignProjectUser')}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleSubmitProjectMember}>
           <Modal.Body className="p-4 text-start">
             <div className="mb-3 p-3 rounded-3 bg-light border">
-              <div className="x-small fw-bold text-muted text-uppercase">Proyecto</div>
-              <div className="fw-bold text-dark">{projectsList.find(project => project.id === managingProjectId)?.name || 'Proyecto activo'}</div>
+              <div className="x-small fw-bold text-muted text-uppercase">{t('configuracion.project')}</div>
+              <div className="fw-bold text-dark">{projectsList.find(project => project.id === managingProjectId)?.name || t('configuracion.activeProject')}</div>
             </div>
 
             <Form.Group className="mb-3">
-              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Usuario existente</RequiredLabel></Form.Label>
+              <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.existingUser')}</RequiredLabel></Form.Label>
               <Form.Control
                 list="project-member-user-options"
                 value={projectMemberUserText}
@@ -491,7 +427,7 @@ export function AdminModals({
                   })
                   setProjectMemberForm({ ...projectMemberForm, userId: selectedUser?.id || '' })
                 }}
-                placeholder="Escribi nombre, email o rol..."
+                placeholder={t('configuracion.projectUserPlaceholder')}
                 required
                 className="bg-light shadow-sm"
               />
@@ -503,13 +439,13 @@ export function AdminModals({
             </Form.Group>
 
             {assignableUsers.length === 0 && (
-              <div className="small text-danger mt-3">No hay usuarios disponibles para asignar.</div>
+              <div className="small text-danger mt-3">{t('configuracion.noAssignableUsers')}</div>
             )}
           </Modal.Body>
           <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
-            <Button variant="outline-secondary" onClick={() => setShowProjectMemberModal(false)} className="fw-bold shadow-none rounded-pill px-4">Cancelar</Button>
+            <Button variant="outline-secondary" onClick={() => setShowProjectMemberModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('configuracion.cancel')}</Button>
             <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4" disabled={!projectMemberForm.userId}>
-              <Users size={16} className="me-2" /> Asignar usuario
+              <Users size={16} className="me-2" /> {t('configuracion.assignUser')}
             </Button>
           </Modal.Footer>
         </Form>
@@ -523,19 +459,19 @@ export function AdminModals({
         </Modal.Header>
         <Modal.Body className="p-4 text-start">
           <p className="small text-muted mb-3">
-            El usuario dejará de ver este proyecto y sus componentes, builds, casos y ejecuciones asociadas.
+            {t('configuracion.removeProjectMemberDescription')}
           </p>
           <div className="border rounded-3 bg-light p-3">
-            <div className="fw-bold text-dark">{projectMemberRemoval?.user?.name || projectMemberRemoval?.userId || 'Usuario seleccionado'}</div>
-            <div className="x-small text-muted">{projectMemberRemoval?.user?.email || 'Miembro del proyecto'}</div>
+            <div className="fw-bold text-dark">{projectMemberRemoval?.user?.name || projectMemberRemoval?.userId || t('configuracion.selectedUser')}</div>
+            <div className="x-small text-muted">{projectMemberRemoval?.user?.email || t('configuracion.projectMember')}</div>
           </div>
         </Modal.Body>
         <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
           <Button variant="outline-secondary" onClick={() => setProjectMemberRemoval(null)} className="fw-bold shadow-none rounded-pill px-4">
-            Cancelar
+            {t('configuracion.cancel')}
           </Button>
           <Button variant="danger" onClick={confirmRemoveProjectMember} className="fw-bold shadow-sm rounded-pill px-4">
-            Quitar usuario
+            {t('configuracion.removeUser')}
           </Button>
         </Modal.Footer>
       </Modal>

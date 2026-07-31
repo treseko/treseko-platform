@@ -4,6 +4,7 @@ import { mapBackendComponentToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
+type Translate = (key: string, options?: Record<string, unknown>) => string
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
 
 const parseKeyValueText = (value: string) => {
@@ -36,6 +37,8 @@ type CreateComponentActionsParams = {
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  t: Translate
+  readOnlyBuild?: boolean
 }
 
 export function createComponentActions({
@@ -54,12 +57,18 @@ export function createComponentActions({
   setComponentForm,
   setProjectSyncMessage,
   showFeedback,
-  confirmAction
+  confirmAction,
+  t,
+  readOnlyBuild = false
 }: CreateComponentActionsParams) {
   const handleCreateComponent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite crear componentes.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.componentCreatePermission'), 'warning')
+      return
+    }
+    if (readOnlyBuild) {
+      showFeedback(t('proyectos.insufficientPermission'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
       return
     }
     const target = event.currentTarget
@@ -80,7 +89,7 @@ export function createComponentActions({
       setCurrentCompId(newComponent.id)
       setNewTestComponent(newComponent.id)
       setCurrentBuildId('')
-      setProjectSyncMessage('Componente creado en modo diseño/local.')
+      setProjectSyncMessage(t('proyectos.componentCreatedLocal'))
     }
 
     if (projectsSource === 'backend') {
@@ -106,9 +115,9 @@ export function createComponentActions({
         setCurrentCompId(mapped.id)
         setNewTestComponent(mapped.id)
         setCurrentBuildId('')
-        setProjectSyncMessage('Componente creado y persistido en backend.')
+        setProjectSyncMessage(t('proyectos.componentCreatedBackend'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo persistir componente: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.componentPersistError')}: ${error.message}.`)
       }
     } else {
       createLocalComponent()
@@ -119,8 +128,12 @@ export function createComponentActions({
 
   const handleSaveComponentForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (readOnlyBuild) {
+      showFeedback(t('proyectos.insufficientPermission'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
+      return
+    }
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite modificar componentes.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.componentEditPermission'), 'warning')
       return
     }
     const projectId = managingProjectId || currentProjectId
@@ -153,11 +166,11 @@ export function createComponentActions({
           }
           const updated = mapBackendComponentToItem(await response.json())
           setComponentsList(prev => prev.map(component => component.id === updated.id ? updated : component))
-          setProjectSyncMessage('Componente actualizado en backend.')
+          setProjectSyncMessage(t('proyectos.componentUpdatedBackend'))
           closeModal()
           return
         } catch (error: any) {
-          setProjectSyncMessage(`No se pudo actualizar componente: ${error.message}.`)
+          setProjectSyncMessage(`${t('proyectos.componentUpdateError')}: ${error.message}.`)
           return
         }
       }
@@ -169,7 +182,7 @@ export function createComponentActions({
         techStack,
         variables
       } : component))
-      setProjectSyncMessage('Componente actualizado en modo diseño/local.')
+      setProjectSyncMessage(t('proyectos.componentUpdatedLocal'))
       closeModal()
       return
     }
@@ -195,11 +208,11 @@ export function createComponentActions({
         setCurrentCompId(created.id)
         setNewTestComponent(created.id)
         setCurrentBuildId('')
-        setProjectSyncMessage('Componente creado y persistido en backend.')
+        setProjectSyncMessage(t('proyectos.componentCreatedBackend'))
         closeModal()
         return
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo persistir componente: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.componentPersistError')}: ${error.message}.`)
         return
       }
     }
@@ -216,20 +229,24 @@ export function createComponentActions({
     setCurrentCompId(localComponent.id)
     setNewTestComponent(localComponent.id)
     setCurrentBuildId('')
-    setProjectSyncMessage('Componente creado en modo diseño/local.')
+    setProjectSyncMessage(t('proyectos.componentCreatedLocal'))
     closeModal()
   }
 
   const handleDeleteComponent = async (componentId: string) => {
     if (!canEditCurrentProject) {
-      showFeedback('Permiso insuficiente', 'Tu rol en este proyecto no permite eliminar componentes.', 'warning')
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.componentDeletePermission'), 'warning')
+      return
+    }
+    if (readOnlyBuild) {
+      showFeedback(t('proyectos.insufficientPermission'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
       return
     }
     const confirmed = await confirmAction({
-      title: 'Eliminar componente',
-      message: 'Se eliminará este componente. Verifica que no tenga builds o pruebas necesarias antes de continuar.',
+      title: t('proyectos.deleteComponent'),
+      message: t('proyectos.deleteComponentConfirm'),
       variant: 'danger',
-      confirmLabel: 'Eliminar componente'
+      confirmLabel: t('proyectos.deleteComponent')
     })
     if (!confirmed) return
     if (projectsSource === 'backend') {
@@ -239,9 +256,9 @@ export function createComponentActions({
           const error = await response.json().catch(() => null)
           throw new Error(error?.detail || `Backend respondió ${response.status}`)
         }
-        setProjectSyncMessage('Componente eliminado en backend.')
+        setProjectSyncMessage(t('proyectos.componentDeletedBackend'))
       } catch (error: any) {
-        setProjectSyncMessage(`No se pudo eliminar componente: ${error.message}.`)
+        setProjectSyncMessage(`${t('proyectos.componentDeleteError')}: ${error.message}.`)
         return
       }
     }

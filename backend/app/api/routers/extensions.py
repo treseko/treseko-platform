@@ -17,8 +17,9 @@ from ...services.plugins.manifest import PluginManifestError, audit_manifest_sna
 from ...services.plugins.runner import PluginRunnerError, invoke_declarative_junit
 from ...services.plugins.store_client import PluginStoreClientError, fetch_official_catalog
 from ...services.plugins.pairing import download_paired_release, pair_installation, pairing_status
+from ...services.edition.entitlement_provider import get_entitlement_provider
 from ...repositories.scheduled_runs_audit import create_audit_log
-from ...time_utils import utc_now
+from ...time_utils import isoformat_utc, utc_now
 from .extensions_catalog import (
     AUDIT_CONFIG_KEY, append_audit as _append_audit, assert_capability as _assert_capability,
     assert_feature as _assert_feature, audit_events as _audit_events, catalog_response as _catalog_response,
@@ -240,7 +241,7 @@ async def read_official_store_plugin_audit(
         usuario_email=users_by_id[row.usuario_id].email if row.usuario_id in users_by_id else None,
         usuario_nombre=(users_by_id[row.usuario_id].display_name or users_by_id[row.usuario_id].nombre_completo) if row.usuario_id in users_by_id else None,
         accion=row.accion, recurso=row.recurso, recurso_id=row.recurso_id,
-        detalles=row.detalles, ip_address=row.ip_address, fecha=row.fecha,
+        detalles=row.detalles, ip_address=row.ip_address, origen=row.origen, fecha=row.fecha,
     ) for row in rows]
 
 

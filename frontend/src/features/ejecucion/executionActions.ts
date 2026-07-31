@@ -3,6 +3,7 @@ import type { AttachmentMeta } from '../../EvidenceUpload'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { mergeCasesById } from '../casos/caseUtils'
+import type { TranslationKey } from '../../i18n'
 import { createIaLog as iaLog, type ExecutionMode, type FeedbackVariant } from './executionPresentation'
 
 type CreateExecutionActionsParams = {
@@ -51,6 +52,7 @@ type CreateExecutionActionsParams = {
   aiMaxParallelRuns?: number
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
 export function createExecutionActions({
@@ -98,7 +100,8 @@ export function createExecutionActions({
   openAutomationMonitor,
   aiMaxParallelRuns = 1,
   setProjectSyncMessage,
-  showFeedback
+  showFeedback,
+  t
 }: CreateExecutionActionsParams) {
   const getLatestCaseForExecution = (test: any) =>
     currentProjectCases.find(item => item.id === test?.latestCaseId) || null
@@ -149,28 +152,28 @@ export function createExecutionActions({
 
   const createExecutionRun = async (mode: ExecutionMode, tests: any[], assignedIdsOverride?: string[]) => {
     const projectId = managingProjectId || currentProjectId
-    if (!projectId || !isValidUUID(projectId)) throw new Error('Proyecto no válido')
-    if (tests.length === 0) throw new Error('No hay casos seleccionados para ejecutar')
+    if (!projectId || !isValidUUID(projectId)) throw new Error(t('ejecutarPruebas.executionProjectInvalid'))
+    if (tests.length === 0) throw new Error(t('ejecutarPruebas.executionNoCasesSelected'))
     const executionBuild = buildsList.find(build => build.id === currentBuildId)
     if (!executionBuild || !isValidUUID(executionBuild.id)) {
-      throw new Error('Selecciona una build activa para ejecutar pruebas')
+      throw new Error(t('ejecutarPruebas.executionSelectActiveBuild'))
     }
     if (!executionBuild.active) {
-      throw new Error('La build seleccionada está inactiva. Activa una build del componente antes de ejecutar')
+      throw new Error(t('ejecutarPruebas.executionBuildInactive'))
     }
     const assignedIds = assignedIdsOverride || buildCaseIds[executionBuild.id] || []
     if (assignedIds.length === 0) {
-      throw new Error('La build no tiene casos asignados. Asigna casos desde Proyectos > Componentes y Builds')
+      throw new Error(t('ejecutarPruebas.executionBuildNoCases'))
     }
     if (currentCompId && executionBuild.componentId !== currentCompId) {
-      throw new Error('La build seleccionada no pertenece al componente activo')
+      throw new Error(t('ejecutarPruebas.executionBuildComponentMismatch'))
     }
     const invalidTest = tests.find(test => test.componentId && test.componentId !== executionBuild.componentId)
     if (invalidTest) {
-      throw new Error('Solo puedes ejecutar casos del componente asociado a la build activa')
+      throw new Error(t('ejecutarPruebas.executionCaseComponentMismatch'))
     }
     if (tests.some(test => !assignedIds.includes(test.id))) {
-      throw new Error('Solo puedes ejecutar casos asignados a la build activa')
+      throw new Error(t('ejecutarPruebas.executionCaseNotAssigned'))
     }
     const response = await fetchWithAuth(`${API_BASE}/test-runs/`, {
       method: 'POST',
@@ -276,9 +279,9 @@ export function createExecutionActions({
       : (selectedTest ? [selectedTest] : [])
     if (tests.length === 0) {
       const message = executionModalDiscardedCount > 0
-        ? 'Los casos seleccionados no pertenecen al componente/build activos o no están asignados a la build.'
-        : 'Selecciona al menos un caso de prueba para ejecutar.'
-      showFeedback('Selección requerida', message, 'warning')
+        ? t('ejecutarPruebas.selectionDiscardedMessage')
+        : t('ejecutarPruebas.selectionRequiredMessage')
+      showFeedback(t('ejecutarPruebas.selectionRequired'), message, 'warning')
       return
     }
     setExecutionLoading(true)
@@ -295,7 +298,7 @@ export function createExecutionActions({
       setShowExecSelector(false)
       if (mode === 'manual') {
         if (snapshots.length === 0) {
-          showFeedback('Caso sin pasos', 'El caso fue congelado para ejecución, pero aún no tiene pasos definidos.', 'warning')
+          showFeedback(t('ejecutarPruebas.caseWithoutSteps'), t('ejecutarPruebas.caseWithoutStepsMessage'), 'warning')
         }
         setViewMode('manual_exec')
       } else if (mode === 'ia') {
@@ -345,7 +348,7 @@ export function createExecutionActions({
               caseId: item.caso_id,
               caseCode: test?.code || test?.codigo,
               caseTitle: test?.title || test?.titulo || 'Caso IA',
-              message: payload?.detail || payload?.message || `Backend respondio ${response.status}`
+              message: payload?.detail || payload?.message || t('configuracion.backendResponded', { status: response.status })
             }
             iaResults.push(result)
             if (response.ok) {
@@ -356,7 +359,7 @@ export function createExecutionActions({
                       ...stream,
                       status: finished.estado_resultado === 'PASO' ? 'PASO' : finished.estado_resultado,
                       endedAt: new Date().toISOString(),
-                      lastMessage: finished.observaciones || `Finalizo con estado ${finished.estado_resultado}.`,
+                      lastMessage: finished.observaciones || t('ejecutarPruebas.aiFinishedStatus', { status: finished.estado_resultado }),
                     }
                   : stream
                 ))
@@ -369,7 +372,7 @@ export function createExecutionActions({
               caseId: item.caso_id,
               caseCode: test?.code || test?.codigo,
               caseTitle: test?.title || test?.titulo || 'Caso IA',
-              message: error?.message || 'No se pudo iniciar IA'
+              message: error?.message || t('ejecutarPruebas.aiStartFailed')
             })
           }
         }
@@ -382,8 +385,8 @@ export function createExecutionActions({
           const message = failedIa.length === iaResults.length
             ? firstError.message
             : `${failedIa.length}/${iaResults.length} casos no iniciaron. ${firstError.caseCode ? `${firstError.caseCode}: ` : ''}${firstError.message}`
-          showFeedback(startedIa.length === 0 ? 'IA no pudo iniciar' : 'IA iniciada parcialmente', message, startedIa.length === 0 ? 'danger' : 'warning')
-          setProjectSyncMessage(`${startedIa.length === 0 ? 'IA no pudo iniciar' : 'IA iniciada parcialmente'}: ${message}`)
+          showFeedback(startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially'), message, startedIa.length === 0 ? 'danger' : 'warning')
+          setProjectSyncMessage(`${startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially')}: ${message}`)
           setIaLogs(prev => [
             ...prev,
             iaLog('error', `${startedIa.length === 0 ? 'IA no pudo iniciar' : 'IA iniciada parcialmente'}: ${message}`),
@@ -407,7 +410,7 @@ export function createExecutionActions({
         }
         if (failedIa.length === 0) {
         showFeedback(
-          mode === 'ia' ? 'Ejecución IA iniciada' : 'Job automatizado creado',
+          mode === 'ia' ? t('ejecutarPruebas.aiExecutionStarted') : t('ejecutarPruebas.automatedJobCreated'),
           mode === 'ia'
             ? `Se creó ${run.nombre} con ${tests.length} caso(s) y snapshots congelados.`
             : `Se envió ${run.nombre} a la cola del worker dedicado.`,
@@ -446,7 +449,7 @@ export function createExecutionActions({
             return {
               ...baseJob,
               status: 'ERROR',
-              error: error?.message || 'No se pudo crear el job automatizado'
+                error: error?.message || t('ejecutarPruebas.automatedJobFailed')
             }
           }
         }))
@@ -454,8 +457,8 @@ export function createExecutionActions({
         const failedJobs = jobs.filter((job: any) => job.status === 'ERROR')
         if (failedJobs.length === jobs.length) {
           showFeedback(
-            'No se pudo enviar al worker',
-            failedJobs[0]?.error || 'La cola de automatizacion rechazo todos los jobs.',
+            t('ejecutarPruebas.workerSubmitFailed'),
+            failedJobs[0]?.error || t('ejecutarPruebas.workerRejectedAll'),
             'danger'
           )
           setProjectSyncMessage(`No se pudo enviar al worker: ${failedJobs[0]?.error || 'jobs rechazados'}`)
@@ -463,13 +466,13 @@ export function createExecutionActions({
         }
         if (failedJobs.length > 0) {
           showFeedback(
-            'Automatizacion enviada parcialmente',
+            t('ejecutarPruebas.automationPartial'),
             `${failedJobs.length}/${jobs.length} job(s) no se pudieron crear. ${failedJobs[0]?.error || ''}`,
             'warning'
           )
         } else {
           showFeedback(
-            'Ejecucion automatizada enviada al worker',
+            t('ejecutarPruebas.automationSent'),
             `Se envio ${run.nombre} a la cola del worker dedicado.`,
             'success'
           )
@@ -477,7 +480,7 @@ export function createExecutionActions({
       }
       setProjectSyncMessage(`Ejecución creada: ${run.nombre}`)
     } catch (error: any) {
-      showFeedback('No se pudo iniciar ejecución', error.message || 'Error al crear la ejecución.', 'danger')
+      showFeedback(t('ejecutarPruebas.executionStartFailed'), error.message || t('ejecutarPruebas.executionCreateError'), 'danger')
       setProjectSyncMessage(`No se pudo iniciar ejecución: ${error.message}`)
     } finally {
       setExecutionLoading(false)

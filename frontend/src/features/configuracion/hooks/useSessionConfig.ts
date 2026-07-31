@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchSessionConfig, updateSessionConfig, type FetchWithAuth } from '../api/configuracionApi'
+import { useI18n } from '../../../i18n'
 
 const SESSION_CONFIG_STORAGE_KEY = 'qa_session_config'
 
@@ -49,6 +50,7 @@ export function useSessionConfig({
   setIsAuthenticated,
   setLoginError,
 }: UseSessionConfigParams) {
+  const { t } = useI18n()
   const [sessionConfig, setSessionConfig] = useState(readLocalSessionConfig)
   const [sessionConfigLoading, setSessionConfigLoading] = useState(false)
 
@@ -66,7 +68,7 @@ export function useSessionConfig({
         setSessionConfig(readLocalSessionConfig())
         return
       }
-      showFeedback('Sesión', error.message || 'No se pudo cargar la configuración de sesión.', 'danger')
+      showFeedback(t('configuracion.sessionTitle'), error.message || t('configuracion.sessionLoadError'), 'danger')
     } finally {
       setSessionConfigLoading(false)
     }
@@ -79,14 +81,14 @@ export function useSessionConfig({
       const normalized = persistLocalSessionConfig(saved || config)
       setSessionConfig(normalized)
       showFeedback(
-        'Sesión',
+        t('configuracion.sessionTitle'),
         saved
-          ? 'Configuración de sesión guardada. Aplicará en el próximo login.'
-          : 'Configuración de sesión guardada localmente y aplicada en esta app.',
+          ? t('configuracion.sessionSaved')
+          : t('configuracion.sessionSavedLocal'),
         'success'
       )
     } catch (error: any) {
-      showFeedback('Sesión', error.message || 'No se pudo guardar la configuración de sesión.', 'danger')
+      showFeedback(t('configuracion.sessionTitle'), error.message || t('configuracion.sessionSaveError'), 'danger')
     } finally {
       setSessionConfigLoading(false)
     }
@@ -100,7 +102,7 @@ export function useSessionConfig({
       localStorage.removeItem('qa_session_user')
       localStorage.removeItem('qa_access_token')
       localStorage.removeItem('qa_session_expires_at')
-      setLoginError('Sesión cerrada por inactividad.')
+      setLoginError(t('configuracion.sessionExpired'))
       setIsAuthenticated(false)
     }
     const checkSessionExpiry = () => {
