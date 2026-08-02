@@ -150,14 +150,22 @@ def _update_download_grant_url(update_server: str) -> str:
     server = str(update_server or "").strip().rstrip("/")
     if not server:
         raise PremiumVerificationError("La licencia Premium no tiene servidor de updates configurado")
-    return f"{server}/download-grant" if server.endswith("/updates") else f"{server}/updates/download-grant"
+    if server.endswith("/api/updates") or server.endswith("/updates"):
+        return f"{server}/download-grant"
+    if server.endswith("/api"):
+        return f"{server}/updates/download-grant"
+    return f"{server}/api/updates/download-grant"
 
 
 def _update_latest_url(update_server: str) -> str:
     server = str(update_server or "").strip().rstrip("/")
     if not server:
         raise PremiumVerificationError("La licencia Premium no tiene servidor de updates configurado")
-    return f"{server}/premium/latest" if server.endswith("/updates") else f"{server}/updates/premium/latest"
+    if server.endswith("/api/updates") or server.endswith("/updates"):
+        return f"{server}/premium/latest"
+    if server.endswith("/api"):
+        return f"{server}/updates/premium/latest"
+    return f"{server}/api/updates/premium/latest"
 
 
 def _remote_license_payload(license_data: dict[str, Any]) -> dict[str, Any]:
