@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy import select
 
 from .repository_context import *
-from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
+from .core_settings_ai_workflow_helpers import get_ai_engine_config, get_configured_ai_provider_api_key
 from .ai_workflow_serialization import _workflow_definition
 from .ai_workflows import get_ai_workflow
 from .ai_provider_profiles import workflow_provider_payload

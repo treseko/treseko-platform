@@ -3,6 +3,7 @@ from .bug_version_metrics import apply_bug_history_metrics, bug_history_version_
 from .project_metrics_bug_context import build_bug_evidence_context
 from .project_metrics_suite import build_suite_tree
 from .project_metrics_history import build_project_history
+from .project_metrics_rules import _qa_decision, _risk_level
 from .project_metrics_derived import build_derived_metrics
 BUG_OPEN_STATES = {"ABIERTO", "TRIAGE", "ASIGNADO", "EN_PROGRESO", "LISTO_PARA_RETEST", "EN_RETEST", "REABIERTO", "BLOQUEADO"}
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
@@ -21,68 +22,6 @@ def _seconds_to_hours(seconds: Optional[int]) -> float:
 
 def _bug_status_is_open(status: Any) -> bool:
     return str(status or "").upper() in BUG_OPEN_STATES
-
-def _risk_level(
-    *,
-    coverage: float,
-    failed: int,
-    blocked: int,
-    pending: int,
-    high_open_bugs: int,
-    bugs_without_evidence: int = 0,
-) -> str:
-    if blocked > 0 or high_open_bugs > 0 or coverage < 70:
-        return "ALTO"
-    if failed > 0 or pending > 0 or coverage < 90 or bugs_without_evidence > 0:
-        return "MEDIO"
-    return "BAJO"
-
-
-def _qa_decision(risk: str, stats: Dict[str, Any], coverage: float, bug_metrics: Dict[str, Any]) -> Dict[str, Any]:
-    failed = int(stats.get("fallados") or 0)
-    blocked = int(stats.get("bloqueados") or 0)
-    pending = int(stats.get("pendientes") or 0)
-    open_bugs = int(bug_metrics.get("open") or 0)
-    high_open = int(bug_metrics.get("high_open") or 0)
-    reasons = []
-    if coverage < 70:
-        reasons.append("cobertura menor al 70%")
-    elif coverage < 90:
-        reasons.append("cobertura menor al 90%")
-    if failed:
-        reasons.append(f"{failed} casos fallidos")
-    if blocked:
-        reasons.append(f"{blocked} casos bloqueados")
-    if high_open:
-        reasons.append(f"{high_open} bugs abiertos de severidad alta/critica")
-    elif open_bugs:
-        reasons.append(f"{open_bugs} bugs abiertos")
-    if pending:
-        reasons.append(f"{pending} casos sin ejecutar")
-
-    if blocked or high_open or coverage < 70:
-        state = "NO_RECOMENDADO"
-        label = "No recomendado"
-    elif failed or open_bugs or pending or coverage < 90:
-        state = "RECOMENDADO_CON_OBSERVACIONES"
-        label = "Recomendado con observaciones"
-    elif int(stats.get("pasados") or 0) == 0:
-        state = "EN_EVALUACION"
-        label = "En evaluacion"
-    else:
-        state = "APROBADO"
-        label = "Aprobado"
-    if blocked:
-        state = "BLOQUEADO"
-        label = "Bloqueado"
-    return {
-        "state": state,
-        "label": label,
-        "risk": risk,
-        "reasons": reasons or ["Sin riesgos relevantes detectados con los datos actuales"],
-        "recommend_release": state == "APROBADO",
-    }
-
 
 def _empty_control_center_payload() -> Dict[str, Any]:
     return {

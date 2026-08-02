@@ -1,3 +1,5 @@
+import sys
+
 from fastapi import APIRouter
 from typing import Annotated
 
@@ -10,6 +12,21 @@ from ...services.notifications.email_sender import test_smtp_connection
 router = APIRouter(tags=["Notificaciones"], dependencies=[Depends(require_feature("notifications.email"))])
 
 from .notifications_shared import _client_ip
+
+_DEFAULT_SEND_SMTP_EMAIL = send_smtp_email
+_DEFAULT_TEST_SMTP_CONNECTION = test_smtp_connection
+
+
+def _notification_dependency(name: str, fallback):
+    local = globals().get(name, fallback)
+    defaults = {
+        "send_smtp_email": _DEFAULT_SEND_SMTP_EMAIL,
+        "test_smtp_connection": _DEFAULT_TEST_SMTP_CONNECTION,
+    }
+    if local is not defaults[name]:
+        return local
+    facade = sys.modules.get(f"{__package__}.notifications")
+    return getattr(facade, name, fallback) if facade else fallback
 
 @router.get("/notifications/email/config/", response_model=schemas.EmailSmtpConfig)
 async def read_email_config(
@@ -60,7 +77,9 @@ async def send_test_email(
     db.add(delivery)
     await db.flush()
     try:
-        await send_smtp_email(config, {"to": [payload.to], "subject": delivery.subject, "text_body": delivery.body_text})
+        await _notification_dependency("send_smtp_email", send_smtp_email)(
+            config, {"to": [payload.to], "subject": delivery.subject, "text_body": delivery.body_text}
+        )
         delivery.status = "SENT"
         delivery.sent_at = utc_now()
         await db.commit()
@@ -83,7 +102,7 @@ async def test_email_connection(
     """Check the configured SMTP transport without sending any email."""
     config = notification_config_service.smtp_config_with_secret(await notification_config_service.get_email_smtp_config(db))
     try:
-        await test_smtp_connection(config)
+        await _notification_dependency("test_smtp_connection", test_smtp_connection)(config)
     except Exception as exc:
         safe_error = sanitize_external_error(exc)
         await crud.create_audit_log(

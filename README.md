@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.0--rc.1-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.1--rc.1-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -11,6 +11,16 @@
 **Treseko Community** es un gestor de pruebas de software de código abierto para equipos QA y desarrollo. Organizá casos de prueba, ejecuciones, evidencias y bugs en un solo lugar; instalalo en tu propio servidor con Docker y conservá la trazabilidad necesaria para decidir cada release con contexto.
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
+
+### Novedades de 1.0.1-rc.1
+
+- Actualizaciones e instalación Community más confiables.
+- Importación de casos con más formatos y mejores diagnósticos.
+- Trazabilidad, evidencias, reportes y métricas de build ampliados.
+- Automatización e IA con seguimiento más claro de resultados.
+- Administración, permisos, notificaciones y suscripciones mejorados.
+
+Para ver el resumen completo, consultá el [changelog](CHANGELOG.md).
 
 > **Conocé Treseko, sus ediciones y la propuesta de producto en la [landing oficial de Treseko](https://treseko.com).**
 
@@ -350,7 +360,7 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión publicada: `1.0.1`
+Versión candidata: `1.0.1-rc.1`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 changelog incluido para conocer su alcance y los cambios incorporados.

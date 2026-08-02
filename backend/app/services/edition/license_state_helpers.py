@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +70,22 @@ async def get_license_state(db: AsyncSession) -> dict[str, Any]:
 
     local_state = evaluate_license(await get_installed_license(db))
     online_state = await get_online_license_state(db)
+    if isinstance(online_state, dict) and online_state.get("license"):
+        installed = await get_installed_license(db)
+        next_check = online_state.get("next_check_at")
+        try:
+            refresh_due = bool(next_check) and datetime.fromisoformat(str(next_check).replace("Z", "+00:00")) <= datetime.now(timezone.utc)
+        except ValueError:
+            refresh_due = True
+        if installed and installed.get("verification_server") and refresh_due:
+            from ..premium_runtime.verification_client import PremiumVerificationError, heartbeat_license_online, offline_grace_from_cached_state
+
+            try:
+                online_state = await save_online_license_state(db, await heartbeat_license_online(installed))
+            except PremiumVerificationError:
+                fallback = offline_grace_from_cached_state(online_state, installed)
+                if fallback:
+                    online_state = await save_online_license_state(db, fallback)
     if isinstance(online_state, dict) and online_state.get("license"):
         online_license_id = (online_state.get("license") or {}).get("license_id")
         local_license_id = (local_state.get("license") or {}).get("license_id")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 from datetime import timedelta
 from typing import Any, Optional
 from uuid import UUID
@@ -59,13 +60,34 @@ from .system_support import (
 
 updates_router = APIRouter(tags=["system"])
 UPDATE_MANIFEST_CACHE_SETTING_KEY = "treseko_update_manifest_cache"
+_SYSTEM_DEPENDENCY_DEFAULTS = {
+    name: globals()[name]
+    for name in (
+        "get_entitlement_provider",
+        "get_update_service",
+        "validate_update_manifest",
+        "prepare_update_download_grant_request",
+        "fetch_latest_premium_update_manifest",
+        "request_premium_download_grant",
+        "get_installed_license",
+    )
+}
+
+
+def _system_dependency(name: str, fallback: Any) -> Any:
+    """Keep the split router compatible with the public system-router facade."""
+    local = globals().get(name, fallback)
+    if local is not _SYSTEM_DEPENDENCY_DEFAULTS.get(name, fallback):
+        return local
+    facade = sys.modules.get(f"{__package__}.system")
+    return getattr(facade, name, fallback) if facade else fallback
 
 @updates_router.get("/system/updates/channels", response_model=schemas.SystemUpdateChannelsResponse)
 async def read_system_update_channels(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     enabled_features = set(state.get("enabled_features") or [])
     premium_allowed = state.get("edition") == "premium" and "updates.premium" in enabled_features
     channels = []
@@ -154,7 +176,9 @@ def _latest_update_response_from_manifest(
 
 
 async def _cached_latest_premium_manifest(db: AsyncSession, state: dict) -> dict | None:
-    license_data = state.get("license") if isinstance(state.get("license"), dict) else await get_installed_license(db)
+    license_data = state.get("license") if isinstance(state.get("license"), dict) else await _system_dependency(
+        "get_installed_license", get_installed_license
+    )(db)
     channel = str(state.get("update_channel") or (license_data or {}).get("update_channel") or "").strip()
     if not license_data or not channel:
         return None
@@ -166,7 +190,9 @@ async def _cached_latest_premium_manifest(db: AsyncSession, state: dict) -> dict
 async def _latest_community_update_response(state: dict) -> dict:
     checked_at = utc_now().isoformat()
     try:
-        result = await get_update_service().check_community_update(str(state.get("update_channel") or ""))
+        result = await _system_dependency("get_update_service", get_update_service)().check_community_update(
+            str(state.get("update_channel") or "")
+        )
     except Exception as exc:
         return _latest_update_response_from_manifest(
             state=state,
@@ -205,7 +231,7 @@ async def read_system_latest_update(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     if not _premium_updates_enabled(state):
         return await _latest_community_update_response(state)
     entry = await _cached_latest_premium_manifest(db, state)
@@ -230,10 +256,12 @@ async def sync_system_premium_update_manifest(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     if not _premium_updates_enabled(state):
         raise HTTPException(status_code=403, detail="Las actualizaciones Premium requieren licencia activa con updates.premium.")
-    license_data = state.get("license") if isinstance(state.get("license"), dict) else await get_installed_license(db)
+    license_data = state.get("license") if isinstance(state.get("license"), dict) else await _system_dependency(
+        "get_installed_license", get_installed_license
+    )(db)
     if not license_data:
         raise HTTPException(status_code=400, detail="No hay licencia Premium instalada.")
     channel = str(state.get("update_channel") or license_data.get("update_channel") or "").strip()
@@ -241,8 +269,10 @@ async def sync_system_premium_update_manifest(
     cache_key = _manifest_cache_key(license_data, channel)
     checked_at = utc_now().isoformat()
     try:
-        manifest = await fetch_latest_premium_update_manifest(license_data, current_version=PRODUCT_VERSION)
-        validation = validate_update_manifest(manifest, state)
+        manifest = await _system_dependency(
+            "fetch_latest_premium_update_manifest", fetch_latest_premium_update_manifest
+        )(license_data, current_version=PRODUCT_VERSION)
+        validation = _system_dependency("validate_update_manifest", validate_update_manifest)(manifest, state)
     except PremiumVerificationError as exc:
         if "No hay version Premium posterior aplicable" in str(exc):
             cache[cache_key] = {
@@ -305,9 +335,9 @@ async def check_system_update_manifest(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     try:
-        return validate_update_manifest(payload.manifest.model_dump(), state)
+        return _system_dependency("validate_update_manifest", validate_update_manifest)(payload.manifest.model_dump(), state)
     except UpdateManifestError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -318,9 +348,11 @@ async def prepare_system_update_download_grant_request(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     try:
-        return prepare_update_download_grant_request(payload.manifest.model_dump(), state)
+        return _system_dependency("prepare_update_download_grant_request", prepare_update_download_grant_request)(
+            payload.manifest.model_dump(), state
+        )
     except UpdateManifestError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -331,7 +363,7 @@ async def check_system_community_update(
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
     try:
-        return await get_update_service().check_community_update(force_refresh=force)
+        return await _system_dependency("get_update_service", get_update_service)().check_community_update(force_refresh=force)
     except Exception as exc:
         return {
             "available": False,
@@ -348,9 +380,9 @@ async def check_system_premium_update(
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
     manifest = payload.manifest.model_dump()
-    state = await get_entitlement_provider().get_state(db)
+    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
     try:
-        result = validate_update_manifest(manifest, state)
+        result = _system_dependency("validate_update_manifest", validate_update_manifest)(manifest, state)
     except UpdateManifestError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if result["edition"] != "premium":
@@ -391,19 +423,21 @@ async def apply_system_update(
     if payload.confirmation != "APPLY_UPDATE":
         raise HTTPException(status_code=400, detail="Confirma la actualizacion con APPLY_UPDATE.")
     if channel in COMMUNITY_UPDATE_CHANNELS and manifest is None:
-        check_result = await get_update_service().check_community_update(channel)
+        check_result = await _system_dependency("get_update_service", get_update_service)().check_community_update(channel)
         if not check_result.get("available"):
             raise HTTPException(status_code=400, detail="No hay actualizacion Community disponible.")
         manifest = check_result.get("manifest") or check_result
     if channel in PREMIUM_UPDATE_CHANNELS:
-        state = await get_entitlement_provider().get_state(db)
+        state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         if manifest is None:
             entry = await _cached_latest_premium_manifest(db, state)
             manifest = entry.get("manifest") if entry else None
             if not manifest:
                 raise HTTPException(status_code=400, detail="No hay manifest Premium sincronizado. Busca actualizaciones antes de aplicar.")
         try:
-            grant_result = await request_premium_download_grant(
+            grant_result = await _system_dependency(
+                "request_premium_download_grant", request_premium_download_grant
+            )(
                 manifest,
                 state,
                 current_version=PRODUCT_VERSION,
@@ -414,10 +448,12 @@ async def apply_system_update(
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         manifest = grant_result["manifest"]
     elif channel in COMMUNITY_UPDATE_CHANNELS:
-        state = await get_entitlement_provider().get_state(db)
+        state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         try:
-            validate_update_manifest(manifest or {}, state)
-            get_update_service().validate_update_request(channel=channel, manifest=manifest or {})
+            _system_dependency("validate_update_manifest", validate_update_manifest)(manifest or {}, state)
+            _system_dependency("get_update_service", get_update_service)().validate_update_request(
+                channel=channel, manifest=manifest or {}
+            )
         except UpdateManifestError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
@@ -425,7 +461,7 @@ async def apply_system_update(
     elif channel not in COMMUNITY_UPDATE_CHANNELS:
         raise HTTPException(status_code=400, detail="Canal de actualizacion no soportado.")
     try:
-        task_id = await get_update_service().apply_update(
+        task_id = await _system_dependency("get_update_service", get_update_service)().apply_update(
             channel=channel,
             manifest=manifest,
             force=payload.force,

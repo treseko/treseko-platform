@@ -333,9 +333,16 @@ async def activate_license_online(license_data: dict[str, Any], *, timeout_secon
     return normalize_verification_state(verify_signed_server_response(payload, license_data, expected_nonce=nonce), license_data)
 
 
-async def heartbeat_license_online(license_data: dict[str, Any], *, timeout_seconds: float = 5.0) -> dict[str, Any]:
+async def heartbeat_license_online(
+    license_data: dict[str, Any],
+    *,
+    timeout_seconds: float = 5.0,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
     local_state = evaluate_license(license_data)
-    if local_state.get("edition") != "premium" or local_state.get("state") != "active":
+    # An expired local document may still be renewed online. Invalid or revoked
+    # documents remain blocked and cannot bootstrap a renewal.
+    if local_state.get("state") not in {"active", "expired"}:
         raise PremiumVerificationError(local_state.get("reason") or "La licencia local no es valida")
     server = str(license_data.get("verification_server") or "").strip()
     token = str(license_data.get("activation_token") or "").strip()
@@ -347,7 +354,7 @@ async def heartbeat_license_online(license_data: dict[str, Any], *, timeout_seco
     payload["features_local"] = license_data.get("enabled_features") or []
     payload["usage"] = {}
     try:
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds, transport=transport) as client:
             response = await client.post(_license_url(server, "heartbeat"), json=payload, headers=_headers(token))
     except httpx.HTTPError as exc:
         raise PremiumVerificationError(f"No se pudo contactar el Verification Server Premium: {exc}") from exc

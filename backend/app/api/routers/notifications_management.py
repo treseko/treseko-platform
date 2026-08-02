@@ -10,6 +10,7 @@ from ...services.notifications.email_sender import test_smtp_connection
 router = APIRouter(tags=["Notificaciones"], dependencies=[Depends(require_feature("notifications.email"))])
 
 from .notifications_shared import (
+    _client_ip,
     _inbox_response,
     _notification_rule_audit_summary,
     _notification_template_audit_summary,

@@ -1,14 +1,10 @@
 from .repository_context import *
+from .project_metrics_rules import _qa_decision, _risk_level
 BUG_SLA_HOURS = {"CRITICA": 24, "ALTA": 48, "MEDIA": 120, "BAJA": 240, "COSMETICA": 240}
 def _safe_iso(value): return value.isoformat() if value else None
 def _hours_between(start, end): return round(max((end - start).total_seconds(), 0) / 3600, 2) if start and end else None
 def _safe_percent(numerator, denominator): return round((numerator / denominator) * 100, 2) if denominator else 0.0
 def _seconds_to_hours(seconds): return round(float(seconds or 0) / 3600, 2)
-def _risk_level(*, coverage, failed, blocked, pending, high_open_bugs, bugs_without_evidence=0):
-    if blocked > 0 or high_open_bugs > 0 or coverage < 70: return "ALTO"
-    if failed > 0 or pending > 0 or coverage < 90 or bugs_without_evidence > 0: return "MEDIO"
-    return "BAJO"
-
 def build_derived_metrics(context):
     ejecuciones = context["ejecuciones"]; related_bugs = context["related_bugs"]; build = context["build"]; total_ejecutados = context["total_ejecutados"]; now = context["now"]
     stats = context["stats"]; bug_metrics = context["bug_metrics"]; project = context["project"]; component = context["component"]; usuarios_info = context["usuarios_info"]; caso_ultimo_estado = context["caso_ultimo_estado"]; cobertura = context["cobertura"]

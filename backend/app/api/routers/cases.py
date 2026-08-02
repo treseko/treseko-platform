@@ -479,6 +479,7 @@ async def resolve_case_dataset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
 ):
+    await _require_case_access(db, current_user, caso_id, "read")
     return await resolve_dataset(caso_id, payload, db, current_user)
 
 

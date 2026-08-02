@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy import select
 
 from .repository_context import *
-from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
+from .core_settings_ai_workflow_helpers import get_ai_engine_config, get_configured_ai_provider_api_key
 from .ai_workflow_serialization import _workflow_definition
 from .ai_workflows import get_ai_workflow
 from .ai_provider_profiles import workflow_provider_payload
@@ -19,11 +19,11 @@ from .traceability_records import _next_code, _story_payload
 from .story_authoring_rules import find_title_similarities, validate_proposal
 
 
+from . import story_generation_helpers as _story_generation_helpers
 from .story_generation_helpers import (
     _analysis_readiness,
     _auto_accept_low_risk_assumptions,
     _build_context,
-    _call_engine,
     _compare_story_intentions,
     _ensure_story_generation_workflow,
     _filter_planned_stories,
@@ -37,6 +37,11 @@ from .story_generation_helpers import (
     _safe_error,
     _story_generation_workflow,
     )
+
+
+async def _call_engine(*args, **kwargs):
+    """Facade wrapper preserving the historical patch point for AI tests."""
+    return await _story_generation_helpers._call_engine(*args, **kwargs)
 async def estimate_story_generation(db, requirement, payload, user_id):
     workflow = await _story_generation_workflow(db)
     context = await _build_context(db, requirement, payload.wiki_page_ids, payload.componente_ids)

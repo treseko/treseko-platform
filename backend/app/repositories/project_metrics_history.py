@@ -1,5 +1,6 @@
 from .repository_context import *
 from .bug_version_metrics import bug_history_version_fields
+from .repository_metrics_attachment_helpers import _visible_case_filter
 
 def _safe_percent(numerator, denominator): return round((numerator / denominator) * 100, 2) if denominator else 0.0
 

@@ -57,6 +57,8 @@ $AdminEmail = "admin@qa.local"
 $AdminPassword = New-TresekoSecret 24
 $DbPassword = New-TresekoSecret 32
 $SecretKey = New-TresekoSecret 64
+$AiCredentialsMasterKey = New-TresekoSecret 64
+$AiEngineInternalToken = New-TresekoSecret 64
 $InstallDocker = if ($SkipDockerInstall) { "false" } else { "true" }
 
 try {
@@ -118,6 +120,8 @@ DATABASE_URL="postgresql+asyncpg://treseko:${TRESEKO_DB_PASSWORD}@db:5432/tresek
 printf '%s' "${TRESEKO_DB_PASSWORD}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/db-password" >/dev/null
 printf '%s' "${DATABASE_URL}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/database-url" >/dev/null
 printf '%s' "${TRESEKO_SECRET_KEY}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/secret-key" >/dev/null
+printf '%s' "${TRESEKO_AI_CREDENTIALS_MASTER_KEY}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/ai-credentials-master-key" >/dev/null
+printf '%s' "${TRESEKO_AI_ENGINE_INTERNAL_TOKEN}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/ai-engine-internal-token" >/dev/null
 printf '%s' "${TRESEKO_ADMIN_PASSWORD}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/admin-password" >/dev/null
 $SUDO chmod 0600 "${TRESEKO_REMOTE_DIR}"/secrets/*
 
@@ -127,6 +131,8 @@ TRESEKO_HTTP_PORT=${TRESEKO_HTTP_PORT}
 TRESEKO_DB_PASSWORD_FILE=${TRESEKO_REMOTE_DIR}/secrets/db-password
 TRESEKO_DATABASE_URL_FILE=${TRESEKO_REMOTE_DIR}/secrets/database-url
 TRESEKO_SECRET_KEY_FILE=${TRESEKO_REMOTE_DIR}/secrets/secret-key
+TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE=${TRESEKO_REMOTE_DIR}/secrets/ai-credentials-master-key
+TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE=${TRESEKO_REMOTE_DIR}/secrets/ai-engine-internal-token
 DB_USER=treseko
 DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
@@ -153,8 +159,10 @@ TRESEKO_HTTP_PORT=$(ConvertTo-BashSingleQuoted ([string]$HttpPort))
 TRESEKO_INSTALL_DOCKER=$(ConvertTo-BashSingleQuoted $InstallDocker)
 TRESEKO_DB_PASSWORD=$(ConvertTo-BashSingleQuoted $DbPassword)
 TRESEKO_SECRET_KEY=$(ConvertTo-BashSingleQuoted $SecretKey)
+TRESEKO_AI_CREDENTIALS_MASTER_KEY=$(ConvertTo-BashSingleQuoted $AiCredentialsMasterKey)
+TRESEKO_AI_ENGINE_INTERNAL_TOKEN=$(ConvertTo-BashSingleQuoted $AiEngineInternalToken)
 TRESEKO_ADMIN_PASSWORD=$(ConvertTo-BashSingleQuoted $AdminPassword)
-export TRESEKO_REMOTE_DIR TRESEKO_HTTP_PORT TRESEKO_INSTALL_DOCKER TRESEKO_DB_PASSWORD TRESEKO_SECRET_KEY TRESEKO_ADMIN_PASSWORD
+export TRESEKO_REMOTE_DIR TRESEKO_HTTP_PORT TRESEKO_INSTALL_DOCKER TRESEKO_DB_PASSWORD TRESEKO_SECRET_KEY TRESEKO_AI_CREDENTIALS_MASTER_KEY TRESEKO_AI_ENGINE_INTERNAL_TOKEN TRESEKO_ADMIN_PASSWORD
 
 $RemoteScript
 "@

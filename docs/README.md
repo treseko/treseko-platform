@@ -45,12 +45,16 @@ usarla y qué revisar si algo no sale como esperás.
 - [Matriz de permisos por rol](RBAC_MATRIX.md)
 - [Matriz de capacidades](RBAC_CAPABILITY_MATRIX.md)
 - [Arquitectura](ARCHITECTURE.md)
+- [Despliegue distribuido recomendado](DISTRIBUTED_DEPLOYMENT_GUIDE.md)
 - [Base de datos](DATABASE.md)
 
 ## Versión distribuida
 
-La versión actual es `1.0.1` y está aprobada para uso productivo.
-Consultá el [changelog](../CHANGELOG.md) para conocer los cambios incluidos.
+La versión candidata distribuida es `1.0.1-rc.1`. Incluye mejoras operativas en instalación,
+actualizaciones, portabilidad de casos, trazabilidad, reportes, automatización,
+IA y administración.
+
+Consultá el [changelog](../CHANGELOG.md) para conocer las novedades incluidas.
 
 ## Enlaces oficiales
 

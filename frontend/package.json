@@ -1,7 +1,7 @@
 {
   "name": "treseko-frontend",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.1-rc.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

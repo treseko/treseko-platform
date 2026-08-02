@@ -1,11 +1,19 @@
 # Treseko
 
-## 1.0.1
+## 1.0.1-rc.1 — Novedades
 
-- Corrige la verificación de actualizaciones, incluyendo estado final coherente
-  después del reinicio y marcadores de versión para todos los componentes.
-- Refuerza la calidad de la instalación Community: navegación actualizada,
-  pruebas completas de interfaz y ejecución de campaña IA en Linux y Windows.
+- Actualizaciones más confiables, con verificación del paquete y recuperación ante inconvenientes.
+- Historial de actualizaciones más claro después de reiniciar la instalación.
+- Primer acceso e instalación Community más simples y consistentes.
+- Importación y portabilidad de casos con más formatos, plantillas y diagnósticos.
+- Trazabilidad ampliada entre requisitos, historias, casos, ejecuciones, evidencias y bugs.
+- Reportes y métricas de build mejorados para acompañar decisiones de release.
+- Automatización e IA con mejores evidencias y seguimiento de resultados.
+- Mejoras en permisos, configuración, notificaciones y administración.
+- Preparación de funciones Premium, renovación de licencias y gestión de suscripciones.
+
+Este resumen describe las funciones y mejoras operativas disponibles para los
+usuarios. No incluye detalles internos de implementación.
 
 ## 1.0.0-rc.1
 

@@ -59,19 +59,27 @@ New-Item -ItemType Directory -Force -Path $SecretsDir | Out-Null
 $AdminPassword = New-TresekoSecret 24
 $DbPassword = New-TresekoSecret 32
 $SecretKey = New-TresekoSecret 64
+$AiCredentialsMasterKey = New-TresekoSecret 64
+$AiEngineInternalToken = New-TresekoSecret 64
 $DatabaseUrl = "postgresql+asyncpg://treseko:${DbPassword}@db:5432/treseko"
 
 $DbPasswordFile = Join-Path $SecretsDir "db-password"
 $DatabaseUrlFile = Join-Path $SecretsDir "database-url"
 $SecretKeyFile = Join-Path $SecretsDir "secret-key"
+$AiCredentialsMasterKeyFile = Join-Path $SecretsDir "ai-credentials-master-key"
+$AiEngineInternalTokenFile = Join-Path $SecretsDir "ai-engine-internal-token"
 $AdminPasswordFile = Join-Path $SecretsDir "admin-password"
 $ComposeDbPasswordFile = $DbPasswordFile.Replace('\', '/')
 $ComposeDatabaseUrlFile = $DatabaseUrlFile.Replace('\', '/')
 $ComposeSecretKeyFile = $SecretKeyFile.Replace('\', '/')
+$ComposeAiCredentialsMasterKeyFile = $AiCredentialsMasterKeyFile.Replace('\', '/')
+$ComposeAiEngineInternalTokenFile = $AiEngineInternalTokenFile.Replace('\', '/')
 
 [System.IO.File]::WriteAllText($DbPasswordFile, $DbPassword)
 [System.IO.File]::WriteAllText($DatabaseUrlFile, $DatabaseUrl)
 [System.IO.File]::WriteAllText($SecretKeyFile, $SecretKey)
+[System.IO.File]::WriteAllText($AiCredentialsMasterKeyFile, $AiCredentialsMasterKey)
+[System.IO.File]::WriteAllText($AiEngineInternalTokenFile, $AiEngineInternalToken)
 [System.IO.File]::WriteAllText($AdminPasswordFile, $AdminPassword)
 
 @"
@@ -80,6 +88,8 @@ TRESEKO_HTTP_PORT=$HttpPort
 TRESEKO_DB_PASSWORD_FILE=$ComposeDbPasswordFile
 TRESEKO_DATABASE_URL_FILE=$ComposeDatabaseUrlFile
 TRESEKO_SECRET_KEY_FILE=$ComposeSecretKeyFile
+TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE=$ComposeAiCredentialsMasterKeyFile
+TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE=$ComposeAiEngineInternalTokenFile
 DB_USER=treseko
 DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
