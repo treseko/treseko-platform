@@ -37,6 +37,17 @@ git push origin treseko-community-v1.0.1-rc.1
 
 ## Antes de publicar
 
+La publicación queda bloqueada hasta que exista una traducción inglesa para
+cada documento público y pase el validador desde la raíz del repositorio fuente:
+
+```bash
+python3 scripts/check_public_docs_translation.py
+```
+
+El español en `docs/*.md` es la fuente de verdad y las traducciones deben vivir
+en `docs/en/` con el mismo nombre de archivo. Revisar también los enlaces,
+comandos y diagramas de ambos índices.
+
 Ejecuta estas verificaciones:
 
 ```bash

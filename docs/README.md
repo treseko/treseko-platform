@@ -1,5 +1,7 @@
 # Documentación de Treseko Community
 
+> English: [English documentation](en/README.md)
+
 Esta documentación te ayuda a instalar Treseko, organizar el trabajo de QA y
 administrar la plataforma. Cada guía indica qué función está disponible, cómo
 usarla y qué revisar si algo no sale como esperás.
