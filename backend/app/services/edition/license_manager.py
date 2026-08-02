@@ -57,6 +57,17 @@ LICENSE_DOCUMENT_BASE_FIELDS = {
     "activation_token",
     "verification_interval_days",
     "grace_period_days",
+    # Billing and lifecycle metadata is signed by the Premium verification
+    # server.  Keep these fields explicit so the document remains strict while
+    # licenses created by the customer portal and upgrades stay compatible.
+    "billing_period_months",
+    "auto_renew",
+    "billing_source",
+    "payment_status",
+    "billing_note",
+    "license_version",
+    "change_reason",
+    "previous_document_sha256",
     "signature",
 }
 LICENSE_ENVELOPE_FIELDS = {"payload", "signature"}
@@ -323,6 +334,25 @@ def normalize_license_payload(value: dict[str, Any]) -> dict[str, Any]:
                 raise LicenseError(f"{field} debe ser numerico") from exc
             if normalized[field] < 1:
                 raise LicenseError(f"{field} debe ser mayor a cero")
+    if normalized.get("billing_period_months") is not None:
+        try:
+            normalized["billing_period_months"] = int(normalized["billing_period_months"])
+        except (TypeError, ValueError) as exc:
+            raise LicenseError("billing_period_months debe ser numerico") from exc
+        if not 1 <= normalized["billing_period_months"] <= 120:
+            raise LicenseError("billing_period_months debe estar entre 1 y 120")
+    if normalized.get("auto_renew") is not None and not isinstance(normalized["auto_renew"], bool):
+        raise LicenseError("auto_renew debe ser booleano")
+    for field in ("billing_source", "payment_status", "billing_note", "change_reason", "previous_document_sha256"):
+        if normalized.get(field) is not None:
+            normalized[field] = str(normalized[field]).strip() or None
+    if normalized.get("license_version") is not None:
+        try:
+            normalized["license_version"] = int(normalized["license_version"])
+        except (TypeError, ValueError) as exc:
+            raise LicenseError("license_version debe ser numerico") from exc
+        if normalized["license_version"] < 1:
+            raise LicenseError("license_version debe ser mayor a cero")
     if normalized.get("key_id") is not None:
         normalized["key_id"] = str(normalized.get("key_id") or "").strip() or None
     for field in ("issued_at", "expires_at", "revoked_at"):

@@ -1,6 +1,6 @@
 # Treseko
 
-## 1.0.1-rc.1 — Novedades
+## 1.0.1-rc.2 — Corrección de licencias Premium
 
 - Actualizaciones más confiables, con verificación del paquete y recuperación ante inconvenientes.
 - Historial de actualizaciones más claro después de reiniciar la instalación.
@@ -11,6 +11,7 @@
 - Automatización e IA con mejores evidencias y seguimiento de resultados.
 - Mejoras en permisos, configuración, notificaciones y administración.
 - Preparación de funciones Premium, renovación de licencias y gestión de suscripciones.
+- Compatibilidad del cliente con los metadatos firmados de facturación y upgrades de licencias Premium.
 
 Este resumen describe las funciones y mejoras operativas disponibles para los
 usuarios. No incluye detalles internos de implementación.
