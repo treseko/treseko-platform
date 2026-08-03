@@ -1,11 +1,11 @@
 # Treseko
 
-## 1.0.1-rc.5 — Actualizador preparado para futuras migraciones
+## 1.0.1 — Actualizador preparado para futuras migraciones
 
 - Contrato documentado para planes de actualización, hooks y rollback.
 - Validación automática de la versión instalada del frontend.
 - Protección contra sobrescritura por imágenes antiguas.
-- Backups, health checks y limpieza posterior definidos para futuras RC.
+- Backups, health checks y limpieza posterior definidos para futuras actualizaciones.
 
 ## 1.0.1-rc.4 — Compatibilidad de actualización Premium
 

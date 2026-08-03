@@ -1,0 +1,29 @@
+name: Propuesta de mejora
+description: Propón una mejora concreta para Treseko.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema que resuelve
+      description: Describe la necesidad y quién se ve afectado.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Explica cómo debería funcionar y cuál sería el resultado esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: textarea
+    id: scope
+    attributes:
+      label: Alcance e impacto
+      description: Indica si afecta instalación, datos, permisos, automatización, IA o actualizaciones.

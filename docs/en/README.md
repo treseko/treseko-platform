@@ -8,6 +8,12 @@ This documentation helps you install Treseko, organize QA work and
 administer the platform. Each guide explains which feature is available, how to
 use it and what to check if something does not behave as expected.
 
+## Contact
+
+- Maintainer: [José Manuel Zúñiga](https://www.linkedin.com/in/jose-manuel-zuniga/)
+- Website: [biuler.com](https://www.biuler.com)
+- Email: [jose@treseko.com](mailto:jose@treseko.com)
+
 ## Getting started
 
 1. [Quick installation](INSTALLATION.md): install Treseko with Docker or from your machine via SSH.
@@ -57,7 +63,7 @@ use it and what to check if something does not behave as expected.
 
 ## Distributed version
 
-The distributed candidate version is `1.0.1-rc.4`. It includes operational improvements in installation,
+The distributed stable version is `1.0.1`. It includes operational improvements in installation,
 updates, case portability, traceability, reports, automation,
 AI and administration.
 

@@ -6,6 +6,12 @@ Esta documentación te ayuda a instalar Treseko, organizar el trabajo de QA y
 administrar la plataforma. Cada guía indica qué función está disponible, cómo
 usarla y qué revisar si algo no sale como esperás.
 
+## Contacto
+
+- Mantenedor: [José Manuel Zúñiga](https://www.linkedin.com/in/jose-manuel-zuniga/)
+- Sitio: [biuler.com](https://www.biuler.com)
+- Email: [jose@treseko.com](mailto:jose@treseko.com)
+
 ## Empezar
 
 1. [Instalación rápida](INSTALLATION.md): instalá Treseko con Docker o desde tu equipo por SSH.
@@ -55,7 +61,7 @@ usarla y qué revisar si algo no sale como esperás.
 
 ## Versión distribuida
 
-La versión candidata distribuida es `1.0.1-rc.4`. Incluye mejoras operativas en instalación,
+La versión estable distribuida es `1.0.1`. Incluye mejoras operativas en instalación,
 actualizaciones, portabilidad de casos, trazabilidad, reportes, automatización,
 IA y administración.
 

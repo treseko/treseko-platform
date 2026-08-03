@@ -2,6 +2,10 @@
 
 Thanks for helping improve Treseko.
 
+Project maintainer: [José Manuel Zúñiga](https://www.linkedin.com/in/jose-manuel-zuniga/).
+For project contact, visit [treseko.com](https://treseko.com) or write to
+[jose@treseko.com](mailto:jose@treseko.com).
+
 By contributing to this repository, you agree that your contribution is provided under the same license as the project: AGPL-3.0-or-later.
 
 ## Development Flow
@@ -50,3 +54,5 @@ Community/Premium gates may exist in the platform code, but the commercial autho
 ## Documentation
 
 User-facing changes should update documentation in `docs/` when behavior, installation or operations change.
+
+For more about the maintainer, visit [biuler.com](https://www.biuler.com).

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentación de Treseko
+    url: https://treseko.com/documentacion
+    about: Consulta instalación, uso y operación antes de abrir un issue.
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/treseko/treseko-platform/security
+    about: No publiques vulnerabilidades ni secretos en issues públicos.

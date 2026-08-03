@@ -1,0 +1,58 @@
+name: Reporte de bug
+description: Reporta un comportamiento reproducible que no funciona como esperabas.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por ayudar a mejorar Treseko. No incluyas secretos, datos de clientes ni credenciales.
+  - type: input
+    id: version
+    attributes:
+      label: Versión
+      description: Indica la versión de Treseko y, si corresponde, el tag o commit.
+      placeholder: 1.0.1
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Tipo de instalación
+      options:
+        - Docker Linux
+        - Docker Windows
+        - Bare-metal Linux
+        - Desarrollo local
+        - Otro
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Qué ocurrió
+      description: Explica el comportamiento observado y el comportamiento esperado.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Pasos para reproducir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs o evidencias sanitizados
+      description: Elimina tokens, contraseñas, correos privados e información de clientes antes de pegar contenido.
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: Entorno
+      description: Sistema operativo, navegador, base de datos y componentes afectados.

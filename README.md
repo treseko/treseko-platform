@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.1--rc.4-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.1-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -12,8 +12,10 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Novedades de 1.0.1-rc.4
+### Novedades de 1.0.1
 
+- Actualizador preparado para futuras migraciones, hooks y rollback.
+- Validación automática de versiones y protección contra imágenes antiguas.
 - Actualizaciones e instalación Community más confiables.
 - Importación de casos con más formatos y mejores diagnósticos.
 - Trazabilidad, evidencias, reportes y métricas de build ampliados.
@@ -25,6 +27,9 @@ Para ver el resumen completo, consultá el [changelog](CHANGELOG.md).
 > **Conocé Treseko, sus ediciones y la propuesta de producto en la [landing oficial de Treseko](https://treseko.com).**
 
 - Sitio oficial: [treseko.com](https://treseko.com)
+- Web del mantenedor: [biuler.com](https://www.biuler.com)
+- Mantenedor: [José Manuel Zúñiga](https://www.linkedin.com/in/jose-manuel-zuniga/)
+- Contacto: [jose@treseko.com](mailto:jose@treseko.com)
 - Terminos y condiciones: [treseko.com/terminos-y-condiciones](https://treseko.com/terminos-y-condiciones)
 - Licencia del codigo Community: [AGPL-3.0-or-later](LICENSE)
 
@@ -360,7 +365,7 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión candidata: `1.0.1-rc.4`
+Versión estable: `1.0.1`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 changelog incluido para conocer su alcance y los cambios incorporados.
