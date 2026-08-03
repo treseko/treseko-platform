@@ -224,16 +224,20 @@ Flujo recomendado:
 1. El administrador busca updates desde la UI.
 2. Treseko descarga el paquete, verifica SHA-256, genera backups y deja
    `update-ready`.
-3. Reiniciar servicios para que `entrypoint.sh` aplique el paquete y ejecute
-   Alembic:
+3. Con `TRESEKO_ENABLE_SELF_UPDATE_APPLY=true` (valor predeterminado del
+   compose productivo), Treseko solicita el reinicio y `entrypoint.sh` aplica
+   el paquete y ejecuta Alembic automáticamente. No hace falta reconstruir el
+   frontend ni copiar archivos manualmente. Si la instalación deshabilita esa
+   opción, el administrador puede reiniciar los servicios:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
 ```
 
-`TRESEKO_ENABLE_SELF_UPDATE_APPLY=true` solo debe habilitarse cuando exista un
-proceso operativo de updates validado para tu instalacion. Sin esa flag, la UI
-prepara el paquete pero no fuerza reinicio automatico.
+El arranque compara las versiones del volumen compartido y de la imagen para
+evitar que una imagen anterior sobrescriba un frontend actualizado. Después de
+copiarlo, el entrypoint valida `VERSION` y `version.json`; si no coinciden, la
+actualización falla y se activa el rollback de código.
 
 ## Worker automatizado opcional
 
@@ -285,7 +289,8 @@ No soportado para bare-metal:
 
 - No habilitar variables `TRESEKO_ALLOW_DEV_*`.
 - No guardar secretos en `compose.production.env`.
-- No agregar `RUNNER_TOKEN` al archivo productivo base.
+- No agregar tokens del worker al archivo productivo base; usar
+  `QA_RUNNER_TOKEN_FILE` y el volumen persistente del worker.
 - No copiar llaves privadas ni material sensible al runtime.
 - El backend productivo requiere migraciones Alembic aplicadas.
 - Si Alembic falla por schema drift, corregir la migracion o recrear la base

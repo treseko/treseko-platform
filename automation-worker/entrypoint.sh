@@ -1,6 +1,12 @@
 #!/bin/sh
 set -eu
 
+# Do not run npm ci while the backend is restoring this persistent runtime.
+while [ -f /worker/.treseko-update-rollback ]; do
+  echo "Rollback del Worker en curso; esperando restauracion del runtime..."
+  sleep 1
+done
+
 if [ -d /opt/treseko/worker-source ] && [ ! -f /worker/package.json ]; then
   cp -a /opt/treseko/worker-source/. /worker/
 fi

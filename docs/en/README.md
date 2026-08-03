@@ -14,6 +14,7 @@ use it and what to check if something does not behave as expected.
 2. [Docker guide](DOCKER_GUIDE.md): set up a persistent installation.
 3. [Access, users and permissions](AUTH_RBAC_GUIDE.md): create the first users and roles.
 4. [Suite and case portability](CASE_PORTABILITY.md): import or export your cases.
+5. [Linux installation](LINUX_SETUP.md): prepare a Linux installation step by step.
 
 ## Using Treseko
 
@@ -37,9 +38,11 @@ use it and what to check if something does not behave as expected.
 - [Automation](AUTOMATION_GUIDE.md)
 - [External automation: generate an API key and report executions](API_USAGE_GUIDE.md)
 - [External automation API contract](EXTERNAL_AUTOMATION_API.md)
+- [API specification](API_SPEC.md)
 - [Automation worker](AUTOMATION_WORKER_V1.md)
 - [Running the AI Engine](AI_ENGINE_GUIDE.md)
 - [AI Engine configuration](AI_ENGINE_CONFIG.md)
+- [Governed MCP](MCP_GUIDE.md)
 
 ## Administration and reference
 
@@ -54,7 +57,7 @@ use it and what to check if something does not behave as expected.
 
 ## Distributed version
 
-The distributed candidate version is `1.0.1-rc.1`. It includes operational improvements in installation,
+The distributed candidate version is `1.0.1-rc.4`. It includes operational improvements in installation,
 updates, case portability, traceability, reports, automation,
 AI and administration.
 
@@ -63,4 +66,4 @@ See the [changelog](../../CHANGELOG.md) for the included changes.
 ## Official links
 
 - Website: [treseko.com](https://treseko.com)
-- [Terms and conditions](https://treseko.com/terminos-y-condiciones)
+- [Terms and conditions](https://treseko.com/en/terms-and-conditions)

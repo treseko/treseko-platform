@@ -12,6 +12,7 @@ usarla y qué revisar si algo no sale como esperás.
 2. [Guía Docker](DOCKER_GUIDE.md): configurá una instalación persistente.
 3. [Acceso, usuarios y permisos](AUTH_RBAC_GUIDE.md): creá los primeros usuarios y roles.
 4. [Portabilidad de suites y casos](CASE_PORTABILITY.md): importá o exportá tus casos.
+5. [Instalación en Linux](LINUX_SETUP.md): prepará una instalación Linux paso a paso.
 
 ## Usar Treseko
 
@@ -35,9 +36,11 @@ usarla y qué revisar si algo no sale como esperás.
 - [Automatización](AUTOMATION_GUIDE.md)
 - [Automatización externa: generar API key y reportar ejecuciones](API_USAGE_GUIDE.md)
 - [Contrato de la API de automatización externa](EXTERNAL_AUTOMATION_API.md)
+- [Especificación de la API](API_SPEC.md)
 - [Worker de automatización](AUTOMATION_WORKER_V1.md)
 - [Operación del Motor IA](AI_ENGINE_GUIDE.md)
 - [Configuración del Motor IA](AI_ENGINE_CONFIG.md)
+- [MCP gobernado](MCP_GUIDE.md)
 
 ## Administración y referencia
 
@@ -52,7 +55,7 @@ usarla y qué revisar si algo no sale como esperás.
 
 ## Versión distribuida
 
-La versión candidata distribuida es `1.0.1-rc.1`. Incluye mejoras operativas en instalación,
+La versión candidata distribuida es `1.0.1-rc.4`. Incluye mejoras operativas en instalación,
 actualizaciones, portabilidad de casos, trazabilidad, reportes, automatización,
 IA y administración.
 

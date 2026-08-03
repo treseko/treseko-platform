@@ -1,13 +1,52 @@
 #!/bin/sh
 set -eu
 
-if [ -d /opt/treseko/frontend-dist ]; then
-  rm -rf /usr/share/nginx/html/assets
-  cp -a /opt/treseko/frontend-dist/. /usr/share/nginx/html/
+FRONTEND_HTML_DIR="${TRESEKO_FRONTEND_HTML_DIR:-/usr/share/nginx/html}"
+IMAGE_DIST_DIR="${TRESEKO_IMAGE_FRONTEND_DIST_DIR:-/opt/treseko/frontend-dist}"
+
+read_bundle_version() {
+  bundle_dir="$1"
+  if [ -r "$bundle_dir/VERSION" ]; then
+    tr -d '[:space:]' < "$bundle_dir/VERSION"
+    return 0
+  fi
+  if [ -r "$bundle_dir/version.json" ]; then
+    sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$bundle_dir/version.json" | head -n 1
+  fi
+}
+
+version_is_newer() {
+  candidate="$1"
+  installed="$2"
+  [ -n "$candidate" ] || return 1
+  [ "$candidate" != "$installed" ] || return 1
+  [ "$(printf '%s\n%s\n' "$installed" "$candidate" | sort -V | tail -n 1)" = "$candidate" ]
+}
+
+if [ -d "$IMAGE_DIST_DIR" ]; then
+  image_version="$(read_bundle_version "$IMAGE_DIST_DIR")"
+  installed_version="$(read_bundle_version "$FRONTEND_HTML_DIR")"
+
+  # El actualizador del backend escribe el volumen compartido directamente.
+  # Una imagen anterior nunca debe sobrescribir esa actualización al reiniciar.
+  if [ -z "$installed_version" ] || version_is_newer "$image_version" "$installed_version"; then
+    echo "Sincronizando frontend inicial de la imagen${image_version:+ ($image_version)}."
+    find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
+    cp -a "$IMAGE_DIST_DIR/." "$FRONTEND_HTML_DIR/"
+  else
+    echo "Conservando frontend instalado ($installed_version); la imagen contiene $image_version."
+  fi
 fi
 
-if [ ! -f /usr/share/nginx/html/maintenance.html ]; then
-  cat > /usr/share/nginx/html/maintenance.html <<'HTML'
+installed_version="$(read_bundle_version "$FRONTEND_HTML_DIR")"
+metadata_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$FRONTEND_HTML_DIR/version.json" | head -n 1)"
+if [ -r "$FRONTEND_HTML_DIR/VERSION" ] && [ -r "$FRONTEND_HTML_DIR/version.json" ] && [ "$installed_version" != "$metadata_version" ]; then
+  echo "Frontend inconsistente: VERSION=$installed_version version.json=$metadata_version" >&2
+  exit 1
+fi
+
+if [ ! -f "$FRONTEND_HTML_DIR/maintenance.html" ]; then
+  cat > "$FRONTEND_HTML_DIR/maintenance.html" <<'HTML'
 <!doctype html>
 <html lang="es">
   <head>

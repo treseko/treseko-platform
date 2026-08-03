@@ -17,7 +17,7 @@ const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const envPath = path.join(ROOT_DIR, ".env");
-const restartMarkerPath = path.join(ROOT_DIR, ".treseko-update-restart");
+const restartMarkerPath = path.join(ROOT_DIR, ".treseko-update-restart"); const rollbackMarkerPath = path.join(ROOT_DIR, ".treseko-update-rollback");
 const RUN_ONCE = process.argv.includes("--once");
 const startedAt = Date.now();
 const STARTED_AT_ISO = new Date(startedAt).toISOString();
@@ -339,7 +339,7 @@ async function heartbeat(status = "ONLINE") {
 }
 
 function restartIfUpdateIsReady() {
-  if (activeJobs > 0 || !fs.existsSync(restartMarkerPath)) return;
+  if (activeJobs > 0 || fs.existsSync(rollbackMarkerPath) || !fs.existsSync(restartMarkerPath)) return;
   console.info("Actualizacion del worker lista; reiniciando el proceso para cargarla.");
   try {
     fs.unlinkSync(restartMarkerPath);
@@ -389,7 +389,7 @@ const executeJob = createJobExecutor({
   getPackageBinPath, serializeJsonForSource, prepareSeleniumPythonSource, getPythonCommand,
   compileScript, normalizeDataset, normalizeStepResult, normalizeJobStatus, isAssertionLike,
   artifactFromBuffer, formatLogArg, formatErrorDetail, redact, replacePlaceholders,
-  frameworkKey, languageKey, localWorkerSupports, detectScriptFormat,
+  frameworkKey, languageKey, localWorkerSupports, detectScriptFormat, compactPlaywrightMetadata,
 });
 
 async function loop() {

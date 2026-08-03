@@ -36,6 +36,13 @@ function Require-Command {
   }
 }
 
+function Assert-LastExitCode {
+  param([string]$Operation)
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Operation fallo con codigo $LASTEXITCODE."
+  }
+}
+
 Require-Command docker
 
 docker compose version *> $null
@@ -101,21 +108,28 @@ try {
   if ($Reset) {
     Write-Host "Reiniciando entorno local y volumenes..."
     docker compose -f docker-compose.prod.yml --env-file compose.production.env down -v --remove-orphans
+    Assert-LastExitCode "La limpieza del entorno Docker"
   }
 
   Write-Host "Construyendo y levantando Treseko local..."
   docker compose -f docker-compose.prod.yml --env-file compose.production.env build
+  Assert-LastExitCode "La construccion de las imagenes Docker"
   docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d db redis
+  Assert-LastExitCode "El arranque de PostgreSQL y Redis"
   docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm migrator
+  Assert-LastExitCode "Las migraciones de la base de datos"
   Get-Content -Raw -Path $AdminPasswordFile |
     docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm -T `
       --entrypoint python backend /app/seed_admin.py --password-stdin
+  Assert-LastExitCode "La creacion del administrador inicial"
   docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
+  Assert-LastExitCode "El arranque de backend, Engine y frontend"
 
   if ($WithDemo) {
     Write-Host "Cargando datos demo..."
     docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm `
       --entrypoint python backend /app/seed_demo_showcase.py
+    Assert-LastExitCode "La carga de datos demo"
   }
 }
 finally {

@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+# A backend rollback may race with an Engine restart triggered by an update.
+# Hold startup until the backend has restored the persistent runtime files.
+while [ -f /engine/.treseko-update-rollback ]; do
+  echo "Rollback del Engine en curso; esperando restauracion del runtime..."
+  sleep 1
+done
+
 if [ -d /opt/treseko/engine-source ] && [ -w /engine ] && [ ! -f /engine/package.json ]; then
   cp -a /opt/treseko/engine-source/. /engine/
 fi

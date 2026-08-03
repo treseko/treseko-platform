@@ -39,6 +39,13 @@ function Require-Command {
   }
 }
 
+function Assert-LastExitCode {
+  param([string]$Operation)
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Operation fallo con codigo $LASTEXITCODE."
+  }
+}
+
 function ConvertTo-BashSingleQuoted {
   param([string]$Value)
   return "'" + ($Value -replace "'", "'\''") + "'"
@@ -78,6 +85,7 @@ try {
 
   Write-Host "Subiendo paquete a $Target..."
   scp -P $SshPort $Archive "${Target}:${RemoteArchive}"
+  Assert-LastExitCode "La subida del paquete por SCP"
 
   $RemoteScript = @'
 set -euo pipefail
@@ -167,6 +175,7 @@ export TRESEKO_REMOTE_DIR TRESEKO_HTTP_PORT TRESEKO_INSTALL_DOCKER TRESEKO_DB_PA
 $RemoteScript
 "@
   $Bootstrap | ssh -p $SshPort $Target bash -s
+  Assert-LastExitCode "La instalacion remota"
 
   $HostName = $Target -replace '^.*@', ''
 

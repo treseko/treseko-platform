@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 
@@ -8,7 +9,7 @@ export function createJobExecutor(deps) {
     RUNNER_NAME, ROOT_DIR, state,
     playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource,
     shouldRunHeadless, getPlaywrightCliPath, runCommand, parsePlaywrightJsonReport,
-    summarizePlaywrightReport, classifyPlaywrightFailure, withCorrelation,
+    summarizePlaywrightReport, compactPlaywrightMetadata, classifyPlaywrightFailure, withCorrelation,
     collectArtifacts, playwrightReportArtifact, getPlaywrightVersion, isDebugMode,
     processResultPayload, prepareNodeScriptSource, getPackageBinPath,
     serializeJsonForSource, prepareSeleniumPythonSource, getPythonCommand,

@@ -484,9 +484,9 @@ httpServer.listen(PORT, () => {
   );
   void redeliverPendingTerminalResults();
   setInterval(() => { void redeliverPendingTerminalResults(); }, 15_000).unref();
-  const restartMarker = path.join(process.env.TRESEKO_ENGINE_DIR || "/engine", ".treseko-update-restart");
+  const restartMarker = path.join(process.env.TRESEKO_ENGINE_DIR || "/engine", ".treseko-update-restart"); const rollbackMarker = path.join(process.env.TRESEKO_ENGINE_DIR || "/engine", ".treseko-update-rollback");
   setInterval(() => {
-    if (!fs.existsSync(restartMarker) || activeExecutionIds.size > 0) return;
+    if (fs.existsSync(rollbackMarker) || !fs.existsSync(restartMarker) || activeExecutionIds.size > 0) return;
     try {
       fs.unlinkSync(restartMarker);
       console.info("Update de Engine preparado; reiniciando sin ejecuciones activas.");

@@ -29,7 +29,7 @@ read_version() {
     cat "$VERSION_FILE"
     return 0
   fi
-  for candidate in /VERSION "$APP_DIR/../VERSION" "$APP_DIR/VERSION"; do
+  for candidate in "$APP_DIR/VERSION" /VERSION "$APP_DIR/../VERSION"; do
     if [ -r "$candidate" ]; then
       cat "$candidate"
       return 0
@@ -82,6 +82,35 @@ maintenance_off() {
   fi
 }
 
+validate_frontend_runtime() {
+  expected_version="$1"
+  [ -n "$expected_version" ] || return 1
+  [ -r "$FRONTEND_HTML_DIR/VERSION" ] || {
+    echo "Frontend actualizado sin VERSION." >&2
+    return 1
+  }
+  [ -r "$FRONTEND_HTML_DIR/version.json" ] || {
+    echo "Frontend actualizado sin version.json." >&2
+    return 1
+  }
+  FRONTEND_EXPECTED_VERSION="$expected_version" FRONTEND_HTML_DIR="$FRONTEND_HTML_DIR" python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["FRONTEND_HTML_DIR"])
+expected = os.environ["FRONTEND_EXPECTED_VERSION"].strip()
+version_file = (root / "VERSION").read_text(encoding="utf-8").strip()
+metadata = json.loads((root / "version.json").read_text(encoding="utf-8"))
+metadata_version = str(metadata.get("version") or "").strip()
+if version_file != expected or metadata_version != expected:
+    raise SystemExit(
+        f"Frontend inconsistente despues del update: VERSION={version_file!r}, "
+        f"version.json={metadata_version!r}, esperado={expected!r}"
+    )
+PY
+}
+
 backup_runtime_code() {
   mkdir -p "$DB_BACKUP_DIR"
   ENTRYPOINT_CODE_BACKUP="$DB_BACKUP_DIR/pre-entrypoint-code-$(date -u +%Y%m%d_%H%M%S).tar.gz"
@@ -97,6 +126,8 @@ backup_runtime_code() {
   [ -d "$FRONTEND_HTML_DIR" ] && cp -a "$FRONTEND_HTML_DIR" "$backup_src/frontend_html"
   [ -d "$ENGINE_DIR" ] && cp -a "$ENGINE_DIR" "$backup_src/engine"
   [ -d "$WORKER_DIR" ] && cp -a "$WORKER_DIR" "$backup_src/worker"
+  [ -f "$APP_DIR/VERSION" ] && cp -a "$APP_DIR/VERSION" "$backup_src/VERSION"
+  [ -f "$APP_DIR/entrypoint.sh" ] && cp -a "$APP_DIR/entrypoint.sh" "$backup_src/entrypoint.sh"
   tar -C "$backup_src" -czf "$ENTRYPOINT_CODE_BACKUP" . 2>/dev/null || {
       echo "No se pudo crear backup de codigo pre-update."
       rm -rf "$backup_src"
@@ -113,6 +144,15 @@ restore_runtime_code() {
   restore_dir="$UPDATES_DIR/entrypoint-rollback-$(date -u +%Y%m%d_%H%M%S)"
   rm -rf "$restore_dir"
   mkdir -p "$restore_dir"
+  # Keep persistent runtimes quiescent while restoring them. The Engine or
+  # Worker may otherwise restart asynchronously and recreate node_modules
+  # during the rollback copy.
+  for runtime_dir in "$ENGINE_DIR" "$WORKER_DIR"; do
+    if [ -d "$runtime_dir" ]; then
+      rm -f "$runtime_dir/.treseko-update-restart"
+      : > "$runtime_dir/.treseko-update-rollback"
+    fi
+  done
   echo "Restaurando codigo desde backup: $ENTRYPOINT_CODE_BACKUP"
   tar -xzf "$ENTRYPOINT_CODE_BACKUP" -C "$restore_dir"
 
@@ -130,16 +170,28 @@ restore_runtime_code() {
     mkdir -p "$FRONTEND_HTML_DIR"
     find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
     cp -a "$restore_dir/frontend_html/." "$FRONTEND_HTML_DIR/"
+    # El backup puede contener la marca activa del update fallido. No debe
+    # sobrevivir al rollback: maintenance_off debe poder liberar la interfaz.
+    rm -f "$MAINTENANCE_MARKER"
   fi
   if [ -d "$restore_dir/engine" ]; then
     mkdir -p "$ENGINE_DIR"
-    rm -rf "$ENGINE_DIR"/*
+    find "$ENGINE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a "$restore_dir/engine/." "$ENGINE_DIR/"
   fi
   if [ -d "$restore_dir/worker" ]; then
     mkdir -p "$WORKER_DIR"
-    rm -rf "$WORKER_DIR"/*
+    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a "$restore_dir/worker/." "$WORKER_DIR/"
+  fi
+  rm -f "$ENGINE_DIR/.treseko-update-restart" "$WORKER_DIR/.treseko-update-restart"
+  rm -f "$ENGINE_DIR/.treseko-update-rollback" "$WORKER_DIR/.treseko-update-rollback"
+  if [ -f "$restore_dir/VERSION" ]; then
+    cp -a "$restore_dir/VERSION" "$APP_DIR/VERSION"
+  fi
+  if [ -f "$restore_dir/entrypoint.sh" ]; then
+    cp -a "$restore_dir/entrypoint.sh" "$APP_DIR/entrypoint.sh"
+    chmod 755 "$APP_DIR/entrypoint.sh"
   fi
   rm -rf "$restore_dir"
 }
@@ -294,12 +346,14 @@ PY
     mkdir -p "$FRONTEND_HTML_DIR"
     find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
     cp -a "$update_dir/frontend/dist/." "$FRONTEND_HTML_DIR/"
+    expected_frontend_version="${ENTRYPOINT_UPDATE_VERSION:-$(cat "$update_dir/VERSION")}"
+    validate_frontend_runtime "$expected_frontend_version"
   fi
 
   if [ -d "$update_dir/engine" ]; then
     echo "  Reemplazando engine..."
     mkdir -p "$ENGINE_DIR"
-    rm -rf "$ENGINE_DIR"/*
+    find "$ENGINE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a "$update_dir/engine/." "$ENGINE_DIR/"
     # El Engine detecta esta marca y se reinicia despues de que el backend
     # termine de reemplazar sus fuentes. No se corta una ejecucion en curso.
@@ -313,7 +367,7 @@ PY
   if [ -d "$update_dir/automation-worker" ]; then
     echo "  Reemplazando worker..."
     mkdir -p "$WORKER_DIR"
-    rm -rf "$WORKER_DIR"/*
+    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     cp -a "$update_dir/automation-worker/." "$WORKER_DIR/"
     # Workers nuevos consumen esta marca cuando terminan el job activo. Las
     # releases anteriores requieren un reinicio manual unico para adoptar este
@@ -322,13 +376,16 @@ PY
   fi
 
   rm -f "$flag_file"
+  echo "Update pendiente aplicado; queda pendiente validar migraciones y health checks."
+}
+
+mark_update_applied() {
   if [ -n "$ENTRYPOINT_UPDATE_TASK_ID" ]; then
     UPDATE_TASK_ID="$ENTRYPOINT_UPDATE_TASK_ID" UPDATE_VERSION="$ENTRYPOINT_UPDATE_VERSION" python - <<'PY' > "$UPDATES_DIR/update-applied"
 import json, os
 print(json.dumps({"task_id": os.environ["UPDATE_TASK_ID"], "version": os.environ.get("UPDATE_VERSION", "")}))
 PY
   fi
-  echo "Update pendiente aplicado."
 }
 
 backup_database() {
@@ -382,6 +439,7 @@ PY
 apply_pending_update
 backup_database
 run_migrations
+mark_update_applied
 maintenance_off
 ENTRYPOINT_UPDATE_IN_PROGRESS="false"
 if [ -n "$ENTRYPOINT_UPDATE_FAILED_FILE" ]; then
