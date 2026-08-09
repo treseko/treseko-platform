@@ -191,7 +191,7 @@ export function AutomationFunctionsModal({
         </Modal.Header>
         <Modal.Body>
           <div className="d-flex gap-2 justify-content-between align-items-center mb-3">
-            <Form.Control value={search} onChange={e => setSearch(e.target.value)} placeholder={t('casos.searchFunction')} />
+            <Form.Control name="a11y-automationfunctionsmodaltsx-194" aria-label="Campo de formulario" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('casos.searchFunction')} />
             {canEdit && <Button className="d-flex align-items-center gap-2 text-nowrap" onClick={openCreate}><Plus size={16} /> {t('casos.newFunction')}</Button>}
           </div>
           {loading ? (
@@ -251,15 +251,15 @@ export function AutomationFunctionsModal({
           <Row className="g-3">
             <Col md={6}>
               <Form.Label><RequiredLabel required>{t('casos.name')}</RequiredLabel></Form.Label>
-              <Form.Control required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-254" aria-label="Campo de formulario" required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
             </Col>
             <Col md={6}>
               <Form.Label>{t('casos.functionDescription')}</Form.Label>
-              <Form.Control value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-258" aria-label="Campo de formulario" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} />
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.framework')}</Form.Label>
-              <Form.Select value={form.framework} onChange={e => setForm({ ...form, framework: e.target.value })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-262" aria-label="Campo de formulario" value={form.framework} onChange={e => setForm({ ...form, framework: e.target.value })}>
                 <option value="playwright">Playwright</option>
                 <option value="cypress">Cypress</option>
                 <option value="selenium">Selenium</option>
@@ -268,14 +268,14 @@ export function AutomationFunctionsModal({
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.scope')}</Form.Label>
-              <Form.Select value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value, componente_id: e.target.value === 'PROYECTO' ? '' : componentId })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-271" aria-label="Campo de formulario" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value, componente_id: e.target.value === 'PROYECTO' ? '' : componentId })}>
                 <option value="COMPONENTE">{t('casos.componentScope')}</option>
                 <option value="PROYECTO">{t('casos.projectScope')}</option>
               </Form.Select>
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.componentScope')}</Form.Label>
-              <Form.Select value={form.componente_id} disabled={form.scope !== 'COMPONENTE'} onChange={e => setForm({ ...form, componente_id: e.target.value })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-278" aria-label="Campo de formulario" value={form.componente_id} disabled={form.scope !== 'COMPONENTE'} onChange={e => setForm({ ...form, componente_id: e.target.value })}>
                 <option value="">{t('casos.selectComponent')}</option>
                 {componentsList.filter(c => c.projectId === projectId).map(component => (
                   <option key={component.id} value={component.id}>{component.name}</option>
@@ -284,11 +284,11 @@ export function AutomationFunctionsModal({
             </Col>
             <Col xs={12}>
               <Form.Label>{t('casos.parametersCommaSeparated')}</Form.Label>
-              <Form.Control value={form.parametros} onChange={e => setForm({ ...form, parametros: e.target.value })} placeholder="page, variables, log" />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-287" aria-label="Campo de formulario" value={form.parametros} onChange={e => setForm({ ...form, parametros: e.target.value })} placeholder="page, variables, log" />
             </Col>
             <Col xs={12}>
               <Form.Label><RequiredLabel required>{t('casos.code')}</RequiredLabel></Form.Label>
-              <Form.Control required as="textarea" rows={12} className="font-monospace small" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-291" aria-label="Campo de formulario" required as="textarea" rows={12} className="font-monospace small" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} />
             </Col>
           </Row>
         </Modal.Body>

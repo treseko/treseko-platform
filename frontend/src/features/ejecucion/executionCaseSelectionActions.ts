@@ -1,3 +1,4 @@
+import { startTransition } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 type CreateExecutionCaseSelectionActionsParams = {
@@ -35,17 +36,48 @@ export function createExecutionCaseSelectionActions({
 }: CreateExecutionCaseSelectionActionsParams) {
   const handleSelectTestForExecution = async (test: any) => {
     const activeRun = viewMode === 'manual_exec' ? currentExecutionRun : null
-    setStepResults({})
-    setSnapshotNotes({})
-    setGeneralExecutionStatus('SIN_CORRER')
-    setGeneralExecutionNote('')
-    setExecutionSnapshots([])
-    setCurrentExecutionCase(null)
-    if (!activeRun) {
-      setCurrentExecutionRun(null)
-      setExecutionMode(null)
+
+    // En una ejecución activa, conservar el caso visible hasta disponer de
+    // todos los datos del nuevo caso. Si se limpian los estados antes de la
+    // carga, la consola muestra brevemente SIN_CORRER y parece que la
+    // ejecución anterior se perdió.
+    if (activeRun?.id) {
+      const history = await loadCasoExecutionHistory(test.id)
+      const latestHistory = history[0]
+      const hydratedTest = latestHistory
+        ? {
+            ...test,
+            lastResult: latestHistory.status,
+            lastExecutedAt: latestHistory.date,
+            lastExecutedBy: latestHistory.executedBy,
+            lastExecutedVersion: latestHistory.versionExecuted,
+            history
+          }
+        : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history }
+      await loadExecutionDetails(activeRun.id, test.id)
+      startTransition(() => {
+        setSelectedTest(hydratedTest)
+        setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))
+      })
+      return
     }
 
+    setSelectedTest(test)
+    startTransition(() => {
+      setStepResults({})
+      setSnapshotNotes({})
+      if (typeof setGeneralExecutionStatus === 'function') {
+        setGeneralExecutionStatus('SIN_CORRER')
+      }
+      setGeneralExecutionNote('')
+      setExecutionSnapshots([])
+      setCurrentExecutionCase(null)
+      setCurrentExecutionRun(null)
+      setExecutionMode(null)
+    })
+
+    // Fuera de una ejecución activa, la selección no necesita esperar al
+    // backend: el historial sólo enriquece el caso mostrado.
     const history = await loadCasoExecutionHistory(test.id)
     const latestHistory = history[0]
     const hydratedTest = latestHistory
@@ -58,8 +90,10 @@ export function createExecutionCaseSelectionActions({
           history
         }
       : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history }
-    setSelectedTest(hydratedTest)
-    setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))
+    startTransition(() => {
+      setSelectedTest(hydratedTest)
+      setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))
+    })
     if (activeRun?.id) {
       await loadExecutionDetails(activeRun.id, test.id)
     }

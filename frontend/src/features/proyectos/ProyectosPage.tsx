@@ -404,6 +404,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
               componentsList,
               currentCompId,
               buildsList,
+              canEditProjectBuilds,
               canEditProjectBuildsEffective,
               handleCreateBuild,
               showBuildCreateOptions,

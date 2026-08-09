@@ -8,13 +8,17 @@ import { getBugPriorityPresentation } from "../bugs/bugPresentation";
 import { ExecutionHistoryPanel } from "./ExecutionHistoryPanel";
 
 export function ExecutionCaseDetailPanel({ options }: { options: any }) {
-  const { selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, getStatusColor: _getStatusColor, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker } = options;
+  const { selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, getStatusColor: _getStatusColor, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs } = options;
   if (!selectedTest) return null;
+  return (
             <div
   className="execution-detail-panel border-start bg-white d-flex flex-column text-start animate__animated animate__fadeInRight"
   style={{
     width: "320px",
     minWidth: "320px",
+    flexShrink: 0,
+    minHeight: 0,
+    height: "100%",
     boxShadow: "-4px 0 16px rgba(0,0,0,0.06)",
   }}
             >
@@ -305,7 +309,9 @@ export function ExecutionCaseDetailPanel({ options }: { options: any }) {
               variant="outline-danger"
               size="sm"
               className="fw-bold d-flex align-items-center justify-content-center gap-1"
-              onClick={onOpenBugTracker}
+              onClick={() => onOpenBugTracker(selectedTest)}
+              disabled={canViewBugs === false}
+              title={canViewBugs === false ? t('ejecutarPruebas.bugsViewPermission') : t('ejecutarPruebas.viewBugTracker')}
             >
               <Bug size={14} /> Ver en Bug Tracker
             </Button>
@@ -365,6 +371,8 @@ export function ExecutionCaseDetailPanel({ options }: { options: any }) {
 
   <ExecutionHistoryPanel options={{ selectedTest, t, onOpenRunHistory, onOpenEvidence }} />
 
+  </div>
+
   <div className="p-3 border-top bg-light d-flex flex-column gap-2">
     {isOutdatedExecutionCase(selectedTest) && (
       <Alert
@@ -395,6 +403,6 @@ export function ExecutionCaseDetailPanel({ options }: { options: any }) {
       </span>
     </div>
   </div>
-  </div>
             </div>
+  )
 }

@@ -240,11 +240,11 @@ export function LoginPage({
                       <>
                         <Form.Group className="mb-3">
                           <Form.Label className="small fw-bold text-muted">{isAdPasswordMode ? t('auth.corporateUser') : t('auth.email')}</Form.Label>
-                          <Form.Control type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? t('auth.corporateUserPlaceholder') : t('auth.emailPlaceholder')} required />
+                          <Form.Control name="a11y-loginpagetsx-243" aria-label="Campo de formulario" type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? t('auth.corporateUserPlaceholder') : t('auth.emailPlaceholder')} required />
                         </Form.Group>
                         <Form.Group className="mb-3">
                           <Form.Label className="small fw-bold text-muted">{t('auth.password')}</Form.Label>
-                          <Form.Control type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required />
+                          <Form.Control name="a11y-loginpagetsx-247" aria-label="Campo de formulario" type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required />
                         </Form.Group>
                       </>
                     ) : (

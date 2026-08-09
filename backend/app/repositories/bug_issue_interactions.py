@@ -21,6 +21,7 @@ async def add_bug_comment(db: AsyncSession, bug_id: UUID, payload: schemas.BugCo
     await db.commit()
     result = await db.execute(
         select(models.BugComment)
+        .options(selectinload(models.BugComment.autor))
         .options(selectinload(models.BugComment.attachments).selectinload(models.BugAttachment.attachment))
         .filter(models.BugComment.id == comment.id)
     )
@@ -30,6 +31,7 @@ async def add_bug_comment(db: AsyncSession, bug_id: UUID, payload: schemas.BugCo
 async def list_bug_comments(db: AsyncSession, bug_id: UUID):
     result = await db.execute(
         select(models.BugComment)
+        .options(selectinload(models.BugComment.autor))
         .options(selectinload(models.BugComment.attachments).selectinload(models.BugAttachment.attachment))
         .filter(models.BugComment.bug_id == bug_id)
         .order_by(models.BugComment.created_at)
@@ -110,7 +112,7 @@ async def create_bug_from_snapshot(db: AsyncSession, snapshot_id: UUID, payload:
     if run.dataset_id:
         dataset = (await db.execute(select(models.EntornoDataset).filter(models.EntornoDataset.id == run.dataset_id))).scalar_one_or_none()
     resolved_dataset = await resolve_case_dataset(db, case.id, run.build_id, run.entorno_id, run.dataset_id)
-    dataset_values = (resolved_dataset or {}).get("variables_resueltas") or {}
+    dataset_values = (resolved_dataset or {}).get("dataset_resuelto") or []
     run_variables = {str(key): str(value) for key, value in ((run.variables_resueltas if run else {}) or {}).items()}
     snapshot_data = _resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None
     base = {
@@ -158,6 +160,7 @@ async def create_bug_from_snapshot(db: AsyncSession, snapshot_id: UUID, payload:
             "environment_url": environment.url if environment else None,
             "dataset_name": dataset.nombre if dataset else None,
             "dataset_variables": dataset_values,
+            "dataset_resolved_values": dataset_values,
             "snapshot_action": snapshot.accion_congelada,
             "snapshot_data": snapshot_data or snapshot.datos_congelados,
             "snapshot_expected": snapshot.resultado_esperado_congelado,

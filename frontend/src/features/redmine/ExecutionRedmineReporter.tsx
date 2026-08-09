@@ -1,13 +1,23 @@
 import type { FormEvent } from 'react'
 import { Badge, Button, Col, Form, Modal, Offcanvas, Row, Table } from 'react-bootstrap'
-import { AlertCircle, Bug, Plus, Save, Trash2 } from 'lucide-react'
+import { AlertCircle, Bug, LoaderCircle, Plus, Save, Trash2 } from 'lucide-react'
 import { EvidenceUpload, type AttachmentMeta } from '../../EvidenceUpload'
 import { BUG_PRIORITY_OPTIONS, formatBugPriorityOption } from '../bugs/bugPresentation'
 import { useI18n } from '../../i18n'
+import { normalizeQaDatasetEntries } from '../../app/qaDataset'
 
 type AdditionalContextRow = {
   key: string
   value: string
+}
+
+type DatasetDisplayEntry = {
+  key: string
+  value: string
+}
+
+function getDatasetDisplayEntries(value: unknown): DatasetDisplayEntry[] {
+  return normalizeQaDatasetEntries(value)
 }
 
 type ExecutionRedmineReporterProps = {
@@ -18,7 +28,7 @@ type ExecutionRedmineReporterProps = {
   currentExecutionCase: any
   selectedTest: any
   onDefer: () => void
-  onOpenReport: () => void
+  onOpenReport: () => void | Promise<void>
   onSubmitInternalBug: (event: FormEvent) => void
   internalBugDraft?: Record<string, any> | null
   onInternalBugDraftChange?: (field: string, value: any) => void
@@ -56,7 +66,7 @@ export function ExecutionRedmineReporter({
   const isManualBug = Boolean(draft._context?.manual)
   const metadata = draft.metadata_json || {}
   const executedSteps = Array.isArray(metadata.executed_steps) ? metadata.executed_steps : []
-  const datasetVariables = metadata.dataset_variables && typeof metadata.dataset_variables === 'object' ? metadata.dataset_variables : null
+  const datasetDisplayEntries = getDatasetDisplayEntries(metadata.dataset_resolved_values || metadata.dataset_variables)
   const displaySelectedTest = isManualBug ? null : selectedTest
   const preloadedAttachmentIds = Array.isArray(draft._context?.preloadedAttachmentIds)
     ? draft._context.preloadedAttachmentIds.map((id: any) => String(id))
@@ -87,10 +97,10 @@ export function ExecutionRedmineReporter({
           </p>
         </Modal.Body>
         <Modal.Footer className="border-0 px-4 pb-4 d-flex justify-content-end gap-2">
-          <Button variant="outline-primary" className="fw-bold rounded-pill px-4 shadow-none" onClick={onDefer}>
+          <Button type="button" variant="outline-primary" className="fw-bold rounded-pill px-4 shadow-none" disabled={internalBugCreating} onClick={onDefer}>
             {t('bugs.reportLater')}
           </Button>
-          <Button variant="danger" className="fw-bold rounded-pill px-4 shadow-none" disabled={internalBugCreating} onClick={onOpenReport}>
+          <Button type="button" variant="danger" className="fw-bold rounded-pill px-4 shadow-none" disabled={internalBugCreating} onClick={() => { void onOpenReport() }}>
             <Bug size={16} className="me-2" /> {internalBugCreating ? t('bugs.preparing') : t('bugs.reportNow')}
           </Button>
         </Modal.Footer>
@@ -111,32 +121,32 @@ export function ExecutionRedmineReporter({
 
           <Form className="text-dark text-start" onSubmit={onSubmitInternalBug}>
             <Form.Group className="mb-3">
-              <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.titleLabel')}</Form.Label>
-              <Form.Control size="sm" value={draft.titulo || ''} onChange={(e) => updateField('titulo', e.target.value)} className="bg-white border-0 shadow-sm fw-bold text-dark fs-6" required />
+              <Form.Label htmlFor="internal-bug-title" className="text-muted fw-bold x-small uppercase">{t('bugs.titleLabel')}</Form.Label>
+              <Form.Control id="internal-bug-title" name="internalBugTitle" size="sm" value={draft.titulo || ''} onChange={(e) => updateField('titulo', e.target.value)} className="bg-white border-0 shadow-sm fw-bold text-dark fs-6" required />
             </Form.Group>
 
             <Row className="g-2 mb-3">
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.severity')}</Form.Label>
-                <Form.Select size="sm" value={draft.severidad || 'MEDIA'} onChange={(e) => updateField('severidad', e.target.value)}>
+                <Form.Label htmlFor="internal-bug-severity" className="text-muted fw-bold x-small uppercase">{t('bugs.severity')}</Form.Label>
+                <Form.Select id="internal-bug-severity" name="internalBugSeverity" size="sm" value={draft.severidad || 'MEDIA'} onChange={(e) => updateField('severidad', e.target.value)}>
                   {['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].map(item => <option key={item}>{item}</option>)}
                 </Form.Select>
               </Col>
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.priority')}</Form.Label>
-                <Form.Select size="sm" value={draft.prioridad || 'P2'} onChange={(e) => updateField('prioridad', e.target.value)}>
+                <Form.Label htmlFor="internal-bug-priority" className="text-muted fw-bold x-small uppercase">{t('bugs.priority')}</Form.Label>
+                <Form.Select id="internal-bug-priority" name="internalBugPriority" size="sm" value={draft.prioridad || 'P2'} onChange={(e) => updateField('prioridad', e.target.value)}>
                   {BUG_PRIORITY_OPTIONS.slice(0, 4).map(item => <option key={item} value={item}>{formatBugPriorityOption(item)}</option>)}
                 </Form.Select>
               </Col>
               <Col md={4}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.criticality')}</Form.Label>
-                <Form.Select size="sm" value={draft.criticidad || 'MEDIA'} onChange={(e) => updateField('criticidad', e.target.value)}>
+                <Form.Label htmlFor="internal-bug-criticality" className="text-muted fw-bold x-small uppercase">{t('bugs.criticality')}</Form.Label>
+                <Form.Select id="internal-bug-criticality" name="internalBugCriticality" size="sm" value={draft.criticidad || 'MEDIA'} onChange={(e) => updateField('criticidad', e.target.value)}>
                   {['BAJA', 'MEDIA', 'ALTA', 'CRITICA'].map(item => <option key={item}>{item}</option>)}
                 </Form.Select>
               </Col>
               <Col md={12}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.assignedTo')}</Form.Label>
-                <Form.Select size="sm" value={draft.asignado_a || ''} onChange={(e) => updateField('asignado_a', e.target.value || null)}>
+                <Form.Label htmlFor="internal-bug-assignee" className="text-muted fw-bold x-small uppercase">{t('bugs.assignedTo')}</Form.Label>
+                <Form.Select id="internal-bug-assignee" name="internalBugAssignee" size="sm" value={draft.asignado_a || ''} onChange={(e) => updateField('asignado_a', e.target.value || null)}>
                   <option value="">{t('bugs.unassignedLabel')}</option>
                   {appUsers.map((item: any) => <option value={item.id} key={item.id}>{item.name || item.nombre_completo || item.email}</option>)}
                 </Form.Select>
@@ -145,8 +155,10 @@ export function ExecutionRedmineReporter({
 
             {isManualBug && (
               <Form.Group className="mb-3">
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.reproductionSteps')} *</Form.Label>
+                <Form.Label htmlFor="internal-bug-reproduction" className="text-muted fw-bold x-small uppercase">{t('bugs.reproductionSteps')} *</Form.Label>
                 <Form.Control
+                  id="internal-bug-reproduction"
+                  name="internalBugReproductionSteps"
                   as="textarea"
                   rows={4}
                   value={draft.pasos_reproduccion || ''}
@@ -160,27 +172,27 @@ export function ExecutionRedmineReporter({
             )}
 
             <Form.Group className="mb-3">
-              <Form.Label className="text-muted fw-bold x-small uppercase d-flex justify-content-between">
+              <Form.Label htmlFor="internal-bug-summary" className="text-muted fw-bold x-small uppercase d-flex justify-content-between">
                 <span>{t('bugs.summaryDiagnostic')}</span>
                 <Badge bg="light" text="primary" className="border">{t('bugs.editable')}</Badge>
               </Form.Label>
-              <Form.Control as="textarea" rows={3} value={draft.descripcion || ''} onChange={(e) => updateField('descripcion', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
+              <Form.Control id="internal-bug-summary" name="internalBugSummary" as="textarea" rows={3} value={draft.descripcion || ''} onChange={(e) => updateField('descripcion', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
             </Form.Group>
 
             <Row className="g-2 mb-3">
               <Col md={6}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.expectedResult')}</Form.Label>
-                <Form.Control as="textarea" rows={3} value={draft.resultado_esperado || ''} onChange={(e) => updateField('resultado_esperado', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
+                <Form.Label htmlFor="internal-bug-expected" className="text-muted fw-bold x-small uppercase">{t('bugs.expectedResult')}</Form.Label>
+                <Form.Control id="internal-bug-expected" name="internalBugExpected" as="textarea" rows={3} value={draft.resultado_esperado || ''} onChange={(e) => updateField('resultado_esperado', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
               </Col>
               <Col md={6}>
-                <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.actualResult')}</Form.Label>
-                <Form.Control as="textarea" rows={3} value={draft.resultado_obtenido || ''} onChange={(e) => updateField('resultado_obtenido', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
+                <Form.Label htmlFor="internal-bug-actual" className="text-muted fw-bold x-small uppercase">{t('bugs.actualResult')}</Form.Label>
+                <Form.Control id="internal-bug-actual" name="internalBugActual" as="textarea" rows={3} value={draft.resultado_obtenido || ''} onChange={(e) => updateField('resultado_obtenido', e.target.value)} className="bg-white border-0 shadow-sm text-dark" required />
               </Col>
             </Row>
 
             <Form.Group className="mb-3">
-              <Form.Label className="text-muted fw-bold x-small uppercase">{t('bugs.qaNotes')} ({t('common.optional')})</Form.Label>
-              <Form.Control as="textarea" rows={3} value={draft.notas_qa || ''} onChange={(e) => updateField('notas_qa', e.target.value)} className="bg-white border-0 shadow-sm text-dark" />
+              <Form.Label htmlFor="internal-bug-qa-notes" className="text-muted fw-bold x-small uppercase">{t('bugs.qaNotes')} ({t('common.optional')})</Form.Label>
+              <Form.Control id="internal-bug-qa-notes" name="internalBugQaNotes" as="textarea" rows={3} value={draft.notas_qa || ''} onChange={(e) => updateField('notas_qa', e.target.value)} className="bg-white border-0 shadow-sm text-dark" />
             </Form.Group>
 
             <div className="bg-white border rounded p-3 mb-3">
@@ -209,10 +221,20 @@ export function ExecutionRedmineReporter({
                   ))}
                 </tbody>
               </Table>
-              {datasetVariables && Object.keys(datasetVariables).length > 0 && (
-                <pre className="small border rounded p-2 bg-light mt-2 mb-0 white-space-pre-wrap" style={{ maxHeight: 120, overflow: 'auto' }}>
-                  {JSON.stringify(datasetVariables, null, 2)}
-                </pre>
+              {datasetDisplayEntries.length > 0 && (
+                <div className="border rounded p-2 bg-light mt-2">
+                  <div className="text-muted fw-bold x-small uppercase mb-2">Datos del dataset utilizados</div>
+                  <Table size="sm" bordered className="mb-0 bg-white">
+                    <tbody>
+                      {datasetDisplayEntries.map((entry) => (
+                        <tr key={entry.key}>
+                          <td className="fw-bold text-muted" style={{ width: 170 }}>{entry.key}</td>
+                          <td className="text-break">{entry.value || 'N/D'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
               )}
             </div>
 
@@ -258,12 +280,12 @@ export function ExecutionRedmineReporter({
                 </div>
               )}
               {additionalContextRows.map((row, index) => (
-                <Row className="g-2 mb-2" key={`${index}-${row.key}`}>
+                <Row className="g-2 mb-2" key={index}>
                   <Col xs={5}>
-                    <Form.Control size="sm" placeholder={t('bugs.componentDataPlaceholder')} value={row.key} onChange={(e) => updateContextRow(index, 'key', e.target.value)} />
+                    <Form.Control id={`internal-bug-context-key-${index}`} name={`internalBugContextKey-${index}`} aria-label={t('bugs.componentDataPlaceholder')} size="sm" placeholder={t('bugs.componentDataPlaceholder')} value={row.key} onChange={(e) => updateContextRow(index, 'key', e.target.value)} />
                   </Col>
                   <Col xs={6}>
-                    <Form.Control size="sm" placeholder={t('bugs.versionValuePlaceholder')} value={row.value} onChange={(e) => updateContextRow(index, 'value', e.target.value)} />
+                    <Form.Control id={`internal-bug-context-value-${index}`} name={`internalBugContextValue-${index}`} aria-label={t('bugs.versionValuePlaceholder')} size="sm" placeholder={t('bugs.versionValuePlaceholder')} value={row.value} onChange={(e) => updateContextRow(index, 'value', e.target.value)} />
                   </Col>
                   <Col xs={1} className="d-grid">
                     <Button type="button" size="sm" variant="outline-danger" onClick={() => removeContextRow(index)}>
@@ -286,11 +308,12 @@ export function ExecutionRedmineReporter({
               />
             </Form.Group>
 
-            <Button type="submit" variant="danger" className="w-100 fw-bold shadow-lg py-3 border-0 rounded-pill text-white shadow-none d-flex justify-content-center align-items-center gap-2" disabled={internalBugCreating}>
-              <Save size={18} /> {internalBugCreating ? t('bugs.creatingInternal') : (isManualBug ? t('bugs.createInternal') : t('bugs.createInternalContinue'))}
+            <Button type="submit" variant="danger" className="w-100 fw-bold shadow-lg py-3 border-0 rounded-pill text-white shadow-none d-flex justify-content-center align-items-center gap-2" disabled={internalBugCreating} aria-busy={internalBugCreating}>
+              {internalBugCreating ? <LoaderCircle size={18} className="spin" /> : <Save size={18} />}
+              {internalBugCreating ? t('bugs.creatingInternal') : (isManualBug ? t('bugs.createInternal') : t('bugs.createInternalContinue'))}
             </Button>
           </Form>
-          <Button variant="outline-secondary" className="w-100 fw-bold mt-3 rounded-pill shadow-none" onClick={onDefer}>
+          <Button variant="outline-secondary" className="w-100 fw-bold mt-3 rounded-pill shadow-none" disabled={internalBugCreating} onClick={onDefer}>
             {isManualBug ? t('bugs.cancel') : t('bugs.reportLater')}
           </Button>
         </Offcanvas.Body>

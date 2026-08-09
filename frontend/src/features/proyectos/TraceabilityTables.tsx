@@ -236,7 +236,7 @@ export function TraceabilityTables({ options }: { options: any }) {
                       size={15}
                       className="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted"
                     />
-                    <Form.Control
+                    <Form.Control name="a11y-traceabilitytablestsx-239" aria-label="Campo de formulario"
                       size="sm"
                       className="ps-4"
                       placeholder={tx("searchStories")}

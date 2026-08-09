@@ -83,6 +83,19 @@ async def create_test_run(
             raise HTTPException(status_code=400, detail="Uno o mas casos no existen")
         if any(case.proyecto_id != run.proyecto_id for case in cases_by_id.values()):
             raise HTTPException(status_code=400, detail="Todos los casos deben pertenecer al proyecto de la ejecucion")
+        archived_cases = [
+            case for case in cases_by_id.values()
+            if case.estado_caso == models.EstadoCaso.ARCHIVADO
+        ]
+        if archived_cases:
+            case_names = ", ".join(case.codigo or case.titulo or str(case.id) for case in archived_cases)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No se puede iniciar una nueva ejecución con casos archivados: "
+                    f"{case_names}. Restaura la prueba o quítala de la selección."
+                ),
+            )
         invalid_cases = await db.execute(
             select(models.CasoPrueba).filter(
                 models.CasoPrueba.id.in_(run.caso_ids),
@@ -97,6 +110,14 @@ async def create_test_run(
             raise HTTPException(status_code=400, detail="La build solo puede ejecutar casos de su componente")
     try:
         created_run = await crud.create_test_run(db=db, run=run, user_id=current_user.id)
+        if created_run.dataset_id:
+            dataset_result = await db.execute(
+                select(models.EntornoDataset).filter(
+                    models.EntornoDataset.id == created_run.dataset_id,
+                )
+            )
+            dataset = dataset_result.scalar_one_or_none()
+            created_run.dataset_nombre = dataset.nombre if dataset else None
         await realtime_event_bus.publish(
             created_run.proyecto_id,
             "execution.run.created",

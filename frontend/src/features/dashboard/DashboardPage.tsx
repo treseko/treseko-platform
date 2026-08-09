@@ -9,7 +9,8 @@ import 'react-resizable/css/styles.css'
 import { API_BASE } from '../../app/constants'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { useI18n } from '../../i18n'
-import { BuildWindowSummary, EmptyWidget, ExecutionList, ExecutionTypeDistribution, Kpi, normalizeExecutionTypeDistribution, TrendByBuildList } from './DashboardWidgets'
+import { BuildWindowSummary, EmptyWidget, ExecutionList, ExecutionTypeDistribution, Kpi, TrendByBuildList } from './DashboardWidgets'
+import { formatDashboardDuration, normalizeExecutionTypeDistribution } from './dashboardUtils'
 
 type DashboardPageProps = {
   currentProjectId: string
@@ -174,7 +175,7 @@ export function DashboardPage({
   onPreferencesUpdated,
   canAccessCapability,
 }: DashboardPageProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const profileSettings = loggedUser.profileSettings || {}
   const canPersonalizeDashboard = canAccessCapability ? canAccessCapability('dashboard.personalizar', 'edit') : true
   const [editing, setEditing] = useState(false)
@@ -378,7 +379,11 @@ export function DashboardPage({
       case 'open_bugs':
         return <div><Kpi icon={<Bug />} label="Bugs abiertos" value={summary.open_bugs?.total || 0} />{Object.entries(summary.open_bugs?.by_severity || {}).map(([key, value]) => <Badge bg="light" text="dark" className="border me-1 mt-2" key={key}>{key}: {String(value)}</Badge>)}</div>
       case 'average_duration':
-        return <Kpi icon={<Timer />} label="Duracion promedio" value={`${summary.average_duration?.seconds || 0}s`} detail={`${summary.average_duration?.sample_size || 0} ejecuciones`} />
+        {
+          const seconds = Number(summary.average_duration?.seconds || 0)
+          const formattedDuration = formatDashboardDuration(seconds, locale)
+          return <Kpi icon={<Timer />} label={t('dashboard.averageDuration')} value={<span title={`${seconds.toLocaleString(locale)} s`}>{formattedDuration}</span>} detail={t('dashboard.averageDurationExecutions', { count: summary.average_duration?.sample_size || 0 })} />
+        }
       case 'execution_type_distribution': {
         const data = normalizeExecutionTypeDistribution(summary.execution_type_distribution || {})
         if (!data.some(item => item.value > 0)) {

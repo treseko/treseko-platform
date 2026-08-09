@@ -33,15 +33,15 @@ export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false 
           <Row className="g-2">
             <Col md={6}>
               <Form.Label className="small mb-1">{t('proyectos.given')}</Form.Label>
-              <Form.Control size="sm" value={criterion.given} disabled={disabled || !onChange} onChange={(event) => update(index, { given: event.target.value })} />
+              <Form.Control name="a11y-acceptancecriteriaeditortsx-36" aria-label="Campo de formulario" size="sm" value={criterion.given} disabled={disabled || !onChange} onChange={(event) => update(index, { given: event.target.value })} />
             </Col>
             <Col md={6}>
               <Form.Label className="small mb-1">{t('proyectos.when')}</Form.Label>
-              <Form.Control size="sm" value={criterion.when} disabled={disabled || !onChange} onChange={(event) => update(index, { when: event.target.value })} />
+              <Form.Control name="a11y-acceptancecriteriaeditortsx-40" aria-label="Campo de formulario" size="sm" value={criterion.when} disabled={disabled || !onChange} onChange={(event) => update(index, { when: event.target.value })} />
             </Col>
             <Col md={12}>
               <Form.Label className="small mb-1">{t('proyectos.then')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-acceptancecriteriaeditortsx-44" aria-label="Campo de formulario"
                 as="textarea"
                 rows={2}
                 value={criterion.then.join("\n")}
@@ -51,7 +51,7 @@ export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false 
             </Col>
             <Col md={12}>
               <Form.Label className="small mb-1">{t('proyectos.observableResult')}</Form.Label>
-              <Form.Control size="sm" value={criterion.observable_result} disabled={disabled || !onChange} onChange={(event) => update(index, { observable_result: event.target.value })} />
+              <Form.Control name="a11y-acceptancecriteriaeditortsx-54" aria-label="Campo de formulario" size="sm" value={criterion.observable_result} disabled={disabled || !onChange} onChange={(event) => update(index, { observable_result: event.target.value })} />
             </Col>
           </Row>
         </div>

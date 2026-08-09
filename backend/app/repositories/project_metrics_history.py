@@ -1,4 +1,5 @@
 from .repository_context import *
+from sqlalchemy import case
 from .bug_version_metrics import bug_history_version_fields
 from .repository_metrics_attachment_helpers import _visible_case_filter
 
@@ -18,7 +19,15 @@ async def build_project_history(context):
         select(models.Build).filter(
             models.Build.proyecto_id == proyecto_id,
             models.Build.componente_id == build.componente_id
-        ).order_by(models.Build.fecha_inicio.desc().nullslast(), models.Build.fecha_creacion.desc(), models.Build.id.desc()).limit(10)
+        ).order_by(
+            # La build seleccionada siempre debe ser la referencia actual.
+            # Algunas builds creadas/importadas no tienen fecha_inicio y
+            # quedarían detrás de una build histórica aunque sean más nuevas.
+            case((models.Build.id == build.id, 0), else_=1),
+            models.Build.fecha_inicio.desc().nullslast(),
+            models.Build.fecha_creacion.desc(),
+            models.Build.id.desc(),
+        ).limit(10)
     )
     builds_historico = result_historico.scalars().all()
 
@@ -122,8 +131,15 @@ async def build_project_history(context):
             "fecha": b.fecha_creacion.isoformat() if b.fecha_creacion else None
         })
 
-    current_history_index = next((idx for idx, item in enumerate(historico) if item.get("build_id") == str(build.id)), 0)
-    previous_history = historico[current_history_index + 1] if len(historico) > current_history_index + 1 else None
+    current_history_index = next(
+        (idx for idx, item in enumerate(historico) if item.get("build_id") == str(build.id)),
+        None,
+    )
+    previous_history = (
+        historico[current_history_index + 1]
+        if current_history_index is not None and len(historico) > current_history_index + 1
+        else None
+    )
     comparison = {}
     if previous_history:
         comparison = {

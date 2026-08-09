@@ -40,7 +40,7 @@ export function ApiKeyPanel({
             {t('configuracion.apiKeyDesc')}
           </p>
         </div>
-        <Form.Check
+        <Form.Check name="a11y-apikeypaneltsx-43" aria-label="Campo de formulario"
           type="switch"
           id="external-api-key-switch"
           label={activeApiKeys.length > 0 ? t('configuracion.apiKeyEnabled') : t('configuracion.disabledState')}
@@ -54,7 +54,7 @@ export function ApiKeyPanel({
       <Row className="g-3 align-items-end mb-3">
         <Col md={8}>
           <Form.Label className="x-small fw-bold text-muted">{t('configuracion.apiKeyName')}</Form.Label>
-          <Form.Control
+          <Form.Control name="a11y-apikeypaneltsx-57" aria-label="Campo de formulario"
             value={apiKeyName}
             onChange={(event) => setApiKeyName(event.target.value)}
             placeholder={t('configuracion.apiKeyPlaceholder')}

@@ -79,6 +79,9 @@ services:
       SECRET_KEY_FILE: /run/secrets/treseko_secret_key
       AI_CREDENTIALS_MASTER_KEY_FILE: /run/secrets/treseko_ai_credentials_key
       AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
+      # Origen visible para enlaces generados por backend (reportes, correo y deep links).
+      # No usar el hostname interno "frontend" ni confundirlo con el puerto interno 80.
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}

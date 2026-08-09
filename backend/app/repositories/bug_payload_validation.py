@@ -53,6 +53,7 @@ def _bug_options():
     return (
         selectinload(models.BugIssue.build),
         selectinload(models.BugIssue.resolved_build),
+        selectinload(models.BugIssue.comments).selectinload(models.BugComment.autor),
         selectinload(models.BugIssue.comments).selectinload(models.BugComment.attachments).selectinload(models.BugAttachment.attachment),
         selectinload(models.BugIssue.attachments).selectinload(models.BugAttachment.attachment),
         selectinload(models.BugIssue.external_links),

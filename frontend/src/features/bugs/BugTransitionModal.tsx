@@ -30,7 +30,7 @@ export function BugTransitionModal({ target, form, builds, busy, isCorrected, on
         {target && (
           <Form.Group className="mb-3">
             <Form.Label>{corrected ? t('bugs.correctionBuild') : reopening ? t('bugs.reappearanceBuild') : t('bugs.optionalBuild')}</Form.Label>
-            <Form.Select value={form.resolution_build_id} onChange={(event) => onChange({ ...form, resolution_build_id: event.target.value })}>
+            <Form.Select name="a11y-bugtransitionmodaltsx-33" aria-label="Campo de formulario" value={form.resolution_build_id} onChange={(event) => onChange({ ...form, resolution_build_id: event.target.value })}>
               <option value="">{t('bugs.selectBuild')}</option>
               {builds.map((build: any) => <option key={build.id} value={build.id}>{build.codigo ? `${build.codigo} · ` : ''}{build.nombre || build.name}</option>)}
             </Form.Select>
@@ -39,7 +39,7 @@ export function BugTransitionModal({ target, form, builds, busy, isCorrected, on
         )}
         <Form.Group className="mb-3">
           <Form.Label>{corrected ? t('bugs.resolution') : reopening ? t('bugs.reopeningContext') : t('bugs.closureReason')}</Form.Label>
-          <Form.Control as="textarea" rows={3} value={corrected || reopening ? form.resolucion : form.motivo_cierre}
+          <Form.Control name="a11y-bugtransitionmodaltsx-42" aria-label="Campo de formulario" as="textarea" rows={3} value={corrected || reopening ? form.resolucion : form.motivo_cierre}
             onChange={(event) => onChange(corrected || reopening ? { ...form, resolucion: event.target.value } : { ...form, motivo_cierre: event.target.value })} />
         </Form.Group>
       </Modal.Body>

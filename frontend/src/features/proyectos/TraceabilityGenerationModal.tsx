@@ -201,7 +201,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 </Button>
                 <Form.Group style={{ width: "158px" }}>
                   <Form.Label className="small mb-1 text-nowrap">Cantidad de borradores</Form.Label>
-                  <Form.Control
+                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-204" aria-label="Campo de formulario"
                     size="sm"
                     type="number"
                     min={1}
@@ -219,7 +219,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
               <div className="d-flex align-items-end gap-2">
                 <Form.Group style={{ width: "104px" }}>
                   <Form.Label className="small mb-1">Propuestas</Form.Label>
-                  <Form.Control
+                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-222" aria-label="Campo de formulario"
                     size="sm"
                     type="number"
                     min={1}

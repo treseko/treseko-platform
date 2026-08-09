@@ -4,7 +4,6 @@ import { Cpu, RefreshCw, ShieldCheck, Store } from 'lucide-react'
 import { API_BASE } from '../../../../app/constants'
 import { PremiumGate } from '../../../premium/PremiumGate'
 import { featureEnabled, type FeatureLookup } from '../../../premium/featureAccess'
-import { CasePortabilityPanel } from './CasePortabilityPanel'
 import { ExtensionInstanceDetails } from './ExtensionInstanceDetails'
 import { useI18n } from '../../../../i18n'
 
@@ -349,12 +348,6 @@ export function IntegrationsSettingsTab({
           </Card.Body>
         </Card>
       )}
-
-      <CasePortabilityPanel
-        fetchWithAuth={fetchWithAuth}
-        showFeedback={showFeedback}
-        canEdit={canAccessCapability('plugins.provider.case_portability.importar_casos', 'edit')}
-      />
 
       <Row className="g-3 mb-3">
         <Col xl={4} lg={6}>

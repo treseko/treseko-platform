@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --max-warnings 0",
-    "test": "node --import tsx --test src/testRepositoryUtils.test.ts src/app/mappers.test.ts src/app/workspacePreferences.test.ts src/app/themes/themeCatalog.test.ts src/i18n/catalogs.test.ts src/features/onboarding/ForcePasswordChangeModal.test.ts src/features/configuracion/components/workflow/WorkflowBuilderToolbar.test.tsx src/features/proyectos/projectLoaders.test.ts src/app/buildState.test.ts",
+    "test": "node --import tsx --test src/testRepositoryUtils.test.ts src/app/mappers.test.ts src/app/workspacePreferences.test.ts src/app/themes/themeCatalog.test.ts src/i18n/catalogs.test.ts src/features/onboarding/ForcePasswordChangeModal.test.ts src/features/configuracion/components/workflow/WorkflowBuilderToolbar.test.tsx src/features/proyectos/projectLoaders.test.ts src/app/buildState.test.ts src/app/qaDataset.test.ts src/features/ejecutar-pruebas/manualConsoleStatus.test.ts src/features/ejecucion/manualExecutionActions.test.ts",
     "test:ui": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",

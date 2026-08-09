@@ -39,7 +39,9 @@ export function ReportAiMetricsWidget({
   onOpenHistorial,
   showFeedback,
 }: ReportAiMetricsWidgetProps) {
-  return renderReportesWidget('aiMetrics', Number(aiMetrics.executions || 0) > 0 ? (
+  const hasExecutions = Number(aiMetrics?.executions || 0) > 0
+
+  return renderReportesWidget('aiMetrics', hasExecutions ? (
     <Row className="g-4 mb-4">
       <Col md={12}>
         <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
@@ -96,7 +98,25 @@ export function ReportAiMetricsWidget({
         </Card>
       </Col>
     </Row>
-  ) : null)
+  ) : (
+    <Row className="g-4 mb-4">
+      <Col md={12}>
+        <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
+          <div className="d-flex align-items-start gap-2">
+            <Activity size={18} className="text-primary flex-shrink-0 mt-1" />
+            <div>
+              <h6 className="fw-bold mb-1 text-secondary text-start">{t('reportes.aiMetrics')}</h6>
+              <div className="small text-muted text-start">{t('reportes.aiMetricsDescription')}</div>
+              <div className="reportes-empty-state mt-3">
+                <strong className="d-block text-secondary">{t('reportes.noAiMetrics')}</strong>
+                <span className="small text-muted">{t('reportes.noAiMetricsDescription')}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </Col>
+    </Row>
+  ))
 }
 
 function AiMetricList({ title, items, label, empty }: { title: string; items: any[]; label: (value: string) => string; empty: string }) {

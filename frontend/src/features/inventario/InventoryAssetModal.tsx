@@ -26,61 +26,61 @@ export function InventoryAssetModal({ options }: { options: any }) {
         <Row className="g-3">
           <Col md={6}>
             <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('inventario.name')}</RequiredLabel></Form.Label>
-            <Form.Control required value={formAsset.nombre} onChange={event => updateFormAsset({ nombre: event.target.value })} placeholder={t('inventario.namePlaceholder')} />
+            <Form.Control name="a11y-inventoryassetmodaltsx-29" aria-label="Campo de formulario" required value={formAsset.nombre} onChange={event => updateFormAsset({ nombre: event.target.value })} placeholder={t('inventario.namePlaceholder')} />
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('inventario.typeLabel')}</RequiredLabel></Form.Label>
-            <Form.Select required value={formAsset.tipo} onChange={event => updateFormAsset({ tipo: event.target.value })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-33" aria-label="Campo de formulario" required value={formAsset.tipo} onChange={event => updateFormAsset({ tipo: event.target.value })}>
               {ASSET_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
             </Form.Select>
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('inventario.natureLabel')}</RequiredLabel></Form.Label>
-            <Form.Select required value={formAsset.naturaleza} onChange={event => updateFormAsset({ naturaleza: event.target.value })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-39" aria-label="Campo de formulario" required value={formAsset.naturaleza} onChange={event => updateFormAsset({ naturaleza: event.target.value })}>
               {NATURES.map(nature => <option key={nature} value={nature}>{nature}</option>)}
             </Form.Select>
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted">{t('inventario.statusLabel')}</Form.Label>
-            <Form.Select value={formAsset.estado} onChange={event => updateFormAsset({ estado: event.target.value })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-45" aria-label="Campo de formulario" value={formAsset.estado} onChange={event => updateFormAsset({ estado: event.target.value })}>
               {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
             </Form.Select>
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted">{t('inventario.criticalityLabel')}</Form.Label>
-            <Form.Select value={formAsset.criticidad} onChange={event => updateFormAsset({ criticidad: event.target.value })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-51" aria-label="Campo de formulario" value={formAsset.criticidad} onChange={event => updateFormAsset({ criticidad: event.target.value })}>
               {CRITICALITIES.map(criticality => <option key={criticality} value={criticality}>{criticality}</option>)}
             </Form.Select>
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted">{t('inventario.categoryName')}</Form.Label>
-            <Form.Select value={formAsset.categoria_id || ''} onChange={event => updateFormAsset({ categoria_id: event.target.value })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-57" aria-label="Campo de formulario" value={formAsset.categoria_id || ''} onChange={event => updateFormAsset({ categoria_id: event.target.value })}>
               <option value="">{t('inventario.noCategory')}</option>
               {currentProjectInventoryCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Form.Select>
           </Col>
           <Col md={3}>
             <Form.Label className="x-small fw-bold text-muted">{t('inventario.parentLabel')}</Form.Label>
-            <Form.Select value={formAsset.parent_id || ''} onChange={event => updateFormAsset({ parent_id: event.target.value || null })}>
+            <Form.Select name="a11y-inventoryassetmodaltsx-64" aria-label="Campo de formulario" value={formAsset.parent_id || ''} onChange={event => updateFormAsset({ parent_id: event.target.value || null })}>
               <option value="">{t('inventario.noParent')}</option>
               {parentOptions.filter(asset => asset.id !== formAsset.id).map(asset => <option key={asset.id} value={asset.id}>{asset.nombre}</option>)}
             </Form.Select>
           </Col>
           <Col md={12}>
             <Form.Label className="x-small fw-bold text-muted">{t('common.description')}</Form.Label>
-            <Form.Control as="textarea" rows={2} value={formAsset.descripcion || ''} onChange={event => updateFormAsset({ descripcion: event.target.value })} />
+            <Form.Control name="a11y-inventoryassetmodaltsx-71" aria-label="Campo de formulario" as="textarea" rows={2} value={formAsset.descripcion || ''} onChange={event => updateFormAsset({ descripcion: event.target.value })} />
           </Col>
         </Row>
 
           <h6 className="fw-bold text-primary mt-4 mb-3">{t('inventario.hardwareSystem')}</h6>
         <Row className="g-3">
-          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.location')}</Form.Label><Form.Control value={formAsset.ubicacion || ''} onChange={event => updateFormAsset({ ubicacion: event.target.value })} /></Col>
-          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.responsible')}</Form.Label><Form.Control value={formAsset.responsable || ''} onChange={event => updateFormAsset({ responsable: event.target.value })} /></Col>
-          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.os')}</Form.Label><Form.Control value={formAsset.sistema_operativo || ''} onChange={event => updateFormAsset({ sistema_operativo: event.target.value })} /></Col>
-          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Fabricante</Form.Label><Form.Control value={formAsset.fabricante || ''} onChange={event => updateFormAsset({ fabricante: event.target.value })} /></Col>
-          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Modelo</Form.Label><Form.Control value={formAsset.modelo || ''} onChange={event => updateFormAsset({ modelo: event.target.value })} /></Col>
-          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Serial</Form.Label><Form.Control value={formAsset.serial || ''} onChange={event => updateFormAsset({ serial: event.target.value })} /></Col>
-          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Asset tag</Form.Label><Form.Control value={formAsset.asset_tag || ''} onChange={event => updateFormAsset({ asset_tag: event.target.value })} /></Col>
+          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.location')}</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-77" aria-label="Campo de formulario" value={formAsset.ubicacion || ''} onChange={event => updateFormAsset({ ubicacion: event.target.value })} /></Col>
+          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.responsible')}</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-78" aria-label="Campo de formulario" value={formAsset.responsable || ''} onChange={event => updateFormAsset({ responsable: event.target.value })} /></Col>
+          <Col md={4}><Form.Label className="x-small fw-bold text-muted">{t('inventario.os')}</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-79" aria-label="Campo de formulario" value={formAsset.sistema_operativo || ''} onChange={event => updateFormAsset({ sistema_operativo: event.target.value })} /></Col>
+          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Fabricante</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-80" aria-label="Campo de formulario" value={formAsset.fabricante || ''} onChange={event => updateFormAsset({ fabricante: event.target.value })} /></Col>
+          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Modelo</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-81" aria-label="Campo de formulario" value={formAsset.modelo || ''} onChange={event => updateFormAsset({ modelo: event.target.value })} /></Col>
+          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Serial</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-82" aria-label="Campo de formulario" value={formAsset.serial || ''} onChange={event => updateFormAsset({ serial: event.target.value })} /></Col>
+          <Col md={3}><Form.Label className="x-small fw-bold text-muted">Asset tag</Form.Label><Form.Control name="a11y-inventoryassetmodaltsx-83" aria-label="Campo de formulario" value={formAsset.asset_tag || ''} onChange={event => updateFormAsset({ asset_tag: event.target.value })} /></Col>
         </Row>
 
         <div className="d-flex justify-content-between align-items-center mt-4 mb-3">
@@ -94,24 +94,24 @@ export function InventoryAssetModal({ options }: { options: any }) {
             <Row className="g-2 align-items-end" key={endpoint.id || index}>
               <Col md={2}>
                 <Form.Label className="x-small fw-bold text-muted">{t('inventario.type')}</Form.Label>
-                <Form.Select value={endpoint.tipo} onChange={event => updateEndpoint(index, { tipo: event.target.value })}>
+                <Form.Select name="a11y-inventoryassetmodaltsx-97" aria-label="Campo de formulario" value={endpoint.tipo} onChange={event => updateEndpoint(index, { tipo: event.target.value })}>
                   {ENDPOINT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                 </Form.Select>
               </Col>
               <Col md={4}>
                 <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('inventario.endpointDescription')}</RequiredLabel></Form.Label>
-                <Form.Control required value={endpoint.valor} onChange={event => updateEndpoint(index, { valor: event.target.value })} placeholder={t('inventario.ipHostname')} />
+                <Form.Control name="a11y-inventoryassetmodaltsx-103" aria-label="Campo de formulario" required value={endpoint.valor} onChange={event => updateEndpoint(index, { valor: event.target.value })} placeholder={t('inventario.ipHostname')} />
               </Col>
               <Col md={2}>
                 <Form.Label className="x-small fw-bold text-muted">{t('inventario.endpointPort')}</Form.Label>
-                <Form.Control type="number" min={1} max={65535} value={endpoint.puerto || ''} onChange={event => updateEndpoint(index, { puerto: event.target.value ? Number(event.target.value) : '' })} />
+                <Form.Control name="a11y-inventoryassetmodaltsx-107" aria-label="Campo de formulario" type="number" min={1} max={65535} value={endpoint.puerto || ''} onChange={event => updateEndpoint(index, { puerto: event.target.value ? Number(event.target.value) : '' })} />
               </Col>
               <Col md={2}>
                 <Form.Label className="x-small fw-bold text-muted">{t('inventario.endpointProtocol')}</Form.Label>
-                <Form.Control value={endpoint.protocolo || ''} onChange={event => updateEndpoint(index, { protocolo: event.target.value })} placeholder="https" />
+                <Form.Control name="a11y-inventoryassetmodaltsx-111" aria-label="Campo de formulario" value={endpoint.protocolo || ''} onChange={event => updateEndpoint(index, { protocolo: event.target.value })} placeholder="https" />
               </Col>
               <Col md={1} className="pb-2">
-                <Form.Check checked={Boolean(endpoint.principal)} onChange={event => updateEndpoint(index, { principal: event.target.checked })} label="Ppal." className="x-small" />
+                <Form.Check name="a11y-inventoryassetmodaltsx-114" aria-label="Campo de formulario" checked={Boolean(endpoint.principal)} onChange={event => updateEndpoint(index, { principal: event.target.checked })} label="Ppal." className="x-small" />
               </Col>
               <Col md={1} className="pb-1">
                 <Button type="button" variant="white" className="border text-danger p-2" onClick={() => removeEndpoint(index)} title={t('inventario.remove')}>
@@ -123,7 +123,7 @@ export function InventoryAssetModal({ options }: { options: any }) {
         </div>
 
         <h6 className="fw-bold text-primary mt-4 mb-3">{t('inventario.customMetadata')}</h6>
-        <Form.Control
+        <Form.Control name="a11y-inventoryassetmodaltsx-126" aria-label="Campo de formulario"
           as="textarea"
           rows={3}
           value={metadataText}

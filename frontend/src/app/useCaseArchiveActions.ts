@@ -35,7 +35,12 @@ export function useCaseArchiveActions(options: any): any {
       const response = await fetchWithAuth(`${API_BASE}/casos/${test.id}/metadata`, { method: "PATCH", body: JSON.stringify({ estado_caso: nextStatus }) });
       if (!response.ok) {
         const error = await response.json().catch(() => null);
-        throw new Error(error?.detail || t('common.backendResponded', { status: response.status }));
+        const detail = typeof error?.detail === 'string' ? error.detail : null;
+        throw new Error(
+          detail || (response.status === 409 && isArchiving
+            ? t('common.archiveBlockedByActiveBuild')
+            : t('common.backendResponded', { status: response.status }))
+        );
       }
       await loadCasosFromBackend(currentProjectId, componentsList);
       if (selectedTest?.masterId === test.masterId || selectedTest?.id === test.id) {

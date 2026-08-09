@@ -39,7 +39,7 @@ export function ExecutionToolbar({ options }: { options: any }) {
                   bugCaseFilter !== "all") && (
                   <div className="d-flex align-items-center gap-1">
                     <Bug size={13} className="text-danger" />
-                    <Form.Select
+                    <Form.Select name="a11y-executiontoolbartsx-42" aria-label="Campo de formulario"
                       size="sm"
                       value={bugCaseFilter}
                       disabled={openBugsLoading}

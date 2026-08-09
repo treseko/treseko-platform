@@ -1,6 +1,7 @@
 import { openInNewTab } from '../../shared/utils/openExternal'
 import { escapeHtml } from '../../shared/utils/exportSecurity'
 import { API_BASE } from '../../app/constants'
+import { normalizeInternalReportBugLinks } from '../../app/internalReportLinks'
 
 export function useSharedReportActions(options: any) {
   const { t, fetchWithAuth, showFeedback, isInternalReportUrl, proxiedReportUrl, frontendReportUrl, sharedMarkdownUrl, sharedReportFilename, sharedReport, setSnapshotBugLinks, setCreatingSnapshotBugId, downloadTextFile } = options
@@ -17,8 +18,8 @@ export function useSharedReportActions(options: any) {
     reportWindow.opener = null; reportWindow.document.write(`<p style="font-family:Arial,sans-serif;padding:24px">${t('reportes.openingInternalReport')}</p>`)
     try {
       const response = await fetchWithAuth(proxiedReportUrl(url)); if (!response.ok) throw new Error(await response.text())
-      const html = await response.text(); const baseTag = `<base href="${escapeHtml(frontendReportUrl(url))}">`
-      const withBase = html.match(/<head[^>]*>/i) ? html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`) : html
+      const html = await response.text(); const normalizedHtml = normalizeInternalReportBugLinks(html); const baseTag = `<base href="${escapeHtml(frontendReportUrl(url))}">`
+      const withBase = normalizedHtml.match(/<head[^>]*>/i) ? normalizedHtml.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`) : normalizedHtml
       reportWindow.document.open(); reportWindow.document.write(withBase); reportWindow.document.close(); reportWindow.opener = null
     } catch (error: any) { reportWindow.close(); showFeedback(t('reportes.openError'), error?.message || t('reportes.openReportError', { label }), 'danger') }
   }
@@ -49,8 +50,8 @@ export function useSharedReportActions(options: any) {
     printWindow.opener = null; printWindow.document.write(`<p style="font-family:Arial,sans-serif;padding:24px">${t('reportes.preparingPdf')}</p>`)
     try {
       const response = await fetchWithAuth(proxiedReportUrl(url)); if (!response.ok) throw new Error(await response.text())
-      const html = await response.text(); const baseTag = `<base href="${escapeHtml(frontendReportUrl(url))}">`; const printScript = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});</script>'
-      const withBase = html.match(/<head[^>]*>/i) ? html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`) : html
+      const html = await response.text(); const normalizedHtml = normalizeInternalReportBugLinks(html); const baseTag = `<base href="${escapeHtml(frontendReportUrl(url))}">`; const printScript = '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});</script>'
+      const withBase = normalizedHtml.match(/<head[^>]*>/i) ? normalizedHtml.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`) : normalizedHtml
       const printableHtml = withBase.match(/<\/body>/i) ? withBase.replace(/<\/body>/i, `${printScript}</body>`) : `${withBase}${printScript}`
       printWindow.document.open(); printWindow.document.write(printableHtml); printWindow.document.close(); printWindow.opener = null
       showFeedback(t('reportes.pdfExportTitle'), t('reportes.pdfReportOpened', { label }), 'success')

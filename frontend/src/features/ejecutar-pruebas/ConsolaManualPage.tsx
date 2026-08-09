@@ -22,6 +22,7 @@ type ConsolaManualPageProps = {
   selectedTest: any
   activeExecutionTests: any[]
   currentExecutionRun: any
+  currentProjectEnvironments?: any[]
   currentExecutionCase: any
   executionSnapshots: any[]
   snapshotNotes: Record<number, string>
@@ -56,6 +57,7 @@ type ConsolaManualPageProps = {
   onViewRelatedBug?: (bug: any) => void
   onCreateInternalBugFromExecution?: () => Promise<any> | void
   creatingInternalBugContextId?: string | null
+  canAccessCapability?: (capabilityId: string, level?: string) => boolean
   setZoomImage: Dispatch<SetStateAction<string | null>>
 }
 
@@ -63,6 +65,7 @@ export function ConsolaManualPage({
   selectedTest,
   activeExecutionTests,
   currentExecutionRun,
+  currentProjectEnvironments = [],
   currentExecutionCase,
   executionSnapshots,
   snapshotNotes,
@@ -97,13 +100,17 @@ export function ConsolaManualPage({
   onViewRelatedBug,
   onCreateInternalBugFromExecution,
   creatingInternalBugContextId,
+  canAccessCapability,
   setZoomImage
 }: ConsolaManualPageProps) {
   const { t } = useI18n()
+  const canViewBugs = !canAccessCapability || canAccessCapability('bugs.ver', 'read')
+  const canCreateBugs = canViewBugs && (!canAccessCapability || canAccessCapability('bugs.crear', 'edit'))
   const [linkingBug, setLinkingBug] = useState<any | null>(null)
   const [linkComment, setLinkComment] = useState('')
   const [linkingBugId, setLinkingBugId] = useState<string | null>(null)
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
+  const [isCompletingCase, setIsCompletingCase] = useState(false)
   const [collapsedLeftSections, setCollapsedLeftSections] = useState({
     details: false,
     bugs: false,
@@ -126,6 +133,23 @@ export function ConsolaManualPage({
     return () => window.clearTimeout(handle)
   }, [selectedTest?.id])
 
+  const activeEnvironment = currentProjectEnvironments.find(
+    (environment: any) => environment.id === currentExecutionRun?.entorno_id,
+  )
+  const availableDatasets = currentProjectEnvironments.flatMap(
+    (environment: any) => Array.isArray(environment?.datasets) ? environment.datasets : [],
+  )
+  const activeDataset = availableDatasets.find(
+    (dataset: any) => String(dataset.id) === String(currentExecutionRun?.dataset_id),
+  )
+  const executionDatasetName =
+    currentExecutionRun?.dataset_nombre ||
+    currentExecutionRun?.dataset_name ||
+    activeDataset?.name ||
+    activeDataset?.nombre ||
+    (currentExecutionRun?.dataset_id
+      ? `Dataset ${currentExecutionRun.dataset_id}`
+      : 'Sin dataset seleccionado')
   const resolvedDataset = currentExecutionRun?.datasets_resueltos?.[selectedTest?.id] || []
   const runVariables = currentExecutionRun?.variables_resueltas || {}
   const hasPlaceholder = (value: string) => /\{\{[^}]+\}\}/.test(value || '')
@@ -164,6 +188,8 @@ export function ConsolaManualPage({
     <div className="bg-light rounded border shadow-sm overflow-hidden">
       <div className="px-2 py-1 border-bottom bg-white text-dark x-small">
         Ambiente: <span className="text-primary fw-semibold">{currentExecutionRun?.entorno || 'Sin ambiente'}</span>
+        <span className="mx-1 text-muted">·</span>
+        Dataset: <span className="text-primary fw-semibold">{executionDatasetName}</span>
       </div>
       {executionDataRows.length > 0 ? (
         <div className="table-responsive">
@@ -292,6 +318,15 @@ export function ConsolaManualPage({
     ? (!generalExecutionStatus || generalExecutionStatus === 'SIN_CORRER')
     : !completionPlan.canComplete
   const finishDisabled = statusBlocksCompletion || Boolean(evidenceBlockMessage)
+  const handleCompleteCaseOnce = async () => {
+    if (isCompletingCase) return
+    setIsCompletingCase(true)
+    try {
+      await handleCompleteCase()
+    } finally {
+      setIsCompletingCase(false)
+    }
+  }
   const executionHistory = normalizeExecutionHistory(selectedTest)
   const latestHistoryItem = executionHistory[0]
   const latestRelatedBug = relatedCaseBugs[0]
@@ -321,6 +356,7 @@ export function ConsolaManualPage({
             {currentExecutionRun && (
               <span className="x-small text-muted font-monospace d-flex align-items-center gap-1 mt-1">
                 <Terminal size={12}/> {t('ejecutarPruebas.activeRun')} {currentExecutionRun.nombre}
+                <span className="text-primary">· Dataset: {executionDatasetName}</span>
               </span>
             )}
           </div>
@@ -328,10 +364,10 @@ export function ConsolaManualPage({
       </div>
 
       <div className="manual-console-main flex-grow-1 d-flex overflow-hidden">
-        <ManualConsoleTestListSidebar context={{ t, activeExecutionTests, selectedTest, currentExecutionCase, handleSelectTestForExecution, getStatusColor, executionSnapshots, getExecutionReferenceCount }} />
+        <ManualConsoleTestListSidebar context={{ t, activeExecutionTests, selectedTest, currentExecutionRun, currentExecutionCase, handleSelectTestForExecution, getStatusColor, executionSnapshots, getExecutionReferenceCount }} />
 
-        <div className="manual-console-content flex-grow-1 overflow-auto p-4">
-          <Row className="g-4">
+        <div className="manual-console-content flex-grow-1 overflow-auto p-4 d-flex flex-column">
+          <Row className="g-4 flex-grow-1 manual-console-layout-row">
             <ManualConsoleSidebar context={{
                 t,
                 leftSectionStyle,
@@ -350,7 +386,10 @@ export function ConsolaManualPage({
                 getBugDisplayBuild,
                 getBugDisplayComponent,
                 onViewRelatedBug,
-                canLinkCurrentExecution,
+                canViewBugs,
+                canCreateBugs,
+                canLinkCurrentExecution: canCreateBugs && Boolean(onLinkExecutionToBug),
+                executionCanLinkCurrent: canLinkCurrentExecution,
                 onLinkExecutionToBug,
                 creatingInternalBugContextId,
                 setLinkingBug,
@@ -366,8 +405,8 @@ export function ConsolaManualPage({
                 openLegacyEvidence,
             }} />
 
-            <Col xl={9} lg={8} className="d-flex flex-column">
-              <Card ref={validationSequenceRef} className="border-0 shadow-sm rounded-4 overflow-hidden border-top border-4 border-primary flex-grow-1">
+            <Col xl={9} lg={8} className={`manual-console-sequence-column d-flex flex-column ${executionSnapshots.length === 0 ? 'manual-console-no-steps-column' : ''}`}>
+              <Card ref={validationSequenceRef} className="manual-console-sequence-card border-0 shadow-sm rounded-4 overflow-hidden border-top border-4 border-primary flex-grow-1">
                 <Card.Header className="bg-white border-bottom p-4 d-flex justify-content-between align-items-center">
                   <div>
                     <h5 className="fw-bold text-dark m-0 d-flex align-items-center gap-2 mb-1">
@@ -409,8 +448,9 @@ export function ConsolaManualPage({
                   handleGeneralExecutionAttachmentUpload,
                   handleRemoveGeneralExecutionAttachment,
                   evidenceBlockMessage,
-                  finishDisabled,
-                  handleCompleteCase,
+                  finishDisabled: finishDisabled || isCompletingCase,
+                  isCompletingCase,
+                  handleCompleteCase: handleCompleteCaseOnce,
                 }} />
               </Card>
             </Col>
@@ -433,7 +473,7 @@ export function ConsolaManualPage({
           </div>
         )}
         <Form.Label className="x-small fw-bold text-dark text-uppercase">Comentario de seguimiento</Form.Label>
-        <Form.Control
+        <Form.Control name="a11y-consolamanualpagetsx-476" aria-label="Campo de formulario"
           as="textarea"
           rows={3}
           value={linkComment}

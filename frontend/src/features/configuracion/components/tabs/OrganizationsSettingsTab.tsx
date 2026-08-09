@@ -236,7 +236,7 @@ export function OrganizationsSettingsTab({
                       <Row className="g-2 align-items-end">
                         <Col md={9}>
                           <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.user')}</RequiredLabel></Form.Label>
-                          <Form.Control
+                          <Form.Control name="a11y-organizationssettingstabtsx-239" aria-label="Campo de formulario"
                             list="organization-member-user-options"
                             value={userAutocompleteText}
                             onChange={(event) => {

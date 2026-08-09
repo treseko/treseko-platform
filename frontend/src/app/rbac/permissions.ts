@@ -3,12 +3,21 @@ import type { CapabilityId, ModuleId, PermissionLevel, SessionUser } from '../ty
 import { CAPABILITY_TO_MODULE, RBAC_CAPABILITIES } from './rbacCatalog'
 import { getLegacyCapabilityLevel } from './rbacCompat'
 
+/**
+ * The session can come from localStorage created by an older frontend or from
+ * the backend. Keep the authorization decision stable if the role contains
+ * casing/whitespace differences between those sources.
+ */
+export function isGlobalAdmin(user: Pick<SessionUser, 'role'> | null | undefined) {
+  return String(user?.role ?? '').trim().toUpperCase() === 'ADMIN'
+}
+
 export function getCapabilityModule(capabilityId: CapabilityId): ModuleId {
   return CAPABILITY_TO_MODULE[capabilityId]
 }
 
 export function getEffectiveCapabilityLevel(user: SessionUser, capabilityId: CapabilityId): PermissionLevel {
-  if (user.role === 'ADMIN') return 'edit'
+  if (isGlobalAdmin(user)) return 'edit'
   const explicit = user.capabilities?.[capabilityId]
   if (explicit) return explicit
   const legacyLevel = getLegacyCapabilityLevel(user.permissions || {}, capabilityId)
@@ -24,7 +33,8 @@ export function canAccessCapability(user: SessionUser, capabilityId: CapabilityI
 }
 
 export function canAccessModule(user: SessionUser, moduleId: ModuleId, level: PermissionLevel = 'read') {
-  const current = user.permissions?.[moduleId] || (user.role === 'ADMIN' ? ROLE_ACCESS.ADMIN[moduleId] : undefined)
+  if (moduleId === 'bugs' && !canAccessCapability(user, 'bugs.ver', 'read')) return false
+  const current = user.permissions?.[moduleId] || (isGlobalAdmin(user) ? ROLE_ACCESS.ADMIN[moduleId] : undefined)
   const moduleMatch = level === 'read' ? current === 'read' || current === 'edit' : current === 'edit'
   if (moduleMatch) return true
   if (level !== 'read') return false

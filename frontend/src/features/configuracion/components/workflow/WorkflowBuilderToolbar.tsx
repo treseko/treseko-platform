@@ -2,10 +2,7 @@ import { Badge, Button, Dropdown, Form } from 'react-bootstrap'
 import { Archive, Blocks, CheckCircle2, Copy, Download, MoreHorizontal, Network, PlayCircle, RotateCcw, Save, Upload } from 'lucide-react'
 import { useI18n } from '../../../../i18n'
 import type { AiWorkflow } from '../../types/configuracion'
-
-export const WORKFLOW_PORTABLE_EXPORT_LABEL = 'Exportar workflow portable'
-export const WORKFLOW_PORTABLE_IMPORT_LABEL = 'Importar workflow portable'
-export const canExportPortableWorkflow = (workflow?: AiWorkflow | null) => workflow?.workflow_format === 'universal_v2'
+import { canExportPortableWorkflow } from './workflowBuilderUtils'
 
 type Props = {
   workflowDraft: AiWorkflow | null
@@ -142,6 +139,9 @@ export function WorkflowBuilderToolbar({
             {canEditAi && <Dropdown.Item as="label" className="mb-0">
               <Upload size={14} className="me-2" />{t('configuracion.workflowToolbarImportPortable')}
               <Form.Control
+                id="workflow-portable-file"
+                name="workflowPortableFile"
+                aria-label={t('configuracion.workflowToolbarImportPortable')}
                 type="file"
                 accept="application/zip,.zip,.treseko-workflow.zip"
                 className="d-none"

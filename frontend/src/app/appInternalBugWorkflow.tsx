@@ -1,9 +1,8 @@
 import type { FormEvent } from "react";
-import type { AttachmentMeta } from "../EvidenceUpload";
-import { CaseReferenceList } from "../features/ejecutar-pruebas/CaseReferenceList";
+import { renderInternalBugCaseReferences } from "./internalBugWorkflowView";
 export function createInternalBugWorkflow(context: any): any {
   const { confirmResolverRef, relatedBugDecisionResolverRef, ...ctx } = context;
-  const { t, selectedTest, currentExecutionCase, stepResults, generalExecutionStatus, snapshotNotes, executionSnapshots, snapshotAttachments, generalExecutionAttachments, generalExecutionNote, generalExecutionSnapshot, currentBuildId, currentCompId, currentProjectId, buildsList, projectsList, componentsList, currentProjectEnvironments, selectedExecutionEnvironmentId, executionDatasetPreview, loggedUser, showFeedback, fetchWithAuth, authHeaders, API_BASE, getExecutionCompletionPlan, advanceToNextTest, setCurrentExecutionCase, setExecutionMode, setActiveTab, setShowRedminePrompt, setRedmineDecisionByExecution, setInternalBugDraft, setInternalBugAdditionalContext, setInternalBugEvidence, setShowRedmineDrawer, setCreatingInternalBugContextId, setBugTrackerRefreshToken, setRelatedBugDecision, setRelatedCaseBugs, setRelatedCaseBugsLoading, setOpenBugsByCase, setOpenBugsLoading, relatedCaseBugs, relatedBugDecision, openBugsByCase, canAccessCapability, createInternalBugForExecution, findOpenBugForExecutionContext, loadOpenBugsForCase, getActiveExecutionBugEvidence, loadSnapshotBugEvidence, linkExecutionToExistingBug, getCurrentBuildFailureContext, buildInternalBugPayload, enrichBugDisplayContext, enrichBugsDisplayContext, closeRelatedBugDecision, requestRelatedBugDecision, viewRelatedBugFromDecision, backToRelatedBugDecisionList, linkBugFromDecision, readBackendError, isOpenBugState, stringifyFeedbackMessage, normalizeExecutionHistory, generateBugDescription, attachmentIds, loadCasoExecutionHistory, isFailureStatus, isExecutionHistoryItemFromBuild, uniqueAttachmentList, internalBugEvidence, internalBugDraft, internalBugAdditionalContext, setZoomImage, ...rest } = ctx;
+  const { t, selectedTest, currentExecutionCase, stepResults, generalExecutionStatus, snapshotNotes = {}, executionSnapshots, snapshotAttachments, generalExecutionAttachments, generalExecutionNote, generalExecutionSnapshot, currentBuildId, currentCompId, currentProjectId, buildsList, projectsList, componentsList, currentProjectEnvironments, selectedExecutionEnvironmentId, executionDatasetPreview, loggedUser, showFeedback, fetchWithAuth, authHeaders, API_BASE, getExecutionCompletionPlan, advanceToNextTest, setCurrentExecutionCase, setExecutionMode, setActiveTab, setShowRedminePrompt, setRedmineDecisionByExecution, setInternalBugDraft, setInternalBugAdditionalContext, setInternalBugEvidence, setShowRedmineDrawer, setCreatingInternalBugContextId, setBugTrackerRefreshToken, setRelatedBugDecision, setRelatedCaseBugs, setRelatedCaseBugsLoading, setOpenBugsByCase, setOpenBugsLoading, relatedCaseBugs, relatedBugDecision, openBugsByCase, canAccessCapability, createInternalBugForExecution, findOpenBugForExecutionContext, loadOpenBugsForCase, getActiveExecutionBugEvidence, loadSnapshotBugEvidence, linkExecutionToExistingBug, getCurrentBuildFailureContext, buildInternalBugPayload, enrichBugDisplayContext, enrichBugsDisplayContext, closeRelatedBugDecision, requestRelatedBugDecision, viewRelatedBugFromDecision, backToRelatedBugDecisionList, linkBugFromDecision, readBackendError, isOpenBugState, stringifyFeedbackMessage, normalizeExecutionHistory, generateBugDescription, attachmentIds, loadCasoExecutionHistory, isFailureStatus, isExecutionHistoryItemFromBuild, uniqueAttachmentList, internalBugEvidence, internalBugDraft, internalBugAdditionalContext, setZoomImage, ...rest } = ctx;
   void confirmResolverRef; void relatedBugDecisionResolverRef; void rest;
   const confirmNewBugWhenCaseHasOpenBugs = async (
     test: any,
@@ -68,74 +67,86 @@ export function createInternalBugWorkflow(context: any): any {
   };
 
   const openInternalBugReportFromPrompt = async () => {
-    if (!selectedTest) {
-      showFeedback(
-        "Bug interno",
-        "No hay caso seleccionado para preparar el bug.",
-        "warning",
-      );
-      return;
-    }
-    const completionPlan = getExecutionCompletionPlan();
-    const conclusiveSnapshot =
-      completionPlan?.firstConclusive?.snapshot ||
-      generalExecutionSnapshot ||
-      null;
-    const conclusiveNote = conclusiveSnapshot
-      ? snapshotNotes[conclusiveSnapshot.numero_paso] ||
-        conclusiveSnapshot.comentarios ||
-        conclusiveSnapshot.error_log ||
-        null
-      : generalExecutionNote || currentExecutionCase?.observaciones || null;
-    const existingBug = await findOpenBugForExecutionContext({
-      executionId: currentExecutionCase?.id || null,
-      snapshotId:
-        conclusiveSnapshot?.id || generalExecutionSnapshot?.id || null,
-    });
-    if (existingBug) {
-      setShowRedminePrompt(false);
-      setShowRedmineDrawer(false);
-      showFeedback(
-        "Bug interno existente",
-        `${existingBug.codigo} ya reporta esta ejecucion.`,
-        "info",
-      );
-      return;
-    }
-    const confirmed = await confirmNewBugWhenCaseHasOpenBugs(
-      selectedTest,
-      existingBug,
-    );
-    if (!confirmed) return;
-    const draft = buildInternalBugPayload({
-      test: selectedTest,
-      snapshot: conclusiveSnapshot,
-      note: conclusiveNote,
-    });
-    const preloadedEvidence = getActiveExecutionBugEvidence(
-      conclusiveSnapshot?.id || null,
-    );
-    setInternalBugDraft({
-      ...draft,
-      caso_id: selectedTest.id || null,
-      case_code: selectedTest.code || selectedTest.codigo || null,
-      ejecucion_id: currentExecutionCase?.id || null,
-      snapshot_id: conclusiveSnapshot?.id || null,
-      notas_qa: "",
-      _context: {
+    const preparationId = currentExecutionCase?.id || selectedTest?.id || "preparing";
+    setCreatingInternalBugContextId(preparationId);
+    try {
+      if (!selectedTest) {
+        showFeedback(
+          "Bug interno",
+          "No hay caso seleccionado para preparar el bug.",
+          "warning",
+        );
+        return;
+      }
+      const completionPlan = getExecutionCompletionPlan();
+      const conclusiveSnapshot =
+        completionPlan?.firstConclusive?.snapshot ||
+        generalExecutionSnapshot ||
+        null;
+      const conclusiveNote = conclusiveSnapshot
+        ? snapshotNotes[conclusiveSnapshot.numero_paso] ||
+          conclusiveSnapshot.comentarios ||
+          conclusiveSnapshot.error_log ||
+          null
+        : generalExecutionNote || currentExecutionCase?.observaciones || null;
+      const existingBug = await findOpenBugForExecutionContext({
         executionId: currentExecutionCase?.id || null,
-        snapshotId: conclusiveSnapshot?.id || null,
+        snapshotId:
+          conclusiveSnapshot?.id || generalExecutionSnapshot?.id || null,
+      });
+      if (existingBug) {
+        setShowRedminePrompt(false);
+        setShowRedmineDrawer(false);
+        showFeedback(
+          "Bug interno existente",
+          `${existingBug.codigo} ya reporta esta ejecucion.`,
+          "info",
+        );
+        return;
+      }
+      const confirmed = await confirmNewBugWhenCaseHasOpenBugs(
+        selectedTest,
+        existingBug,
+      );
+      if (!confirmed) return;
+      const draft = buildInternalBugPayload({
+        test: selectedTest,
         snapshot: conclusiveSnapshot,
         note: conclusiveNote,
-        preloadedAttachmentIds: attachmentIds(preloadedEvidence.attachments),
-        backendLinkedAttachmentIds:
-          preloadedEvidence.backendLinkedAttachmentIds,
-      },
-    });
-    setInternalBugAdditionalContext([]);
-    setInternalBugEvidence(preloadedEvidence.attachments);
-    setShowRedminePrompt(false);
-    setShowRedmineDrawer(true);
+      });
+      const preloadedEvidence = getActiveExecutionBugEvidence(
+        conclusiveSnapshot?.id || null,
+      );
+      setInternalBugDraft({
+        ...draft,
+        caso_id: selectedTest.id || null,
+        case_code: selectedTest.code || selectedTest.codigo || null,
+        ejecucion_id: currentExecutionCase?.id || null,
+        snapshot_id: conclusiveSnapshot?.id || null,
+        notas_qa: "",
+        _context: {
+          executionId: currentExecutionCase?.id || null,
+          snapshotId: conclusiveSnapshot?.id || null,
+          snapshot: conclusiveSnapshot,
+          note: conclusiveNote,
+          preloadedAttachmentIds: attachmentIds(preloadedEvidence.attachments),
+          backendLinkedAttachmentIds:
+            preloadedEvidence.backendLinkedAttachmentIds,
+        },
+      });
+      setInternalBugAdditionalContext([]);
+      setInternalBugEvidence(preloadedEvidence.attachments);
+      setShowRedminePrompt(false);
+      setShowRedmineDrawer(true);
+    } catch (error: any) {
+      showFeedback(
+        "No se pudo preparar el reporte",
+        error?.message || "Ocurrió un error al preparar el bug interno.",
+        "danger",
+      );
+    } finally {
+      setCreatingInternalBugContextId(null);
+    }
   };
 
   const openInternalBugReportFromCase = async (test: any) => {
@@ -482,19 +493,5 @@ export function createInternalBugWorkflow(context: any): any {
     }
   };
 
-  const handleCreateInternalBugFromCaseHistory = async (test: any) => {
-    return openInternalBugReportFromCase(test);
-  };
-
-  const renderCaseReferences = (
-    title: string,
-    references: AttachmentMeta[] = [],
-  ) => (
-    <CaseReferenceList
-      title={title}
-      references={references}
-      onZoomImage={setZoomImage}
-    />
-  );
-  return { confirmNewBugWhenCaseHasOpenBugs, handleCreateInternalBugFromExecution, openInternalBugReportFromPrompt, openInternalBugReportFromCase, handleInternalBugDraftChange, openManualInternalBugDrawer, createManualInternalBug, handleSubmitInternalBugReport, handleCreateInternalBugFromCaseHistory, renderCaseReferences };
+  return { confirmNewBugWhenCaseHasOpenBugs, handleCreateInternalBugFromExecution, openInternalBugReportFromPrompt, openInternalBugReportFromCase, handleCreateInternalBugFromCaseHistory: openInternalBugReportFromCase, handleInternalBugDraftChange, openManualInternalBugDrawer, createManualInternalBug, handleSubmitInternalBugReport, renderCaseReferences: (title: string, references: any[] = []) => renderInternalBugCaseReferences(title, references, setZoomImage) };
 }

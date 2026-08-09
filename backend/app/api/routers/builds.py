@@ -8,15 +8,23 @@ router = APIRouter(tags=["Builds"])
 
 
 def _inactive_build_update_is_lifecycle_only(current_build: models.Build, build: schemas.BuildUpdate) -> bool:
-    """Allow only the explicit inactive -> active lifecycle transition.
+    """Allow draft editing and the explicit inactive -> active transition.
 
-    Historical content and metadata must remain immutable.  Reactivation is a
+    PREPARACION is an editable draft and may be completed before activation.
+    Historical content and metadata must remain immutable. Reactivation is a
     separate lifecycle operation used by the build selector, so it may only
     carry the two state fields and must request the active state consistently.
+    Toggling ``oculto`` is also allowed for historical builds because it only
+    changes presentation/visibility; it does not mutate the build content or
+    any execution history.
     """
     if access_control.is_build_active(current_build):
         return True
+    if getattr(current_build, "estado", None) == "PREPARACION":
+        return True
     fields = set(build.model_fields_set)
+    if fields == {"oculto"}:
+        return True
     return fields.issubset({"estado", "activo"}) and build.estado == "ACTIVA" and build.activo is True
 
 @router.get("/proyectos/{proyecto_id}/builds/", response_model=List[schemas.Build])
@@ -82,6 +90,7 @@ async def create_build(
                 "codigo": created_build.codigo,
                 "activo": created_build.activo,
                 "estado": created_build.estado,
+                "oculto": created_build.oculto,
             },
         },
     )
@@ -150,6 +159,7 @@ async def update_build(
                 "codigo": db_build.codigo,
                 "activo": db_build.activo,
                 "estado": db_build.estado,
+                "oculto": db_build.oculto,
             },
             "updated_fields": build.model_dump(exclude_unset=True, exclude_none=True),
         },

@@ -6,7 +6,8 @@ import { getBugCriticalityPresentation, getBugSeverityPresentation } from "../bu
 
 export function createExecutionBugActions(context: any) {
   const { t, filteredTests, openBugsByCase, bugCaseFilter, currentBuildId, caseBugLinks, setCaseBugLinks, showFeedback, onCreateInternalBugFromCase, onOpenBugTracker, creatingInternalBugContextId, canAccessCapability } = context;
-  const canCreateBugs = !canAccessCapability || canAccessCapability("bugs.crear", "edit");
+  const canViewBugs = !canAccessCapability || canAccessCapability("bugs.ver", "read");
+  const canCreateBugs = canViewBugs && (!canAccessCapability || canAccessCapability("bugs.crear", "edit"));
   const isFailureResult = (status?: string) =>
     ["FALLO", "FALLIDO", "BLOQUEADO"].includes(
       String(status || "").toUpperCase(),
@@ -210,6 +211,14 @@ export function createExecutionBugActions(context: any) {
     test: any,
   ) => {
     event.stopPropagation();
+    if (!canViewBugs || !canCreateBugs) {
+      showFeedback(
+        t('ejecutarPruebas.internalBug'),
+        !canViewBugs ? t('ejecutarPruebas.bugsViewPermission') : t('ejecutarPruebas.bugsCreatePermission'),
+        "warning",
+      );
+      return;
+    }
     if (!getCurrentBuildFailureContext(test)) {
       showFeedback(
         t('ejecutarPruebas.internalBug'),
@@ -220,7 +229,9 @@ export function createExecutionBugActions(context: any) {
     }
     const reportedBug = caseBugLinks[test.id] || getFailureBugForContext(test);
     if (reportedBug) {
-      onOpenBugTracker?.();
+      // El bug ya existe: abrir su detalle como overlay conserva la consola
+      // de ejecución y evita llevar al usuario a otra sección.
+      onOpenBugTracker?.(reportedBug);
       return;
     }
     const bug = await onCreateInternalBugFromCase?.(test);
@@ -228,21 +239,25 @@ export function createExecutionBugActions(context: any) {
   };
   const renderInternalBugButton = (test: any, compact = false) => {
     const failureContext = getCurrentBuildFailureContext(test);
-    if (!canCreateBugs || !onCreateInternalBugFromCase || !failureContext)
+    if (!onCreateInternalBugFromCase || !failureContext)
       return null;
     const contextId = getFailureBugContextId(test);
     const linkedBug = caseBugLinks[test.id] || getFailureBugForContext(test);
     const isCreating = creatingInternalBugContextId === contextId;
-    const title = linkedBug
-      ? `${linkedBug.codigo} ya reporta esta ejecucion`
-      : t('ejecutarPruebas.prepareInternalBugTitle');
+    const title = !canViewBugs
+      ? t('ejecutarPruebas.bugsViewPermission')
+      : !canCreateBugs
+        ? t('ejecutarPruebas.bugsCreatePermission')
+        : linkedBug
+          ? `${linkedBug.codigo} ya reporta esta ejecucion`
+          : t('ejecutarPruebas.prepareInternalBugTitle');
     return (
       <Button
         variant={linkedBug ? "danger" : "outline-danger"}
         size="sm"
         className={`fw-bold d-inline-flex align-items-center justify-content-center gap-1 ${compact ? "p-0" : ""}`}
         style={compact ? { width: 30, height: 30 } : undefined}
-        disabled={isCreating}
+        disabled={isCreating || !canViewBugs || !canCreateBugs}
         onClick={(event) => handleInternalBugClick(event, test)}
         title={title}
         aria-label={title}

@@ -25,6 +25,7 @@ from datetime import datetime, timezone, timedelta
 from ..time_utils import ensure_utc, isoformat_utc, utc_now
 from ..test_trace import write_trace
 from ..runtime_environment import IS_PRODUCTION, RUNTIME_ENVIRONMENT
+from ..frontend_url import frontend_public_url
 from ..services.error_contract import current_correlation_id, correlation_headers
 
 # Compatibility: repository modules created during modularization still do
@@ -55,7 +56,7 @@ TRESEKO_DEPLOY_MODE = (os.getenv("TRESEKO_DEPLOY_MODE") or ("docker" if IS_PRODU
 IS_CONTAINER_MONITOR = IS_PRODUCTION_MONITOR and TRESEKO_DEPLOY_MODE in {"docker", "container"}
 SYSTEM_MONITOR_FRONTEND_URL = os.getenv(
     "SYSTEM_MONITOR_FRONTEND_URL",
-    "http://frontend" if IS_CONTAINER_MONITOR else "http://127.0.0.1:5173",
+    frontend_public_url(container_default="http://frontend" if IS_CONTAINER_MONITOR else None),
 )
 SYSTEM_MONITOR_REDIS_HOST = os.getenv("SYSTEM_MONITOR_REDIS_HOST", "redis" if IS_CONTAINER_MONITOR else "127.0.0.1")
 SYSTEM_MONITOR_REDIS_PORT = int(os.getenv("SYSTEM_MONITOR_REDIS_PORT", "6379"))

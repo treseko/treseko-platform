@@ -161,7 +161,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                               >
                                 {expandedCandidateIndexes.has(index) ? tx("hideDetail") : tx("viewDetail")}
                               </Button>
-                              <Form.Check
+                                    <Form.Check
                                 inline
                                 className="d-inline-block align-middle mb-0"
                                 title={
@@ -251,7 +251,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                 )}
                                 {proposalQuality(candidate) === "FAIL" && candidate.selected && (
                                   <div className="border border-danger rounded p-2 mb-3 small">
-                                    <Form.Check
+                                    <Form.Check name="a11y-traceabilitygenerationresultstsx-254" aria-label="Campo de formulario"
                                       id={`quality-override-${index}`}
                                       label={tx("criticalOverrideLabel")}
                                       checked={Boolean(candidate.quality_override_accepted)}
@@ -262,7 +262,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold mt-2 mb-1" htmlFor={`quality-override-reason-${index}`}>
                                       {tx("decisionJustification")}
                                     </Form.Label>
-                                    <Form.Control
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-265" aria-label="Campo de formulario"
                                       id={`quality-override-reason-${index}`}
                                       size="sm"
                                       as="textarea"
@@ -280,7 +280,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold">
                                       {tx("title")}
                                     </Form.Label>
-                                    <Form.Control
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-283" aria-label="Campo de formulario"
                                       size="sm"
                                       value={candidate.title}
                                       onChange={(event) =>
@@ -296,7 +296,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold">
                                       Prioridad
                                     </Form.Label>
-                                    <Form.Select
+                                    <Form.Select name="a11y-traceabilitygenerationresultstsx-299" aria-label="Campo de formulario"
                                       size="sm"
                                       value={candidate.prioridad}
                                       onChange={(event) =>
@@ -320,7 +320,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold">
                                       {tx("description")}
                                     </Form.Label>
-                                    <Form.Control
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-323" aria-label="Campo de formulario"
                                       as="textarea"
                                       rows={4}
                                       value={candidate.description}

@@ -25,7 +25,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label>{tx("title")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-28" aria-label="Campo de formulario"
                   required
                   value={requirementForm.titulo}
                   onChange={(event) =>
@@ -38,7 +38,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={2}>
                 <Form.Label>{tx("priority")}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-traceabilityeditormodalstsx-41" aria-label="Campo de formulario"
                   value={requirementForm.prioridad}
                   onChange={(event) =>
                     setRequirementForm({
@@ -54,7 +54,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={2}>
                 <Form.Label>{tx("state")}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-traceabilityeditormodalstsx-57" aria-label="Campo de formulario"
                   value={requirementForm.estado}
                   onChange={(event) =>
                     setRequirementForm({
@@ -72,7 +72,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col xs={12}>
                 <Form.Label>{tx("descriptionMarkdown")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-75" aria-label="Campo de formulario"
                   as="textarea"
                   rows={6}
                   value={requirementForm.descripcion_markdown}
@@ -86,7 +86,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={6}>
                 <Form.Label>{tx("optionalExternalTicket")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-89" aria-label="Campo de formulario"
                   placeholder={tx("provider")}
                   value={requirementForm.external_provider || ""}
                   onChange={(event) =>
@@ -99,7 +99,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={6}>
                 <Form.Label>{tx("referenceUrl")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-102" aria-label="Campo de formulario"
                   placeholder={tx("idOrUrl")}
                   value={requirementForm.external_url || ""}
                   onChange={(event) =>
@@ -116,7 +116,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
                 <div className="traceability-component-picker">
                   {projectComponents.length ? (
                     projectComponents.map((component) => (
-                      <Form.Check
+                      <Form.Check name="a11y-traceabilityeditormodalstsx-119" aria-label="Campo de formulario"
                         key={component.id}
                         type="checkbox"
                         id={`requirement-component-${component.id}`}
@@ -168,7 +168,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label>{tx("requirement")}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-traceabilityeditormodalstsx-171" aria-label="Campo de formulario"
                   required
                   value={storyRequirementId}
                   disabled={Boolean(editingStory)}
@@ -188,7 +188,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={2}>
                 <Form.Label>{tx("priority")}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-traceabilityeditormodalstsx-191" aria-label="Campo de formulario"
                   value={storyForm.prioridad}
                   onChange={(event) =>
                     setStoryForm({
@@ -204,7 +204,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={2}>
                 <Form.Label>{tx("state")}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-traceabilityeditormodalstsx-207" aria-label="Campo de formulario"
                   value={storyForm.estado}
                   onChange={(event) =>
                     setStoryForm({ ...storyForm, estado: event.target.value })
@@ -219,7 +219,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col xs={12}>
                 <Form.Label>{tx("title")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-222" aria-label="Campo de formulario"
                   required
                   value={storyForm.titulo}
                   onChange={(event) =>
@@ -230,7 +230,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               <Col xs={12}>
                 <Form.Label>{editingStory ? tx("descriptionMarkdown") : tx("userStory")}</Form.Label>
                 {!editingStory && <div className="border-start border-primary border-3 ps-3 py-1 mb-2 small text-muted"><strong className="text-dark d-block">{tx("recommendedFormatLabel")}</strong>{tx("userStoryExample")}</div>}
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-233" aria-label="Campo de formulario"
                   as="textarea"
                   rows={4}
                   value={storyForm.descripcion_markdown}
@@ -247,7 +247,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
                 <Form.Label>{editingStory ? tx("acceptanceMarkdown") : tx("structuredAcceptance")}</Form.Label>
                 {!editingStory && <><p className="small text-muted mb-2">{tx("acceptanceHintShort")}</p><AcceptanceCriteriaEditor criteria={storyForm.acceptance_criteria || []} onChange={(acceptance_criteria) => setStoryForm({ ...storyForm, acceptance_criteria })} /></>}
                 {editingStory &&
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-250" aria-label="Campo de formulario"
                   as="textarea"
                   rows={4}
                   value={storyForm.criterios_aceptacion_markdown}
@@ -261,7 +261,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={6}>
                 <Form.Label>{tx("externalProvider")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-264" aria-label="Campo de formulario"
                   value={storyForm.external_provider || ""}
                   onChange={(event) =>
                     setStoryForm({
@@ -273,7 +273,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
               </Col>
               <Col md={6}>
                 <Form.Label>{tx("externalUrl")}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-traceabilityeditormodalstsx-276" aria-label="Campo de formulario"
                   type="url"
                   value={storyForm.external_url || ""}
                   onChange={(event) =>

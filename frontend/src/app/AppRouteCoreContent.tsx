@@ -123,7 +123,18 @@ export function AppRouteCoreContent({ options }: { options: any }) {
             creatingInternalBugContextId,
             openBugsByCase,
             openBugsLoading,
-            onOpenBugTracker: () => setActiveTab("bugs"),
+            onOpenBugTracker: (bug: any) => {
+              if (!canAccessCapability('bugs.ver', 'read')) {
+                showFeedback('Bug Tracker', 'No tienes permiso para ver bugs.', 'warning');
+                return;
+              }
+              const bugId = bug?.id ? String(bug.id) : "";
+              if (bugId) {
+                setExecutionBugDetailId(bugId);
+                return;
+              }
+              setActiveTab("bugs");
+            },
           }}
         />
       )}

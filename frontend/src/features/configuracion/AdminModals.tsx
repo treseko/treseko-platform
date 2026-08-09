@@ -254,7 +254,7 @@ export function AdminModals({
                   <div className="p-3 rounded-3 border bg-light">
                     <Form.Label className="x-small fw-bold text-muted">{t('configuracion.searchAdUser')}</Form.Label>
                     <div className="d-flex gap-2">
-                      <Form.Control
+                      <Form.Control name="a11y-adminmodalstsx-257" aria-label="Campo de formulario"
                         value={adLookupQuery}
                         onChange={(e) => {
                           setAdLookupQuery(e.target.value)
@@ -307,19 +307,19 @@ export function AdminModals({
               <Col md={6}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.fullName')}</Form.Label>
-                  <Form.Control value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value, saveError: '' })} className="bg-light shadow-sm" />
+                  <Form.Control name="a11y-adminmodalstsx-310" aria-label="Campo de formulario" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value, saveError: '' })} className="bg-light shadow-sm" />
                 </Form.Group>
               </Col>
               <Col md={6}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>Email</RequiredLabel></Form.Label>
-                  <Form.Control type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value, saveError: '' })} required className="bg-light shadow-sm" />
+                  <Form.Control name="a11y-adminmodalstsx-316" aria-label="Campo de formulario" type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value, saveError: '' })} required className="bg-light shadow-sm" />
                 </Form.Group>
               </Col>
               <Col md={6}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.localPassword')}</Form.Label>
-                  <Form.Control
+                  <Form.Control name="a11y-adminmodalstsx-322" aria-label="Campo de formulario"
                     type="password"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value, saveError: '' })}
@@ -330,7 +330,7 @@ export function AdminModals({
                 </Form.Group>
               </Col>
               {!editingUserId && <Col md={6} className="d-flex align-items-end">
-                <Form.Check
+                <Form.Check name="a11y-adminmodalstsx-333" aria-label="Campo de formulario"
                   type="switch"
                   id="send-welcome"
                   label={userForm.auth === 'AD' ? t('configuracion.sendCorporateAccessInstructions') : t('configuracion.sendWelcomePasswordLink')}
@@ -342,7 +342,7 @@ export function AdminModals({
               <Col md={4}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.role')}</Form.Label>
-                  <Form.Select
+                  <Form.Select name="a11y-adminmodalstsx-345" aria-label="Campo de formulario"
                     value={userForm.roleCustomId ? `custom:${userForm.roleCustomId}` : userForm.role}
                     onChange={(e) => {
                       const value = e.target.value
@@ -368,7 +368,7 @@ export function AdminModals({
               <Col md={4}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.authentication')}</Form.Label>
-                  <Form.Select value={userForm.auth} onChange={(e) => setUserForm({ ...userForm, auth: e.target.value, adLookupVerified: false })} className="bg-light shadow-sm">
+                  <Form.Select name="a11y-adminmodalstsx-371" aria-label="Campo de formulario" value={userForm.auth} onChange={(e) => setUserForm({ ...userForm, auth: e.target.value, adLookupVerified: false })} className="bg-light shadow-sm">
                     <option value="Local">Local</option>
                     <option value="AD">Active Directory</option>
                   </Form.Select>
@@ -377,7 +377,7 @@ export function AdminModals({
               <Col md={4}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.status')}</Form.Label>
-                  <Form.Select value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value })} className="bg-light shadow-sm">
+                  <Form.Select name="a11y-adminmodalstsx-380" aria-label="Campo de formulario" value={userForm.status} onChange={(e) => setUserForm({ ...userForm, status: e.target.value })} className="bg-light shadow-sm">
                     <option value="Activo">{t('configuracion.active')}</option>
                     <option value="Inactivo">{t('configuracion.inactive')}</option>
                   </Form.Select>
@@ -415,7 +415,7 @@ export function AdminModals({
 
             <Form.Group className="mb-3">
               <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.existingUser')}</RequiredLabel></Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-adminmodalstsx-418" aria-label="Campo de formulario"
                 list="project-member-user-options"
                 value={projectMemberUserText}
                 onChange={(event) => {

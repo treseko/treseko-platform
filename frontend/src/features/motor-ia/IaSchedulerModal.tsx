@@ -62,7 +62,7 @@ export function IaSchedulerModal({
               <h6 className="fw-bold text-secondary mb-2 text-uppercase app-label" style={{ letterSpacing: '0.5px' }}>{t('motorIa.catalogoGlobal')}</h6>
               <div className="input-group input-group-sm">
                 <span className="input-group-text bg-white text-muted border-end-0"><Search size={14} /></span>
-                <Form.Control
+                <Form.Control name="a11y-iaschedulermodaltsx-65" aria-label="Campo de formulario"
                   type="text"
                   placeholder={t('motorIa.searchSuites')}
                   className="border-start-0 shadow-none ps-0"
@@ -88,7 +88,7 @@ export function IaSchedulerModal({
                   <Card key={suite.id} className="border-light-subtle shadow-sm mb-3">
                     <Card.Header className="bg-light py-2 d-flex justify-content-between align-items-center border-bottom-0">
                       <div className="d-flex align-items-center gap-2">
-                        <Form.Check
+                        <Form.Check name="a11y-iaschedulermodaltsx-91" aria-label="Campo de formulario"
                           type="checkbox"
                           className="cursor-pointer shadow-none"
                           checked={allSelected}
@@ -114,7 +114,7 @@ export function IaSchedulerModal({
                             setSelectedTestsForIa(prev => prev.includes(test.id) ? prev.filter(id => id !== test.id) : [...prev, test.id])
                           }}
                         >
-                          <Form.Check
+                          <Form.Check name="a11y-iaschedulermodaltsx-117" aria-label="Campo de formulario"
                             type="checkbox"
                             className="cursor-pointer shadow-none pointer-events-none"
                             checked={selectedTestsForIa.includes(test.id)}
@@ -143,11 +143,11 @@ export function IaSchedulerModal({
               <Card.Body className="p-3">
                 <Form.Group className="mb-3">
                   <Form.Label className="x-small fw-bold text-muted mb-1">{t('motorIa.executionName')}</Form.Label>
-                  <Form.Control type="text" size="sm" value={execName} onChange={(e) => setExecName(e.target.value)} className="bg-light fw-bold text-dark" />
+                  <Form.Control name="a11y-iaschedulermodaltsx-146" aria-label="Campo de formulario" type="text" size="sm" value={execName} onChange={(e) => setExecName(e.target.value)} className="bg-light fw-bold text-dark" />
                 </Form.Group>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted mb-1 d-flex gap-1 align-items-center"><Clock size={12} /> {t('motorIa.scheduledTime')}</Form.Label>
-                  <Form.Control type="datetime-local" size="sm" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="bg-light text-dark" />
+                  <Form.Control name="a11y-iaschedulermodaltsx-150" aria-label="Campo de formulario" type="datetime-local" size="sm" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="bg-light text-dark" />
                 </Form.Group>
               </Card.Body>
             </Card>

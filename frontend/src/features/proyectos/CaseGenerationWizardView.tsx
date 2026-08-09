@@ -81,7 +81,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
               <div className="row g-3">
                 <div className="col-md-6">
                   <Form.Label>{t('proyectos.caseGenerationComponentLabel')} <span className="text-danger">*</span></Form.Label>
-                  <Form.Select
+                  <Form.Select name="a11y-casegenerationwizardviewtsx-84" aria-label="Campo de formulario"
                     value={componentId}
                     onChange={(event) => setSelectedComponent(event.target.value)}
                     required>
@@ -91,7 +91,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
                 </div>
                 <div className="col-md-6">
                   <Form.Label>{t('proyectos.caseGenerationSuiteLabel')} <span className="text-danger">*</span></Form.Label>
-                  <Form.Select
+                  <Form.Select name="a11y-casegenerationwizardviewtsx-94" aria-label="Campo de formulario"
                     value={suiteId}
                     onChange={(event) => setSelectedSuite(event.target.value)}
                     required>
@@ -114,7 +114,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
 
             <Form.Group>
               <Form.Label>{t('proyectos.caseGenerationFocusLabel')} <span className="text-muted">{t('proyectos.caseGenerationOptional')}</span></Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-casegenerationwizardviewtsx-117" aria-label="Campo de formulario"
                 as="textarea"
                 value={instructions}
                 onChange={(event) => setInstructions(event.target.value)}
@@ -132,7 +132,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
             {(run.analysis?.questions || []).map((question: string) => (
               <Form.Group key={question} className="mb-2">
                 <Form.Label>{question}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-casegenerationwizardviewtsx-135" aria-label="Campo de formulario"
                   value={answers[question] || ""}
                   onChange={(event) => setAnswers({ ...answers, [question]: event.target.value })}
                 />
@@ -257,7 +257,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
                   {item.selected && requiresDuplicateDecision(item) ? (
                     <Form.Group className="mt-3">
                       <Form.Label className="small">{t('proyectos.caseGenerationDuplicateJustification')}</Form.Label>
-                      <Form.Control
+                      <Form.Control name="a11y-casegenerationwizardviewtsx-260" aria-label="Campo de formulario"
                         required
                         value={duplicateReasons[item.local_id] || ""}
                         onChange={(event) => setDuplicateReasons({ ...duplicateReasons, [item.local_id]: event.target.value })}
@@ -272,7 +272,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
                   {item.selected && item.quality?.testability === "FAIL" ? (
                     <Form.Group className="mt-3">
                       <Form.Label className="small">{t('proyectos.caseGenerationFailJustification')}</Form.Label>
-                      <Form.Control
+                      <Form.Control name="a11y-casegenerationwizardviewtsx-275" aria-label="Campo de formulario"
                         required
                         value={failReasons[item.local_id] || ""}
                         onChange={(event) => setFailReasons({ ...failReasons, [item.local_id]: event.target.value })}

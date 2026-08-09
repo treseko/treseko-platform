@@ -116,13 +116,13 @@ export function UsersSettingsTab({
                 <Col md={6}>
                   <Form.Group>
                     <Form.Label className="x-small fw-bold text-muted">{t('configuracion.ldapAdServer')}</Form.Label>
-                    <Form.Control size="sm" type="text" value={adServer} readOnly className="border-light-subtle font-monospace text-primary fw-bold" placeholder={t('configuracion.configuredInAd')} />
+                    <Form.Control name="a11y-usersrolessettingstabtsx-119" aria-label="Campo de formulario" size="sm" type="text" value={adServer} readOnly className="border-light-subtle font-monospace text-primary fw-bold" placeholder={t('configuracion.configuredInAd')} />
                   </Form.Group>
                 </Col>
                 <Col md={6}>
                   <Form.Group>
                     <Form.Label className="x-small fw-bold text-muted">{t('configuracion.baseOrAllowedDomains')}</Form.Label>
-                    <Form.Control size="sm" type="text" value={adDomain} readOnly className="border-light-subtle" placeholder={t('configuracion.configuredInAd')} />
+                    <Form.Control name="a11y-usersrolessettingstabtsx-125" aria-label="Campo de formulario" size="sm" type="text" value={adDomain} readOnly className="border-light-subtle" placeholder={t('configuracion.configuredInAd')} />
                   </Form.Group>
                 </Col>
               </Row>

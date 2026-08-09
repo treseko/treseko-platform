@@ -113,7 +113,7 @@ const SuiteNode = memo(({
           )}
         </span>
 
-        <input
+        <input name="a11y-buildcaseselectortsx-116" aria-label="Campo de formulario"
           type="checkbox"
           className="form-check-input flex-shrink-0 m-0"
           style={{ cursor: 'pointer' }}
@@ -170,7 +170,7 @@ const SuiteNode = memo(({
               style={{ minHeight: '28px', background: locked ? '#F8FAFC' : '#FFFFFF', borderColor: locked ? '#CBD5E1' : '#E9ECEF' }}
               title={locked ? t('common.lockedCaseTitle') : test.title}
             >
-              <input
+              <input name="a11y-buildcaseselectortsx-173" aria-label="Campo de formulario"
                 type="checkbox"
                 className="form-check-input flex-shrink-0 m-0"
                 style={{ cursor: locked ? 'not-allowed' : 'pointer' }}
@@ -279,7 +279,7 @@ export const BuildCaseSelector = memo(({
         <div className="mb-2">
           <div className="input-group input-group-sm">
             <span className="input-group-text bg-white border-end-0"><Search size={14} className="text-muted" /></span>
-            <Form.Control
+            <Form.Control name="a11y-buildcaseselectortsx-282" aria-label="Campo de formulario"
               placeholder={t('common.searchSuiteOrCase')}
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}

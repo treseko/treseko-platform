@@ -14,13 +14,15 @@ import {
   normalizeEngineStatus,
   normalizeLog,
   nowIso,
-  type AiEngineHealthState,
-  type IaExecutionStream,
-  type IaLogEntry,
-  type IaLogLevel,
-  type IaQueueItem,
-  type IaRunStatus,
-} from './MotorIaPage'
+} from './motorIaUtils'
+import type {
+  AiEngineHealthState,
+  IaExecutionStream,
+  IaLogEntry,
+  IaLogLevel,
+  IaQueueItem,
+  IaRunStatus,
+} from './motorIaTypes'
 
 export function useMotorIaMonitorState({ options }: { options: any }) {
   const { currentProjectId, t, fetchWithAuth, showFeedback, canViewStatus, iaStatus, iaLogs, setIaLogs, currentProjectIaQueue, iaExecutionStreams, setIaExecutionStreams, setIaQueue, currentProjectCases } = options

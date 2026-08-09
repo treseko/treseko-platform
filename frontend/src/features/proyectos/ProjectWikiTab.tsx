@@ -104,9 +104,9 @@ export function ProjectWikiTab({ context }: { context: any }) {
                             </Button>
                           </div>
                           <div className="flex-grow-1 d-flex flex-column gap-3">
-                            <Form.Control size="lg" type="text" placeholder={t('proyectos.documentTitle')} className="fw-bold border-light-subtle shadow-sm" value={wikiFormData.title} onChange={(e) => setWikiFormData({ ...wikiFormData, title: e.target.value })} />
+                            <Form.Control name="a11y-projectwikitabtsx-107" aria-label="Campo de formulario" size="lg" type="text" placeholder={t('proyectos.documentTitle')} className="fw-bold border-light-subtle shadow-sm" value={wikiFormData.title} onChange={(e) => setWikiFormData({ ...wikiFormData, title: e.target.value })} />
                             <div className="flex-grow-1 position-relative">
-                              <Form.Control as="textarea" placeholder={t('proyectos.markdownHint')} className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4 app-small" style={{ resize: 'none' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
+                              <Form.Control name="a11y-projectwikitabtsx-109" aria-label="Campo de formulario" as="textarea" placeholder={t('proyectos.markdownHint')} className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4 app-small" style={{ resize: 'none' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
                             </div>
                           </div>
                         </div>

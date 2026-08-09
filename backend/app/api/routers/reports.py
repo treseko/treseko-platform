@@ -46,6 +46,312 @@ async def read_project_metrics(
             raise HTTPException(status_code=404, detail="Build no encontrado para el proyecto")
     return await crud.get_project_metrics(db, proyecto_id=proyecto_id, build_id=build_id)
 
+
+@router.get("/proyectos/{proyecto_id}/quality-intelligence/health", response_model=schemas.QualityHealthResponse)
+async def read_quality_intelligence_health(
+    proyecto_id: UUID,
+    classification: Optional[str] = Query(None, max_length=40),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    return await crud.get_quality_health(
+        db,
+        proyecto_id,
+        classification=classification,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/fingerprints",
+    response_model=schemas.QualityFailureFingerprintResponse,
+)
+async def read_quality_intelligence_fingerprints(
+    proyecto_id: UUID,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    return await crud.get_quality_failure_fingerprints(db, proyecto_id, limit=limit)
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/observations",
+    response_model=schemas.QualityExecutionObservationResponse,
+)
+async def read_quality_intelligence_observations(
+    proyecto_id: UUID,
+    suite_id: Optional[UUID] = None,
+    build_id: Optional[UUID] = None,
+    entorno_id: Optional[UUID] = None,
+    runner_id: Optional[UUID] = None,
+    case_master_id: Optional[UUID] = None,
+    resultado: Optional[str] = Query(None, max_length=30),
+    observed_from: Optional[datetime] = None,
+    observed_to: Optional[datetime] = None,
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    if build_id:
+        build = await access_control.require_build_access(db, current_user, build_id, "read")
+        if build.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Build no encontrado para el proyecto")
+    return await crud.get_quality_execution_observations(
+        db,
+        proyecto_id,
+        suite_id=suite_id,
+        build_id=build_id,
+        entorno_id=entorno_id,
+        runner_id=runner_id,
+        case_master_id=case_master_id,
+        resultado=resultado,
+        observed_from=observed_from,
+        observed_to=observed_to,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/quality-intelligence/diagnoses",
+    response_model=schemas.QualityDiagnosisResponse,
+)
+async def create_quality_intelligence_diagnosis(
+    proyecto_id: UUID,
+    payload: schemas.QualityDiagnosisCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.configurar", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        diagnosis = await crud.create_quality_diagnosis(db, proyecto_id, payload, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    await crud.create_audit_log(db, usuario_id=current_user.id, accion="CREATE", recurso="quality_diagnosis", recurso_id=diagnosis["id"], detalles={"project_id": str(proyecto_id), "status": diagnosis["status"]}, ip_address=_request_ip(request), commit=False)
+    await db.commit()
+    return diagnosis
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/diagnoses",
+    response_model=schemas.QualityDiagnosisListResponse,
+)
+async def read_quality_intelligence_diagnoses(
+    proyecto_id: UUID,
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    return await crud.get_quality_diagnoses(db, proyecto_id, limit=limit)
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/quality-intelligence/diagnoses/{diagnosis_id}/review",
+    response_model=schemas.QualityDiagnosisResponse,
+)
+async def review_project_quality_intelligence_diagnosis(
+    proyecto_id: UUID,
+    diagnosis_id: UUID,
+    payload: schemas.QualityDiagnosisReview,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    )),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        diagnosis = await crud.review_quality_diagnosis(db, proyecto_id, diagnosis_id, payload, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if diagnosis is None:
+        raise HTTPException(status_code=404, detail="Diagnóstico no encontrado")
+    await crud.create_audit_log(db, usuario_id=current_user.id, accion=payload.status, recurso="quality_diagnosis", recurso_id=diagnosis_id, detalles={"project_id": str(proyecto_id)}, ip_address=_request_ip(request), commit=False)
+    await db.commit()
+    return diagnosis
+
+
+@router.patch(
+    "/proyectos/{proyecto_id}/quality-intelligence/diagnoses/{diagnosis_id}",
+    response_model=schemas.QualityDiagnosisResponse,
+)
+async def edit_project_quality_intelligence_diagnosis(
+    proyecto_id: UUID,
+    diagnosis_id: UUID,
+    payload: schemas.QualityDiagnosisEdit,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    )),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        diagnosis = await crud.edit_quality_diagnosis(db, proyecto_id, diagnosis_id, payload, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if diagnosis is None:
+        raise HTTPException(status_code=404, detail="Diagnóstico no encontrado")
+    await crud.create_audit_log(
+        db, usuario_id=current_user.id, accion="EDIT_VERSION", recurso="quality_diagnosis",
+        recurso_id=diagnosis["id"], detalles={"project_id": str(proyecto_id), "supersedes_diagnosis_id": str(diagnosis_id)},
+        ip_address=_request_ip(request), commit=False,
+    )
+    await db.commit()
+    return diagnosis
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/diagnoses/{diagnosis_id}/bug-draft",
+    response_model=schemas.QualityDiagnosisBugDraftResponse,
+)
+async def read_quality_intelligence_diagnosis_bug_draft(
+    proyecto_id: UUID,
+    diagnosis_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    )),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        draft = await crud.get_quality_diagnosis_bug_draft(db, proyecto_id, diagnosis_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Diagnóstico no encontrado")
+    return draft
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/summary",
+    response_model=schemas.QualityIntelligenceSummary,
+)
+async def read_quality_intelligence_summary(
+    proyecto_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    return await crud.get_quality_intelligence_summary(db, proyecto_id)
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/quality-intelligence/release-risk/evaluate",
+    response_model=schemas.ReleaseRiskEvaluationResponse,
+)
+async def evaluate_project_release_risk(
+    proyecto_id: UUID,
+    payload: schemas.ReleaseRiskEvaluateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.configurar", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        evaluation = await crud.evaluate_release_risk(db, proyecto_id, payload.build_id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    await crud.create_audit_log(
+        db, usuario_id=current_user.id, accion="EVALUATE", recurso="release_risk",
+        recurso_id=evaluation["id"], detalles={"project_id": str(proyecto_id), "build_id": str(payload.build_id), "score": evaluation["score"], "recommendation": evaluation["recommendation"]}, ip_address=_request_ip(request), commit=False,
+    )
+    await db.commit()
+    return evaluation
+
+
+@router.get(
+    "/proyectos/{proyecto_id}/quality-intelligence/release-risk",
+    response_model=schemas.ReleaseRiskEvaluationResponse,
+)
+async def read_project_release_risk(
+    proyecto_id: UUID,
+    build_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.ver", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    build = await access_control.require_build_access(db, current_user, build_id, "read")
+    if build.proyecto_id != proyecto_id:
+        raise HTTPException(status_code=404, detail="Build no encontrada para el proyecto")
+    evaluation = await crud.get_latest_release_risk(db, proyecto_id, build_id)
+    if evaluation is None:
+        raise HTTPException(status_code=404, detail="Todavía no hay una evaluación de riesgo para esta build")
+    return evaluation
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/quality-intelligence/release-risk/{evaluation_id}/accept",
+    response_model=schemas.ReleaseRiskEvaluationResponse,
+)
+async def accept_project_release_risk(
+    proyecto_id: UUID,
+    evaluation_id: UUID,
+    payload: schemas.ReleaseRiskAcceptanceRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.configurar", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        evaluation = await crud.accept_release_risk(db, proyecto_id, evaluation_id, payload.note, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if evaluation is None:
+        raise HTTPException(status_code=404, detail="Evaluación de riesgo no encontrada")
+    await crud.create_audit_log(
+        db, usuario_id=current_user.id, accion="ACCEPT", recurso="release_risk",
+        recurso_id=evaluation_id, detalles={"project_id": str(proyecto_id), "note": evaluation["acceptance_note"]}, ip_address=_request_ip(request), commit=False,
+    )
+    await db.commit()
+    return evaluation
+
+
+@router.post(
+    "/proyectos/{proyecto_id}/quality-intelligence/rebuild",
+    response_model=schemas.QualityIntelligenceRebuildResponse,
+)
+async def rebuild_project_quality_intelligence(
+    proyecto_id: UUID,
+    payload: schemas.QualityIntelligenceRebuildRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.configurar", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    result = await crud.rebuild_quality_intelligence(
+        db,
+        proyecto_id,
+        window_size=payload.window_size,
+        commit=False,
+    )
+    if result["status"] == "NOT_FOUND":
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    await crud.create_audit_log(
+        db,
+        usuario_id=current_user.id,
+        accion="REBUILD",
+        recurso="quality_intelligence",
+        recurso_id=proyecto_id,
+        detalles={
+            "project_id": str(proyecto_id),
+            "window_size": payload.window_size,
+            "observations": result["observations"],
+            "health_records": result["health_records"],
+            "algorithm_version": result["algorithm_version"],
+        },
+        ip_address=_request_ip(request),
+        commit=False,
+    )
+    await db.commit()
+    return result
+
 @router.get("/proyectos/{proyecto_id}/report-settings", response_model=schemas.ProjectReportSettings)
 async def read_project_report_settings(
     proyecto_id: UUID,

@@ -51,7 +51,7 @@ export function BugTrackerPage({
   const { t } = useI18n()
   const canUse = canAccessCapability || (() => true)
   const canView = canUse('bugs.ver', 'read')
-  const canCreate = canUse('bugs.crear', 'edit')
+  const canCreate = canView && canUse('bugs.crear', 'edit')
   const canEdit = canUse('bugs.editar', 'edit')
   const canTriage = canUse('bugs.triage', 'edit')
   const canComment = canUse('bugs.comentar', 'edit')
@@ -74,7 +74,7 @@ export function BugTrackerPage({
   const [externalForm, setExternalForm] = useState({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
   const [markdown, setMarkdown] = useState('')
   const [detailForm, setDetailForm] = useState<any>({})
-  const [additionalContextRows, setAdditionalContextRows] = useState<{ key: string; value: string }[]>([])
+  const [additionalContextRows, setAdditionalContextRows] = useState<{ id: string; key: string; value: string }[]>([])
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
   const [savingDetail, setSavingDetail] = useState(false)
   const [showStatusHelp, setShowStatusHelp] = useState(false)
@@ -83,7 +83,12 @@ export function BugTrackerPage({
   const consumedDeepLinkBugRef = useRef('')
 
   const loadBugs = async (options?: { silent?: boolean }) => {
-    if (!currentProjectId) return
+    if (!currentProjectId || !canView) {
+      setBugs([])
+      setSummary({})
+      setLoading(false)
+      return
+    }
     const silent = Boolean(options?.silent)
     if (!silent) setLoading(true)
     try {
@@ -110,7 +115,7 @@ export function BugTrackerPage({
   useEffect(() => {
     const sameProject = loadedProjectIdRef.current === currentProjectId
     void loadBugs({ silent: hasLoadedBugsRef.current && sameProject })
-  }, [currentProjectId, refreshToken])
+  }, [currentProjectId, refreshToken, canView])
 
   const hydrateDetailEditState = (bug: any) => {
     setDetailForm({
@@ -144,9 +149,9 @@ export function BugTrackerPage({
     })
     const context = bug.metadata_json?.additional_context
     const rows = Array.isArray(context)
-      ? context.map((item: any) => ({ key: item?.key || '', value: item?.value || '' }))
+      ? context.map((item: any, index: number) => ({ id: `context-${index}-${Date.now()}`, key: item?.key || '', value: item?.value || '' }))
       : context && typeof context === 'object'
-        ? Object.entries(context).map(([key, value]) => ({ key, value: String(value ?? '') }))
+        ? Object.entries(context).map(([key, value], index) => ({ id: `context-${index}-${Date.now()}`, key, value: String(value ?? '') }))
         : []
     setAdditionalContextRows(rows)
   }
@@ -225,7 +230,7 @@ export function BugTrackerPage({
   }
 
   const saveSelectedBugDetails = async () => {
-    if (!selectedBug || !canEdit) return
+    if (!selectedBug || !canEdit) return false
     const additionalContext = additionalContextRows
       .map(row => ({ key: row.key.trim(), value: row.value.trim() }))
       .filter(row => row.key || row.value)
@@ -240,8 +245,10 @@ export function BugTrackerPage({
         },
       })
       showFeedback(t('bugs.bugUpdatedTitle'), t('bugs.bugUpdated'), 'success')
+      return true
     } catch (error: any) {
       showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorUpdate'), 'danger')
+      return false
     } finally {
       setSavingDetail(false)
     }
@@ -371,6 +378,16 @@ export function BugTrackerPage({
       <WorkspaceContextEmptyState
         message={t('bugs.noProjectSelected')}
         detail={t('bugs.noProjectDetail')}
+      />
+    )
+  }
+
+  if (!canView) {
+    if (modalOnly) return null
+    return (
+      <WorkspaceContextEmptyState
+        message={t('bugs.permissionDenied')}
+        detail={t('bugs.noPermissionToView')}
       />
     )
   }

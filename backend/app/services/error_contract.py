@@ -70,6 +70,15 @@ def public_error(
         if depth > 3:
             return "[truncated]"
         if isinstance(value, dict):
+            # Validation locations and messages are safe after the handler has
+            # removed the original input. Preserve them for actionable clients
+            # instead of truncating them through the generic nested sanitizer.
+            if {"loc", "type", "msg"}.issubset(value):
+                return {
+                    "loc": [str(item)[:120] for item in list(value.get("loc") or [])[:12]],
+                    "type": str(value.get("type") or "")[:120],
+                    "msg": sanitize_external_error(value.get("msg"), max_len=280),
+                }
             return {
                 str(key)[:80]: "[redacted]" if re.search(r"token|secret|password|credential|authorization|cookie|api[_-]?key", str(key), re.I)
                 else sanitize_detail(item, depth + 1)

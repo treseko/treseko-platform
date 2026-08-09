@@ -88,7 +88,7 @@ type EjecutarPruebasPageProps = {
   creatingInternalBugContextId?: string | null;
   openBugsByCase?: Record<string, any[]>;
   openBugsLoading?: boolean;
-  onOpenBugTracker?: () => void;
+  onOpenBugTracker?: (bug?: any) => void;
 };
 
 const getTrend = (test: any) => {
@@ -179,10 +179,10 @@ export function EjecutarPruebasPage({
   const canViewBuildHistory =
     !canAccessCapability ||
     canAccessCapability("ejecutar.historial_build", "read");
-  const canCreateBugs =
-    !canAccessCapability || canAccessCapability("bugs.crear", "edit");
   const canViewBugs =
     !canAccessCapability || canAccessCapability("bugs.ver", "read");
+  const canCreateBugs = canViewBugs &&
+    (!canAccessCapability || canAccessCapability("bugs.crear", "edit"));
   const bugActions = createExecutionBugActions({ t, filteredTests, openBugsByCase, currentBuildId, caseBugLinks, setCaseBugLinks, showFeedback, onCreateInternalBugFromCase, onOpenBugTracker, creatingInternalBugContextId, canAccessCapability, bugCaseFilter });
   const { visibleTests, openBugCaseCount, openBugTotal, retestBugCaseCount, getOpenBugsForCase, isRetestBug, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, renderOpenBugBadge, renderInternalBugButton } = bugActions;
 
@@ -236,7 +236,7 @@ export function EjecutarPruebasPage({
             <span className="input-group-text bg-light border-end-0 text-muted">
               <Search size={14} />
             </span>
-            <Form.Control
+            <Form.Control name="a11y-ejecutarpruebaspagetsx-239" aria-label="Campo de formulario"
               type="text"
               placeholder={t('ejecutarPruebas.searchTest')}
               className="bg-light border-start-0 shadow-none ps-0"
@@ -318,7 +318,7 @@ export function EjecutarPruebasPage({
         }} />
 
         <div className="d-flex flex-grow-1 overflow-hidden">
-          <div className="flex-grow-1 overflow-auto">
+          <div className="flex-grow-1 overflow-auto" style={{ minWidth: 0 }}>
             <ExecutionMobileCards options={{
               visibleTests,
               selectedTest,
@@ -343,7 +343,7 @@ export function EjecutarPruebasPage({
 
           </div>
 
-          <ExecutionCaseDetailPanel options={{ selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker }} />
+          <ExecutionCaseDetailPanel options={{ selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs }} />
         </div>
       </div>
       <RunDetailModal

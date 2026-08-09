@@ -35,7 +35,7 @@ export function AiAgentPromptModal({
             <Row className="g-2">
               <Col md={8}>
                 <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.actionLabel')}</Form.Label>
-                <Form.Select
+                <Form.Select name="a11y-aiagentpromptmodaltsx-38" aria-label="Campo de formulario"
                   value={promptAgent.action || 'custom_review'}
                   disabled={!canEditAi || promptAgent.locked}
                   onChange={(e) => updateAgentWorkflowItem(promptAgentIndex as number, { action: e.target.value })}
@@ -45,7 +45,7 @@ export function AiAgentPromptModal({
               </Col>
               <Col md={4}>
                 <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.retries')}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-aiagentpromptmodaltsx-48" aria-label="Campo de formulario"
                   type="number"
                   min={0}
                   max={5}
@@ -57,7 +57,7 @@ export function AiAgentPromptModal({
             </Row>
             <Form.Group>
               <Form.Label className="x-small text-muted fw-bold text-uppercase">{t('configuracion.operationalPrompt')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-aiagentpromptmodaltsx-60" aria-label="Campo de formulario"
                 as="textarea"
                 rows={9}
                 value={promptAgent.prompt || ''}

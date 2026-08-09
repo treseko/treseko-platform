@@ -23,6 +23,7 @@ export const REPORTES_VIEW_SECTIONS = [
   { id: 'suites', label: 'resultsBySuite' },
   { id: 'trend', label: 'buildTrend' },
   { id: 'sharedHistory', label: 'sharedHistoryTab' },
+  { id: 'qualityIntelligence', label: 'qualityIntelligence' },
 ]
 
 export const REPORTES_HISTORICAL_SECTIONS = [

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from ...main_context import *
 from ...services.case_search import resolve_dataset, search_cases
+from ...repositories.cases_datasets import CaseArchiveConflict
 
 
 router = APIRouter(tags=["Casos"])
@@ -342,7 +343,11 @@ async def update_caso_metadata(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.casos", "edit"))
 ):
     await _require_case_access(db, current_user, caso_id, "edit")
-    updated = await crud.update_caso_metadata(db=db, caso_id=caso_id, update=update)
+    try:
+        updated = await crud.update_caso_metadata(db=db, caso_id=caso_id, update=update)
+    except CaseArchiveConflict as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
 

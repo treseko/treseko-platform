@@ -1,4 +1,5 @@
 from .repository_context import *
+from ..version import PRODUCT_VERSION
 
 
 async def _build_shared_report_base_payload(
@@ -47,6 +48,9 @@ async def _build_shared_report_base_payload(
         "plataforma": build_context.get("platform") or (component.tech_stack if component else None),
         "build": build_context.get("build") or (build.nombre if build else metrics.get("build_name")),
         "build_code": build_context.get("build_code") or (build.codigo if build else None),
+        # Freeze the product version in the snapshot so historical reports
+        # remain attributable after the installation is updated.
+        "app_version": PRODUCT_VERSION,
         "build_created_at": build_context.get("build_created_at"),
         "execution_started_at": build_context.get("execution_started_at"),
         "last_execution_at": build_context.get("last_execution_at"),

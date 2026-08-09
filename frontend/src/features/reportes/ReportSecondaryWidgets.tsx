@@ -13,13 +13,15 @@ export function ReportSecondaryWidgets(options: any) {
     snapshotBugLinks, bugStatusIsOpen, canCreateBugs, creatingSnapshotBugId,
     createBugFromReportSnapshot,
   } = options
-  return (
-    <>
-{renderReportesWidget('buildComparison', (() => {
+  return [
+renderReportesWidget('buildComparison', (() => {
   const buildHistory = Array.isArray(projectMetrics.historico_versions) ? projectMetrics.historico_versions : []
-  const currentIndex = Math.max(0, buildHistory.findIndex((item: any) => item.build_id === projectMetrics.build_id))
-  const current = buildHistory[currentIndex]
-  const previous = buildHistory[currentIndex + 1]
+  const currentIndex = buildHistory.findIndex((item: any) => item.build_id === projectMetrics.build_id)
+  const current = currentIndex >= 0 ? buildHistory[currentIndex] : undefined
+  const previousBuildId = comparison?.previous_build_id
+  const previous = previousBuildId
+    ? buildHistory.find((item: any) => item.build_id === previousBuildId)
+    : currentIndex >= 0 ? buildHistory[currentIndex + 1] : undefined
   if (!current || !previous) {
     return (
       <Row className="g-4 mb-4">
@@ -117,10 +119,10 @@ export function ReportSecondaryWidgets(options: any) {
       </Col>
     </Row>
   )
-})())}
+})()),
 
 
-{renderReportesWidget('priority', Object.keys(projectMetrics.por_prioridad).length > 0 ? (
+renderReportesWidget('priority', Object.keys(projectMetrics.por_prioridad).length > 0 ? (
   <Row className="g-4 mb-4">
     <Col md={12}>
       <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
@@ -164,10 +166,10 @@ export function ReportSecondaryWidgets(options: any) {
       </Card>
     </Col>
   </Row>
-) : null)}
+) : null),
 
 
-{renderReportesWidget('suites', suiteTree.length > 0 ? (
+renderReportesWidget('suites', suiteTree.length > 0 ? (
   <Row className="g-4 mb-4">
     <Col md={12}>
       <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
@@ -229,10 +231,10 @@ export function ReportSecondaryWidgets(options: any) {
       </Card>
     </Col>
   </Row>
-) : null)}
+) : null),
 
 
-{renderReportesWidget('trend', projectMetrics.historico_versions && projectMetrics.historico_versions.length > 1 ? (
+renderReportesWidget('trend', projectMetrics.historico_versions && projectMetrics.historico_versions.length > 1 ? (
   <Row className="g-4 mb-4">
     <Col md={12}>
       <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
@@ -240,7 +242,7 @@ export function ReportSecondaryWidgets(options: any) {
         <BarChart3 size={18} /> {t('reportes.buildTrend')}
         </h6>
         <div style={{ height: '280px' }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <BarChart data={[...projectMetrics.historico_versions].reverse().map(h => ({
               name: h.build_name,
               pasados: h.pasados,
@@ -262,8 +264,7 @@ export function ReportSecondaryWidgets(options: any) {
       </Card>
     </Col>
   </Row>
-) : null)}
+) : null),
 
-    </>
-  )
+  ]
 }

@@ -133,7 +133,9 @@ export function createProjectLoaders({
         setCurrentCompId(componentId)
         setNewTestComponent(componentId)
       }
-      const componentBuilds = mapped.filter((build: any) => build.componentId === componentId && !build.hidden)
+      // Hidden builds remain in state so they can be shown again from the
+      // project screen and selected from the header's hidden-build group.
+      const componentBuilds = mapped.filter((build: any) => build.componentId === componentId)
       const selectedBuild = componentBuilds.find((build: any) => build.id === preferredBuildId)
         || componentBuilds.find((build: any) => build.active)
         || componentBuilds[0]

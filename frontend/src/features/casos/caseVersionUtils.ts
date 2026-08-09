@@ -47,6 +47,8 @@ export function createCaseVersionRows({ suitesTree, componentsList }: CreateCase
         label,
         before: formatCasoVersionValue(key, before),
         after: formatCasoVersionValue(key, after),
+        beforeValue: before,
+        afterValue: after,
         changed: JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)
       }
     })

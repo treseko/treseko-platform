@@ -116,22 +116,27 @@ def _report_render_bug_is_active(bug: dict) -> bool:
     return str((bug or {}).get("estado") or "").upper() not in REPORT_RENDER_CLOSED_BUG_STATUSES
 
 def _report_frontend_base_url(request: Request) -> str:
-    configured = os.getenv("FRONTEND_PUBLIC_URL") or os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL")
-    if configured:
-        parsed = urlparse(configured.strip())
+    # Never trust the browser Origin header to build links. An attacker can
+    # control it and turn a generated bug link into an external redirect.
+    for configured_origin in (os.getenv("FRONTEND_PUBLIC_URL"), os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL")):
+        parsed = urlparse((configured_origin or "").strip().rstrip("/"))
         if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
-            return configured.strip().rstrip("/")
+            return configured_origin.strip().rstrip("/")
     host = request.url.hostname or "localhost"
-    scheme = request.url.scheme or "http"
     if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
-        return f"{scheme}://{host}:5173"
+        # In local development the API and Vite can use different ports. A
+        # relative link lets the browser preserve the origin where the app is
+        # actually open instead of guessing a stale/default Vite port.
+        return ""
     return str(request.base_url).rstrip("/")
 
 def _report_bug_tracker_url(request: Request, bug: dict) -> Optional[str]:
     bug_id = (bug or {}).get("id")
     if not bug_id:
         return None
-    return f"{_report_frontend_base_url(request)}/?{urlencode({'tab': 'bugs', 'bug_id': str(bug_id)})}"
+    path = f"/?{urlencode({'tab': 'bugs', 'bug_id': str(bug_id)})}"
+    base_url = _report_frontend_base_url(request)
+    return f"{base_url}{path}" if base_url else path
 
 
 __all__ = ["_report_public_url","_report_link_url","_flatten_report_cases","_report_badge_class","_report_text","_report_html","_report_multiline_html","_report_steps_html","_report_render_bug_is_active","_report_frontend_base_url","_report_bug_tracker_url"]

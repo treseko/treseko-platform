@@ -69,7 +69,7 @@ export function RunDetailView({ options }: { options: any }) {
                 <>
                   <div className="position-relative mt-2 mb-2">
                     <Search size={15} className="position-absolute text-muted" style={{ left: 12, top: 10 }} />
-                    <Form.Control
+                    <Form.Control name="a11y-rundetailviewtsx-72" aria-label="Campo de formulario"
                       size="sm"
                       className="ps-5"
                       placeholder={t('historial.searchVariable')}
@@ -285,7 +285,7 @@ export function RunDetailView({ options }: { options: any }) {
           </p>
           <Form.Group>
             <Form.Label className="small fw-bold">Nota opcional</Form.Label>
-            <Form.Control
+            <Form.Control name="a11y-rundetailviewtsx-288" aria-label="Campo de formulario"
               as="textarea"
               rows={3}
               value={reviewNote}

@@ -305,7 +305,7 @@ export function GeneralSettingsTab({
           <Row className="g-3 align-items-end">
             <Col lg={5}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.systemTimeZone')}</Form.Label>
-              <Form.Select
+              <Form.Select name="a11y-generalsettingstabtsx-308" aria-label="Campo de formulario"
                 value={timeSettings.timezone}
                 disabled={!canEditPreferences || timeSettingsLoading || timeSettingsSaving}
                 onChange={(event) => setTimeSettings({ timezone: event.target.value })}
@@ -445,15 +445,15 @@ export function GeneralSettingsTab({
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxSize')}</Form.Label>
-              <Form.Control type="number" min={1} max={200} value={attachmentConfig.max_file_size_mb} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_file_size_mb: Number(e.target.value) })} />
+              <Form.Control name="a11y-generalsettingstabtsx-448" aria-label="Campo de formulario" type="number" min={1} max={200} value={attachmentConfig.max_file_size_mb} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_file_size_mb: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxPerStep')}</Form.Label>
-              <Form.Control type="number" min={1} max={50} value={attachmentConfig.max_files_per_step} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_step: Number(e.target.value) })} />
+              <Form.Control name="a11y-generalsettingstabtsx-452" aria-label="Campo de formulario" type="number" min={1} max={50} value={attachmentConfig.max_files_per_step} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_step: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.attachmentsMaxPerSnapshot')}</Form.Label>
-              <Form.Control type="number" min={1} max={100} value={attachmentConfig.max_files_per_snapshot} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_snapshot: Number(e.target.value) })} />
+              <Form.Control name="a11y-generalsettingstabtsx-456" aria-label="Campo de formulario" type="number" min={1} max={100} value={attachmentConfig.max_files_per_snapshot} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, max_files_per_snapshot: Number(e.target.value) })} />
             </Col>
             <Col md={6}>
               <Form.Check type="switch" id="enable-paste" label={t('configuracion.attachmentsEnablePaste')} checked={attachmentConfig.enable_clipboard_paste} disabled={!canEditAttachments} onChange={(e) => setAttachmentConfig({ ...attachmentConfig, enable_clipboard_paste: e.target.checked })} />

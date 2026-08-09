@@ -1,4 +1,15 @@
 import { buildBugExecutionDetails } from './bugPayloadHelpers'
+import { normalizeQaDatasetEntries, qaDatasetVariables } from './qaDataset'
+
+export const normalizeBugText = (value: any): string | null => {
+  if (value == null || value === '') return null
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
 
 export const buildInternalBugPayload = ({
   context,
@@ -9,7 +20,8 @@ export const buildInternalBugPayload = ({
   const {
     getCurrentBuildFailureContext, buildsList, currentBuildId, projectsList,
     currentProjectId, componentsList, currentCompId, currentProjectEnvironments,
-    selectedExecutionEnvironmentId, executionDatasetPreview, selectedTest,
+    currentExecutionRun,
+    selectedExecutionEnvironmentId, selectedExecutionDatasetId, executionDatasetPreview, selectedTest,
     generateBugDescription, stepResults, generalExecutionStatus, snapshotNotes,
     generalExecutionNote, executionSnapshots,
   } = context
@@ -22,8 +34,21 @@ export const buildInternalBugPayload = ({
     const activeComponent = componentsList.find(
       (component) => component.id === currentCompId,
     );
-    const activeEnvironment = currentProjectEnvironments.find(
-      (env) => env.id === selectedExecutionEnvironmentId,
+    const environments = Array.isArray(currentProjectEnvironments)
+      ? currentProjectEnvironments
+      : [];
+    const effectiveEnvironmentId =
+      currentExecutionRun?.entorno_id || selectedExecutionEnvironmentId || null;
+    const activeEnvironment = environments.find(
+      (env) => env.id === effectiveEnvironmentId,
+    );
+    const effectiveDatasetId =
+      currentExecutionRun?.dataset_id ||
+      executionDatasetPreview?.dataset_id ||
+      selectedExecutionDatasetId ||
+      null;
+    const activeDataset = (activeEnvironment?.datasets || []).find(
+      (dataset: any) => dataset.id === effectiveDatasetId,
     );
     const buildName =
       historyItem.buildName ||
@@ -37,7 +62,10 @@ export const buildInternalBugPayload = ({
       test?.component ||
       null;
     const environmentName =
-      historyItem.environmentName || activeEnvironment?.name || null;
+      historyItem.environmentName ||
+      activeEnvironment?.name ||
+      currentExecutionRun?.entorno ||
+      null;
     const environmentUrl =
       activeEnvironment?.url || activeEnvironment?.baseUrl || null;
     const datasetName =
@@ -45,12 +73,29 @@ export const buildInternalBugPayload = ({
       executionDatasetPreview?.name ||
       executionDatasetPreview?.nombre ||
       executionDatasetPreview?.dataset_name ||
+      executionDatasetPreview?.dataset_nombre ||
+      activeDataset?.name ||
+      activeDataset?.nombre ||
+      (currentExecutionRun?.dataset_id
+        ? `Dataset ${currentExecutionRun.dataset_id}`
+        : null) ||
       null;
-    const datasetVariables =
+    const resolvedDatasetForCase = normalizeQaDatasetEntries(
+      currentExecutionRun?.datasets_resueltos?.[test?.id] ||
+        executionDatasetPreview?.dataset_resuelto ||
+        executionDatasetPreview?.dataset_caso_resuelto ||
+        executionDatasetPreview?.dataset_ambiente ||
+        [],
+    );
+    const previewVariables =
       executionDatasetPreview?.variables_resueltas ||
       executionDatasetPreview?.variables ||
-      executionDatasetPreview?.values ||
-      {};
+      executionDatasetPreview?.values || {};
+    const datasetVariables = qaDatasetVariables(
+      resolvedDatasetForCase.length > 0
+        ? resolvedDatasetForCase
+        : normalizeQaDatasetEntries(previewVariables),
+    );
     const hasActiveContext = Boolean(
       selectedTest?.id && test?.id === selectedTest.id,
     );
@@ -105,12 +150,14 @@ export const buildInternalBugPayload = ({
         resultObtained || "Fallo observado durante la ejecucion guardada.",
       pasos_reproduccion: reproductionSteps,
       precondiciones: test?.pre || test?.preconditions || null,
-      datos_prueba:
+      datos_prueba: normalizeBugText(
         snapshot?.datos_resueltos ||
-        snapshot?.datos_congelados ||
-        historyItem.testData ||
-        test?.data ||
-        null,
+          snapshot?.datos_congelados ||
+          (resolvedDatasetForCase.length > 0 ? resolvedDatasetForCase : null) ||
+          historyItem.testData ||
+          test?.data ||
+          null,
+      ),
       logs_relevantes: snapshot?.error_log || null,
       error_tecnico: snapshot?.error_log || null,
       notas_qa: snapshotNote || null,
@@ -143,8 +190,11 @@ export const buildInternalBugPayload = ({
           null,
         environment_name: environmentName,
         environment_url: environmentUrl,
+        environment_id: effectiveEnvironmentId,
+        dataset_id: effectiveDatasetId,
         dataset_name: datasetName,
         dataset_variables: datasetVariables,
+        dataset_resolved_values: resolvedDatasetForCase,
         case_version: test?.version || historyItem.caseVersion || null,
         snapshot_action: snapshot?.accion_congelada || null,
         snapshot_status: snapshotStatus,

@@ -2,6 +2,7 @@ import { Badge, ListGroup, ProgressBar } from 'react-bootstrap'
 import { Clock } from 'lucide-react'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { useI18n } from '../../i18n'
+import { normalizeExecutionTypeDistribution } from './dashboardUtils'
 
 const statusColor = (status?: string) => status === 'PASO' ? 'success' : status === 'FALLO' ? 'danger' : status === 'BLOQUEADO' ? 'primary' : 'secondary'
 
@@ -102,22 +103,6 @@ export function TrendByBuildList({ items }: { items: any[] }) {
       })}
     </div>
   )
-}
-
-const EXECUTION_TYPE_META: Record<string, { label: string, color: string }> = {
-  manual: { label: 'Manual', color: '#0d6efd' },
-  automatizada: { label: 'Automatizada', color: '#198754' },
-  ia: { label: 'IA', color: '#6f42c1' },
-  externa: { label: 'Externa', color: '#0dcaf0' },
-}
-
-export function normalizeExecutionTypeDistribution(distribution: Record<string, any>) {
-  return Object.entries(EXECUTION_TYPE_META).map(([key, meta]) => ({
-    key,
-    label: meta.label,
-    color: meta.color,
-    value: Number(distribution?.[key] || 0),
-  }))
 }
 
 export function ExecutionTypeDistribution({ items }: { items: Array<{ key: string, label: string, color: string, value: number }> }) {

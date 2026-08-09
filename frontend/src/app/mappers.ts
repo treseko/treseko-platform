@@ -5,6 +5,13 @@ import { DEV_ADMIN_EMAIL, MODULE_PERMISSIONS, ROLE_ACCESS } from './constants'
 import { CAPABILITY_TO_MODULE } from './rbac/rbacCatalog'
 import type { AuthMode, ModuleId, ModulePermissionMap, PermissionLevel, RoleKey, SessionUser } from './types'
 
+const VALID_BASE_ROLES: RoleKey[] = ['ADMIN', 'QA_LEAD', 'TESTER', 'VIEWER']
+
+export const normalizeSessionRole = (value: unknown): RoleKey => {
+  const role = String(value ?? '').trim().toUpperCase() as RoleKey
+  return VALID_BASE_ROLES.includes(role) ? role : 'VIEWER'
+}
+
 export const modulesFromPermissions = (permissions: ModulePermissionMap) =>
   Object.entries(permissions)
     .filter(([, level]) => level === 'read' || level === 'edit')
@@ -24,9 +31,12 @@ export const modulesFromPermissionsAndCapabilities = (
 export const permissionsFromModules = (modules: ModuleId[], level: Exclude<PermissionLevel, 'none'> = 'read'): ModulePermissionMap =>
   Object.fromEntries(modules.map(module => [module, level])) as ModulePermissionMap
 
-const backendUserPermissions = (user: any) => user.rol === 'ADMIN'
-  ? { ...ROLE_ACCESS.ADMIN, ...(user.permisos || {}) }
-  : Object.keys(user.permisos || {}).length ? user.permisos : ROLE_ACCESS[user.rol as RoleKey] || ROLE_ACCESS.TESTER
+const backendUserPermissions = (user: any) => {
+  const role = normalizeSessionRole(user?.rol)
+  return role === 'ADMIN'
+    ? { ...ROLE_ACCESS.ADMIN, ...(user.permisos || {}) }
+    : Object.keys(user.permisos || {}).length ? user.permisos : ROLE_ACCESS[role] || ROLE_ACCESS.TESTER
+}
 
 export const getInitials = (nameOrEmail: string) => {
   const source = nameOrEmail.includes('@') ? nameOrEmail.split('@')[0] : nameOrEmail
@@ -157,7 +167,7 @@ export const mapBackendUserToSession = (user: any): SessionUser => ({
   id: user.id,
   name: user.nombre_completo || user.email,
   email: user.email,
-  role: user.rol,
+  role: normalizeSessionRole(user.rol),
   roleLabel: user.rol_nombre || user.rol,
   roleCustomId: user.rol_custom_id || '',
   auth: user.auth_provider === 'ad' ? 'ad' : 'local',

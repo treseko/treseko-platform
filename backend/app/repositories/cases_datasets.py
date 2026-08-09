@@ -4,11 +4,40 @@ from .repository_context import *
 from .suites_cases import clone_case_traceability
 
 
+class CaseArchiveConflict(ValueError):
+    """Raised when a case is still part of the active evaluation scope."""
+
+
+async def _active_builds_for_case_master(db: AsyncSession, master_id: UUID):
+    versions_result = await db.execute(
+        select(models.CasoPrueba.id).filter(models.CasoPrueba.master_id == master_id)
+    )
+    version_ids = versions_result.scalars().all()
+    if not version_ids:
+        return []
+
+    builds_result = await db.execute(
+        select(models.Build.id, models.Build.nombre)
+        .join(models.BuildCaso, models.BuildCaso.build_id == models.Build.id)
+        .filter(
+            models.BuildCaso.caso_id.in_(version_ids),
+            models.Build.estado == "ACTIVA",
+            models.Build.activo.is_(True),
+        )
+        .order_by(models.Build.nombre)
+    )
+    return builds_result.all()
+
+
 async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] = None):
     from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(models.CasoPrueba)
-        .options(selectinload(models.CasoPrueba.pasos))
+        .options(
+            selectinload(models.CasoPrueba.pasos)
+            .selectinload(models.PasoPrueba.attachments)
+            .selectinload(models.PasoAttachment.attachment)
+        )
         .filter(models.CasoPrueba.id == caso_id)
     )
     original = result.scalar_one_or_none()
@@ -87,7 +116,11 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
 async def get_caso_versions(db: AsyncSession, master_id: UUID):
     result = await db.execute(
         select(models.CasoPrueba)
-        .options(selectinload(models.CasoPrueba.pasos))
+        .options(
+            selectinload(models.CasoPrueba.pasos)
+            .selectinload(models.PasoPrueba.attachments)
+            .selectinload(models.PasoAttachment.attachment)
+        )
         .filter(models.CasoPrueba.master_id == master_id)
         .order_by(models.CasoPrueba.version.desc())
     )
@@ -164,6 +197,16 @@ async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.
         return None
     update_data = update.model_dump(exclude_unset=True)
     estado_caso = update_data.pop("estado_caso", None)
+
+    if estado_caso == models.EstadoCaso.ARCHIVADO and db_caso.estado_caso != models.EstadoCaso.ARCHIVADO:
+        active_builds = await _active_builds_for_case_master(db, db_caso.master_id)
+        if active_builds:
+            build_names = ", ".join(nombre for _build_id, nombre in active_builds)
+            raise CaseArchiveConflict(
+                "No se puede archivar la prueba porque está asignada a la build activa"
+                + (f" ({build_names}). Retírala de esa build antes de archivarla." if build_names else ".")
+            )
+
     for field, value in update_data.items():
         setattr(db_caso, field, value)
 

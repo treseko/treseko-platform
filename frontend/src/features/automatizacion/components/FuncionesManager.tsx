@@ -332,7 +332,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>{t('automatizacion.functionName')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-funcionesmanagertsx-335" aria-label="Campo de formulario"
                 type="text"
                 value={formData.nombre}
                 onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
@@ -342,7 +342,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
 
             <Form.Group className="mb-3">
               <Form.Label>{t('automatizacion.functionDescription')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-funcionesmanagertsx-345" aria-label="Campo de formulario"
                 type="text"
                 value={formData.descripcion}
                 onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
@@ -354,7 +354,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
               <div className="col-md-6">
                 <Form.Group className="mb-3">
                   <Form.Label>{t('automatizacion.framework')}</Form.Label>
-                  <Form.Select
+                  <Form.Select name="a11y-funcionesmanagertsx-357" aria-label="Campo de formulario"
                     value={formData.framework}
                     onChange={(e) => setFormData({ ...formData, framework: e.target.value })}
                   >
@@ -368,7 +368,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
               <div className="col-md-6">
                 <Form.Group className="mb-3">
                   <Form.Label>{t('automatizacion.functionParameters')}</Form.Label>
-                  <Form.Control
+                  <Form.Control name="a11y-funcionesmanagertsx-371" aria-label="Campo de formulario"
                     type="text"
                     value={formData.parametros}
                     onChange={(e) => setFormData({ ...formData, parametros: e.target.value })}
@@ -382,7 +382,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
               <div className="col-md-6">
                 <Form.Group className="mb-3">
                   <Form.Label>{t('automatizacion.scope')}</Form.Label>
-                  <Form.Select
+                  <Form.Select name="a11y-funcionesmanagertsx-385" aria-label="Campo de formulario"
                     value={formData.scope}
                     onChange={(e) => setFormData({
                       ...formData,
@@ -401,7 +401,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                 <div className="col-md-6">
                   <Form.Group className="mb-3">
                     <Form.Label>{t('automatizacion.componentScope')}</Form.Label>
-                    <Form.Select
+                    <Form.Select name="a11y-funcionesmanagertsx-404" aria-label="Campo de formulario"
                       value={formData.componente_id}
                       onChange={(e) => setFormData({ ...formData, componente_id: e.target.value })}
                       required

@@ -109,6 +109,7 @@ def _shared_report_markdown(snapshot: models.SharedReportSnapshot, has_new_value
         f"- Organizacion: {_md(meta.get('organizacion') or 'N/D')}",
         f"- Proyecto: {_md(meta.get('proyecto') or 'N/D')}",
         f"- Componente: {_md(meta.get('componente') or 'N/D')}",
+        f"- Version de Treseko: {_md(meta.get('app_version') or 'N/D')}",
         f"- Build: {_md(meta.get('build') or metrics.get('build_name') or 'N/D')}",
         f"- Ultima ejecucion: {_md(_format_report_datetime(meta.get('last_execution_at')))}",
         f"- Generado: {_md(_format_report_datetime(meta.get('snapshot_at') or snapshot.created_at))}",

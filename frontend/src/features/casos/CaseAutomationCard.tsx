@@ -31,7 +31,7 @@ export function CaseAutomationCard({ context }: Props) {
           </h6>
           <div className="d-flex align-items-center gap-2">
             {!collapsedSections.script && (
-              <Form.Select
+              <Form.Select name="a11y-caseautomationcardtsx-34" aria-label="Campo de formulario"
                 value={newTestFramework}
                 onChange={(e) => {
                   const nextFramework = e.target.value
@@ -52,7 +52,7 @@ export function CaseAutomationCard({ context }: Props) {
               </Form.Select>
             )}
             {!collapsedSections.script && (
-              <Form.Select
+              <Form.Select name="a11y-caseautomationcardtsx-55" aria-label="Campo de formulario"
                 value={newTestLanguage}
                 onChange={(e) => setNewTestLanguage(e.target.value)}
                 size="sm"
@@ -139,7 +139,7 @@ export function CaseAutomationCard({ context }: Props) {
                   <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>
                 ))}
               </Form.Select>
-              <Form.Check
+              <Form.Check name="a11y-caseautomationcardtsx-142" aria-label="Campo de formulario"
                 type="switch"
                 id="dry-run-debug-mode"
                 checked={dryRunDebugMode}

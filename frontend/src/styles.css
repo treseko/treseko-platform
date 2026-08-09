@@ -233,12 +233,18 @@
 .reportes-widget-card {
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #d8e4f2;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .reportes-page.is-editing-layout .reportes-widget-card {
-  border: 1px solid #d8e4f2;
-  border-radius: 8px;
-  background: #fff;
+  border-color: #bfd5ef;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
@@ -256,6 +262,13 @@
   cursor: grab;
   user-select: none;
   touch-action: none;
+  flex: 0 0 33px;
+  position: relative;
+  z-index: 3;
+}
+
+.reportes-widget-header--inactive {
+  display: none;
 }
 
 .reportes-widget-header span {
@@ -270,14 +283,31 @@
 }
 
 .reportes-widget-body {
-  height: 100%;
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   cursor: default;
 }
 
 .reportes-page.is-editing-layout .reportes-widget-body {
-  height: calc(100% - 33px);
+  height: auto;
+}
+
+.reportes-page.is-editing-layout .reportes-widget-header:hover {
+  background: #f8fafc;
+}
+
+.reportes-page.is-editing-layout .reportes-grid-item.react-draggable-dragging,
+.reportes-page.is-editing-layout .reportes-grid-item.resizing {
+  z-index: 20;
+}
+
+.reportes-page.is-editing-layout .reportes-grid-item.react-draggable-dragging .reportes-widget-card,
+.reportes-page.is-editing-layout .reportes-grid-item.resizing .reportes-widget-card {
+  outline: 2px solid rgba(13, 110, 253, 0.35);
+  outline-offset: 2px;
 }
 
 .reportes-widget-body > .card,
@@ -447,6 +477,8 @@
   background: none !important;
   opacity: 0.78;
   cursor: nwse-resize;
+  z-index: 25;
+  pointer-events: auto;
 }
 
 .reportes-page.is-editing-layout .react-resizable-handle.react-resizable-handle-se:hover {
@@ -1156,6 +1188,29 @@ button.theme-choice.is-selected,
 .app-shell-nav {
   flex-wrap: nowrap !important;
   overflow-x: hidden !important;
+}
+
+.app-shell-sidebar {
+  --app-sidebar-width: 260px;
+  flex: 0 0 var(--app-sidebar-width);
+  width: var(--app-sidebar-width);
+  min-width: 0;
+  overflow: hidden;
+  transition:
+    flex-basis 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: flex-basis, width;
+}
+
+.app-shell-sidebar .app-shell-nav .btn {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell-sidebar {
+    transition: none;
+  }
 }
 
 .app-brand-mark {
@@ -1916,6 +1971,55 @@ button.theme-choice.is-selected,
   min-width: 0;
 }
 
+/* La consola deja el cierre después de la secuencia completa de pasos. */
+.manual-console-content {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+.manual-console-layout-row,
+.manual-console-sequence-column,
+.manual-console-sequence-card {
+  min-height: 0;
+}
+
+.manual-console-layout-row {
+  height: auto;
+  flex-grow: 0 !important;
+  align-items: stretch;
+}
+
+.manual-console-sequence-column {
+  height: auto;
+}
+
+.manual-console-sequence-card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto !important;
+}
+
+.manual-console-sequence-card > .manual-console-body {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+.manual-console-footer {
+  flex: 0 0 auto;
+  position: static;
+}
+
+.manual-console-finish-button {
+  min-width: 250px;
+  max-width: 320px;
+  padding: 0.7rem 1.35rem !important;
+  font-size: 0.95rem !important;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 /* El panel lateral no debe heredar la altura total de secuencias extensas. */
 .manual-console-details-column {
   align-self: flex-start;
@@ -1929,6 +2033,15 @@ button.theme-choice.is-selected,
 .manual-console-case-details-body {
   max-height: min(42dvh, 30rem);
   overflow-y: auto !important;
+}
+
+/* Sin pasos, el footer debe seguir al veredicto y no heredar la altura del historial lateral. */
+.manual-console-no-steps-column {
+  align-self: flex-start;
+}
+
+.manual-console-no-steps-column > .card {
+  flex-grow: 0 !important;
 }
 
 @media (max-width: 991.98px) {
@@ -2092,6 +2205,12 @@ button.theme-choice.is-selected,
 .build-row-card.is-active {
   border-color: color-mix(in srgb, var(--app-success) 55%, var(--app-border)) !important;
   box-shadow: inset 3px 0 0 var(--app-success), var(--app-shadow) !important;
+}
+
+/* Hidden builds remain fully interactive: only the card gets a quieter visual treatment. */
+.build-row-card.is-hidden {
+  border-style: dashed !important;
+  background: color-mix(in srgb, var(--app-surface-raised) 94%, var(--app-muted)) !important;
 }
 
 .build-row-progress {
@@ -3740,6 +3859,38 @@ button.theme-choice.is-selected,
     gap: 0.75rem;
   }
 
+  .manual-console-finish-button {
+    width: 100%;
+    max-width: none;
+    white-space: normal;
+  }
+
+  .manual-console-content {
+    display: block !important;
+    min-height: 0;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .manual-console-layout-row,
+  .manual-console-sequence-column,
+  .manual-console-sequence-card {
+    min-height: 0;
+  }
+
+  .manual-console-layout-row,
+  .manual-console-sequence-column {
+    height: auto;
+  }
+
+  .manual-console-sequence-card {
+    height: auto !important;
+  }
+
+  .manual-console-sequence-card > .manual-console-body {
+    overflow: visible;
+  }
+
   .case-step-grid-header {
     display: none !important;
   }
@@ -4497,5 +4648,111 @@ button.theme-choice.is-selected,
   .traceability-toolbar-actions .form-select {
     flex: 1 1 150px;
     width: auto;
+  }
+}
+
+@keyframes treseko-spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: treseko-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
+
+.bug-detail-modal .modal-dialog {
+  max-width: min(1120px, calc(100vw - 2rem));
+}
+
+.bug-detail-modal .modal-content {
+  overflow: hidden;
+}
+
+.bug-detail-modal .modal-header {
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.bug-detail-modal .modal-footer {
+  background: var(--bs-light);
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.bug-detail-body {
+  min-height: 560px;
+  overflow-y: auto;
+}
+
+.bug-detail-tabs .nav-link {
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+}
+
+.bug-detail-tabs .nav-link.active {
+  color: var(--bs-primary);
+}
+
+.bug-detail-body textarea[readonly] {
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  opacity: 1;
+}
+
+.bug-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.bug-context-grid > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+
+.bug-context-grid span {
+  color: var(--bs-secondary-color);
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.bug-context-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.bug-technical-details {
+  border: 1px solid var(--bs-border-color);
+  border-radius: .375rem;
+  padding: .75rem;
+  background: var(--bs-light);
+}
+
+.bug-technical-details summary {
+  cursor: pointer;
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+}
+
+.bug-summary-activity {
+  border-top: 1px solid var(--bs-border-color);
+  padding-top: 1rem;
+}
+
+.bug-summary-activity h6 {
+  color: var(--bs-emphasis-color);
+}
+
+@media (max-width: 576px) {
+  .bug-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bug-detail-body {
+    min-height: 0;
   }
 }

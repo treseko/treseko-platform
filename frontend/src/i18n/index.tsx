@@ -7,24 +7,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { fallbackCatalog, fallbackLocale, loadCatalog } from './catalogs'
+import { fallbackCatalog, loadCatalog } from './catalogs'
 import { SUPPORTED_LOCALES, type I18nContextValue, type Locale, type TranslationCatalog, type TranslationKey } from './types'
+import { getInitialLocale, LOCALE_STORAGE_KEY } from './localeUtils'
 
 export * from './types'
-export { createLocaleFormatter } from './formatLocale'
-
-const LOCALE_STORAGE_KEY = 'treseko.ui.locale'
-
-function normalizeLocale(value: string | null | undefined): Locale {
-  return value?.toLowerCase().startsWith('en') ? 'en' : fallbackLocale
-}
-
-export function getInitialLocale(storage: Pick<Storage, 'getItem'> | undefined = typeof localStorage === 'undefined' ? undefined : localStorage): Locale {
-  const storedLocale = storage?.getItem(LOCALE_STORAGE_KEY)
-  if (storedLocale) return normalizeLocale(storedLocale)
-  return normalizeLocale(typeof navigator === 'undefined' ? undefined : navigator.language)
-}
-
 function resolveMessage(catalog: TranslationCatalog, key: TranslationKey) {
   const [moduleName, ...path] = key.split('.')
   const messageKey = path.join('.')

@@ -26,19 +26,19 @@ export function BrandingSettings({ options }: { options: any }) {
           <Row className="g-2 align-items-end">
             <Col md={6}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingName')}</Form.Label>
-              <Form.Control type="text" value={brandingDraft.brand_name || ''} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, brand_name: event.target.value, effective_brand_name: event.target.value }))} maxLength={80} className="bg-light border-0 shadow-sm text-dark font-sans" />
+              <Form.Control name="a11y-brandingsettingstsx-29" aria-label="Campo de formulario" type="text" value={brandingDraft.brand_name || ''} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, brand_name: event.target.value, effective_brand_name: event.target.value }))} maxLength={80} className="bg-light border-0 shadow-sm text-dark font-sans" />
             </Col>
             <Col md={3}>
-              <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingPrimaryColor')}</Form.Label><Form.Control type="color" value={brandingDraft.primary_color || brandingDraft.effective_primary_color || '#172033'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, primary_color: event.target.value, effective_primary_color: event.target.value }))} />
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingPrimaryColor')}</Form.Label><Form.Control name="a11y-brandingsettingstsx-32" aria-label="Campo de formulario" type="color" value={brandingDraft.primary_color || brandingDraft.effective_primary_color || '#172033'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, primary_color: event.target.value, effective_primary_color: event.target.value }))} />
             </Col>
             <Col md={3}>
-              <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingAccentColor')}</Form.Label><Form.Control type="color" value={brandingDraft.accent_color || brandingDraft.effective_accent_color || '#1677ff'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, accent_color: event.target.value, effective_accent_color: event.target.value }))} />
+              <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingAccentColor')}</Form.Label><Form.Control name="a11y-brandingsettingstsx-35" aria-label="Campo de formulario" type="color" value={brandingDraft.accent_color || brandingDraft.effective_accent_color || '#1677ff'} disabled={!canEditPreferences || brandingLoading || brandingSaving} onChange={(event) => setBrandingDraft(current => ({ ...current, accent_color: event.target.value, effective_accent_color: event.target.value }))} />
             </Col>
           </Row>
           <Form.Group className="mt-2 mb-2">
             <Form.Label className="fw-bold small text-muted">{t('configuracion.brandingLogo')}</Form.Label>
             <div className="d-flex flex-wrap align-items-center gap-2">
-              <Form.Control
+              <Form.Control name="a11y-brandingsettingstsx-41" aria-label="Campo de formulario"
                 type="file"
                 accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                 disabled={!canEditPreferences || brandingUploading || brandingSaving}

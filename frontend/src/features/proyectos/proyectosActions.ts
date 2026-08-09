@@ -6,6 +6,17 @@ import { createProjectActions } from './projectActions'
 import { createWikiActions } from './wikiActions'
 
 export function createProyectosActions(params: any) {
+  // Keep the action layer aligned with the permission source used by the page.
+  // Some callers build this service before deriving the page view model, so
+  // resolve the capability here as a safe fallback instead of treating an
+  // omitted value as an explicit denial for every user.
+  const canEditProjectBuilds =
+    typeof params.canEditProjectBuilds === 'boolean'
+      ? params.canEditProjectBuilds
+      : typeof params.canAccessCapability === 'function'
+        ? params.canAccessCapability('proyectos.builds', 'edit')
+        : false
+
   const projectActions = createProjectActions({
     canEditCurrentProject: params.canEditCurrentProject,
     projectsSource: params.projectsSource,
@@ -51,6 +62,7 @@ export function createProyectosActions(params: any) {
 
   const buildActions = createBuildActions({
     canEditCurrentProject: params.canEditCurrentProject,
+    canEditProjectBuilds,
     projectsSource: params.projectsSource,
     managingProjectId: params.managingProjectId,
     currentCompId: params.currentCompId,

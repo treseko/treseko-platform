@@ -57,10 +57,6 @@ async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id:
     if not assigned_case_ids:
         raise ValueError("La build no tiene casos asignados")
 
-    db_run = models.TestRun(**run_data, creado_por=user_id, estado_run=models.EstadoRun.ABIERTO)
-    db.add(db_run)
-    await db.flush()
-
     if run.caso_ids:
         if any(caso_id not in assigned_case_ids for caso_id in run.caso_ids):
             raise ValueError("Solo puedes ejecutar casos asignados a la build")
@@ -84,6 +80,21 @@ async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id:
             filtros.append(models.CasoPrueba.componente_id == db_build.componente_id)
         result = await db.execute(select(models.CasoPrueba).filter(*filtros))
         casos_activos = result.scalars().all()
+
+    archived_cases = [
+        caso for caso in casos_activos
+        if caso.estado_caso == models.EstadoCaso.ARCHIVADO
+    ]
+    if archived_cases:
+        case_names = ", ".join(caso.codigo or caso.titulo or str(caso.id) for caso in archived_cases)
+        raise ValueError(
+            "No se puede iniciar una nueva ejecución con casos archivados: "
+            f"{case_names}. Restaura la prueba o quítala de la selección."
+        )
+
+    db_run = models.TestRun(**run_data, creado_por=user_id, estado_run=models.EstadoRun.ABIERTO)
+    db.add(db_run)
+    await db.flush()
 
     datasets_resueltos = {}
     variables_resueltas = {}

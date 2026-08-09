@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from ..frontend_url import frontend_public_url
 from ..models import (
     AiReviewStatus,
     AutomationJobStatus,
@@ -90,7 +91,7 @@ class EmailSmtpConfig(BaseModel):
     timeout_seconds: int = Field(default=20, ge=1, le=120)
     max_attempts: int = Field(default=5, ge=1, le=20)
     default_locale: str = Field(default="es", max_length=10)
-    base_url: str = Field(default="http://localhost:5173", max_length=500)
+    base_url: str = Field(default_factory=frontend_public_url, max_length=500)
     daily_send_limit: int = Field(default=500, ge=1, le=100000)
     test_mode: bool = False
     password_configured: bool = False

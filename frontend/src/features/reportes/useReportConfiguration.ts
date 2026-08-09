@@ -70,7 +70,8 @@ export function useReportConfiguration({
   const canViewSharedReports = canViewSharedReportsByPermission && reportSnapshotsEnabled
   const canShareReports = canShareReportsByPermission && reportSnapshotsEnabled
   const canConfigureReports = canConfigureReportsByPermission && reportsAdvancedEnabled
-  const canCreateBugs = canAccessCapability ? canAccessCapability('bugs.crear', 'edit') : true
+  const canViewBugs = canAccessCapability ? canAccessCapability('bugs.ver', 'read') : true
+  const canCreateBugs = canViewBugs && (canAccessCapability ? canAccessCapability('bugs.crear', 'edit') : true)
 
   const loadTraceabilityCoverage = useCallback(async () => {
     if (!currentProjectId || !canReadTraceability) {
@@ -112,6 +113,10 @@ export function useReportConfiguration({
     setReportesWidgets(sanitizeReportesWidgets(profileSettings.reportes_widgets, profileSettings.reportes_layout))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedUser?.id, JSON.stringify(profileSettings.reportes_layout || {}), JSON.stringify(profileSettings.reportes_widgets || [])])
+
+  useEffect(() => {
+    if (!canConfigureReportsByPermission) setEditingReportesLayout(false)
+  }, [canConfigureReportsByPermission])
 
   const visibleReportesWidgetIds = useMemo(
     () => REPORTES_WIDGET_IDS.filter((id) => reportesWidgets.includes(id)),
@@ -174,6 +179,11 @@ export function useReportConfiguration({
     }
   }
   const saveReportesLayout = async () => {
+    if (!canConfigureReportsByPermission) {
+      setEditingReportesLayout(false)
+      showFeedback(t('reportes.saveError'), t('reportes.layoutSaveError'), 'danger')
+      return
+    }
     try {
       const response = await fetchWithAuth(`${API_BASE}/users/me/preferences`, {
         method: 'PATCH',
@@ -266,7 +276,7 @@ export function useReportConfiguration({
     loadProjectReportSettings, setProjectReportSection, setAllProjectReportSections,
     countProjectReportSectionsEnabled, saveProjectReportSettings, reportsAdvancedEnabled,
     reportSnapshotsEnabled, canExportReports, canViewSharedReportsByPermission, canShareReportsByPermission,
-    canConfigureReportsByPermission, canViewSharedReports, canShareReports, canConfigureReports, canCreateBugs,
+    canConfigureReportsByPermission, canViewSharedReports, canShareReports, canConfigureReports, canViewBugs, canCreateBugs,
     REPORTES_VIEW_KPIS, REPORTES_VIEW_SECTIONS, REPORTES_VIEW_AI_BLOCKS,
   }
 }

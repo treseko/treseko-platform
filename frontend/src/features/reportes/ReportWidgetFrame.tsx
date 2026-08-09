@@ -11,18 +11,23 @@ type ReportWidgetFrameProps = {
 }
 
 export function ReportWidgetFrame({ id, children, visible, editing, t }: ReportWidgetFrameProps) {
-  if (!visible || !children) return null
   const section = REPORTES_VIEW_SECTIONS.find((item) => item.id === id)
+  const label = section ? t(`reportes.${section.label}`) : id
+  const showContent = Boolean(visible && children)
   return (
-    <div key={id} className="reportes-grid-item">
-      <div className="reportes-widget-card">
-        {editing && (
-          <div className="reportes-widget-header" title={`${t('reportes.moveWidget')} ${section ? t(`reportes.${section.label}`) : id}`}>
-            <Grip size={15} />
-            <span>{section ? t(`reportes.${section.label}`) : id}</span>
-          </div>
+    <div className="reportes-widget-card">
+      <div
+        className={`reportes-widget-header ${editing ? '' : 'reportes-widget-header--inactive'}`}
+        title={editing ? `${t('reportes.moveWidget')} ${label}` : undefined}
+        aria-hidden={!editing}
+      >
+        <Grip size={15} aria-hidden="true" />
+        <span>{label}</span>
+      </div>
+      <div className="reportes-widget-body">
+        {showContent ? children : (
+          <div className="reportes-widget-empty small text-muted">{t('reportes.blockNoData')}</div>
         )}
-        <div className="reportes-widget-body">{children}</div>
       </div>
     </div>
   )

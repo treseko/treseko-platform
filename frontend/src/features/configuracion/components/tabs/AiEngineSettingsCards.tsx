@@ -270,7 +270,7 @@ export function AiEngineSettingsCards({
       {showAdvanced && <SectionCard>
         <div className="d-flex flex-column gap-3 mb-4">
           <div><h6 className="fw-bold mb-1">{t('configuracion.aiEngineExecutionTitle')}</h6><div className="small text-muted">{t('configuracion.aiEngineExecutionDesc')}</div></div>
-          <Form.Select value={aiEngineConfig.ai_execution_driver || 'treseko_engine'} disabled={!canEditAi} onChange={e => setAiEngineConfig({ ...aiEngineConfig, ai_execution_driver: e.target.value })}>
+          <Form.Select name="a11y-aienginesettingscardstsx-273" aria-label="Campo de formulario" value={aiEngineConfig.ai_execution_driver || 'treseko_engine'} disabled={!canEditAi} onChange={e => setAiEngineConfig({ ...aiEngineConfig, ai_execution_driver: e.target.value })}>
             <option value="treseko_engine">{t('configuracion.aiEngineTresekoEngine')}</option><option value="opencode">OpenCode</option>
           </Form.Select>
           {aiEngineConfig.ai_execution_driver === 'opencode' && <div className="small text-info">{t('configuracion.aiEngineOpenCodeHint')}</div>}
@@ -285,29 +285,29 @@ export function AiEngineSettingsCards({
           <Row className="g-3 align-items-end mt-2">
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineTimeout')}</Form.Label>
-              <Form.Control type="number" min={30} max={7200} value={aiEngineConfig.timeout_seconds} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, timeout_seconds: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-288" aria-label="Campo de formulario" type="number" min={30} max={7200} value={aiEngineConfig.timeout_seconds} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, timeout_seconds: Number(e.target.value) })} />
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineOperationalContext')}</Form.Label>
-              <Form.Control type="number" min={1024} max={2000000} step={1024} value={Number(aiEngineConfig.context_window_tokens ?? 8192)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, context_window_tokens: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-292" aria-label="Campo de formulario" type="number" min={1024} max={2000000} step={1024} value={Number(aiEngineConfig.context_window_tokens ?? 8192)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, context_window_tokens: Number(e.target.value) })} />
               <div className="small text-muted mt-1">{t('configuracion.aiEngineContextHint')}</div>
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineMaxStoryOutput')}</Form.Label>
-              <Form.Control type="number" min={256} max={20000} step={128} value={Number(aiEngineConfig.max_completion_tokens ?? 4096)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, max_completion_tokens: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-297" aria-label="Campo de formulario" type="number" min={256} max={20000} step={128} value={Number(aiEngineConfig.max_completion_tokens ?? 4096)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, max_completion_tokens: Number(e.target.value) })} />
               <div className="small text-muted mt-1">{t('configuracion.aiEngineStoryOutputHint')}</div>
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineViewportWidth')}</Form.Label>
-              <Form.Control type="number" min={320} max={7680} value={Number(aiEngineConfig.viewport_width ?? 1920)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, viewport_width: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-302" aria-label="Campo de formulario" type="number" min={320} max={7680} value={Number(aiEngineConfig.viewport_width ?? 1920)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, viewport_width: Number(e.target.value) })} />
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineViewportHeight')}</Form.Label>
-              <Form.Control type="number" min={320} max={4320} value={Number(aiEngineConfig.viewport_height ?? 1080)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, viewport_height: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-306" aria-label="Campo de formulario" type="number" min={320} max={4320} value={Number(aiEngineConfig.viewport_height ?? 1080)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, viewport_height: Number(e.target.value) })} />
             </Col>
             <Col md={3}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.aiEngineParallel')}</Form.Label>
-              <Form.Control type="number" min={1} max={5} value={Number(aiEngineConfig.max_parallel_ai_runs ?? 1)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, max_parallel_ai_runs: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-310" aria-label="Campo de formulario" type="number" min={1} max={5} value={Number(aiEngineConfig.max_parallel_ai_runs ?? 1)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, max_parallel_ai_runs: Number(e.target.value) })} />
             </Col>
             <Col md={12}>
               <Form.Check type="switch" id="ai-headless-config" label={t('configuracion.aiEngineHeadless')} checked={Boolean(aiEngineConfig.headless)} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, headless: e.target.checked })} />
@@ -328,15 +328,15 @@ export function AiEngineSettingsCards({
           <Row className="g-3 mt-2">
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">Prompt / 1K tokens</Form.Label>
-              <Form.Control type="number" min={0} step={0.0001} value={promptCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_prompt_per_1k: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-331" aria-label="Campo de formulario" type="number" min={0} step={0.0001} value={promptCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_prompt_per_1k: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">Completion / 1K tokens</Form.Label>
-              <Form.Control type="number" min={0} step={0.0001} value={completionCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_completion_per_1k: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-335" aria-label="Campo de formulario" type="number" min={0} step={0.0001} value={completionCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_completion_per_1k: Number(e.target.value) })} />
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">Costo total / 1K tokens</Form.Label>
-              <Form.Control type="number" min={0} step={0.0001} value={totalCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_per_1k: Number(e.target.value) })} />
+              <Form.Control name="a11y-aienginesettingscardstsx-339" aria-label="Campo de formulario" type="number" min={0} step={0.0001} value={totalCost} disabled={!canEditAi} onChange={(e) => setAiEngineConfig({ ...aiEngineConfig, token_cost_per_1k: Number(e.target.value) })} />
             </Col>
           </Row>
         </details>

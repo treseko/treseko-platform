@@ -84,7 +84,7 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           </div>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentName')}</Form.Label>
-            <Form.Control
+            <Form.Control name="a11y-universalagentcreatormodaltsx-87" aria-label="Campo de formulario"
               value={name}
               onChange={event => setName(event.target.value)}
               required
@@ -95,11 +95,11 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           </Form.Group>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentDescription')}</Form.Label>
-            <Form.Control as="textarea" rows={2} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} />
+            <Form.Control name="a11y-universalagentcreatormodaltsx-98" aria-label="Campo de formulario" as="textarea" rows={2} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} />
           </Form.Group>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentTemplate')}</Form.Label>
-            <Form.Select
+            <Form.Select name="a11y-universalagentcreatormodaltsx-102" aria-label="Campo de formulario"
               value={template}
               onChange={event => setTemplate(event.target.value as keyof typeof templates)}
             >
@@ -114,7 +114,7 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           {selected.strategy !== 'none' && (
             <Form.Group>
               <Form.Label>{t('configuracion.universalAgentInstructions')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-universalagentcreatormodaltsx-117" aria-label="Campo de formulario"
                 as="textarea"
                 rows={4}
                 value={instructions}

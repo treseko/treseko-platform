@@ -42,7 +42,7 @@ export function CaseExportPicker({
   <Modal.Body className="pt-0">
     <div className="mb-3">
       <Form.Label className="small fw-bold">{t("configuracion.component")}</Form.Label>
-      <Form.Select
+      <Form.Select name="a11y-caseexportpickertsx-45" aria-label="Campo de formulario"
         value={exportComponentId}
         onChange={(event) => setExportComponentId(event.target.value)}
         disabled={busy || components.length === 0}
@@ -106,7 +106,7 @@ export function CaseExportPicker({
         return (
           <div key={suite.id} className="mb-2">
             <div className="d-flex align-items-center gap-2 bg-light rounded-2 px-2 py-2">
-              <Form.Check
+              <Form.Check name="a11y-caseexportpickertsx-109" aria-label="Campo de formulario"
                 type="checkbox"
                 checked={suiteChecked}
                 ref={(input: HTMLInputElement | null) => {
@@ -153,7 +153,7 @@ export function CaseExportPicker({
                     key={id}
                     className="d-flex align-items-center gap-2 border-bottom px-3 py-2"
                   >
-                    <Form.Check
+                    <Form.Check name="a11y-caseexportpickertsx-156" aria-label="Campo de formulario"
                       type="checkbox"
                       checked={checked}
                       onChange={() => {

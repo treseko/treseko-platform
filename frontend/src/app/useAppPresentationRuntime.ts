@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { API_BASE } from "./constants";
 import { mapBackendUserToSession } from "./mappers";
 import { stringifyFeedbackMessage } from "./errorMessages";
+import { normalizeInternalReportBugLinks } from "./internalReportLinks";
 
 export function useAppPresentationRuntime(options: any): any {
   const {
@@ -25,8 +26,11 @@ export function useAppPresentationRuntime(options: any): any {
       })
       .then((html: string) => {
         if (cancelled) return;
+        const normalizedHtml = normalizeInternalReportBugLinks(html);
         const baseTag = `<base href="${window.location.origin}${API_BASE}/reports/internal/${encodeURIComponent(internalReportToken)}">`;
-        const withBase = html.match(/<head[^>]*>/i) ? html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`) : html;
+        const withBase = normalizedHtml.match(/<head[^>]*>/i)
+          ? normalizedHtml.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`)
+          : normalizedHtml;
         setInternalReportHtml(withBase);
       })
       .catch((error: any) => {

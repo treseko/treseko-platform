@@ -11,6 +11,7 @@ type ConfirmAction = (options: { title: string; message: string; variant?: 'dang
 
 type CreateBuildActionsParams = {
   canEditCurrentProject: boolean
+  canEditProjectBuilds: boolean
   projectsSource: 'local' | 'backend'
   managingProjectId: string | null
   currentCompId: string
@@ -30,6 +31,7 @@ type CreateBuildActionsParams = {
 
 export function createBuildActions({
   canEditCurrentProject,
+  canEditProjectBuilds,
   projectsSource,
   managingProjectId,
   currentCompId,
@@ -150,12 +152,13 @@ export function createBuildActions({
   }
 
   const handleSetActiveBuild = async (buildId: string) => {
-    if (!canEditCurrentProject) {
+    if (!canEditProjectBuilds) {
       showFeedback(t('proyectos.buildPermissionTitle'), t('proyectos.buildActivatePermission'), 'warning')
       return
     }
     const build = buildsList.find(item => item.id === buildId)
     if (!build) return
+    if (rejectInactiveWrite(buildId)) return
     let updatedBuild: any = null
     if (projectsSource === 'backend') {
       try {
@@ -189,12 +192,13 @@ export function createBuildActions({
   }
 
   const handleSetInactiveBuild = async (buildId: string) => {
-    if (!canEditCurrentProject) {
+    if (!canEditProjectBuilds) {
       showFeedback(t('proyectos.buildPermissionTitle'), t('proyectos.buildDeactivatePermission'), 'warning')
       return
     }
     const build = buildsList.find(item => item.id === buildId)
     if (!build) return
+    if (rejectInactiveWrite(buildId)) return
     let updatedBuild: any = null
     if (projectsSource === 'backend') {
       try {
@@ -232,7 +236,7 @@ export function createBuildActions({
 
   const handleUpdateBuildContext = async (event: FormEvent<HTMLFormElement>, buildId: string) => {
     event.preventDefault()
-    if (!canEditCurrentProject) {
+    if (!canEditProjectBuilds) {
       showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildEditPermission'), 'warning')
       return
     }
@@ -271,11 +275,10 @@ export function createBuildActions({
   }
 
   const handleToggleBuildHidden = async (buildId: string) => {
-    if (!canEditCurrentProject) {
+    if (!canEditProjectBuilds) {
       showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildEditPermission'), 'warning')
       return
     }
-    if (rejectInactiveWrite(buildId)) return
     const build = buildsList.find(item => item.id === buildId)
     if (!build) return
     const nextHidden = !build.hidden
@@ -329,7 +332,7 @@ export function createBuildActions({
   }
 
   const handleDeleteBuild = async (buildId: string) => {
-    if (!canEditCurrentProject) {
+    if (!canEditProjectBuilds) {
       showFeedback(t('proyectos.insufficientPermission'), t('proyectos.buildDeletePermission'), 'warning')
       return
     }

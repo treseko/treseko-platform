@@ -113,7 +113,7 @@ async def create_bug_from_execution(db: AsyncSession, ejecucion_id: UUID, payloa
     if run.dataset_id:
         dataset = (await db.execute(select(models.EntornoDataset).filter(models.EntornoDataset.id == run.dataset_id))).scalar_one_or_none()
     resolved_dataset = await resolve_case_dataset(db, case.id, run.build_id, run.entorno_id, run.dataset_id)
-    dataset_values = (resolved_dataset or {}).get("variables_resueltas") or {}
+    dataset_values = (resolved_dataset or {}).get("dataset_resuelto") or []
 
     base = {
         "proyecto_id": run.proyecto_id,
@@ -157,6 +157,7 @@ async def create_bug_from_execution(db: AsyncSession, ejecucion_id: UUID, payloa
             "environment_url": environment.url if environment else None,
             "dataset_name": dataset.nombre if dataset else None,
             "dataset_variables": dataset_values,
+            "dataset_resolved_values": dataset_values,
             "execution_status": execution.estado_resultado.value,
             "execution_date": isoformat_utc(execution.fecha_ejecucion),
             "executed_by": str(execution.ejecutado_por),

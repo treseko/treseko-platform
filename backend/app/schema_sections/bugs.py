@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -56,6 +57,18 @@ BUG_EXTERNAL_URL_SENSITIVE_QUERY_KEYS = {
 
 def validate_bug_json_payload(value: Optional[Dict[str, Any]], *, max_bytes: int = MAX_BUG_JSON_BYTES, label: str = "bug metadata") -> Optional[Dict[str, Any]]:
     return validate_preference_json_payload(value, max_bytes=max_bytes, label=label)
+
+
+def normalize_bug_text(value: Any):
+    """Keep legacy text fields compatible with structured execution data."""
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list, tuple)):
+        try:
+            return json.dumps(value, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("datos_prueba contiene datos no serializables") from exc
+    return value
 
 
 def validate_bug_external_url(value: Optional[str]) -> Optional[str]:
@@ -138,6 +151,11 @@ class BugIssueCreate(BaseModel):
     def validate_external_issue_url(cls, value):
         return validate_bug_external_url(value)
 
+    @field_validator("datos_prueba", mode="before")
+    @classmethod
+    def normalize_test_data(cls, value):
+        return normalize_bug_text(value)
+
     @field_validator("external_payload_snapshot")
     @classmethod
     def validate_external_payload_snapshot(cls, value):
@@ -205,6 +223,11 @@ class BugIssueUpdate(BaseModel):
     duplicate_of_id: Optional[UUID] = None
     reopened_count: Optional[int] = Field(default=None, ge=0, le=1000)
     metadata_json: Optional[Dict[str, Any]] = None
+
+    @field_validator("datos_prueba", mode="before")
+    @classmethod
+    def normalize_test_data(cls, value):
+        return normalize_bug_text(value)
 
     @field_validator("external_issue_url")
     @classmethod
@@ -318,10 +341,18 @@ class BugAttachmentCreate(BaseModel):
     attachment_id: UUID
     tipo: str = Field(default="BUG_EVIDENCE", max_length=50)
 
+class BugCommentAuthorResponse(BaseModel):
+    id: UUID
+    display_name: Optional[str] = None
+    nombre_completo: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class BugCommentResponse(BaseModel):
     id: UUID
     bug_id: UUID
     autor_id: Optional[UUID] = None
+    autor: Optional[BugCommentAuthorResponse] = None
     comentario: str
     created_at: datetime
     attachments: List["BugAttachmentResponse"] = Field(default_factory=list, max_length=MAX_BUG_ATTACHMENTS)

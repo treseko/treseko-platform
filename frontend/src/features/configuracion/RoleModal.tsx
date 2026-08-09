@@ -20,13 +20,13 @@ export function RoleModal({ options }: { options: any }) {
         <Col md={6}>
           <Form.Group>
             <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('configuracion.roleName')}</RequiredLabel></Form.Label>
-            <Form.Control value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} required disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm" placeholder={t('configuracion.roleNamePlaceholder')} />
+            <Form.Control name="a11y-rolemodaltsx-23" aria-label="Campo de formulario" value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })} required disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm" placeholder={t('configuracion.roleNamePlaceholder')} />
           </Form.Group>
         </Col>
         <Col md={6}>
           <Form.Group>
             <Form.Label className="x-small fw-bold text-muted">{t('configuracion.status')}</Form.Label>
-            <Form.Select value={roleForm.status} onChange={(e) => setRoleForm({ ...roleForm, status: e.target.value })} disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm">
+            <Form.Select name="a11y-rolemodaltsx-29" aria-label="Campo de formulario" value={roleForm.status} onChange={(e) => setRoleForm({ ...roleForm, status: e.target.value })} disabled={editingRoleId?.startsWith('system:')} className="bg-light shadow-sm">
               <option value="Activo">{t('configuracion.active')}</option>
               <option value="Inactivo">{t('configuracion.inactive')}</option>
             </Form.Select>
@@ -35,7 +35,7 @@ export function RoleModal({ options }: { options: any }) {
         <Col md={12}>
           <Form.Group>
             <Form.Label className="x-small fw-bold text-muted">{t('configuracion.description')}</Form.Label>
-            <Form.Control as="textarea" rows={2} value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} className="bg-light shadow-sm" placeholder={t('configuracion.roleDescriptionPlaceholder')} />
+            <Form.Control name="a11y-rolemodaltsx-38" aria-label="Campo de formulario" as="textarea" rows={2} value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} className="bg-light shadow-sm" placeholder={t('configuracion.roleDescriptionPlaceholder')} />
           </Form.Group>
         </Col>
       </Row>
@@ -90,7 +90,7 @@ export function RoleModal({ options }: { options: any }) {
                         <div className="fw-bold text-dark">{t(`navigation.${group.module}` as any)}</div>
                         <div className="x-small text-muted">{mixed ? t('configuracion.mixedCapabilities') : t('configuracion.uniformCapabilities')}</div>
                       </div>
-                      <Form.Select
+                      <Form.Select name="a11y-rolemodaltsx-93" aria-label="Campo de formulario"
                         size="sm"
                         value={moduleLevel}
                         onChange={(e) => setRoleModulePermission(group.module, e.target.value as PermissionLevel)}
@@ -107,7 +107,7 @@ export function RoleModal({ options }: { options: any }) {
                         <Col lg={6} key={capability.id}>
                           <div className="d-flex align-items-center justify-content-between gap-2 bg-light border rounded-2 p-2">
                             <span className="small text-dark">{getCapabilityLabel(capability)}</span>
-                            <Form.Select
+                            <Form.Select name="a11y-rolemodaltsx-110" aria-label="Campo de formulario"
                               size="sm"
                               value={roleForm.capabilities?.[capability.id] || 'none'}
                               onChange={(e) => setRoleCapabilityPermission(capability.id, e.target.value as PermissionLevel)}

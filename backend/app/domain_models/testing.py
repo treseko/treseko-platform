@@ -83,6 +83,7 @@ class PasoPrueba(Base):
     __table_args__ = (UniqueConstraint('caso_id', 'numero_paso', name='unique_caso_paso'),)
 
     caso = relationship("CasoPrueba", back_populates="pasos")
+    attachments = relationship("PasoAttachment", back_populates="paso", cascade="all, delete-orphan")
 
 
 class CaseImportBatch(Base):

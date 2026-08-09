@@ -262,7 +262,7 @@ export function AutomationVariablesModal({
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label>{t('common.environment')}</Form.Label>
-                <Form.Select value={selectedEnv?.id || ''} onChange={e => setSelectedEnvId(e.target.value)}>
+                <Form.Select name="a11y-automationvariablesmodaltsx-265" aria-label="Campo de formulario" value={selectedEnv?.id || ''} onChange={e => setSelectedEnvId(e.target.value)}>
                   {projectEnvironments.map((env: any) => <option key={env.id} value={env.id}>{env.name}</option>)}
                 </Form.Select>
                 {selectedEnv && <div className="small text-muted mt-2 font-monospace">{selectedEnv.url}</div>}
@@ -271,11 +271,11 @@ export function AutomationVariablesModal({
                 <div className="border rounded-3 p-3 bg-light">
                   <div className="fw-bold mb-2">{t('casos.newDataset')}</div>
                   <Row className="g-2">
-                    <Col md={5}><Form.Control size="sm" placeholder={t('proyectos.datasetNamePlaceholder')} value={newDataset.name} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, name: e.target.value })} /></Col>
-                    <Col md={7}><Form.Control size="sm" placeholder={t('proyectos.datasetDescriptionPlaceholder')} value={newDataset.description} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, description: e.target.value })} /></Col>
-                    <Col xs={12}><Form.Control as="textarea" rows={3} size="sm" className="font-monospace" placeholder={t('proyectos.datasetVariablesPlaceholder')} value={newDataset.variablesText} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, variablesText: e.target.value })} /></Col>
+                    <Col md={5}><Form.Control name="a11y-automationvariablesmodaltsx-274" aria-label="Campo de formulario" size="sm" placeholder={t('proyectos.datasetNamePlaceholder')} value={newDataset.name} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, name: e.target.value })} /></Col>
+                    <Col md={7}><Form.Control name="a11y-automationvariablesmodaltsx-275" aria-label="Campo de formulario" size="sm" placeholder={t('proyectos.datasetDescriptionPlaceholder')} value={newDataset.description} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, description: e.target.value })} /></Col>
+                    <Col xs={12}><Form.Control name="a11y-automationvariablesmodaltsx-276" aria-label="Campo de formulario" as="textarea" rows={3} size="sm" className="font-monospace" placeholder={t('proyectos.datasetVariablesPlaceholder')} value={newDataset.variablesText} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, variablesText: e.target.value })} /></Col>
                     <Col xs={12} className="d-flex justify-content-between">
-                      <Form.Check label={t('casos.useAsDefault')} checked={newDataset.isDefault} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, isDefault: e.target.checked })} />
+                      <Form.Check name="a11y-automationvariablesmodaltsx-278" aria-label="Campo de formulario" label={t('casos.useAsDefault')} checked={newDataset.isDefault} disabled={!canEdit} onChange={e => setNewDataset({ ...newDataset, isDefault: e.target.checked })} />
                       {canEdit && <Button size="sm" disabled={savingKey === 'new-dataset'} onClick={saveNewDataset}><Plus size={14} className="me-1" />{t('casos.createDataset')}</Button>}
                     </Col>
                   </Row>
@@ -298,10 +298,10 @@ export function AutomationVariablesModal({
                       </div>
                     </div>
                     <Row className="g-2">
-                      <Col md={4}><Form.Control size="sm" value={draft.name} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, name: e.target.value } }))} /></Col>
-                      <Col md={5}><Form.Control size="sm" value={draft.description} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, description: e.target.value } }))} /></Col>
-                      <Col md={3}><Form.Check label={t('casos.default')} checked={draft.isDefault} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, isDefault: e.target.checked } }))} /></Col>
-                      <Col xs={12}><Form.Control as="textarea" rows={3} className="font-monospace small" value={draft.variablesText} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, variablesText: e.target.value } }))} /></Col>
+                      <Col md={4}><Form.Control name="a11y-automationvariablesmodaltsx-301" aria-label="Campo de formulario" size="sm" value={draft.name} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, name: e.target.value } }))} /></Col>
+                      <Col md={5}><Form.Control name="a11y-automationvariablesmodaltsx-302" aria-label="Campo de formulario" size="sm" value={draft.description} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, description: e.target.value } }))} /></Col>
+                      <Col md={3}><Form.Check name="a11y-automationvariablesmodaltsx-303" aria-label="Campo de formulario" label={t('casos.default')} checked={draft.isDefault} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, isDefault: e.target.checked } }))} /></Col>
+                      <Col xs={12}><Form.Control name="a11y-automationvariablesmodaltsx-304" aria-label="Campo de formulario" as="textarea" rows={3} className="font-monospace small" value={draft.variablesText} disabled={!canEdit} onChange={e => setEditingDatasets(prev => ({ ...prev, [dataset.id]: { ...draft, variablesText: e.target.value } }))} /></Col>
                     </Row>
                   </div>
                 )
@@ -311,12 +311,12 @@ export function AutomationVariablesModal({
           </Tab>
           <Tab eventKey="component" title={t('casos.componentVariables')}>
             <Alert variant="light" className="border">{t('casos.componentTechnicalConfig')} <code>api_path</code>, <code>health_endpoint</code>, <code>service_name</code>.</Alert>
-            <Form.Control as="textarea" rows={10} className="font-monospace" value={componentVariablesText} disabled={!canEdit} onChange={e => setComponentVariablesText(e.target.value)} />
+            <Form.Control name="a11y-automationvariablesmodaltsx-314" aria-label="Campo de formulario" as="textarea" rows={10} className="font-monospace" value={componentVariablesText} disabled={!canEdit} onChange={e => setComponentVariablesText(e.target.value)} />
             {canEdit && <Button className="mt-3" disabled={savingKey === 'component-vars'} onClick={saveComponentVariables}>{t('casos.saveTechnicalVariables')}</Button>}
           </Tab>
           <Tab eventKey="case" title={t('casos.caseData')}>
             <Alert variant="light" className="border">{t('casos.caseOverridesHelp')}</Alert>
-            <Form.Control as="textarea" rows={10} className="font-monospace" value={localCaseDataText} disabled={!canEdit} onChange={e => setLocalCaseDataText(e.target.value)} />
+            <Form.Control name="a11y-automationvariablesmodaltsx-319" aria-label="Campo de formulario" as="textarea" rows={10} className="font-monospace" value={localCaseDataText} disabled={!canEdit} onChange={e => setLocalCaseDataText(e.target.value)} />
             {canEdit && <Button className="mt-3" onClick={applyCaseData}>{t('casos.applyToForm')}</Button>}
           </Tab>
           <Tab eventKey="resolved" title={t('casos.resolvedView')}>

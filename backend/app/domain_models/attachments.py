@@ -37,7 +37,7 @@ class PasoAttachment(Base):
     tipo = Column(String(50), nullable=False)
     created_at = Column(UTCDateTime(), server_default=func.now())
 
-    paso = relationship("PasoPrueba")
+    paso = relationship("PasoPrueba", back_populates="attachments")
     attachment = relationship("Attachment", back_populates="paso_links")
 
     __table_args__ = (UniqueConstraint('paso_id', 'attachment_id', 'tipo', name='unique_paso_attachment_tipo'),)

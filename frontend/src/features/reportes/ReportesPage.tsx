@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Row, Col, Card, Badge, Button, Table, Modal, Form, Tab, Tabs } from 'react-bootstrap'
+import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Button } from 'react-bootstrap'
+import 'react-grid-layout/css/styles.css'
+import 'react-resizable/css/styles.css'
 import { BarChart3, RefreshCw, Activity, Folders, ChevronDown, ChevronRight, Clock, User, FileText, Image as ImageIcon, Share2, Copy, Download, ShieldCheck, Bug, SlidersHorizontal, Grip, RotateCcw, Save } from 'lucide-react'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import type { ResponsiveLayouts } from 'react-grid-layout'
@@ -33,6 +35,8 @@ import { useReportExportActions } from './useReportExportActions'
 import { useReportConfiguration } from './useReportConfiguration'
 import { ProjectReportSettingsModal } from './ProjectReportSettingsModal'
 import { SharedReportModal } from './SharedReportModal'
+import { QualityIntelligenceWidget } from './QualityIntelligenceWidget'
+import { useQualityIntelligence } from './useQualityIntelligence'
 import { buildReportTablesHtml } from './reportExportUtils'
 import {
   SHARED_REPORT_TYPES,
@@ -47,6 +51,7 @@ import { useI18n } from '../../i18n'
 import {
   REPORTES_BREAKPOINTS,
   REPORTES_COLS,
+  REPORTES_ROW_HEIGHT,
   REPORTES_WIDGET_IDS,
   defaultReportesLayouts,
   sanitizeReportesLayouts,
@@ -84,6 +89,40 @@ import {
 } from 'recharts'
 const ResponsiveReportesGridLayout = WidthProvider(Responsive)
 
+const mergeVisibleReportesLayouts = (
+  currentLayouts: ResponsiveLayouts<string>,
+  changedLayouts: ResponsiveLayouts<string>,
+  activeWidgetIds: Set<string>,
+): ResponsiveLayouts<string> => {
+  const breakpoints = new Set([...Object.keys(currentLayouts), ...Object.keys(changedLayouts)])
+  return Object.fromEntries([...breakpoints].map((breakpoint) => {
+    const current = currentLayouts[breakpoint] || []
+    const changed = stripReportesEditFlags({ [breakpoint]: changedLayouts[breakpoint] || [] })[breakpoint] || []
+    return [breakpoint, [...current.filter((item) => !activeWidgetIds.has(item.i)), ...changed]]
+  }))
+}
+
+class ReportWidgetErrorBoundary extends Component<{ children: ReactNode, errorText: string }, { hasError: boolean }> {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidUpdate(previousProps: { children: ReactNode }) {
+    if (previousProps.children !== this.props.children && this.state.hasError) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="small text-muted px-3 py-3">{this.props.errorText}</div>
+    }
+    return this.props.children
+  }
+}
+
 type ReportesPageProps = {
   metricsLoading: boolean
   projectMetrics: any
@@ -96,7 +135,7 @@ type ReportesPageProps = {
   currentProjectId: string
   currentBuildId: string
   onOpenHistorial?: (filters?: Record<string, any>, runId?: string) => void
-  onOpenBugTracker?: () => void
+  onOpenBugTracker?: (bug?: any) => void
   canAccessCapability?: (capabilityId: any, level?: any) => boolean
   hasSystemFeature?: FeatureLookup
   loggedUser?: any
@@ -122,6 +161,8 @@ export function ReportesPage({
   onPreferencesUpdated,
 }: ReportesPageProps) {
   const { t } = useI18n()
+  const [traceabilityPage, setTraceabilityPage] = useState(0)
+  const [reportesLayoutInteraction, setReportesLayoutInteraction] = useState<'dragging' | 'resizing' | null>(null)
   const {
     traceabilityCoverage, traceabilityLoading, loadTraceabilityCoverage, canReadTraceability,
     profileSettings, showViewConfig, setShowViewConfig, savingViewConfig, viewDraft, setViewDraft, reportesView,
@@ -134,7 +175,7 @@ export function ReportesPage({
     loadProjectReportSettings, setProjectReportSection, setAllProjectReportSections,
     countProjectReportSectionsEnabled, saveProjectReportSettings, reportsAdvancedEnabled,
     reportSnapshotsEnabled, canExportReports, canViewSharedReportsByPermission, canShareReportsByPermission,
-    canConfigureReportsByPermission, canViewSharedReports, canShareReports, canConfigureReports, canCreateBugs,
+    canConfigureReportsByPermission, canViewSharedReports, canShareReports, canConfigureReports, canViewBugs, canCreateBugs,
   } = useReportConfiguration({
     t,
     fetchWithAuth,
@@ -144,6 +185,22 @@ export function ReportesPage({
     canAccessCapability,
     showFeedback,
     onPreferencesUpdated,
+  })
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('report_tab')) {
+      url.searchParams.delete('report_tab')
+      window.history.replaceState(window.history.state, '', url)
+    }
+  }, [])
+  const canRebuildQualityIntelligence = Boolean(canAccessCapability?.('reportes.configurar', 'edit'))
+  const qualityIntelligence = useQualityIntelligence({
+    currentProjectId,
+    currentBuildId,
+    enabled: isSectionVisible('qualityIntelligence'),
+    fetchWithAuth,
+    showFeedback,
+    t,
   })
   const {
     sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal,
@@ -174,10 +231,26 @@ export function ReportesPage({
     executionModeData, caseTypeData, executedStatusTotal, assignedStatusTotal, statusChartTotal,
     statusGradient, executionModeMax, hasExecutionModeData, workflowNodeSummary,
   } = useReportDataModel({ projectMetrics, detailFilters, sharedReportHistory, showFullSharedHistory, t })
+  const activeReportWidgetIds = useMemo(() => new Set(
+    REPORTES_WIDGET_IDS.filter((id) => isSectionVisible(id)),
+  ), [isSectionVisible])
+  const visibleReportesLayouts = useMemo(() => (
+    Object.fromEntries(Object.entries(editableReportesLayouts).map(([breakpoint, layout]) => [
+      breakpoint,
+      (layout || []).filter((item) => activeReportWidgetIds.has(item.i)),
+    ])) as ResponsiveLayouts<string>
+  ), [editableReportesLayouts, activeReportWidgetIds])
   const { reportFilename, sharedReportFilename, downloadTextFile, exportPdfReport, exportExcelReport } = useReportExportActions({ t, projectMetrics, currentBuildId, suiteTree, reportStats, bugMetrics, showFeedback })
-  const renderReportesWidget = (id: string, children: ReactNode, visible = isSectionVisible(id)) => (
-    <ReportWidgetFrame id={id} visible={visible} editing={editingReportesLayout} t={t}>{children}</ReportWidgetFrame>
-  )
+  const renderReportesWidget = (id: string, children: ReactNode, visible = isSectionVisible(id)) => {
+    if (!activeReportWidgetIds.has(id) || !visible || !children) return null
+    return (
+      <div key={id} className="reportes-grid-item">
+        <ReportWidgetErrorBoundary errorText={t('reportes.widgetError')}>
+          <ReportWidgetFrame id={id} visible editing={editingReportesLayout} t={t}>{children}</ReportWidgetFrame>
+        </ReportWidgetErrorBoundary>
+      </div>
+    )
+  }
   const markdownUrl = sharedReport?.public_url ? `${sharedReport.public_url}.md` : ''
 
   const exportMarkdown = () => {
@@ -208,7 +281,7 @@ export function ReportesPage({
   }
 
   return (
-    <div className={`p-4 animate__animated animate__fadeIn text-dark text-start reportes-page ${editingReportesLayout ? 'is-editing-layout' : ''}`}>
+    <div className={`p-4 animate__animated animate__fadeIn text-dark text-start reportes-page ${editingReportesLayout ? 'is-editing-layout' : ''} ${reportesLayoutInteraction ? `is-layout-${reportesLayoutInteraction}` : ''}`}>
       <div className="reportes-header d-flex flex-column flex-xl-row justify-content-between align-items-start gap-3 mb-4">
         <div className="reportes-header-title">
           <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
@@ -230,33 +303,37 @@ export function ReportesPage({
             >
               <SlidersHorizontal size={14} className="me-1" /> {t('reportes.configureView')}
             </Button>
-            <Button
-              variant={editingReportesLayout ? 'primary' : 'outline-secondary'}
-              size="sm"
-              className="fw-bold px-3 border-2 rounded-3 hover-bg-light shadow-none"
-              disabled={!projectMetrics}
-              onClick={() => setEditingReportesLayout((value) => !value)}
-            >
-              <Grip size={14} className="me-1" /> {editingReportesLayout ? t('reportes.editingLayout') : t('reportes.arrangeBlocks')}
-            </Button>
-            {editingReportesLayout && (
+            {canConfigureReportsByPermission && (
               <>
                 <Button
-                  variant="outline-secondary"
+                  variant={editingReportesLayout ? 'primary' : 'outline-secondary'}
                   size="sm"
                   className="fw-bold px-3 border-2 rounded-3 hover-bg-light shadow-none"
-                  onClick={resetReportesLayout}
+                  disabled={!projectMetrics}
+                  onClick={() => setEditingReportesLayout((value) => !value)}
                 >
-                  <RotateCcw size={14} className="me-1" /> {t('reportes.restoreLayout')}
+                  <Grip size={14} className="me-1" /> {editingReportesLayout ? t('reportes.editingLayout') : t('reportes.arrangeBlocks')}
                 </Button>
-                <Button
-                  variant="success"
-                  size="sm"
-                  className="fw-bold px-3 border-0 rounded-3 shadow-none"
-                  onClick={saveReportesLayout}
-                >
-                  <Save size={14} className="me-1" /> {t('reportes.saveLayout')}
-                </Button>
+                {editingReportesLayout && (
+                  <>
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      className="fw-bold px-3 border-2 rounded-3 hover-bg-light shadow-none"
+                      onClick={resetReportesLayout}
+                    >
+                      <RotateCcw size={14} className="me-1" /> {t('reportes.restoreLayout')}
+                    </Button>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      className="fw-bold px-3 border-0 rounded-3 shadow-none"
+                      onClick={saveReportesLayout}
+                    >
+                      <Save size={14} className="me-1" /> {t('reportes.saveLayout')}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -316,115 +393,104 @@ export function ReportesPage({
           <p className="text-muted mt-2">{t('reportes.loadingMetrics')}</p>
         </div>
       ) : projectMetrics ? (
+        <>
         <ResponsiveReportesGridLayout
+          key={editingReportesLayout ? 'reportes-grid-editing' : 'reportes-grid-view'}
           className="layout reportes-layout-grid"
-          layouts={editableReportesLayouts}
+          layouts={visibleReportesLayouts}
           breakpoints={REPORTES_BREAKPOINTS}
           cols={REPORTES_COLS}
-          rowHeight={76}
+          rowHeight={REPORTES_ROW_HEIGHT}
           isDraggable={editingReportesLayout}
           isResizable={editingReportesLayout}
           isBounded
           draggableHandle=".reportes-widget-header"
           draggableCancel=".reportes-widget-body, button, a, input, textarea, select, .form-check, table"
-          resizeHandles={['se']}
           compactType="vertical"
+          onDragStart={() => setReportesLayoutInteraction('dragging')}
+          onDragStop={() => setReportesLayoutInteraction(null)}
+          onResizeStart={() => setReportesLayoutInteraction('resizing')}
+          onResizeStop={() => setReportesLayoutInteraction(null)}
           onLayoutChange={(_, allLayouts) => {
-            if (editingReportesLayout) setReportesLayouts(stripReportesEditFlags(allLayouts))
+            if (editingReportesLayout) {
+              setReportesLayouts((currentLayouts) => mergeVisibleReportesLayouts(currentLayouts, allLayouts, activeReportWidgetIds))
+            }
           }}
         >
-          <ReportOverviewWidgets
-            renderReportesWidget={renderReportesWidget}
-            t={t}
-            traceabilityCoverage={traceabilityCoverage}
-            traceabilityLoading={traceabilityLoading}
-            loadTraceabilityCoverage={loadTraceabilityCoverage}
-            canReadTraceability={canReadTraceability}
-            isSectionVisible={isSectionVisible}
-            buildContext={buildContext}
-            projectMetrics={projectMetrics}
-            statusVariant={statusVariant}
-            qaStatus={qaStatus}
-            riskVariant={riskVariant}
-            formatHours={formatHours}
-            formatSeconds={formatSeconds}
-            isKpiVisible={isKpiVisible}
-            reportStats={reportStats}
-            bugMetrics={bugMetrics}
-            failureItems={failureItems}
-            temporalMetrics={temporalMetrics}
-            formatInt={formatInt}
-            formatPercent={formatPercent}
-          />
+          {ReportOverviewWidgets({
+            renderReportesWidget, t, traceabilityCoverage, traceabilityLoading,
+            loadTraceabilityCoverage, canReadTraceability, isSectionVisible,
+            buildContext, projectMetrics, statusVariant, qaStatus, riskVariant,
+            formatHours, formatSeconds, isKpiVisible, reportStats, bugMetrics,
+            failureItems, formatInt, formatPercent, temporalMetrics,
+            traceabilityPage, setTraceabilityPage,
+          })}
 
-          <ReportAiMetricsWidget
-            renderReportesWidget={renderReportesWidget}
-            t={t}
-            aiMetrics={aiMetrics}
-            formatInt={formatInt}
-            formatMoney={formatMoney}
-            formatMs={formatMs}
-            workflowNodeSummary={workflowNodeSummary}
-            isAiBlockVisible={isAiBlockVisible}
-            aiModels={aiModels}
-            aiFailureCategories={aiFailureCategories}
-            aiErrorCodes={aiErrorCodes}
-            readableAiLabel={readableAiLabel}
-            projectMetrics={projectMetrics}
-            currentBuildId={currentBuildId}
-            onOpenHistorial={onOpenHistorial}
-            showFeedback={showFeedback}
-          />
+          {ReportAiMetricsWidget({
+            renderReportesWidget, t, aiMetrics, formatInt, formatMoney, formatMs,
+            workflowNodeSummary, isAiBlockVisible, aiModels, aiFailureCategories,
+            aiErrorCodes, readableAiLabel, projectMetrics, currentBuildId,
+            onOpenHistorial, showFeedback,
+          })}
 
-          <ReportSecondaryWidgets options={{
+          {renderReportesWidget('qualityIntelligence', (
+            <QualityIntelligenceWidget
+              t={t}
+              health={qualityIntelligence.health}
+              fingerprints={qualityIntelligence.fingerprints}
+              observations={qualityIntelligence.observations}
+              summary={qualityIntelligence.summary}
+              diagnoses={qualityIntelligence.diagnoses}
+              releaseRisk={qualityIntelligence.releaseRisk}
+              loading={qualityIntelligence.loading}
+              rebuilding={qualityIntelligence.rebuilding}
+              diagnosingExecutionId={qualityIntelligence.diagnosingExecutionId}
+              reviewingDiagnosisId={qualityIntelligence.reviewingDiagnosisId}
+              editingDiagnosisId={qualityIntelligence.editingDiagnosisId}
+              bugDraft={qualityIntelligence.bugDraft}
+              error={qualityIntelligence.error}
+              canRebuild={canRebuildQualityIntelligence}
+              canCreateBugs={canCreateBugs}
+              onReload={() => void qualityIntelligence.loadHealth()}
+              onRebuild={() => void qualityIntelligence.rebuild()}
+              onDiagnose={(observation) => void qualityIntelligence.createDiagnosis(observation)}
+              onReview={(diagnosisId, status) => void qualityIntelligence.reviewDiagnosis(diagnosisId, status)}
+              onEdit={(diagnosisId, payload) => void qualityIntelligence.editDiagnosis(diagnosisId, payload)}
+              onPrepareBugDraft={(diagnosisId) => void qualityIntelligence.prepareBugDraft(diagnosisId)}
+              onEvaluateReleaseRisk={() => void qualityIntelligence.evaluateReleaseRisk()}
+              onAcceptReleaseRisk={(note) => void qualityIntelligence.acceptReleaseRisk(note)}
+            />
+          ))}
+
+          {ReportSecondaryWidgets({
             renderReportesWidget, t, projectMetrics, comparison, formatPercent, formatInt,
             isColumnVisible, riskVariant, suiteTree, setExpandedMetricSuites, collectSuiteIds,
             expandedMetricSuites, onOpenEvidence, visibleColumnCount, formatHours,
             snapshotBugLinks, bugStatusIsOpen, canCreateBugs, creatingSnapshotBugId,
             createBugFromReportSnapshot,
-          }} />
+          })}
 
-          <ReportDetailWidgets
-            renderReportesWidget={renderReportesWidget}
-            t={t}
-            setDetailFilters={setDetailFilters}
-            detailFilters={detailFilters}
-            suiteFilterOptions={suiteFilterOptions}
-            priorityFilterOptions={priorityFilterOptions}
-            uniqueOptions={uniqueOptions}
-            allReportBugs={allReportBugs}
-            failureItems={failureItems}
-            ownerFilterOptions={ownerFilterOptions}
-            formatInt={formatInt}
-            formatHours={formatHours}
-            formatPercent={formatPercent}
-            bugTraceability={bugTraceability}
-            bugMetrics={bugMetrics}
-            filteredReportBugs={filteredReportBugs}
-            filteredFailures={filteredFailures}
-            filteredEvidenceItems={filteredEvidenceItems}
-            isColumnVisible={isColumnVisible}
-            visibleColumnCount={visibleColumnCount}
-            riskVariant={riskVariant}
-            onOpenBugTracker={onOpenBugTracker}
-            showFeedback={showFeedback}
-            evidenceSummary={evidenceSummary}
-          />
-          <ReportChartWidgets
-            renderReportesWidget={renderReportesWidget}
-            t={t}
-            statusChartData={statusChartData}
-            statusGradient={statusGradient}
-            statusChartTotal={statusChartTotal}
-            assignedStatusTotal={assignedStatusTotal}
-            executedStatusTotal={executedStatusTotal}
-            formatInt={formatInt}
-            executionModeData={executionModeData}
-            executionModeMax={executionModeMax}
-            hasExecutionModeData={hasExecutionModeData}
-            caseTypeData={caseTypeData}
-          />
+          {ReportDetailWidgets({
+            renderReportesWidget, t, setDetailFilters, detailFilters,
+            suiteFilterOptions, priorityFilterOptions, uniqueOptions, allReportBugs,
+            failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent,
+            bugTraceability, bugMetrics, filteredReportBugs, filteredFailures,
+            filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant,
+            onOpenBugTracker, canViewBugs, showFeedback, evidenceSummary,
+          })}
+          {ReportChartWidgets({
+            renderReportesWidget, t, statusChartData, statusGradient, statusChartTotal,
+            assignedStatusTotal, executedStatusTotal, formatInt, executionModeData,
+            executionModeMax, hasExecutionModeData, caseTypeData,
+          })}
+          {SharedReportHistory({
+            canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
+            showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
+            visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
+            openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,
+          })}
         </ResponsiveReportesGridLayout>
+        </>
       ) : (
         <ReportEmptyState t={t} loadProjectMetrics={loadProjectMetrics} />
       )}
@@ -435,12 +501,6 @@ export function ReportesPage({
         hasSystemFeature={hasSystemFeature}
         t={t}
       />
-      <SharedReportHistory options={{
-        canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
-        showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
-        visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
-        openSharedReport, copyLink, canShareReports, revokeSharedBundle,
-      }} />
       <ReportesViewConfigModal
         show={showViewConfig}
         onHide={() => setShowViewConfig(false)}

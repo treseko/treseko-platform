@@ -69,7 +69,7 @@ export function ExecutionMobileCards({ options }: { options: any }) {
                 </div>
               </div>
               <div onClick={(event) => event.stopPropagation()}>
-                <Form.Check
+                <Form.Check name="a11y-executionmobilecardstsx-72" aria-label="Campo de formulario"
                   checked={selectedExecutionTestIds.includes(test.id)}
                   onChange={() => toggleExecutionSelection(test.id)}
                 />

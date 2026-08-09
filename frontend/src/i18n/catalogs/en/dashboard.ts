@@ -1,7 +1,7 @@
 export default {
   qualitySummary: 'Quality summary', myTestsToday: 'My tests today', buildExecutions: 'Build tests',
   recentExecutions: 'Recent executions', buildWindow: 'Build window', trendByBuild: 'Trend by build',
-  openBugs: 'Open bugs', averageDuration: 'Average duration', executionTypes: 'Execution types',
+  openBugs: 'Open bugs', averageDuration: 'Average duration', averageDurationExecutions: '{count} executions', executionTypes: 'Execution types',
   recentFailedCases: 'Recent failures', widgetError: 'This widget could not be rendered.',
   dashboardLoadError: 'The dashboard could not be loaded.', noData: 'No data.',
   saveSuccessTitle: 'Dashboard saved', saveSuccessMessage: 'Your layout will apply to all your projects.',

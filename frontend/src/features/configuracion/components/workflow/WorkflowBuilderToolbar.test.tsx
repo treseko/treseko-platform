@@ -4,7 +4,7 @@ import {
   WORKFLOW_PORTABLE_EXPORT_LABEL,
   WORKFLOW_PORTABLE_IMPORT_LABEL,
   canExportPortableWorkflow,
-} from './WorkflowBuilderToolbar'
+} from './workflowBuilderUtils'
 
 test('ofrece únicamente importación y exportación portable', () => {
   assert.equal(WORKFLOW_PORTABLE_EXPORT_LABEL, 'Exportar workflow portable')

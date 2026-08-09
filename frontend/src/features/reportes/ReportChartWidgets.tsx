@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
 import { Badge, Card } from 'react-bootstrap'
 
-export function ReportChartWidgets(options: any): ReactNode {
+export function ReportChartWidgets(options: any): ReactNode[] {
   const { renderReportesWidget, t, statusChartData, statusGradient, statusChartTotal, assignedStatusTotal, executedStatusTotal, formatInt, executionModeData, executionModeMax, hasExecutionModeData, caseTypeData } = options
-  return (
-    <>
-          {renderReportesWidget('statusChart', (
+  return [
+          renderReportesWidget('statusChart', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
                 <h6 className="fw-bold mb-4 text-secondary text-start">{t('reportes.executionStatus')}</h6>
                 <div style={{ height: '260px' }}>
@@ -50,9 +49,9 @@ export function ReportChartWidgets(options: any): ReactNode {
                   Total ejecutadas: {formatInt(executedStatusTotal)}
                 </div>
               </Card>
-          ))}
+          )),
 
-          {renderReportesWidget('executionModeChart', (
+          renderReportesWidget('executionModeChart', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
                 <h6 className="fw-bold mb-4 text-secondary text-start">{t('reportes.executionMode')}</h6>
                 <div style={{ height: '260px' }}>
@@ -107,8 +106,7 @@ export function ReportChartWidgets(options: any): ReactNode {
                   </div>
                 )}
               </Card>
-          ))}
+          )),
 
-    </>
-  )
+  ]
 }

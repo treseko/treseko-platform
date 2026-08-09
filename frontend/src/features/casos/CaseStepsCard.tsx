@@ -54,7 +54,7 @@ export function CaseStepsCard({ context }: Props) {
               <span className="case-step-index">#{idx + 1}</span>
             </div>
             <div className="d-flex flex-column">
-              <Form.Control required as="textarea" rows={2} placeholder={t('casos.actionPlaceholder')} value={step.action} onChange={(e) => handleStepInputChange(idx, 'action', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
+              <Form.Control name="a11y-casestepscardtsx-57" aria-label="Campo de formulario" required as="textarea" rows={2} placeholder={t('casos.actionPlaceholder')} value={step.action} onChange={(e) => handleStepInputChange(idx, 'action', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
               <EvidenceUpload
                 compact
                 iconOnly
@@ -70,10 +70,10 @@ export function CaseStepsCard({ context }: Props) {
               />
             </div>
             <div className="d-flex flex-column">
-              <Form.Control as="textarea" rows={2} placeholder="Variables a inyectar" value={step.data} onChange={(e) => handleStepInputChange(idx, 'data', e.target.value)} className="border-light-subtle shadow-none font-monospace small text-primary mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
+              <Form.Control name="a11y-casestepscardtsx-73" aria-label="Campo de formulario" as="textarea" rows={2} placeholder="Variables a inyectar" value={step.data} onChange={(e) => handleStepInputChange(idx, 'data', e.target.value)} className="border-light-subtle shadow-none font-monospace small text-primary mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
             </div>
             <div className="d-flex flex-column">
-              <Form.Control required as="textarea" rows={2} placeholder={t('casos.validationCriteriaPlaceholder')} value={step.expected} onChange={(e) => handleStepInputChange(idx, 'expected', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
+              <Form.Control name="a11y-casestepscardtsx-76" aria-label="Campo de formulario" required as="textarea" rows={2} placeholder={t('casos.validationCriteriaPlaceholder')} value={step.expected} onChange={(e) => handleStepInputChange(idx, 'expected', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
               <EvidenceUpload
                 compact
                 iconOnly

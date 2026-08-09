@@ -38,7 +38,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                   <div className="p-3 d-flex flex-column gap-3">
                     <Form.Group>
                       <Form.Label>{tx("optionalInstructions")}</Form.Label>
-                      <Form.Control
+                      <Form.Control name="a11y-traceabilitygenerationcontexttsx-41" aria-label="Campo de formulario"
                         as="textarea"
                         rows={3}
                         disabled={Boolean(generationRun)}
@@ -53,7 +53,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                       <Form.Label>{tx("contextComponents")}</Form.Label>
                       <div className="d-flex flex-wrap gap-3">
                         {projectComponents.map((component) => (
-                          <Form.Check
+                          <Form.Check name="a11y-traceabilitygenerationcontexttsx-56" aria-label="Campo de formulario"
                             key={component.id}
                             type="checkbox"
                             disabled={Boolean(generationRun)}
@@ -80,7 +80,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                           style={{ maxHeight: "160px", overflowY: "auto" }}
                         >
                           {generationWiki.map((page) => (
-                            <Form.Check
+                            <Form.Check name="a11y-traceabilitygenerationcontexttsx-83" aria-label="Campo de formulario"
                               key={page.id}
                               type="checkbox"
                               disabled={Boolean(generationRun)}
@@ -163,7 +163,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                             <Form.Label className="small mb-1">
                               {index + 1}. {question}
                             </Form.Label>
-                            <Form.Control
+                            <Form.Control name="a11y-traceabilitygenerationcontexttsx-166" aria-label="Campo de formulario"
                               as="textarea"
                               rows={2}
                               value={generationQuestionAnswers[question] || ""}

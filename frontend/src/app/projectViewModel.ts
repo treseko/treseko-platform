@@ -1,4 +1,5 @@
 import { filterSuiteTreeByIds } from '../features/ejecutar-pruebas/executionViewModel'
+import { isGlobalAdmin } from './rbac/permissions'
 
 type BuildProjectViewModelParams = {
   currentProjectId: string
@@ -72,7 +73,7 @@ export function buildProjectViewModel({
     )
   )
   const canEditCurrentProject = canEditProjects && (
-    loggedUser.role === 'ADMIN' ||
+    isGlobalAdmin(loggedUser) ||
     !!currentProjectMember
   )
   const currentProjectEnvironments = currentProjectId ? environments.filter(item => item.projectId === currentProjectId) : []

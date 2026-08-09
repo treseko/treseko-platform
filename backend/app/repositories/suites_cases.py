@@ -331,6 +331,19 @@ async def create_caso_prueba(db: AsyncSession, caso: schemas.CasoPruebaCreate):
     await db.refresh(db_caso)
     return db_caso
 
+
+def _step_attachment_links_by_number(steps) -> dict[int, list[tuple[UUID, str]]]:
+    return {step.numero_paso: [(link.attachment_id, link.tipo) for link in (step.attachments or [])] for step in steps}
+
+
+async def _copy_step_attachments(db: AsyncSession, source_links_by_number: dict[int, list[tuple[UUID, str]]], target_steps: list[models.PasoPrueba]) -> None:
+    await db.flush()
+    for target_step in target_steps:
+        db.add_all([
+            models.PasoAttachment(paso_id=target_step.id, attachment_id=attachment_id, tipo=tipo)
+            for attachment_id, tipo in source_links_by_number.get(target_step.numero_paso, [])
+        ])
+
 async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: schemas.CasoPruebaCreate):
     result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.master_id == master_id).order_by(models.CasoPrueba.version.desc()).limit(1))
     latest_caso = result.scalar_one_or_none()
@@ -346,6 +359,9 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
         caso_data.get("codigo"),
         master_id=master_id,
     )
+
+    latest_steps_result = await db.execute(select(models.PasoPrueba).options(selectinload(models.PasoPrueba.attachments)).where(models.PasoPrueba.caso_id == latest_caso.id))
+    source_attachment_links = _step_attachment_links_by_number(latest_steps_result.scalars().all())
 
     if not await has_executions(db, latest_caso.id):
         for field, value in caso_data.items():
@@ -364,9 +380,9 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
             .execution_options(synchronize_session=False)
         )
         await db.flush()
-        for paso in pasos_data:
-            db_paso = models.PasoPrueba(**paso.model_dump(), caso_id=latest_caso.id)
-            db.add(db_paso)
+        target_steps = [models.PasoPrueba(**paso.model_dump(), caso_id=latest_caso.id) for paso in pasos_data]
+        db.add_all(target_steps)
+        await _copy_step_attachments(db, source_attachment_links, target_steps)
         await db.commit()
         return await get_caso(db, latest_caso.id)
 
@@ -374,9 +390,9 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
     db_new_version = models.CasoPrueba(**caso_data, master_id=master_id, version=new_version)
     db.add(db_new_version)
     await db.flush()
-    for paso in pasos_data:
-        db_paso = models.PasoPrueba(**paso.model_dump(), caso_id=db_new_version.id)
-        db.add(db_paso)
+    target_steps = [models.PasoPrueba(**paso.model_dump(), caso_id=db_new_version.id) for paso in pasos_data]
+    db.add_all(target_steps)
+    await _copy_step_attachments(db, source_attachment_links, target_steps)
     await db.commit()
     await db.refresh(db_new_version)
     return db_new_version

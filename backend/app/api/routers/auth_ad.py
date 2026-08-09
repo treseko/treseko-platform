@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from ...main_context import *
 from ...main_context import _issue_auth_tokens
+from ...frontend_url import frontend_public_url
 from ...services.auth_ad import ldap_service
 from ...services.error_sanitizer import sanitize_external_error
 from ...services.edition.entitlement_service import is_feature_enabled, require_feature
@@ -11,7 +12,7 @@ from ...services.edition.entitlement_service import is_feature_enabled, require_
 
 router = APIRouter(tags=["Auth AD"])
 MAX_OIDC_QUERY_VALUE_LENGTH = 512
-DEFAULT_FRONTEND_REDIRECT_BASE = "http://localhost:5173"
+DEFAULT_FRONTEND_REDIRECT_BASE = frontend_public_url()
 
 
 def _auth_ad_config_requests_admin_role(payload: schemas.AuthAdOidcConfigUpdate) -> bool:
@@ -132,7 +133,7 @@ async def auth_ad_callback(
     state: str = Query(min_length=1, max_length=MAX_OIDC_QUERY_VALUE_LENGTH),
     db: AsyncSession = Depends(get_db),
 ):
-    frontend_base = _safe_frontend_redirect_base(os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL"))
+    frontend_base = _safe_frontend_redirect_base(frontend_public_url())
     try:
         exchange_code, user = await oidc_service.handle_callback(db, base_url=str(request.base_url).rstrip("/"), code=code, state=state)
         await crud.create_audit_log(db, usuario_id=user.id, accion="AD_LOGIN", recurso="auth", ip_address=request.client.host if request.client else None)

@@ -318,7 +318,7 @@ export function CasePortabilityPanel({
           <Row className="g-3">
             <Col md={6}>
               <Form.Label className="small fw-bold">{t("configuracion.project")}</Form.Label>
-              <Form.Select
+              <Form.Select name="a11y-caseportabilitypaneltsx-321" aria-label="Campo de formulario"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
                 disabled={busy}

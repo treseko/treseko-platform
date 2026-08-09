@@ -360,6 +360,20 @@ def check_capability(capability_id: str, level: str = "read"):
     return capability_checker
 
 
+def check_capabilities(*requirements: tuple[str, str]):
+    """Require every capability in a single dependency."""
+    async def capabilities_checker(user: models.Usuario = Depends(get_current_active_user)):
+        for capability_id, level in requirements:
+            if not has_capability_permission(user, capability_id, level):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para acceder a esta capacidad",
+                )
+        return user
+
+    return capabilities_checker
+
+
 class LoginRateLimiter:
     def __init__(self, max_attempts: int = 5, window_minutes: int = 15):
         self.max_attempts = max_attempts

@@ -38,6 +38,7 @@ class TestRun(TestRunBase):
     build_id: Optional[UUID] = None
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
+    dataset_nombre: Optional[str] = None
     variables_resueltas: Dict[str, str] = Field(default_factory=dict)
     datasets_resueltos: Dict[str, List[Dict[str, str]]] = Field(default_factory=dict)
     origen: str = "MANUAL"

@@ -271,7 +271,7 @@ export function LicenseSettingsView({ options }: { options: any }) {
               {!canEditLicense && <Alert variant="light" className="border small">{t('configuracion.licenseEditPermission')}</Alert>}
               <div className="border rounded-3 bg-light p-3 mb-3">
                 <Form.Label className="small fw-bold mb-1">{t('configuracion.licenseFile')}</Form.Label>
-                <Form.Control
+                <Form.Control name="a11y-licensesettingsviewtsx-274" aria-label="Campo de formulario"
                   type="file"
                   accept=".treseko,.json,application/json"
                   disabled={!canEditLicense || installing}

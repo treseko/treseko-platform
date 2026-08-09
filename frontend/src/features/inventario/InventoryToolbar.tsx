@@ -34,7 +34,7 @@ export function InventoryToolbar({ options }: { options: any }) {
             setNewCategoryName('')
           }}
         >
-          <Form.Control
+          <Form.Control name="a11y-inventorytoolbartsx-37" aria-label="Campo de formulario"
             size="sm"
             value={newCategoryName}
             onChange={event => setNewCategoryName(event.target.value)}
@@ -71,35 +71,35 @@ export function InventoryToolbar({ options }: { options: any }) {
       <Col xl={4} lg={6}>
         <InputGroup size="sm">
           <InputGroup.Text className="bg-white"><Search size={14} /></InputGroup.Text>
-          <Form.Control value={filters.q} onChange={event => setFilters({ ...filters, q: event.target.value })} placeholder={t('inventario.search')} />
+          <Form.Control name="a11y-inventorytoolbartsx-74" aria-label="Campo de formulario" value={filters.q} onChange={event => setFilters({ ...filters, q: event.target.value })} placeholder={t('inventario.search')} />
         </InputGroup>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select size="sm" value={filters.tipo} onChange={event => setFilters({ ...filters, tipo: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-78" aria-label="Campo de formulario" size="sm" value={filters.tipo} onChange={event => setFilters({ ...filters, tipo: event.target.value })}>
           <option value="">{t('inventario.type')}</option>
           {ASSET_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select size="sm" value={filters.naturaleza} onChange={event => setFilters({ ...filters, naturaleza: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-84" aria-label="Campo de formulario" size="sm" value={filters.naturaleza} onChange={event => setFilters({ ...filters, naturaleza: event.target.value })}>
           <option value="">{t('inventario.nature')}</option>
           {NATURES.map(nature => <option key={nature} value={nature}>{nature}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select size="sm" value={filters.estado} onChange={event => setFilters({ ...filters, estado: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-90" aria-label="Campo de formulario" size="sm" value={filters.estado} onChange={event => setFilters({ ...filters, estado: event.target.value })}>
           <option value="">{t('inventario.status')}</option>
           {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select size="sm" value={filters.criticidad} onChange={event => setFilters({ ...filters, criticidad: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-96" aria-label="Campo de formulario" size="sm" value={filters.criticidad} onChange={event => setFilters({ ...filters, criticidad: event.target.value })}>
           <option value="">{t('inventario.criticality')}</option>
           {CRITICALITIES.map(criticality => <option key={criticality} value={criticality}>{criticality}</option>)}
         </Form.Select>
       </Col>
       <Col xl={3} md={6}>
-        <Form.Select size="sm" value={filters.parentId} onChange={event => setFilters({ ...filters, parentId: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-102" aria-label="Campo de formulario" size="sm" value={filters.parentId} onChange={event => setFilters({ ...filters, parentId: event.target.value })}>
           <option value="">{t('inventario.parentAsset')}</option>
           {parentOptions.map(asset => <option key={asset.id} value={asset.id}>{asset.nombre}</option>)}
         </Form.Select>

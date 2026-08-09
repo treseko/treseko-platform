@@ -79,6 +79,8 @@ async def create_audit_log(
     ip_address: Optional[str] = None,
     origen: Optional[str] = None,
     correlation_id: Optional[str] = None,
+    *,
+    commit: bool = True,
 ):
     ambient_context = audit_request_context(None)
     ip_address = ip_address or ambient_context.get("ip_address")
@@ -107,7 +109,10 @@ async def create_audit_log(
         correlation_id=correlation_id,
     )
     db.add(db_log)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return db_log
 
 async def get_audit_logs(db: AsyncSession, skip: int = 0, limit: int = 100, usuario_id: Optional[UUID] = None):

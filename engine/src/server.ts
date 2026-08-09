@@ -1,5 +1,6 @@
 import { ACCEPTANCE_CRITERION_TYPES, CASE_NODE_TYPES, CASE_SCHEMAS, COMPACT_STORY_GENERATION_SCHEMA, STORY_INTENT_COMPARISON_SCHEMA, STORY_NODE_TYPES, STORY_SCHEMAS, allowedEndpoint, allowedFallbacks, analysisFromOutput, caseAnalysis, caseWorkflowNodes, compactPriorProposals, completeStoryProposalSet, enrichCompactStoryProposal, extractStoryProposals, formatStoryDescription, generationAnalysisContext, isCompleteStoryProposal, normalizeCaseProposalCategory, normalizeGeneratedProposal, normalizeIntentComparisons, proposalForSlot, sourceReferencesForGeneration, storyContractIssues, untrustedSources, validCaseProposal, workflowNodes } from "./generation-contracts.ts";
 import { registerGenerationRoutes } from "./generation-routes.ts";
+import { registerQualityDiagnosisRoutes } from "./quality-diagnosis-routes.ts";
 import { registerRunRoutes } from "./run-routes.ts";
 import express from "express";
 import { deliverTerminalResult, persistPendingTerminalDelivery, redeliverPendingTerminalResults } from "./delivery/terminal-callback.ts";
@@ -72,7 +73,6 @@ function correlationId(req: express.Request): string {
   const candidate = String(req.header("x-correlation-id") || req.header("x-request-id") || "").trim();
   return CORRELATION_ID_RE.test(candidate) ? candidate : `engine-${crypto.randomUUID()}`;
 }
-
 function requestCorrelationId(req: express.Request): string {
   return (req as any).correlationId;
 }
@@ -425,6 +425,7 @@ app.post("/provider-health", async (req, res) => {
 });
 
 registerGenerationRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks, traceEntry, traceRequestId, ENGINE_INTERNAL_TOKEN });
+registerQualityDiagnosisRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks });
 registerRunRoutes(app, { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds });
 io.on("connection", (socket) => {
   console.log("Client connected to Engine:", socket.id);
@@ -453,7 +454,6 @@ io.on("connection", (socket) => {
     });
   });
 });
-
 const PORT = process.env.ENGINE_PORT || 3010;
 const shutdownEngine = async () => {
   await OpenCodeDriver.shutdown();

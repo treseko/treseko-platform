@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Table } from 'react-bootstrap'
 import { Activity, CheckCircle2, Cpu, HardDrive, RefreshCw, Server, ShieldOff, XCircle } from 'lucide-react'
 import { useI18n } from '../../../i18n'
@@ -52,6 +52,13 @@ export function WorkersManager({
   const [jobs, setJobs] = useState<AutomationJob[]>([])
   const [loading, setLoading] = useState(false)
   const [pairingActionCode, setPairingActionCode] = useState<string | null>(null)
+  const jobsContextRef = useRef('')
+  const jobsContextKey = `${currentProjectId}|${currentCompId}|${currentBuildId}`
+
+  useEffect(() => {
+    jobsContextRef.current = jobsContextKey
+    setJobs([])
+  }, [jobsContextKey])
 
   const loadRunners = async (options?: { silent?: boolean }) => {
     if (!canViewWorkers) return
@@ -70,15 +77,26 @@ export function WorkersManager({
 
   const loadJobs = async () => {
     if (!canViewJobs) return
+    if (!isValidUUID(currentProjectId)) {
+      setJobs([])
+      return
+    }
+    const requestContextKey = jobsContextKey
     try {
       const params = new URLSearchParams({ limit: '20' })
       if (isValidUUID(currentProjectId)) params.set('proyecto_id', currentProjectId)
       if (isValidUUID(currentCompId)) params.set('component_id', currentCompId)
       if (isValidUUID(currentBuildId)) params.set('build_id', currentBuildId)
       const response = await fetchWithAuth(`/api/automation-jobs/?${params.toString()}`)
+      // A project/component switch can finish while this request is in flight.
+      // Do not let the old response or its error overwrite the new context.
+      if (jobsContextRef.current !== requestContextKey) return
       if (!response.ok) throw new Error(await response.text())
-      setJobs(await response.json())
+      const nextJobs = await response.json()
+      if (jobsContextRef.current !== requestContextKey) return
+      setJobs(nextJobs)
     } catch (error: any) {
+      if (jobsContextRef.current !== requestContextKey) return
       showFeedback(t('automatizacion.loadJobsErrorTitle'), error?.message || t('automatizacion.loadJobsError'), 'danger')
     }
   }

@@ -3,14 +3,19 @@ import { RefreshCw, Share2, Copy } from 'lucide-react'
 
 export function SharedReportHistory(options: any) {
   const {
-    canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
+    canViewSharedReports, t, sharedReportHistory, setShowFullSharedHistory,
     showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
     visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
-    openSharedReport, copyLink, canShareReports, revokeSharedBundle,
+    openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,
   } = options
-  return (
-    <>
-{canViewSharedReports && isSectionVisible('sharedHistory') && (
+  const content = !canViewSharedReports ? (
+    <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
+      <h6 className="fw-bold mb-1 text-secondary d-flex align-items-center gap-2">
+        <Share2 size={18} /> {t('reportes.sharedHistoryTab')}
+      </h6>
+      <div className="small text-muted">{t('reportes.sharedHistoryPremiumDescription')}</div>
+    </Card>
+  ) : (
   <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
@@ -123,7 +128,8 @@ export function SharedReportHistory(options: any) {
       </tbody>
     </Table>
   </Card>
-)}
-    </>
   )
+  return renderReportesWidget
+    ? renderReportesWidget('sharedHistory', content)
+    : content
 }

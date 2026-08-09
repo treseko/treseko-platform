@@ -32,25 +32,25 @@ export function HistorialFilters({
       </div>
       <Row className="g-2">
         <Col md={3}>
-          <Form.Control size="sm" placeholder={t('historial.searchCase')} value={filters.case_query} onChange={event => onUpdateFilter('case_query', event.target.value)} />
+          <Form.Control name="a11y-historialfilterstsx-35" aria-label="Campo de formulario" size="sm" placeholder={t('historial.searchCase')} value={filters.case_query} onChange={event => onUpdateFilter('case_query', event.target.value)} />
         </Col>
         <Col md={2}>
-          <Form.Control size="sm" placeholder={t('historial.exactCode')} value={filters.case_code} onChange={event => onUpdateFilter('case_code', event.target.value)} />
+          <Form.Control name="a11y-historialfilterstsx-38" aria-label="Campo de formulario" size="sm" placeholder={t('historial.exactCode')} value={filters.case_code} onChange={event => onUpdateFilter('case_code', event.target.value)} />
         </Col>
         <Col md={3}>
-          <Form.Select size="sm" value={filters.build_id} onChange={event => onUpdateFilter('build_id', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-41" aria-label="Campo de formulario" size="sm" value={filters.build_id} onChange={event => onUpdateFilter('build_id', event.target.value)}>
             <option value="">{t('historial.allBuilds')}</option>
             {buildsList.map((build: any) => <option key={build.id} value={build.id}>{build.name || build.nombre}</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.component_id} onChange={event => onUpdateFilter('component_id', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-47" aria-label="Campo de formulario" size="sm" value={filters.component_id} onChange={event => onUpdateFilter('component_id', event.target.value)}>
             <option value="">{t('historial.components')}</option>
             {componentsList.map((component: any) => <option key={component.id} value={component.id}>{component.name || component.nombre}</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.status} onChange={event => onUpdateFilter('status', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-53" aria-label="Campo de formulario" size="sm" value={filters.status} onChange={event => onUpdateFilter('status', event.target.value)}>
             <option value="">{t('historial.statuses')}</option>
             <option value="PASO">{t('historial.pass')}</option>
             <option value="FALLO">{t('historial.fail')}</option>
@@ -59,7 +59,7 @@ export function HistorialFilters({
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.origin} onChange={event => onUpdateFilter('origin', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-62" aria-label="Campo de formulario" size="sm" value={filters.origin} onChange={event => onUpdateFilter('origin', event.target.value)}>
             <option value="">{t('historial.runOrigin')}</option>
             <option value="MANUAL">{t('historial.manual')}</option>
             <option value="AUTOMATIZADA">{t('historial.automated')}</option>
@@ -67,25 +67,25 @@ export function HistorialFilters({
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.runner_id} onChange={event => onUpdateFilter('runner_id', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-70" aria-label="Campo de formulario" size="sm" value={filters.runner_id} onChange={event => onUpdateFilter('runner_id', event.target.value)}>
             <option value="">{t('historial.executor')}</option>
             {appUsers.map((user: any) => <option key={user.id} value={user.id}>{user.name || user.nombre_completo || user.email}</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.environment_id} onChange={event => onUpdateFilter('environment_id', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-76" aria-label="Campo de formulario" size="sm" value={filters.environment_id} onChange={event => onUpdateFilter('environment_id', event.target.value)}>
             <option value="">{t('historial.environmentFilter')}</option>
             {environments.map((env: any) => <option key={env.id} value={env.id}>{env.name || env.nombre}</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.dataset_id} onChange={event => onUpdateFilter('dataset_id', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-82" aria-label="Campo de formulario" size="sm" value={filters.dataset_id} onChange={event => onUpdateFilter('dataset_id', event.target.value)}>
             <option value="">{t('historial.datasetFilter')}</option>
             {datasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.name || dataset.nombre} ({dataset.environmentName})</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Control size="sm" type="number" min={1} placeholder={t('historial.executedVersion')} value={filters.version_executed} onChange={event => onUpdateFilter('version_executed', event.target.value)} />
+          <Form.Control name="a11y-historialfilterstsx-88" aria-label="Campo de formulario" size="sm" type="number" min={1} placeholder={t('historial.executedVersion')} value={filters.version_executed} onChange={event => onUpdateFilter('version_executed', event.target.value)} />
         </Col>
         <Col md={3}>
           <fieldset className="history-date-range border-0 p-0 m-0">
@@ -102,14 +102,14 @@ export function HistorialFilters({
           </fieldset>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.has_evidence} onChange={event => onUpdateFilter('has_evidence', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-105" aria-label="Campo de formulario" size="sm" value={filters.has_evidence} onChange={event => onUpdateFilter('has_evidence', event.target.value)}>
             <option value="">{t('historial.evidence')}</option>
             <option value="true">{t('historial.withEvidence')}</option>
             <option value="false">{t('historial.withoutEvidence')}</option>
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select size="sm" value={filters.ai_review_status} onChange={event => onUpdateFilter('ai_review_status', event.target.value)}>
+          <Form.Select name="a11y-historialfilterstsx-112" aria-label="Campo de formulario" size="sm" value={filters.ai_review_status} onChange={event => onUpdateFilter('ai_review_status', event.target.value)}>
             <option value="">{t('historial.iaReview')}</option>
             <option value="REQUIERE_REVISION">{t('historial.pendingReview')}</option>
             <option value="REVISADA">{t('historial.reviewed')}</option>

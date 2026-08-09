@@ -1,5 +1,5 @@
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
-import { AlertCircle, Save } from 'lucide-react'
+import { AlertCircle, Loader2, Save } from 'lucide-react'
 import { EvidenceUpload } from '../../EvidenceUpload'
 
 export function ManualConsoleExecutionPanel({ context }: { context: any }) {
@@ -33,12 +33,13 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
     handleRemoveGeneralExecutionAttachment,
     evidenceBlockMessage,
     finishDisabled,
+    isCompletingCase,
     handleCompleteCase,
   } = context
 
   return (
     <>
-      <Card.Body className="p-0 bg-light">
+      <Card.Body className="manual-console-body p-0 bg-light">
         {executionSnapshots.map((snapshot: any, index: number) => {
           const hasBlockingPreviousStep = executionSnapshots.slice(0, index).some((previous: any) => {
             const previousStatus = getSnapshotStatus(previous)
@@ -104,7 +105,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
                     <Row className="g-3 align-items-start">
                       <Col md={3}>
                         <Form.Label className="x-small fw-bold text-dark text-uppercase">Veredicto</Form.Label>
-                        <Form.Select size="sm" className={`fw-bold shadow-sm cursor-pointer border-2 p-2 ${currentResult === 'PASO' ? 'text-success border-success' : currentResult === 'FALLO' ? 'text-danger border-danger' : 'text-secondary border-secondary'}`} disabled={isBlocked} value={currentResult} onChange={(event) => handleSnapshotStatusChange(snapshot, event.target.value)}>
+                        <Form.Select name="a11y-manualconsoleexecutionpaneltsx-108" aria-label="Campo de formulario" size="sm" className={`fw-bold shadow-sm cursor-pointer border-2 p-2 ${currentResult === 'PASO' ? 'text-success border-success' : currentResult === 'FALLO' ? 'text-danger border-danger' : 'text-secondary border-secondary'}`} disabled={isBlocked} value={currentResult} onChange={(event) => handleSnapshotStatusChange(snapshot, event.target.value)}>
                           <option value="SIN_CORRER">{t('ejecutarPruebas.pending')}</option>
                           <option value="PASO">{t('ejecutarPruebas.pass')}</option>
                           <option value="FALLO">{t('ejecutarPruebas.fail')}</option>
@@ -115,7 +116,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
                         <Form.Label className="x-small fw-bold text-dark text-uppercase d-flex justify-content-between w-100">
                           <span>{t('ejecutarPruebas.observationsEvidence')}</span>
                         </Form.Label>
-                        <Form.Control as="textarea" rows={2} size="sm" placeholder={hasFailed ? 'Detalla la falla encontrada y adjunta evidencia para Redmine...' : 'Notas opcionales del comportamiento...'} className={`shadow-sm text-dark ${snapshotDocumentationMissing ? 'bg-white border-danger' : 'bg-white border-light-subtle'}`} disabled={isBlocked} value={snapshotNotes[snapshot.numero_paso] || ''} onChange={(event) => handleSnapshotNoteChange(snapshot.numero_paso, event.target.value)} onBlur={() => handleSnapshotNoteBlur(snapshot)} />
+                        <Form.Control name="a11y-manualconsoleexecutionpaneltsx-119" aria-label="Campo de formulario" as="textarea" rows={2} size="sm" placeholder={hasFailed ? 'Detalla la falla encontrada y adjunta evidencia para Redmine...' : 'Notas opcionales del comportamiento...'} className={`shadow-sm text-dark ${snapshotDocumentationMissing ? 'bg-white border-danger' : 'bg-white border-light-subtle'}`} disabled={isBlocked} value={snapshotNotes[snapshot.numero_paso] || ''} onChange={(event) => handleSnapshotNoteChange(snapshot.numero_paso, event.target.value)} onBlur={() => handleSnapshotNoteBlur(snapshot)} />
                         <div className="mt-2">
                           <EvidenceUpload compact label="Adjuntar evidencia" uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} disabled={isBlocked} currentEvidence={snapshot.evidencia_url} currentAttachments={snapshotAttachments[snapshot.id] || []} onUploadComplete={(attachment) => handleSnapshotAttachmentUpload(snapshot, attachment)} onRemoveAttachment={(attachment) => handleRemoveSnapshotAttachment(snapshot, attachment)} />
                         </div>
@@ -148,7 +149,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="x-small fw-bold text-dark text-uppercase">Veredicto general</Form.Label>
-                <Form.Select size="sm" className="fw-bold shadow-sm border-2 p-2 text-dark" value={generalExecutionStatus} onChange={(event) => setGeneralExecutionStatus(event.target.value)}>
+                <Form.Select name="a11y-manualconsoleexecutionpaneltsx-152" aria-label="Campo de formulario" size="sm" className="fw-bold shadow-sm border-2 p-2 text-dark" value={generalExecutionStatus} onChange={(event) => setGeneralExecutionStatus(event.target.value)}>
                   <option value="SIN_CORRER">{t('ejecutarPruebas.pending')}</option>
                   <option value="PASO">{t('ejecutarPruebas.pass')}</option>
                   <option value="FALLO">{t('ejecutarPruebas.fail')}</option>
@@ -157,7 +158,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
               </Col>
               <Col md={8}>
                 <Form.Label className="x-small fw-bold text-dark text-uppercase">{t('ejecutarPruebas.generalObservation')}</Form.Label>
-                <Form.Control as="textarea" rows={3} size="sm" className={`shadow-sm text-dark bg-white ${generalDocumentationMissing ? 'border-danger' : 'border-light-subtle'}`} value={generalExecutionNote} onChange={(event) => setGeneralExecutionNote(event.target.value)} placeholder={generalExecutionStatus === 'FALLO' || generalExecutionStatus === 'BLOQUEADO' ? t('ejecutarPruebas.failureOrBlockPlaceholder') : t('ejecutarPruebas.generalNotesPlaceholder')} />
+                <Form.Control name="a11y-manualconsoleexecutionpaneltsx-161" aria-label="Campo de formulario" as="textarea" rows={3} size="sm" className={`shadow-sm text-dark bg-white ${generalDocumentationMissing ? 'border-danger' : 'border-light-subtle'}`} value={generalExecutionNote} onChange={(event) => setGeneralExecutionNote(event.target.value)} placeholder={generalExecutionStatus === 'FALLO' || generalExecutionStatus === 'BLOQUEADO' ? t('ejecutarPruebas.failureOrBlockPlaceholder') : t('ejecutarPruebas.generalNotesPlaceholder')} />
                 {(requireFailureDocumentation && isEvidenceRequiredStatus(generalExecutionStatus)) && (
                   <div className={`mt-2 rounded-3 ${generalDocumentationMissing ? 'p-2 bg-danger bg-opacity-10 border border-danger border-opacity-25' : ''}`}>
                     <EvidenceUpload compact label="Adjuntar evidencia general" uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} currentEvidence={generalExecutionSnapshot?.evidencia_url} currentAttachments={generalExecutionAttachments} onUploadComplete={handleGeneralExecutionAttachmentUpload} onRemoveAttachment={handleRemoveGeneralExecutionAttachment} />
@@ -181,8 +182,9 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
             ? 'Si marcas FALLO o BLOQUEADO, agrega un comentario o adjunta evidencia.'
             : t('ejecutarPruebas.documentEvidenceHint'))}
         </span>
-        <Button variant="success" className="px-5 fw-bold shadow py-3 rounded-pill d-flex align-items-center gap-2 fs-6" onClick={handleCompleteCase} disabled={finishDisabled} title={evidenceBlockMessage ? t('ejecutarPruebas.missingFailureDoc') : undefined}>
-          <Save size={20}/> {t('ejecutarPruebas.finishAndSave')}
+        <Button variant="success" className="manual-console-finish-button fw-bold shadow rounded-pill d-flex align-items-center justify-content-center gap-2" onClick={handleCompleteCase} disabled={finishDisabled} aria-busy={isCompletingCase} title={evidenceBlockMessage ? t('ejecutarPruebas.missingFailureDoc') : undefined}>
+          {isCompletingCase ? <Loader2 size={20} className="spin" aria-hidden="true" /> : <Save size={20} aria-hidden="true"/>}
+          {isCompletingCase ? t('ejecutarPruebas.savingResult') : t('ejecutarPruebas.finishAndSave')}
         </Button>
       </Card.Footer>
     </>

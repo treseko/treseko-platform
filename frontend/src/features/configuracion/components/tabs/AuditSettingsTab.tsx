@@ -239,23 +239,23 @@ export function AuditSettingsTab({ fetchWithAuth, showFeedback }: AuditSettingsT
           <Col lg={4}>
             <div className="position-relative">
               <Search size={15} className="position-absolute text-muted" style={{ left: 12, top: 10 }} />
-              <Form.Control size="sm" className="ps-5" placeholder={t('configuracion.auditSearch')} value={search} onChange={event => setSearch(event.target.value)} />
+              <Form.Control name="a11y-auditsettingstabtsx-242" aria-label="Campo de formulario" size="sm" className="ps-5" placeholder={t('configuracion.auditSearch')} value={search} onChange={event => setSearch(event.target.value)} />
             </div>
           </Col>
           <Col lg={3}>
-            <Form.Select size="sm" value={resourceFilter} onChange={event => setResourceFilter(event.target.value)}>
+            <Form.Select name="a11y-auditsettingstabtsx-246" aria-label="Campo de formulario" size="sm" value={resourceFilter} onChange={event => setResourceFilter(event.target.value)}>
               <option value="">{t('configuracion.allResources')}</option>
               {resources.map(resource => <option key={resource} value={resource}>{resourceLabel(resource, t)}</option>)}
             </Form.Select>
           </Col>
           <Col lg={3}>
-            <Form.Select size="sm" value={actionFilter} onChange={event => setActionFilter(event.target.value)}>
+            <Form.Select name="a11y-auditsettingstabtsx-252" aria-label="Campo de formulario" size="sm" value={actionFilter} onChange={event => setActionFilter(event.target.value)}>
               <option value="">{t('configuracion.allActions')}</option>
               {actions.map(action => <option key={action} value={action}>{actionLabel(action, t)}</option>)}
             </Form.Select>
           </Col>
           <Col lg={2}>
-            <Form.Select size="sm" value={limit} onChange={event => setLimit(Number(event.target.value))}>
+            <Form.Select name="a11y-auditsettingstabtsx-258" aria-label="Campo de formulario" size="sm" value={limit} onChange={event => setLimit(Number(event.target.value))}>
               <option value={50}>50 {t('configuracion.events')}</option>
               <option value={100}>100 {t('configuracion.events')}</option>
               <option value={250}>250 {t('configuracion.events')}</option>

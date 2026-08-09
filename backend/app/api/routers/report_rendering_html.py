@@ -123,7 +123,13 @@ def _shared_report_html(snapshot: models.SharedReportSnapshot, request: Request,
             f"</section>"
             f"{_render_section_if(_report_section_enabled(payload, 'executive', 'findings'), 'Top hallazgos relevantes', _render_executive_issues(cases))}"
         )
-    return f"{head}{body}</main></body></html>"
+    footer_version = meta.get("app_version")
+    footer = (
+        f"<footer class='report-footer'>Treseko Platform · v{html.escape(str(footer_version))}</footer>"
+        if footer_version
+        else "<footer class='report-footer'>Treseko Platform</footer>"
+    )
+    return f"{head}{body}{footer}</main></body></html>"
 
 def _shared_report_csv(snapshot: models.SharedReportSnapshot) -> str:
     payload = snapshot.payload or {}
@@ -140,6 +146,7 @@ def _shared_report_csv(snapshot: models.SharedReportSnapshot) -> str:
         ("Organizacion", meta.get("organizacion") or "N/D"),
         ("Proyecto", meta.get("proyecto") or "N/D"),
         ("Componente", meta.get("componente") or "N/D"),
+        ("Version de Treseko", meta.get("app_version") or "N/D"),
         ("Build", meta.get("build") or metrics.get("build_name") or "N/D"),
         ("Tipo informe", _report_type_from_payload(payload)),
         ("Diagnóstico de calidad", qa_summary.get("decision") or "N/D"),

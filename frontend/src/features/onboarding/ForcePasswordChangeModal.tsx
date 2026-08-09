@@ -4,16 +4,13 @@ import { KeyRound, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { applyPasswordChangeResult } from './passwordChangeResult'
 import { useI18n } from '../../i18n'
+import { needsForcedPasswordChange } from './passwordChangeUtils'
 
 type ForcePasswordChangeModalProps = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   onAccessTokenRefreshed: (accessToken: string) => void
   onPreferencesUpdated: (preferences: any) => void
-}
-
-export function needsForcedPasswordChange(profileSettings: any) {
-  return profileSettings?.security?.force_password_change === true
 }
 
 export function ForcePasswordChangeModal({
@@ -85,8 +82,10 @@ export function ForcePasswordChangeModal({
           {error && <Alert variant="danger" className="small py-2">{error}</Alert>}
           <div className="d-grid gap-3">
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.currentPassword')}</Form.Label>
+              <Form.Label htmlFor="force-password-current" className="small fw-bold text-muted">{t('forcePasswordChange.currentPassword')}</Form.Label>
               <Form.Control
+                id="force-password-current"
+                name="currentPassword"
                 type="password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
@@ -95,8 +94,10 @@ export function ForcePasswordChangeModal({
               />
             </Form.Group>
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.newPassword')}</Form.Label>
+              <Form.Label htmlFor="force-password-new" className="small fw-bold text-muted">{t('forcePasswordChange.newPassword')}</Form.Label>
               <Form.Control
+                id="force-password-new"
+                name="newPassword"
                 type="password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
@@ -107,8 +108,10 @@ export function ForcePasswordChangeModal({
               <div className="x-small text-muted mt-1">{t('forcePasswordChange.minimumPasswordLength')}</div>
             </Form.Group>
             <Form.Group>
-              <Form.Label className="small fw-bold text-muted">{t('forcePasswordChange.confirmNewPassword')}</Form.Label>
+              <Form.Label htmlFor="force-password-confirm" className="small fw-bold text-muted">{t('forcePasswordChange.confirmNewPassword')}</Form.Label>
               <Form.Control
+                id="force-password-confirm"
+                name="confirmPassword"
                 type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}

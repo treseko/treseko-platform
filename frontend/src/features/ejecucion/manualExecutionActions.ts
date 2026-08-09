@@ -50,6 +50,7 @@ type CreateManualExecutionActionsParams = {
   setGeneralExecutionSnapshot: Dispatch<SetStateAction<any>>
   setGeneralExecutionAttachments: Dispatch<SetStateAction<AttachmentMeta[]>>
   setCurrentExecutionCase: Dispatch<SetStateAction<any>>
+  setCurrentExecutionRun: Dispatch<SetStateAction<any>>
   setRedmineDecisionByExecution: Dispatch<SetStateAction<Record<string, 'reported' | 'deferred'>>>
   setShowRedminePrompt: (show: boolean) => void
   setShowRedmineDrawer: (show: boolean) => void
@@ -100,6 +101,7 @@ export function createManualExecutionActions({
   setGeneralExecutionSnapshot,
   setGeneralExecutionAttachments,
   setCurrentExecutionCase,
+  setCurrentExecutionRun,
   setRedmineDecisionByExecution,
   setShowRedminePrompt,
   setShowRedmineDrawer,
@@ -107,7 +109,43 @@ export function createManualExecutionActions({
   t,
   showFeedback
 }: CreateManualExecutionActionsParams) {
-  const advanceToNextTest = async () => {
+  const terminalExecutionStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
+  const normalizeExecutionStatus = (status: unknown) => String(status || 'SIN_CORRER').toUpperCase()
+
+  const markCurrentRunCaseAsCompleted = (caseId: string | undefined, status: string | undefined) => {
+    if (!caseId || !status || typeof setCurrentExecutionRun !== 'function') return
+    setCurrentExecutionRun((previous: any) => {
+      if (!previous) return previous
+      return {
+        ...previous,
+        execution_statuses_by_case_id: {
+          ...(previous.execution_statuses_by_case_id || {}),
+          [caseId]: status
+        }
+      }
+    })
+  }
+
+  const isBatchCompleted = (completedCaseId?: string, completedStatus?: string) => {
+    if (!currentExecutionRun?.id || activeExecutionTests.length === 0) return false
+    const statuses = currentExecutionRun.execution_statuses_by_case_id || {}
+    return activeExecutionTests.every(test => {
+      const status = test.id === completedCaseId && completedStatus
+        ? completedStatus
+        : statuses[test.id]
+      return terminalExecutionStatuses.has(normalizeExecutionStatus(status))
+    })
+  }
+
+  const advanceToNextTest = async (completedCaseId?: string, completedStatus?: string) => {
+    markCurrentRunCaseAsCompleted(completedCaseId, completedStatus)
+
+    if (isBatchCompleted(completedCaseId, completedStatus)) {
+      returnToExecutionList()
+      showFeedback(t('ejecutarPruebas.manualBatchCompleted'), t('ejecutarPruebas.manualBatchCompletedMessage'), 'success')
+      return
+    }
+
     const currentIndex = activeExecutionTests.findIndex(t => t.id === selectedTest?.id)
     if (currentIndex !== -1 && currentIndex < activeExecutionTests.length - 1) {
       const nextTest = activeExecutionTests[currentIndex + 1]
@@ -123,23 +161,28 @@ export function createManualExecutionActions({
             history: historial
           }
         : { ...nextTest, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history: historial }
-      setSelectedTest(hydratedNextTest)
-      setCasosList(prev => prev.map(c => c.id === nextTest.id ? { ...c, ...hydratedNextTest } : c))
-      setStepResults({})
-      setSnapshotNotes({})
-      setGeneralExecutionStatus('SIN_CORRER')
-      setGeneralExecutionNote('')
-      setExecutionSnapshots([])
-      setSnapshotAttachments({})
-      setGeneralExecutionSnapshot(null)
-      setGeneralExecutionAttachments([])
-      setCurrentExecutionCase(null)
+
+      // No limpiar el caso visible antes de cargar el siguiente. Durante ese
+      // intervalo la consola pintaba SIN_CORRER aunque el caso anterior ya
+      // estuviera finalizado. loadExecutionDetails deja listo el estado real
+      // del siguiente caso y recién después cambiamos la selección visual.
       if (currentExecutionRun?.id) {
         await loadExecutionDetails(currentExecutionRun.id, nextTest.id)
+      } else {
+        setStepResults({})
+        setSnapshotNotes({})
+        setGeneralExecutionStatus('SIN_CORRER')
+        setGeneralExecutionNote('')
+        setExecutionSnapshots([])
+        setSnapshotAttachments({})
+        setGeneralExecutionSnapshot(null)
+        setGeneralExecutionAttachments([])
+        setCurrentExecutionCase(null)
       }
+      setSelectedTest(hydratedNextTest)
+      setCasosList(prev => prev.map(c => c.id === nextTest.id ? { ...c, ...hydratedNextTest } : c))
     } else {
-      returnToExecutionList()
-      showFeedback(t('ejecutarPruebas.manualBatchCompleted'), t('ejecutarPruebas.manualBatchCompletedMessage'), 'success')
+      showFeedback(t('ejecutarPruebas.manualCaseCompleted'), t('ejecutarPruebas.manualCaseCompletedMessage'), 'info')
     }
   }
 
@@ -203,16 +246,21 @@ export function createManualExecutionActions({
       }
     }
 
+    // Keep the current run map in sync before deciding whether the batch is
+    // complete. This is especially important while a failure is waiting for
+    // the user's Redmine decision.
+    markCurrentRunCaseAsCompleted(selectedTest.id, backendFinalStatus)
+
     if (backendFinalStatus === 'FALLO' || backendFinalStatus === 'BLOQUEADO') {
       if (currentExecutionCase?.id && redmineDecisionByExecution[currentExecutionCase.id]) {
         showFeedback(t('ejecutarPruebas.executionCompleted'), t('ejecutarPruebas.executionCompletedWithBugDecision', { status: backendFinalStatus }), 'success')
-        await advanceToNextTest()
+        await advanceToNextTest(selectedTest.id, backendFinalStatus)
         return
       }
       setShowRedminePrompt(true)
     } else {
       showFeedback(t('ejecutarPruebas.executionCompleted'), t('ejecutarPruebas.executionCompletedMessage', { status: backendFinalStatus }), 'success')
-      await advanceToNextTest()
+      await advanceToNextTest(selectedTest.id, backendFinalStatus)
     }
   }
 

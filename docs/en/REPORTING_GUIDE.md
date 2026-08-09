@@ -22,6 +22,30 @@ Use **Configure view** to reorder, show or hide blocks. Cards can adapt to the
 available space; after resizing them, check that tables and metrics remain
 readable.
 
+## Quality Intelligence
+
+When the project has this block enabled, it summarizes signals calculated from
+already recorded executions:
+
+- health and stability for each case, including a *flaky* signal when
+  comparable results alternate;
+- failures grouped by a technical fingerprint, so the same issue can be
+  investigated without opening duplicate diagnoses;
+- assisted diagnoses that separate facts, hypotheses, evidence and unknowns;
+  they are drafts, can be edited by creating a new auditable version, and
+  require human review before a bug is created; and
+- an explainable release-risk snapshot, which neither changes the build state
+  nor approves the build automatically.
+
+You can recalculate the signals after new executions. If there are new
+executions or evidence, the analysis becomes stale: rebuild it before creating
+diagnoses, evaluating risk, or accepting risk. Risk flakiness uses only the
+selected build observations and, when available, compares the last accepted
+build as context. Accepting risk requires a reason and is audited. If
+executions, coverage or evidence are missing, the correct outcome can be
+**Human review**. Impact-based regression selection does not replace the
+complete suite until a traceable change source exists.
+
 ## Common actions
 
 - Refresh data after an execution.

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import type { CSSProperties, Dispatch, ReactNode, SetStateAction } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeft,
@@ -88,11 +88,13 @@ export function AppShell({
   const currentProject = projectsList.find(project => project.id === currentProjectId)
   const currentComponent = componentsList.find(component => component.id === currentCompId)
   const currentBuild = buildsList.find(build => build.id === currentBuildId)
-  const currentBuildReadOnly = isBuildReadOnly(currentBuild)
+  const currentVisibleBuild = currentBuild?.hidden ? undefined : currentBuild
+  const currentBuildReadOnly = isBuildReadOnly(currentVisibleBuild)
   const projectComponents = componentsList.filter(component => component.projectId === currentProjectId)
   const currentOrgIsActive = activeOrganizations.some(org => org.id === currentOrgId)
   const orgProjects = currentOrgIsActive ? projectsList.filter(project => project.orgId === currentOrgId) : []
-  const visibleBuilds = buildsList.filter(build => build.projectId === currentProjectId && build.componentId === currentCompId && !build.hidden)
+  const componentBuilds = buildsList.filter(build => build.projectId === currentProjectId && build.componentId === currentCompId)
+  const visibleBuilds = componentBuilds.filter(build => !build.hidden)
   const editionLabel = systemEdition === 'premium' ? 'Premium' : 'Community'
   const brandName = branding.effective_brand_name || DEFAULT_BRANDING.effective_brand_name
   const brandLogoUrl = resolveAssetUrl(branding.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url
@@ -121,7 +123,7 @@ export function AppShell({
           <div className="fw-bold text-white lh-sm text-truncate">{brandName}</div>
           <div className="app-edition-text text-truncate">{editionLabel}</div>
           <div className="x-small text-white-50 text-truncate">
-          {currentProject?.name || t('common.noProject')} {currentBuild?.name ? `- ${currentBuild.name}` : ''}
+          {currentProject?.name || t('common.noProject')} {currentVisibleBuild?.name ? `- ${currentVisibleBuild.name}` : ''}
           </div>
         </div>
       </div>
@@ -171,7 +173,7 @@ export function AppShell({
           </Dropdown>
           <Dropdown>
             <Dropdown.Toggle variant="dark" className="w-100 border border-secondary d-flex justify-content-between align-items-center shadow-none">
-              <span className="text-truncate">{currentBuild?.name || t('common.noBuild')}</span>
+              <span className="text-truncate">{currentVisibleBuild?.name || t('common.noBuild')}</span>
               {currentBuildReadOnly && <Badge bg="warning" text="dark" className="ms-1">{t('common.readOnly')}</Badge>}
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
@@ -219,7 +221,10 @@ export function AppShell({
         </div>
       </div>
 
-      <aside className="app-shell-sidebar bg-dark text-white d-flex flex-column shadow-lg transition-all" style={{ width: sidebarCollapsed ? '72px' : '260px', minWidth: sidebarCollapsed ? '72px' : '260px' }}>
+      <aside
+        className="app-shell-sidebar bg-dark text-white d-flex flex-column shadow-lg"
+        style={{ '--app-sidebar-width': sidebarCollapsed ? '72px' : '260px' } as CSSProperties}
+      >
         <div className={`border-bottom border-secondary d-flex align-items-center ${sidebarCollapsed ? 'justify-content-center p-3' : 'gap-2 p-4'}`}>
           <span className="app-brand-mark flex-shrink-0" aria-hidden="true">
             <img src={brandLogoUrl} alt="" className="app-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
@@ -379,7 +384,7 @@ export function AppShell({
             <Dropdown>
               <Dropdown.Toggle variant="light" size="sm" className="border d-flex align-items-center gap-1 small fw-bold py-1 px-3 rounded-pill shadow-sm text-dark bg-white shadow-none">
                 <PlayCircle size={14} className="text-warning" />
-                {t('common.build')}: <span className="text-primary">{currentBuild?.name || t('common.noBuild')}</span>
+                {t('common.build')}: <span className="text-primary">{currentVisibleBuild?.name || t('common.noBuild')}</span>
                 {currentBuildReadOnly && <Badge bg="warning" text="dark" className="ms-1">{t('common.readOnly')}</Badge>}
               </Dropdown.Toggle>
               <Dropdown.Menu className="shadow-lg py-1 border text-start" align="end" style={{ minWidth: '200px' }}>

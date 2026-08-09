@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ... import models, schemas
+from ...frontend_url import frontend_public_url
 
 
 EMAIL_SMTP_CONFIG_KEY = "email_smtp_config"
@@ -25,7 +26,7 @@ DEFAULT_EMAIL_SMTP_CONFIG: dict[str, Any] = {
     "timeout_seconds": 20,
     "max_attempts": 5,
     "default_locale": "es",
-    "base_url": os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL", "http://localhost:5173"),
+    "base_url": frontend_public_url(),
     "daily_send_limit": 500,
     "test_mode": False,
 }

@@ -4,6 +4,15 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 
+function cleanupWorkspace(workspace) {
+  try {
+    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    // La limpieza no debe reemplazar el resultado del job ni sacar al worker del loop.
+    console.warn(`No se pudo limpiar el workspace temporal ${workspace}: ${error?.message || error}`);
+  }
+}
+
 export function createJobExecutor(deps) {
   const {
     RUNNER_NAME, ROOT_DIR, state,
@@ -104,7 +113,7 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       steps: [],
     });
   } finally {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    cleanupWorkspace(workspace);
   }
 }
 
@@ -140,7 +149,7 @@ async function executePuppeteerJob(job, script, variables, started) {
       artifacts: collectArtifacts(workspace),
     });
   } finally {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    cleanupWorkspace(workspace);
   }
 }
 
@@ -199,7 +208,7 @@ async function executeCypressJob(job, script, variables, started) {
       artifacts: collectArtifacts(workspace),
     });
   } finally {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    cleanupWorkspace(workspace);
   }
 }
 
@@ -236,7 +245,7 @@ async function executeSeleniumPythonJob(job, script, variables, started) {
       artifacts: collectArtifacts(workspace),
     });
   } finally {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    cleanupWorkspace(workspace);
   }
 }
 

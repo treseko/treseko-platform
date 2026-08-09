@@ -113,6 +113,12 @@ export function createContextActions({
   const handleProjectChange = (projId: string) => {
     resetExecutionSelection()
     setProjectMetrics(null)
+    // A component/build belongs to the previous project until the new context
+    // finishes hydrating. Clear both selections first so dependent views do not
+    // query the new project with a stale build id from the previous one.
+    setCurrentCompId('')
+    setCurrentBuildId('')
+    setNewTestComponent('')
     setCurrentProjectId(projId)
     const proj = projectsList.find(p => p.id === projId)
     if (proj) {
@@ -137,7 +143,10 @@ export function createContextActions({
   }
 
   const handleComponentChange = async (componentId: string) => {
+    // Builds are scoped to a component. Do not let automation/reporting issue
+    // a request with the previous component's build during the async refresh.
     setCurrentCompId(componentId)
+    setCurrentBuildId('')
     setNewTestComponent(componentId || 'Web')
     resetExecutionSelection()
     await hydrateProjectContext(currentProjectId, componentId)

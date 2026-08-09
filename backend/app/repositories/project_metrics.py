@@ -181,13 +181,18 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         return " / ".join(reversed(names)) if names else "Sin Suite"
 
     result_ejecuciones = await db.execute(
-        select(models.EjecucionCaso).join(models.TestRun).filter(
+        select(models.EjecucionCaso, models.TestRun).join(models.TestRun).filter(
             models.TestRun.build_id == build.id,
             models.EjecucionCaso.caso_id.in_(version_case_ids),
             models.EjecucionCaso.estado_resultado != models.EstadoResultado.SIN_CORRER,
         )
     )
-    ejecuciones = result_ejecuciones.scalars().all()
+    ejecucion_rows = result_ejecuciones.all()
+    ejecuciones = [ejecucion for ejecucion, _run in ejecucion_rows]
+    run_origin_by_execution_id = {
+        str(ejecucion.id): run.origen
+        for ejecucion, run in ejecucion_rows
+    }
 
     ejecutados_masters = set()
     stats = {"pasados": 0, "fallados": 0, "bloqueados": 0, "pendientes": total_asignados}
@@ -241,6 +246,8 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         prioridad = caso.prioridad.value if hasattr(caso.prioridad, 'value') else caso.prioridad
         version_actual = caso.version or (ejecucion.version_ejecutada if ejecucion else None)
         version_ejecutada = ejecucion.version_ejecutada if ejecucion else version_actual
+        run_origin = run_origin_by_execution_id.get(str(ejecucion.id)) if ejecucion else None
+        execution_mode = _execution_mode_value(ejecucion, caso, run_origin) if ejecucion else None
         # Datos detallados del caso
         caso_detalle = {
             "id": str(caso.id),
@@ -252,7 +259,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "descripcion": caso.descripcion or "",
             "prioridad": prioridad,
             "tipo_prueba": caso.tipo_prueba.value if hasattr(caso.tipo_prueba, 'value') else caso.tipo_prueba,
-            "execution_mode": _execution_mode_value(ejecucion, caso) if ejecucion else None,
+            "execution_mode": execution_mode,
             "review_status": _review_status_for_execution(ejecucion) if ejecucion else None,
             "estado": estado,
             "fecha_ejecucion": ejecucion.fecha_ejecucion.isoformat() if ejecucion and ejecucion.fecha_ejecucion else None,
@@ -267,8 +274,19 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "snapshots": [],
             "bugs": [],
         }
-        ai_report = ejecucion.ai_report if ejecucion else {}
-        if ejecucion and isinstance(ai_report, dict) and ai_report:
+        ai_report = (
+            ejecucion.ai_report
+            if ejecucion and isinstance(ejecucion.ai_report, dict)
+            else {}
+        )
+        is_ai_execution = bool(
+            ejecucion
+            and (
+                execution_mode == models.ExecutionMode.IA.value
+                or (isinstance(ai_report, dict) and bool(ai_report))
+            )
+        )
+        if is_ai_execution:
             error_code = _ai_error_code_from_report(ai_report, ejecucion.estado_resultado)
             caso_detalle["ai"] = {
                 "confidence": ejecucion.ai_confidence or ai_report.get("confidence"),
@@ -323,7 +341,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             por_prioridad[prioridad]["pasados"] += 1
             por_prioridad[prioridad]["pendientes"] -= 1
             por_suite[suite_id]["pasados"] += 1
-            por_modo_ejecucion[_execution_mode_key(_execution_mode_value(ejecucion, caso))] += 1
+            por_modo_ejecucion[_execution_mode_key(execution_mode)] += 1
             por_tipo_prueba[_case_type_key(caso)] += 1
         elif estado == "FALLO":
             stats["fallados"] += 1
@@ -331,7 +349,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             por_prioridad[prioridad]["fallados"] += 1
             por_prioridad[prioridad]["pendientes"] -= 1
             por_suite[suite_id]["fallados"] += 1
-            por_modo_ejecucion[_execution_mode_key(_execution_mode_value(ejecucion, caso))] += 1
+            por_modo_ejecucion[_execution_mode_key(execution_mode)] += 1
             por_tipo_prueba[_case_type_key(caso)] += 1
         elif estado == "BLOQUEADO":
             stats["bloqueados"] += 1
@@ -339,7 +357,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             por_prioridad[prioridad]["bloqueados"] += 1
             por_prioridad[prioridad]["pendientes"] -= 1
             por_suite[suite_id]["bloqueados"] += 1
-            por_modo_ejecucion[_execution_mode_key(_execution_mode_value(ejecucion, caso))] += 1
+            por_modo_ejecucion[_execution_mode_key(execution_mode)] += 1
             por_tipo_prueba[_case_type_key(caso)] += 1
         else:
             por_suite[suite_id]["pendientes"] += 1

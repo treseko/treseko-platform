@@ -5,6 +5,7 @@ import { isValidUUID } from '../../app/validation'
 import { mergeCasesById } from '../casos/caseUtils'
 import type { TranslationKey } from '../../i18n'
 import { createIaLog as iaLog, type ExecutionMode, type FeedbackVariant } from './executionPresentation'
+import { getExecutionStatusesByCaseId } from './executionRunStatus'
 
 type CreateExecutionActionsParams = {
   managingProjectId: string | null
@@ -54,7 +55,6 @@ type CreateExecutionActionsParams = {
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
-
 export function createExecutionActions({
   managingProjectId,
   currentProjectId,
@@ -196,6 +196,18 @@ export function createExecutionActions({
   }
 
   const loadExecutionDetails = async (runId: string, caseId: string) => {
+    const runDetailResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/`)
+    const runDetail = runDetailResponse.ok ? await runDetailResponse.json().catch(() => null) : null
+    if (runDetail) {
+      setCurrentExecutionRun((previous: any) => ({
+        ...(previous || {}),
+        dataset_nombre: runDetail.dataset?.nombre || previous?.dataset_nombre || null,
+        dataset_name: runDetail.dataset?.nombre || previous?.dataset_name || null,
+        entorno: runDetail.entorno?.nombre || previous?.entorno,
+        datasets_resueltos: runDetail.datasets_resueltos || previous?.datasets_resueltos || {},
+        variables_resueltas: runDetail.variables_resueltas || previous?.variables_resueltas || {},
+      }))
+    }
     const ejecucionesResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
     if (!ejecucionesResponse.ok) throw new Error(`Backend respondió ${ejecucionesResponse.status}`)
     let ejecuciones = await ejecucionesResponse.json()
@@ -207,6 +219,7 @@ export function createExecutionActions({
       lastExecutionPageSize = page.length
       ejecuciones = [...ejecuciones, ...page]
     }
+    setCurrentExecutionRun((previous: any) => ({ ...(previous || {}), execution_statuses_by_case_id: getExecutionStatusesByCaseId(ejecuciones) }))
     const ejecucion = ejecuciones.find((item: any) => item.caso_id === caseId) || ejecuciones[0]
     if (!ejecucion) throw new Error('La ejecución no tiene casos asociados')
     const snapshotsResponse = await fetchWithAuth(`${API_BASE}/ejecuciones/${ejecucion.id}/snapshots/`)

@@ -4,11 +4,10 @@ import { Bug, Image as ImageIcon } from 'lucide-react'
 import { formatBugPriorityOption } from '../bugs/bugPresentation'
 import { BugBuildHistoryMetrics } from './BugBuildHistoryMetrics'
 
-export function ReportDetailWidgets(options: any): ReactNode {
-  const { renderReportesWidget, t, setDetailFilters, detailFilters, suiteFilterOptions, priorityFilterOptions, uniqueOptions, allReportBugs, failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent, bugTraceability, bugMetrics, filteredReportBugs, filteredFailures, filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant, onOpenBugTracker, showFeedback, evidenceSummary } = options
-  return (
-    <>
-          {renderReportesWidget('filters', (
+export function ReportDetailWidgets(options: any): ReactNode[] {
+  const { renderReportesWidget, t, setDetailFilters, detailFilters, suiteFilterOptions, priorityFilterOptions, uniqueOptions, allReportBugs, failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent, bugTraceability, bugMetrics, filteredReportBugs, filteredFailures, filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant, onOpenBugTracker, canViewBugs = true, showFeedback, evidenceSummary } = options
+  return [
+          renderReportesWidget('filters', (
           <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
               <div>
@@ -25,37 +24,37 @@ export function ReportDetailWidgets(options: any): ReactNode {
             </div>
             <Row className="g-2">
               <Col md={3}>
-                <Form.Select size="sm" value={detailFilters.suite} onChange={(event) => setDetailFilters((current) => ({ ...current, suite: event.target.value }))}>
+                <Form.Select id="report-filter-suite" name="reportSuite" aria-label={t('reportes.allSuites')} size="sm" value={detailFilters.suite} onChange={(event) => setDetailFilters((current) => ({ ...current, suite: event.target.value }))}>
                   <option value="">{t('reportes.allSuites')}</option>
                   {suiteFilterOptions.map((value) => <option key={value} value={value}>{value}</option>)}
                 </Form.Select>
               </Col>
               <Col md={2}>
-                <Form.Select size="sm" value={detailFilters.priority} onChange={(event) => setDetailFilters((current) => ({ ...current, priority: event.target.value }))}>
+                <Form.Select id="report-filter-priority" name="reportPriority" aria-label={t('reportes.allPriorities')} size="sm" value={detailFilters.priority} onChange={(event) => setDetailFilters((current) => ({ ...current, priority: event.target.value }))}>
                   <option value="">{t('reportes.allPriorities')}</option>
                   {priorityFilterOptions.map((value) => <option key={value} value={value}>{formatBugPriorityOption(value)}</option>)}
                 </Form.Select>
               </Col>
               <Col md={2}>
-                <Form.Select size="sm" value={detailFilters.status} onChange={(event) => setDetailFilters((current) => ({ ...current, status: event.target.value }))}>
+                <Form.Select id="report-filter-status" name="reportStatus" aria-label={t('reportes.allStatuses')} size="sm" value={detailFilters.status} onChange={(event) => setDetailFilters((current) => ({ ...current, status: event.target.value }))}>
                   <option value="">{t('reportes.allStatuses')}</option>
                   {uniqueOptions([...allReportBugs, ...failureItems], (item) => item.estado).map((value) => <option key={value} value={value}>{value}</option>)}
                 </Form.Select>
               </Col>
               <Col md={2}>
-                <Form.Select size="sm" value={detailFilters.owner} onChange={(event) => setDetailFilters((current) => ({ ...current, owner: event.target.value }))}>
+                <Form.Select id="report-filter-owner" name="reportOwner" aria-label={t('reportes.allAssignees')} size="sm" value={detailFilters.owner} onChange={(event) => setDetailFilters((current) => ({ ...current, owner: event.target.value }))}>
                   <option value="">{t('reportes.allAssignees')}</option>
                   {ownerFilterOptions.map((value) => <option key={value} value={value}>{value}</option>)}
                 </Form.Select>
               </Col>
               <Col md={2}>
-                <Form.Select size="sm" value={detailFilters.executionMode} onChange={(event) => setDetailFilters((current) => ({ ...current, executionMode: event.target.value }))}>
+                <Form.Select id="report-filter-mode" name="reportExecutionMode" aria-label={t('reportes.allModes')} size="sm" value={detailFilters.executionMode} onChange={(event) => setDetailFilters((current) => ({ ...current, executionMode: event.target.value }))}>
                   <option value="">{t('reportes.allModes')}</option>
                   {uniqueOptions([...allReportBugs, ...failureItems], (item) => item.execution_mode).map((value) => <option key={value} value={value}>{value}</option>)}
                 </Form.Select>
               </Col>
               <Col md={1}>
-                <Form.Select size="sm" value={detailFilters.bug} onChange={(event) => setDetailFilters((current) => ({ ...current, bug: event.target.value }))}>
+                <Form.Select id="report-filter-bug" name="reportBugStatus" aria-label={t('reportes.openBugs')} size="sm" value={detailFilters.bug} onChange={(event) => setDetailFilters((current) => ({ ...current, bug: event.target.value }))}>
                   <option value="open">{t('reportes.openBugs')}</option>
                   <option value="closed">{t('reportes.closedBugs')}</option>
                   <option value="">{t('reportes.all')}</option>
@@ -64,7 +63,7 @@ export function ReportDetailWidgets(options: any): ReactNode {
                 </Form.Select>
               </Col>
               <Col md={1}>
-                <Form.Select size="sm" value={detailFilters.evidence} onChange={(event) => setDetailFilters((current) => ({ ...current, evidence: event.target.value }))}>
+                <Form.Select id="report-filter-evidence" name="reportEvidence" aria-label={t('reportes.evidence')} size="sm" value={detailFilters.evidence} onChange={(event) => setDetailFilters((current) => ({ ...current, evidence: event.target.value }))}>
                   <option value="">{t('reportes.evidence')}</option>
                   <option value="with">{t('reportes.withEvidence')}</option>
                   <option value="without">{t('reportes.withoutEvidence')}</option>
@@ -72,9 +71,9 @@ export function ReportDetailWidgets(options: any): ReactNode {
               </Col>
             </Row>
           </Card>
-          ))}
+          )),
 
-          {renderReportesWidget('bugTraceability', (
+          renderReportesWidget('bugTraceability', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start d-flex align-items-center gap-2">
                   <Bug size={18} /> {t('reportes.bugTraceability')}
@@ -100,9 +99,9 @@ export function ReportDetailWidgets(options: any): ReactNode {
                   <BugBuildHistoryMetrics metrics={bugMetrics} formatInt={formatInt} formatPercent={formatPercent} />
                 </Row>
               </Card>
-          ))}
+          )),
 
-          {renderReportesWidget('bugs', (
+          renderReportesWidget('bugs', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h6 className="fw-bold text-secondary text-start d-flex align-items-center gap-2 m-0">
@@ -152,7 +151,7 @@ export function ReportDetailWidgets(options: any): ReactNode {
                         )}
                         {isColumnVisible('bugs', 'action') && (
                         <td className="text-end">
-                          <Button variant="outline-primary" size="sm" onClick={() => onOpenBugTracker ? onOpenBugTracker() : showFeedback(t('reportes.bugTracker'), t('reportes.openBugTracker'), 'info')}>
+                          <Button variant="outline-primary" size="sm" disabled={!canViewBugs} title={!canViewBugs ? 'Necesitas permiso para ver bugs.' : t('reportes.openBugTracker')} onClick={() => onOpenBugTracker ? onOpenBugTracker(bug) : showFeedback(t('reportes.bugTracker'), t('reportes.openBugTracker'), 'info')}>
                             Ver
                           </Button>
                         </td>
@@ -165,9 +164,9 @@ export function ReportDetailWidgets(options: any): ReactNode {
                   </tbody>
                 </Table>
               </Card>
-          ))}
+          )),
 
-          {renderReportesWidget('failures', (
+          renderReportesWidget('failures', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start">{t('reportes.diagnosableFailures')}</h6>
                 <Table hover responsive className="mb-0 align-middle">
@@ -210,9 +209,9 @@ export function ReportDetailWidgets(options: any): ReactNode {
                   </tbody>
                 </Table>
               </Card>
-          ))}
+          )),
 
-          {renderReportesWidget('evidence', (
+          renderReportesWidget('evidence', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start d-flex align-items-center gap-2">
                   <ImageIcon size={18} /> {t('reportes.evidenceTab')}
@@ -247,8 +246,7 @@ export function ReportDetailWidgets(options: any): ReactNode {
                   {filteredEvidenceItems.length === 0 && <div className="text-center text-muted small py-4">{t('reportes.noEvidenceForFilters')}</div>}
                 </div>
               </Card>
-          ))}
+          )),
 
-    </>
-  )
+  ]
 }

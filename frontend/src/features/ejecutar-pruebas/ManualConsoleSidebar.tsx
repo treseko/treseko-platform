@@ -20,7 +20,10 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
     getBugDisplayBuild,
     getBugDisplayComponent,
     onViewRelatedBug,
+    canViewBugs = true,
+    canCreateBugs = true,
     canLinkCurrentExecution,
+    executionCanLinkCurrent = canLinkCurrentExecution,
     onLinkExecutionToBug,
     creatingInternalBugContextId,
     setLinkingBug,
@@ -144,8 +147,9 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                     variant="outline-secondary"
                                     size="sm"
                                     className="x-small fw-bold py-1 px-2"
-                                    title="Ver detalle del bug"
                                     onClick={() => onViewRelatedBug?.(bugItem)}
+                                    disabled={!canViewBugs}
+                                    title={!canViewBugs ? 'Necesitas permiso para ver bugs.' : 'Ver detalle del bug'}
                                   >
                                     <Eye size={12} /> Ver
                                   </Button>
@@ -173,7 +177,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                         })}
                       </div>
                     )}
-                    {canLinkCurrentExecution && (
+                    {executionCanLinkCurrent && (
                       <div className="d-flex gap-2 flex-wrap mt-3">
                         {relatedCaseBugs.length > 0 && (
                           <Button
@@ -184,7 +188,8 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                               setLinkingBug(relatedCaseBugs[0])
                               setLinkComment('')
                             }}
-                            disabled={!onLinkExecutionToBug || Boolean(creatingInternalBugContextId) || relatedCaseBugs.every(isBugLinkedToCurrentExecution)}
+                            disabled={!canLinkCurrentExecution || !onLinkExecutionToBug || Boolean(creatingInternalBugContextId) || relatedCaseBugs.every(isBugLinkedToCurrentExecution)}
+                            title={!canCreateBugs ? 'Necesitas permiso para crear o actualizar bugs.' : undefined}
                           >
                             <RefreshCw size={13} /> Actualizar seguimiento
                           </Button>
@@ -195,7 +200,8 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                             size="sm"
                             className="fw-bold x-small"
                             onClick={() => onCreateInternalBugFromExecution()}
-                            disabled={Boolean(creatingInternalBugContextId)}
+                            disabled={!canCreateBugs || Boolean(creatingInternalBugContextId)}
+                            title={!canCreateBugs ? 'Necesitas permiso para crear bugs.' : undefined}
                           >
                             <Bug size={13} /> Crear bug nuevo
                           </Button>

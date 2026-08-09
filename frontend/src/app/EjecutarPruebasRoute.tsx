@@ -108,6 +108,7 @@ export function EjecutarPruebasRoute({
         selectedTest={selectedTest}
         activeExecutionTests={props.activeExecutionTests}
         currentExecutionRun={props.currentExecutionRun}
+        currentProjectEnvironments={props.currentProjectEnvironments}
         currentExecutionCase={props.currentExecutionCase}
         executionSnapshots={props.executionSnapshots}
         snapshotNotes={props.snapshotNotes}

@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Alert, Badge, Button, Form, Modal } from 'react-bootstrap'
-import { Cpu, Info, PlayCircle, Terminal } from 'lucide-react'
+import { Cpu, Info, Loader2, PlayCircle, Terminal } from 'lucide-react'
 import { useI18n } from '../../i18n'
 
 type ExecutionSelectorModalProps = {
@@ -50,6 +51,19 @@ export function ExecutionSelectorModal({
   onScheduleIa
 }: ExecutionSelectorModalProps) {
   const { t } = useI18n()
+  const [startingMode, setStartingMode] = useState<'manual' | 'automated' | 'ia' | null>(null)
+  useEffect(() => {
+    if (!executionLoading) setStartingMode(null)
+  }, [executionLoading])
+  const startExecution = (mode: 'manual' | 'automated') => {
+    setStartingMode(mode)
+    onStart(mode)
+  }
+  const scheduleIa = () => {
+    setStartingMode('ia')
+    onScheduleIa()
+  }
+  const isStarting = (mode: 'manual' | 'automated' | 'ia') => executionLoading && startingMode === mode
   const hasOutdatedCases = executionModalTests.some(isOutdatedExecutionCase)
   const selectedEnvironment = environments.find(env => env.id === selectedEnvironmentId)
   const environmentDatasets = selectedEnvironment?.datasets || []
@@ -116,7 +130,7 @@ export function ExecutionSelectorModal({
         <div className="border rounded-3 bg-light p-3">
           <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
             <div className="d-flex align-items-center gap-2">
-              <div className="x-small fw-bold text-muted text-uppercase">{t('ejecutarPruebas.executionEnvironment')}</div>
+              <Form.Label htmlFor="execution-environment" className="x-small fw-bold text-muted text-uppercase mb-0">{t('ejecutarPruebas.executionEnvironment')}</Form.Label>
               <Button
                 type="button"
                 variant="link"
@@ -129,6 +143,9 @@ export function ExecutionSelectorModal({
               </Button>
             </div>
             <Form.Select
+              id="execution-environment"
+              name="executionEnvironment"
+              aria-label={t('ejecutarPruebas.executionEnvironment')}
               size="sm"
               className="fw-bold"
               style={{ maxWidth: 180 }}
@@ -142,8 +159,11 @@ export function ExecutionSelectorModal({
             </Form.Select>
           </div>
           <div className="d-flex align-items-center justify-content-end gap-2 mb-2">
-            <div className="x-small fw-bold text-muted text-uppercase">{t('ejecutarPruebas.dataset')}</div>
+            <Form.Label htmlFor="execution-dataset" className="x-small fw-bold text-muted text-uppercase mb-0">{t('ejecutarPruebas.dataset')}</Form.Label>
             <Form.Select
+              id="execution-dataset"
+              name="executionDataset"
+              aria-label={t('ejecutarPruebas.dataset')}
               size="sm"
               className="fw-bold"
               style={{ maxWidth: 240 }}
@@ -183,11 +203,18 @@ export function ExecutionSelectorModal({
           )}
         </div>
 
-        <Button variant="outline-success" className="execution-mode-option execution-mode-option--manual p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? t('ejecutarPruebas.manualPermission') : undefined} onClick={() => onStart('manual')}>
+        {executionLoading && (
+          <Alert variant="info" className="py-2 px-3 small mb-0 d-flex align-items-center gap-2" role="status" aria-live="polite">
+            <Loader2 size={16} className="spin" aria-hidden="true" />
+            <span>{t('ejecutarPruebas.preparingExecution')}</span>
+          </Alert>
+        )}
+
+        <Button variant="outline-success" className="execution-mode-option execution-mode-option--manual p-3 text-start border-2 shadow-sm shadow-none" disabled={executionLoading || !canStartManualExecution} title={!canStartManualExecution ? t('ejecutarPruebas.manualPermission') : undefined} onClick={() => startExecution('manual')}>
           <div className="d-flex align-items-center gap-3">
-            <PlayCircle size={32} className="text-success" />
+            {isStarting('manual') ? <Loader2 size={32} className="text-success spin" aria-hidden="true" /> : <PlayCircle size={32} className="text-success" aria-hidden="true" />}
             <div>
-              <strong className="text-dark">{t('ejecutarPruebas.manualExecution')}</strong>
+              <strong className="text-dark">{isStarting('manual') ? t('ejecutarPruebas.preparingExecution') : t('ejecutarPruebas.manualExecution')}</strong>
               <br />
               <small className="text-muted">{t('ejecutarPruebas.createRunFreeze')}</small>
             </div>
@@ -205,12 +232,12 @@ export function ExecutionSelectorModal({
           className="execution-mode-option execution-mode-option--automated p-3 text-start border-2 shadow-sm shadow-none"
           disabled={executionLoading || !canUseAutomatedExecution}
           title={!canUseAutomatedExecution ? t('ejecutarPruebas.automatedPermission') : undefined}
-          onClick={() => onStart('automated')}
+          onClick={() => startExecution('automated')}
         >
           <div className="d-flex align-items-center gap-3">
-            <Terminal size={32} className="text-secondary" />
+            {isStarting('automated') ? <Loader2 size={32} className="text-secondary spin" aria-hidden="true" /> : <Terminal size={32} className="text-secondary" aria-hidden="true" />}
             <div>
-              <strong className="text-dark">{t('ejecutarPruebas.automatedExecution')}</strong>
+              <strong className="text-dark">{isStarting('automated') ? t('ejecutarPruebas.preparingExecution') : t('ejecutarPruebas.automatedExecution')}</strong>
               <br />
               <small className="text-muted">{t('ejecutarPruebas.automatedDescription')}</small>
             </div>
@@ -223,11 +250,11 @@ export function ExecutionSelectorModal({
           </Alert>
         )}
 
-        <Button variant="outline-primary" className="execution-mode-option execution-mode-option--ia p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? t('ejecutarPruebas.iaUnavailableTitle') : t('ejecutarPruebas.iaPermission')) : undefined} onClick={onScheduleIa}>
+        <Button variant="outline-primary" className="execution-mode-option execution-mode-option--ia p-3 text-start border-2 shadow-sm bg-primary bg-opacity-10 shadow-none" disabled={executionLoading || !canUseIaExecution} title={!canUseIaExecution ? (iaEnginePremiumLocked ? t('ejecutarPruebas.iaUnavailableTitle') : t('ejecutarPruebas.iaPermission')) : undefined} onClick={scheduleIa}>
           <div className="d-flex align-items-center gap-3 text-primary">
-            <Cpu size={32} className="text-primary" />
+            {isStarting('ia') ? <Loader2 size={32} className="text-primary spin" aria-hidden="true" /> : <Cpu size={32} className="text-primary" aria-hidden="true" />}
             <div>
-              <strong className="text-primary">{t('ejecutarPruebas.iaAgentEngine')} {iaEnginePremiumLocked && <Badge bg="warning" text="dark" className="ms-1">{t('ejecutarPruebas.blockedLabel')}</Badge>}</strong>
+              <strong className="text-primary">{isStarting('ia') ? t('ejecutarPruebas.preparingExecution') : t('ejecutarPruebas.iaAgentEngine')} {iaEnginePremiumLocked && <Badge bg="warning" text="dark" className="ms-1">{t('ejecutarPruebas.blockedLabel')}</Badge>}</strong>
               <br />
               <small className="text-primary fw-bold">{iaEnginePremiumLocked ? t('ejecutarPruebas.iaUnavailable') : t('ejecutarPruebas.iaDescription')}</small>
             </div>

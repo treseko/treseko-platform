@@ -28,7 +28,7 @@ export function CaseManagementModals({ context }: Props) {
     <div className="fw-semibold text-dark border rounded-2 bg-light p-2 mb-3 text-break">{currentSuiteBreadcrumb}</div>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">{t('casos.newFolder').toUpperCase()}</Form.Label>
-      <Form.Select
+      <Form.Select name="a11y-casemanagementmodalstsx-31" aria-label="Campo de formulario"
         value={currentSuiteId}
         onChange={(event) => selectSuiteTarget(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -63,7 +63,7 @@ export function CaseManagementModals({ context }: Props) {
     </div>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">{t('casos.destinationSuite').toUpperCase()}</Form.Label>
-      <Form.Select
+      <Form.Select name="a11y-casemanagementmodalstsx-66" aria-label="Campo de formulario"
         value={cloneTargetSuiteId}
         onChange={(event) => setCloneTargetSuiteId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -105,7 +105,7 @@ export function CaseManagementModals({ context }: Props) {
     </div>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">SUITE DESTINO</Form.Label>
-      <Form.Select
+      <Form.Select name="a11y-casemanagementmodalstsx-108" aria-label="Campo de formulario"
         value={moveTargetSuiteId}
         onChange={(event) => setMoveTargetSuiteId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -147,7 +147,7 @@ export function CaseManagementModals({ context }: Props) {
     </div>
     <Form.Group className="mb-3">
       <Form.Label className="fw-bold x-small text-muted">NOMBRE DE LA COPIA</Form.Label>
-      <Form.Control
+      <Form.Control name="a11y-casemanagementmodalstsx-150" aria-label="Campo de formulario"
         value={cloneSuiteName}
         onChange={(event) => setCloneSuiteName(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -156,7 +156,7 @@ export function CaseManagementModals({ context }: Props) {
     </Form.Group>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">SUITE PADRE DESTINO</Form.Label>
-      <Form.Select
+      <Form.Select name="a11y-casemanagementmodalstsx-159" aria-label="Campo de formulario"
         value={cloneSuiteParentId}
         onChange={(event) => setCloneSuiteParentId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"

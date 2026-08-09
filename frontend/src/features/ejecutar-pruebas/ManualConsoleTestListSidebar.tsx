@@ -1,8 +1,9 @@
 import { Badge, ListGroup } from 'react-bootstrap'
 import { LayoutList } from 'lucide-react'
+import { getManualConsoleCaseStatus } from './manualConsoleStatus'
 
 export function ManualConsoleTestListSidebar({ context }: { context: any }) {
-  const { t, activeExecutionTests, selectedTest, currentExecutionCase, handleSelectTestForExecution, getStatusColor, executionSnapshots, getExecutionReferenceCount } = context
+  const { t, activeExecutionTests, selectedTest, currentExecutionRun, currentExecutionCase, handleSelectTestForExecution, getStatusColor, executionSnapshots, getExecutionReferenceCount } = context
 
   return (
     <div className="manual-console-sidebar bg-white border-end d-flex flex-column flex-shrink-0 z-0" style={{ width: '290px' }}>
@@ -15,7 +16,13 @@ export function ManualConsoleTestListSidebar({ context }: { context: any }) {
       <ListGroup variant="flush" className="overflow-auto flex-grow-1 pb-4">
         {activeExecutionTests.map((test: any) => {
           const isActive = selectedTest.id === test.id
-          const currentStatus = test.id === selectedTest.id && currentExecutionCase ? (currentExecutionCase.estado_resultado || 'EN CURSO') : (test.lastResult || 'PENDIENTE')
+          const currentStatus = getManualConsoleCaseStatus({
+            testId: test.id,
+            selectedTestId: selectedTest?.id,
+            currentExecutionCase,
+            currentRun: currentExecutionRun,
+            historicalStatus: test.lastResult,
+          })
           return (
             <ListGroup.Item key={test.id} action active={isActive} onClick={() => handleSelectTestForExecution(test)} className={`border-bottom p-3 cursor-pointer ${isActive ? 'bg-primary bg-opacity-10 border-start border-4 border-primary' : 'hover-bg-light'}`}>
               <div className="d-flex justify-content-between align-items-center mb-1">

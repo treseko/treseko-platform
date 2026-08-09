@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from .auth import validate_preference_json_payload
+from .attachments import PasoAttachment as PasoAttachmentSchema
 from ..models import (
     AiReviewStatus,
     AutomationJobStatus,
@@ -130,6 +131,10 @@ class Paso(PasoBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class PasoVersion(Paso):
+    """A versioned step, including the evidence linked to that historical step."""
+    attachments: List[PasoAttachmentSchema] = Field(default_factory=list)
+
 class CasoPruebaBase(BaseModel):
     codigo: Optional[str] = Field(default=None, max_length=MAX_TEST_CASE_CODE_LENGTH)
     titulo: str = Field(..., min_length=1, max_length=MAX_TEST_CASE_TITLE_LENGTH)
@@ -239,7 +244,7 @@ class CasoVersion(BaseModel):
     componente_id: Optional[UUID] = None
     dataset: List[Dict[str, str]] = Field(default_factory=list)
     etiquetas: List[str] = Field(default_factory=list)
-    pasos: List[Paso] = Field(default_factory=list)
+    pasos: List[PasoVersion] = Field(default_factory=list)
     creado_por: UUID
     fecha_creacion: datetime
     ultima_modificacion: datetime

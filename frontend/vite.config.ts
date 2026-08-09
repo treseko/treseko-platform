@@ -33,7 +33,7 @@ function tresekoVersionPlugin() {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const frontendPort = Number(env.FRONTEND_PORT || env.VITE_PORT || 5173)
+  const frontendPort = Number(env.FRONTEND_PORT || 5173)
   return {
     plugins: [react(), tresekoVersionPlugin()],
     test: {

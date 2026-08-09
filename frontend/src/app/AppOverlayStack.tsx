@@ -2,7 +2,8 @@ import { UpdateMaintenanceOverlay } from '../features/configuracion/components/U
 import { CaseVersionsModal } from '../features/casos/CaseVersionsModal'
 import { AppModals } from './AppModals'
 import { FirstRunOnboarding } from '../features/onboarding/FirstRunOnboarding'
-import { ForcePasswordChangeModal, needsForcedPasswordChange } from '../features/onboarding/ForcePasswordChangeModal'
+import { ForcePasswordChangeModal } from '../features/onboarding/ForcePasswordChangeModal'
+import { needsForcedPasswordChange } from '../features/onboarding/passwordChangeUtils'
 
 export function AppOverlayStack({ options }: { options: any }) {
   const {

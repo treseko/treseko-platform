@@ -356,7 +356,10 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     cloneSuiteCasesCount, cloneSuiteName, setCloneSuiteName, cloneSuiteParentId, setCloneSuiteParentId,
     commitTagDraft, removeTag, insertFunctionUsage, openCloneCaseModal,
     openMoveCaseModal, confirmCloneCase, confirmMoveCase, openCloneSuiteModal, confirmCloneSuite,
-    uuidOrNull,
+    uuidOrNull, mobileExplorerOpen, setMobileExplorerOpen,
+    setShowFunctionsModal, setShowVariablesModal, setDryRunEnvironmentId, setDryRunDatasetId,
+    setDryRunDebugMode, setScriptTesting, setScriptTestResult, setScriptValidationDetails,
+    languageOptionsByFramework, defaultLanguageForFramework, languageLabel,
   }
 
   if (!currentProjectId) {

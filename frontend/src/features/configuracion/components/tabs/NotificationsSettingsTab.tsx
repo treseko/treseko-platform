@@ -14,7 +14,7 @@ type Props = {
 
 export function NotificationsSettingsTab({ fetchWithAuth, showFeedback, canAccessCapability, projects = [] }: Props) {
   const { t } = useI18n()
-  const [config, setConfig] = useState<any>({ enabled: false, host: '', port: 587, use_starttls: true, use_ssl: false, from_email: '', from_name: 'Treseko', base_url: 'http://localhost:5173' })
+  const [config, setConfig] = useState<any>({ enabled: false, host: '', port: 587, use_starttls: true, use_ssl: false, from_email: '', from_name: 'Treseko', base_url: typeof window !== 'undefined' ? window.location.origin : '' })
   const [testEmail, setTestEmail] = useState('')
   const [rules, setRules] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])

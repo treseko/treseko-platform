@@ -14,29 +14,29 @@ export function NotificationsSettingsView({ options }: { options: any }) {
       </div>
       <Row className="g-3">
         <Col md={12}>
-          <Form.Check type="switch" className="fw-semibold" label={t('notifications.enableEmail')} checked={!!config.enabled} disabled={!canEdit} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />
+          <Form.Check name="a11y-notificationssettingsviewtsx-17" aria-label="Campo de formulario" type="switch" className="fw-semibold" label={t('notifications.enableEmail')} checked={!!config.enabled} disabled={!canEdit} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />
           <div className="app-meta text-muted ms-5">{t('notifications.enableEmailHint')}</div>
         </Col>
         <Col md={12}>
-          <Form.Check type="switch" className="fw-semibold" label={t('notifications.safeTestMode')} checked={!!config.test_mode} disabled={!canEdit} onChange={(e) => setConfig({ ...config, test_mode: e.target.checked })} />
+          <Form.Check name="a11y-notificationssettingsviewtsx-21" aria-label="Campo de formulario" type="switch" className="fw-semibold" label={t('notifications.safeTestMode')} checked={!!config.test_mode} disabled={!canEdit} onChange={(e) => setConfig({ ...config, test_mode: e.target.checked })} />
           <div className="app-meta text-muted ms-5">{t('notifications.safeTestModeHint')}</div>
         </Col>
         <Col md={6}>
           <Form.Label className="app-label fw-bold text-muted">{t('notifications.recipientName')}</Form.Label>
-          <Form.Control value={config.from_name || ''} placeholder={t('notifications.recipientNamePlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_name: e.target.value })} />
+          <Form.Control name="a11y-notificationssettingsviewtsx-26" aria-label="Campo de formulario" value={config.from_name || ''} placeholder={t('notifications.recipientNamePlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_name: e.target.value })} />
         </Col>
         <Col md={6}>
           <Form.Label className="app-label fw-bold text-muted">{t('notifications.replyTo')}</Form.Label>
-          <Form.Control type="email" value={config.reply_to || ''} placeholder={t('notifications.replyToPlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, reply_to: e.target.value })} />
+          <Form.Control name="a11y-notificationssettingsviewtsx-30" aria-label="Campo de formulario" type="email" value={config.reply_to || ''} placeholder={t('notifications.replyToPlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, reply_to: e.target.value })} />
           <div className="app-meta text-muted mt-1">{t('notifications.senderHint')}</div>
         </Col>
         <Col md={6}>
           <Form.Label className="app-label fw-bold text-muted">{t('notifications.fromEmail')}</Form.Label>
-          <Form.Control type="email" value={config.from_email || ''} placeholder={t('notifications.fromEmailPlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_email: e.target.value })} />
+          <Form.Control name="a11y-notificationssettingsviewtsx-35" aria-label="Campo de formulario" type="email" value={config.from_email || ''} placeholder={t('notifications.fromEmailPlaceholder')} disabled={!canEdit} onChange={(e) => setConfig({ ...config, from_email: e.target.value })} />
         </Col>
         <Col md={8}>
           <Form.Label className="app-label fw-bold text-muted">{t('notifications.testEmail')}</Form.Label>
-          <Form.Control type="email" placeholder={t('notifications.testEmailPlaceholder')} value={testEmail} disabled={!canEdit} onChange={(e) => setTestEmail(e.target.value)} />
+          <Form.Control name="a11y-notificationssettingsviewtsx-39" aria-label="Campo de formulario" type="email" placeholder={t('notifications.testEmailPlaceholder')} value={testEmail} disabled={!canEdit} onChange={(e) => setTestEmail(e.target.value)} />
         </Col>
         {canEdit && <Col md={4} className="align-self-end d-flex gap-2"><Button variant="outline-secondary" className="rounded-pill fw-bold text-nowrap" onClick={testConnection}><RotateCw size={16} className="me-1" />{t('notifications.testSmtp')}</Button><Button variant="outline-primary" className="flex-grow-1 rounded-pill fw-bold" onClick={sendTest} disabled={!testEmail}><Play size={16} className="me-2" />{t('notifications.sendTest')}</Button></Col>}
         {canEdit && <Col md={12} className="text-end"><Button onClick={save} className="app-save-button"><Save size={16} />{t('notifications.saveEmail')}</Button></Col>}
@@ -47,13 +47,13 @@ export function NotificationsSettingsView({ options }: { options: any }) {
           <Accordion.Body>
             <p className="app-meta text-muted mb-3">{t('notifications.providerHint')}</p>
             <Row className="g-3">
-              <Col md={6}><Form.Label className="app-label fw-bold text-muted">{t('notifications.smtpServer')}</Form.Label><Form.Control size="sm" placeholder={t('notifications.smtpServerPlaceholder')} value={config.host || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, host: e.target.value })} /></Col>
-              <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.port')}</Form.Label><Form.Control size="sm" type="number" value={config.port || 587} disabled={!canEdit} onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })} /></Col>
-              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.smtpUser')}</Form.Label><Form.Control size="sm" placeholder={t('notifications.smtpUserPlaceholder')} value={config.username || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, username: e.target.value })} /></Col>
-              <Col md={6}><Form.Label className="app-label fw-bold text-muted">{t('notifications.publicUrl')}</Form.Label><Form.Control size="sm" placeholder={t('notifications.publicUrlPlaceholder')} value={config.base_url || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, base_url: e.target.value })} /></Col>
-              <Col md={3} className="d-flex align-items-end"><Form.Check type="switch" label={t('notifications.useStarttls')} checked={!!config.use_starttls} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_starttls: e.target.checked })} /></Col>
-              <Col md={3} className="d-flex align-items-end"><Form.Check type="switch" label={t('notifications.useSsl')} checked={!!config.use_ssl} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_ssl: e.target.checked })} /></Col>
-              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.dailyLimit')}</Form.Label><Form.Control size="sm" type="number" value={config.daily_send_limit || 500} disabled={!canEdit} onChange={(e) => setConfig({ ...config, daily_send_limit: Number(e.target.value) })} /></Col>
+              <Col md={6}><Form.Label className="app-label fw-bold text-muted">{t('notifications.smtpServer')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-50" aria-label="Campo de formulario" size="sm" placeholder={t('notifications.smtpServerPlaceholder')} value={config.host || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, host: e.target.value })} /></Col>
+              <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.port')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-51" aria-label="Campo de formulario" size="sm" type="number" value={config.port || 587} disabled={!canEdit} onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })} /></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.smtpUser')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-52" aria-label="Campo de formulario" size="sm" placeholder={t('notifications.smtpUserPlaceholder')} value={config.username || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, username: e.target.value })} /></Col>
+              <Col md={6}><Form.Label className="app-label fw-bold text-muted">{t('notifications.publicUrl')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-53" aria-label="Campo de formulario" size="sm" placeholder={t('notifications.publicUrlPlaceholder')} value={config.base_url || ''} disabled={!canEdit} onChange={(e) => setConfig({ ...config, base_url: e.target.value })} /></Col>
+              <Col md={3} className="d-flex align-items-end"><Form.Check name="a11y-notificationssettingsviewtsx-54" aria-label="Campo de formulario" type="switch" label={t('notifications.useStarttls')} checked={!!config.use_starttls} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_starttls: e.target.checked })} /></Col>
+              <Col md={3} className="d-flex align-items-end"><Form.Check name="a11y-notificationssettingsviewtsx-55" aria-label="Campo de formulario" type="switch" label={t('notifications.useSsl')} checked={!!config.use_ssl} disabled={!canEdit} onChange={(e) => setConfig({ ...config, use_ssl: e.target.checked })} /></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.dailyLimit')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-56" aria-label="Campo de formulario" size="sm" type="number" value={config.daily_send_limit || 500} disabled={!canEdit} onChange={(e) => setConfig({ ...config, daily_send_limit: Number(e.target.value) })} /></Col>
               <Col md={8} className="d-flex align-items-end"><Badge bg="light" text="dark" className="border">{t('notifications.password')}: {config.password_configured ? t('notifications.configured') : t('notifications.pendingConfiguration')} · {t('notifications.passwordHint')}</Badge></Col>
             </Row>
           </Accordion.Body>
@@ -173,7 +173,7 @@ export function NotificationsSettingsView({ options }: { options: any }) {
         </Col>
         {canReadAudit && <Col lg={6}>
           <div className="small fw-bold mb-2">{t('notifications.templates')}</div>
-          <Form.Select
+          <Form.Select name="a11y-notificationssettingsviewtsx-176" aria-label="Campo de formulario"
             size="sm"
             className="mb-2"
             value={selectedTemplateId}
@@ -187,21 +187,21 @@ export function NotificationsSettingsView({ options }: { options: any }) {
           </Form.Select>
           {templateDraft && (
             <div className="border rounded-3 p-2">
-              <Form.Check
+              <Form.Check name="a11y-notificationssettingsviewtsx-190" aria-label="Campo de formulario"
                 type="switch"
                 label={templateDraft.enabled ? t('notifications.activeTemplate') : t('notifications.inactiveTemplate')}
                 checked={!!templateDraft.enabled}
                 disabled={!canEditTemplates}
                 onChange={(event) => setTemplateDraft({ ...templateDraft, enabled: event.target.checked })}
               />
-              <Form.Control
+              <Form.Control name="a11y-notificationssettingsviewtsx-197" aria-label="Campo de formulario"
                 size="sm"
                 className="my-2"
                 value={templateDraft.subject_template || ''}
                 disabled={!canEditTemplates}
                 onChange={(event) => setTemplateDraft({ ...templateDraft, subject_template: event.target.value })}
               />
-              <Form.Control
+              <Form.Control name="a11y-notificationssettingsviewtsx-204" aria-label="Campo de formulario"
                 as="textarea"
                 rows={5}
                 size="sm"
@@ -210,7 +210,7 @@ export function NotificationsSettingsView({ options }: { options: any }) {
                 onChange={(event) => setTemplateDraft({ ...templateDraft, text_template: event.target.value })}
               />
               <Form.Label className="x-small fw-bold text-muted mt-2">{t('notifications.htmlTemplate')}</Form.Label>
-              <Form.Control as="textarea" rows={4} size="sm" value={templateDraft.html_template || ''} disabled={!canEditTemplates} onChange={(event) => setTemplateDraft({ ...templateDraft, html_template: event.target.value })} placeholder={t('notifications.htmlPlaceholder')} />
+              <Form.Control name="a11y-notificationssettingsviewtsx-213" aria-label="Campo de formulario" as="textarea" rows={4} size="sm" value={templateDraft.html_template || ''} disabled={!canEditTemplates} onChange={(event) => setTemplateDraft({ ...templateDraft, html_template: event.target.value })} placeholder={t('notifications.htmlPlaceholder')} />
               <div className="d-flex justify-content-between gap-2 mt-2">
                 <Button size="sm" variant="outline-secondary" onClick={previewTemplate}><Eye size={14} className="me-1" />{t('notifications.preview')}</Button>
                 {canEditTemplates && (
@@ -256,13 +256,13 @@ export function NotificationsSettingsView({ options }: { options: any }) {
             {canEditOwnSubscriptions && <div className="border rounded-3 p-3 mb-3 bg-light-subtle">
               <div className="small fw-bold mb-2">{t('notifications.myEmailDigest')}</div>
               <Row className="g-2 align-items-end">
-                <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.project')}</Form.Label><Form.Select size="sm" value={mySchedule.proyectoId} onChange={(e) => setMySchedule({ ...mySchedule, proyectoId: e.target.value })}><option value="">{t('notifications.allAllowedProjects')}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
-                <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.frequency')}</Form.Label><Form.Select size="sm" value={mySchedule.frequency} onChange={(e) => setMySchedule({ ...mySchedule, frequency: e.target.value })}><option value="daily">{t('notifications.dailySummary')}</option><option value="weekly">{t('notifications.weeklySummary')}</option><option value="monthly">{t('notifications.monthlySummary')}</option><option value="never">{t('notifications.doNotSend')}</option></Form.Select></Col>
-                <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.timezone')}</Form.Label><Form.Control size="sm" value={mySchedule.timezone} onChange={(e) => setMySchedule({ ...mySchedule, timezone: e.target.value })} /></Col>
-                <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.hour')}</Form.Label><Form.Control size="sm" type="number" min="0" max="23" value={mySchedule.send_hour} onChange={(e) => setMySchedule({ ...mySchedule, send_hour: Number(e.target.value) })} /></Col>
-                <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.day')}</Form.Label><Form.Control size="sm" type="number" min="1" max={mySchedule.frequency === 'weekly' ? '7' : '31'} value={mySchedule.send_day} disabled={!['weekly', 'monthly'].includes(mySchedule.frequency)} onChange={(e) => setMySchedule({ ...mySchedule, send_day: Number(e.target.value) })} /></Col>
+                <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.project')}</Form.Label><Form.Select name="a11y-notificationssettingsviewtsx-259" aria-label="Campo de formulario" size="sm" value={mySchedule.proyectoId} onChange={(e) => setMySchedule({ ...mySchedule, proyectoId: e.target.value })}><option value="">{t('notifications.allAllowedProjects')}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
+                <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.frequency')}</Form.Label><Form.Select name="a11y-notificationssettingsviewtsx-260" aria-label="Campo de formulario" size="sm" value={mySchedule.frequency} onChange={(e) => setMySchedule({ ...mySchedule, frequency: e.target.value })}><option value="daily">{t('notifications.dailySummary')}</option><option value="weekly">{t('notifications.weeklySummary')}</option><option value="monthly">{t('notifications.monthlySummary')}</option><option value="never">{t('notifications.doNotSend')}</option></Form.Select></Col>
+                <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.timezone')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-261" aria-label="Campo de formulario" size="sm" value={mySchedule.timezone} onChange={(e) => setMySchedule({ ...mySchedule, timezone: e.target.value })} /></Col>
+                <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.hour')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-262" aria-label="Campo de formulario" size="sm" type="number" min="0" max="23" value={mySchedule.send_hour} onChange={(e) => setMySchedule({ ...mySchedule, send_hour: Number(e.target.value) })} /></Col>
+                <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.day')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-263" aria-label="Campo de formulario" size="sm" type="number" min="1" max={mySchedule.frequency === 'weekly' ? '7' : '31'} value={mySchedule.send_day} disabled={!['weekly', 'monthly'].includes(mySchedule.frequency)} onChange={(e) => setMySchedule({ ...mySchedule, send_day: Number(e.target.value) })} /></Col>
                 <Col md={2}><Button size="sm" className="w-100 rounded-pill" onClick={saveMySchedule}>{t('notifications.save')}</Button></Col>
-                <Col md={5}><Form.Label className="app-label fw-bold text-muted">{t('notifications.muteUntil')}</Form.Label><Form.Control size="sm" type="datetime-local" value={mySchedule.mutedUntil} onChange={(e) => setMySchedule({ ...mySchedule, mutedUntil: e.target.value })} /></Col>
+                <Col md={5}><Form.Label className="app-label fw-bold text-muted">{t('notifications.muteUntil')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-265" aria-label="Campo de formulario" size="sm" type="datetime-local" value={mySchedule.mutedUntil} onChange={(e) => setMySchedule({ ...mySchedule, mutedUntil: e.target.value })} /></Col>
               </Row>
             </div>}
             {!canReadDigests && <div className="small text-muted">{t('notifications.noDigestPermission')}</div>}
@@ -278,15 +278,15 @@ export function NotificationsSettingsView({ options }: { options: any }) {
           <Accordion.Body>
             <p className="app-meta text-muted">{t('notifications.stakeholderHint')}</p>
             <Row className="g-2 align-items-end">
-              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.project')}</Form.Label><Form.Select size="sm" value={stakeholderProjectId} onChange={(e) => setStakeholderProjectId(e.target.value)}><option value="">{t('notifications.selectProject')}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
-              <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.name')}</Form.Label><Form.Control size="sm" value={stakeholderDraft.nombre} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, nombre: e.target.value })} /></Col>
-              <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.email')}</Form.Label><Form.Control size="sm" type="email" value={stakeholderDraft.email} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, email: e.target.value })} /></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.project')}</Form.Label><Form.Select name="a11y-notificationssettingsviewtsx-281" aria-label="Campo de formulario" size="sm" value={stakeholderProjectId} onChange={(e) => setStakeholderProjectId(e.target.value)}><option value="">{t('notifications.selectProject')}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.nombre || project.name}</option>)}</Form.Select></Col>
+              <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.name')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-282" aria-label="Campo de formulario" size="sm" value={stakeholderDraft.nombre} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, nombre: e.target.value })} /></Col>
+              <Col md={3}><Form.Label className="app-label fw-bold text-muted">{t('notifications.email')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-283" aria-label="Campo de formulario" size="sm" type="email" value={stakeholderDraft.email} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, email: e.target.value })} /></Col>
               <Col md={2}>{canManageStakeholders && <Button size="sm" className="w-100 rounded-pill" onClick={createStakeholder} disabled={!stakeholderDraft.nombre || !stakeholderDraft.email}><Plus size={14} className="me-1" />{t('notifications.add')}</Button>}</Col>
-              <Col md={12}><Form.Label className="app-label fw-bold text-muted">{t('notifications.allowedEvents')}</Form.Label><Form.Select size="sm" multiple value={stakeholderDraft.allowed_event_types} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, allowed_event_types: Array.from(e.currentTarget.selectedOptions).map(option => option.value) })}><option value="report.exported">{t('notifications.reportExported')}</option><option value="report.shared">{t('notifications.reportShared')}</option><option value="build.closed">{t('notifications.buildClosed')}</option><option value="project.closed">{t('notifications.projectClosed')}</option></Form.Select></Col>
-              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.initialFrequency')}</Form.Label><Form.Select size="sm" value={stakeholderSchedule.frequency} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, frequency: e.target.value })}><option value="immediate">{t('notifications.immediate')}</option><option value="daily">{t('notifications.dailySummary')}</option><option value="weekly">{t('notifications.weeklySummary')}</option><option value="monthly">{t('notifications.monthlySummary')}</option><option value="on_report_export">{t('notifications.onReportExport')}</option><option value="on_build_closure">{t('notifications.onBuildClosure')}</option><option value="on_project_closure">{t('notifications.onProjectClosure')}</option></Form.Select></Col>
-              <Col md={5}><Form.Label className="app-label fw-bold text-muted">{t('notifications.timezone')}</Form.Label><Form.Control size="sm" value={stakeholderSchedule.timezone} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, timezone: e.target.value })} /></Col>
-              <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.summaryHour')}</Form.Label><Form.Control size="sm" type="number" min="0" max="23" value={stakeholderSchedule.send_hour} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_hour: Number(e.target.value) })} /></Col>
-              <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.day')}</Form.Label><Form.Control size="sm" type="number" min="1" max={stakeholderSchedule.frequency === 'weekly' ? '7' : '31'} value={stakeholderSchedule.send_day} disabled={!canManageStakeholders || !['weekly', 'monthly'].includes(stakeholderSchedule.frequency)} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_day: Number(e.target.value) })} /></Col>
+              <Col md={12}><Form.Label className="app-label fw-bold text-muted">{t('notifications.allowedEvents')}</Form.Label><Form.Select name="a11y-notificationssettingsviewtsx-285" aria-label="Campo de formulario" size="sm" multiple value={stakeholderDraft.allowed_event_types} disabled={!canManageStakeholders} onChange={(e) => setStakeholderDraft({ ...stakeholderDraft, allowed_event_types: Array.from(e.currentTarget.selectedOptions).map(option => option.value) })}><option value="report.exported">{t('notifications.reportExported')}</option><option value="report.shared">{t('notifications.reportShared')}</option><option value="build.closed">{t('notifications.buildClosed')}</option><option value="project.closed">{t('notifications.projectClosed')}</option></Form.Select></Col>
+              <Col md={4}><Form.Label className="app-label fw-bold text-muted">{t('notifications.initialFrequency')}</Form.Label><Form.Select name="a11y-notificationssettingsviewtsx-286" aria-label="Campo de formulario" size="sm" value={stakeholderSchedule.frequency} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, frequency: e.target.value })}><option value="immediate">{t('notifications.immediate')}</option><option value="daily">{t('notifications.dailySummary')}</option><option value="weekly">{t('notifications.weeklySummary')}</option><option value="monthly">{t('notifications.monthlySummary')}</option><option value="on_report_export">{t('notifications.onReportExport')}</option><option value="on_build_closure">{t('notifications.onBuildClosure')}</option><option value="on_project_closure">{t('notifications.onProjectClosure')}</option></Form.Select></Col>
+              <Col md={5}><Form.Label className="app-label fw-bold text-muted">{t('notifications.timezone')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-287" aria-label="Campo de formulario" size="sm" value={stakeholderSchedule.timezone} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, timezone: e.target.value })} /></Col>
+              <Col md={2}><Form.Label className="app-label fw-bold text-muted">{t('notifications.summaryHour')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-288" aria-label="Campo de formulario" size="sm" type="number" min="0" max="23" value={stakeholderSchedule.send_hour} disabled={!canManageStakeholders} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_hour: Number(e.target.value) })} /></Col>
+              <Col md={1}><Form.Label className="app-label fw-bold text-muted">{t('notifications.day')}</Form.Label><Form.Control name="a11y-notificationssettingsviewtsx-289" aria-label="Campo de formulario" size="sm" type="number" min="1" max={stakeholderSchedule.frequency === 'weekly' ? '7' : '31'} value={stakeholderSchedule.send_day} disabled={!canManageStakeholders || !['weekly', 'monthly'].includes(stakeholderSchedule.frequency)} onChange={(e) => setStakeholderSchedule({ ...stakeholderSchedule, send_day: Number(e.target.value) })} /></Col>
             </Row>
             <div className="mt-3 border rounded-3 overflow-hidden">
               {stakeholders.map(stakeholder => <div key={stakeholder.id} className="d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom px-3 py-2"><div><span className="fw-semibold">{stakeholder.nombre}</span><span className="small text-muted ms-2">{stakeholder.email}</span><div className="x-small text-muted">{(stakeholder.allowed_event_types || []).join(' · ') || t('notifications.noEvents')}</div></div><div className="d-flex align-items-center gap-2"><Badge bg={stakeholder.active ? 'success' : 'secondary'}>{stakeholder.active ? t('notifications.enabled') : t('notifications.deactivated')}</Badge>{stakeholder.active && canManageStakeholders && <Button size="sm" variant="outline-danger" onClick={() => deactivateStakeholder(stakeholder)}>{t('notifications.deactivate')}</Button>}</div></div>)}
@@ -306,16 +306,16 @@ export function NotificationsSettingsView({ options }: { options: any }) {
             <Row className="g-3">
               <Col md={8}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.ruleName')}</Form.Label>
-                <Form.Control size="sm" value={ruleDraft.nombre || ''} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, nombre: event.target.value })} />
+                <Form.Control name="a11y-notificationssettingsviewtsx-309" aria-label="Campo de formulario" size="sm" value={ruleDraft.nombre || ''} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, nombre: event.target.value })} />
               </Col>
               <Col md={4}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.rulePriority')}</Form.Label>
-                <Form.Control size="sm" type="number" value={ruleDraft.priority || 100} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, priority: Number(event.target.value) })} />
+                <Form.Control name="a11y-notificationssettingsviewtsx-313" aria-label="Campo de formulario" size="sm" type="number" value={ruleDraft.priority || 100} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, priority: Number(event.target.value) })} />
               </Col>
               <Col md={12}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.events')}</Form.Label>
                 <div className="d-flex gap-2">
-                  <Form.Control size="sm" value={ruleEventsText} disabled={!canEditRules} onChange={(event) => setRuleEventsText(event.target.value)} />
+                  <Form.Control name="a11y-notificationssettingsviewtsx-318" aria-label="Campo de formulario" size="sm" value={ruleEventsText} disabled={!canEditRules} onChange={(event) => setRuleEventsText(event.target.value)} />
                   <Button size="sm" variant="outline-secondary" type="button" onClick={() => setShowEventsModal(true)}>{t('notifications.viewEvents')}</Button>
                 </div>
                 <div className="d-flex flex-wrap gap-1 mt-2">
@@ -325,32 +325,32 @@ export function NotificationsSettingsView({ options }: { options: any }) {
                 </div>
               </Col>
               <Col md={4}>
-                <Form.Check type="switch" label={t('notifications.enabledRule')} checked={!!ruleDraft.enabled} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, enabled: event.target.checked })} />
+                <Form.Check name="a11y-notificationssettingsviewtsx-328" aria-label="Campo de formulario" type="switch" label={t('notifications.enabledRule')} checked={!!ruleDraft.enabled} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, enabled: event.target.checked })} />
               </Col>
               <Col md={4}>
-                <Form.Check type="checkbox" label={t('notifications.inApp')} checked={(ruleDraft.actions_json?.channels || []).includes('in_app')} disabled={!canEditRules} onChange={(event) => setRuleChannel('in_app', event.target.checked)} />
+                <Form.Check name="a11y-notificationssettingsviewtsx-331" aria-label="Campo de formulario" type="checkbox" label={t('notifications.inApp')} checked={(ruleDraft.actions_json?.channels || []).includes('in_app')} disabled={!canEditRules} onChange={(event) => setRuleChannel('in_app', event.target.checked)} />
               </Col>
               <Col md={4}>
-                <Form.Check type="checkbox" label={t('notifications.emailChannel')} checked={(ruleDraft.actions_json?.channels || []).includes('email')} disabled={!canEditRules} onChange={(event) => setRuleChannel('email', event.target.checked)} />
+                <Form.Check name="a11y-notificationssettingsviewtsx-334" aria-label="Campo de formulario" type="checkbox" label={t('notifications.emailChannel')} checked={(ruleDraft.actions_json?.channels || []).includes('email')} disabled={!canEditRules} onChange={(event) => setRuleChannel('email', event.target.checked)} />
               </Col>
               <Col md={6}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.emailTemplate')}</Form.Label>
-                <Form.Select size="sm" value={ruleDraft.template_id || ''} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, template_id: event.target.value || null })}>
+                <Form.Select name="a11y-notificationssettingsviewtsx-338" aria-label="Campo de formulario" size="sm" value={ruleDraft.template_id || ''} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, template_id: event.target.value || null })}>
                   <option value="">{t('notifications.noTemplate')}</option>
                   {ruleTemplateOptions.map(template => <option key={template.id} value={template.id}>{template.key}</option>)}
                 </Form.Select>
               </Col>
               <Col md={6}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.cooldown')}</Form.Label>
-                <Form.Control size="sm" type="number" value={ruleDraft.cooldown_minutes || 0} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, cooldown_minutes: Number(event.target.value) })} />
+                <Form.Control name="a11y-notificationssettingsviewtsx-345" aria-label="Campo de formulario" size="sm" type="number" value={ruleDraft.cooldown_minutes || 0} disabled={!canEditRules} onChange={(event) => setRuleDraft({ ...ruleDraft, cooldown_minutes: Number(event.target.value) })} />
               </Col>
               <Col md={12}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.recipientsJson')}</Form.Label>
-                <Form.Control as="textarea" rows={4} size="sm" value={ruleRecipientsText} disabled={!canEditRules} onChange={(event) => setRuleRecipientsText(event.target.value)} />
+                <Form.Control name="a11y-notificationssettingsviewtsx-349" aria-label="Campo de formulario" as="textarea" rows={4} size="sm" value={ruleRecipientsText} disabled={!canEditRules} onChange={(event) => setRuleRecipientsText(event.target.value)} />
               </Col>
               <Col md={12}>
                 <Form.Label className="x-small fw-bold text-muted">{t('notifications.conditionsJson')}</Form.Label>
-                <Form.Control as="textarea" rows={4} size="sm" value={ruleConditionsText} disabled={!canEditRules} onChange={(event) => setRuleConditionsText(event.target.value)} />
+                <Form.Control name="a11y-notificationssettingsviewtsx-353" aria-label="Campo de formulario" as="textarea" rows={4} size="sm" value={ruleConditionsText} disabled={!canEditRules} onChange={(event) => setRuleConditionsText(event.target.value)} />
               </Col>
               <Col md={12}>
                 <div className="small text-muted d-flex align-items-start gap-2">

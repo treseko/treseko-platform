@@ -27,7 +27,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
     >
       <tr className="x-small text-muted text-uppercase border-bottom">
         <th className="ps-3 py-3 border-0" style={{ width: "40px" }}>
-          <Form.Check
+          <Form.Check name="a11y-executionteststabletsx-30" aria-label="Campo de formulario"
             checked={allVisibleExecutionTestsSelected}
             onChange={(event) =>
               toggleVisibleExecutionSelection(event.target.checked)
@@ -94,7 +94,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
               className="ps-3"
               onClick={(event) => event.stopPropagation()}
             >
-              <Form.Check
+              <Form.Check name="a11y-executionteststabletsx-97" aria-label="Campo de formulario"
                 checked={selectedExecutionTestIds.includes(test.id)}
                 onChange={() => toggleExecutionSelection(test.id)}
               />

@@ -123,7 +123,9 @@ async def read_bug_detail(
 async def create_bug(
     payload: schemas.BugIssueCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.crear", "edit"))
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    ))
 ):
     await access_control.require_project_access(db, current_user, payload.proyecto_id, "edit")
     try:
@@ -138,7 +140,9 @@ async def create_bug_from_snapshot(
     snapshot_id: UUID,
     payload: schemas.BugIssueUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.crear", "edit"))
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    ))
 ):
     project_result = await db.execute(
         select(models.TestRun.proyecto_id)
@@ -164,7 +168,9 @@ async def create_bug_from_execution(
     ejecucion_id: UUID,
     payload: schemas.BugIssueUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.crear", "edit"))
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("bugs.ver", "read"), ("bugs.crear", "edit")
+    ))
 ):
     project_result = await db.execute(
         select(models.TestRun.proyecto_id)

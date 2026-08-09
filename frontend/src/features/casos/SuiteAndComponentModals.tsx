@@ -215,7 +215,7 @@ export function SuiteAndComponentModals({
                   aria-label={t('casos.customFolderColor')}
                   style={{ width: 46, height: 34, padding: 4 }}
                 />
-                <Form.Control
+                <Form.Control name="a11y-suiteandcomponentmodalstsx-218" aria-label="Campo de formulario"
                   value={suiteForm.color || '#F1F5F9'}
                   onChange={(e) => setSuiteForm({ ...suiteForm, color: e.target.value })}
                   placeholder="#F1F5F9"
@@ -284,7 +284,7 @@ export function SuiteAndComponentModals({
           <Modal.Body className="pt-0">
             <Form.Group>
               <Form.Label>{t('casos.newParentSuite')}</Form.Label>
-              <Form.Select
+              <Form.Select name="a11y-suiteandcomponentmodalstsx-287" aria-label="Campo de formulario"
                 value={moveSuiteParentId}
                 onChange={(e) => setMoveSuiteParentId(e.target.value)}
               >
@@ -317,7 +317,7 @@ export function SuiteAndComponentModals({
           <Modal.Body className="p-4 text-start">
             <Form.Group className="mb-3">
               <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('casos.componentName')}</RequiredLabel></Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-suiteandcomponentmodalstsx-320" aria-label="Campo de formulario"
                 value={componentForm.name}
                 onChange={e => setComponentForm({ ...componentForm, name: e.target.value })}
                 required
@@ -327,7 +327,7 @@ export function SuiteAndComponentModals({
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label className="x-small fw-bold text-muted">{t('casos.techStack')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-suiteandcomponentmodalstsx-330" aria-label="Campo de formulario"
                 value={componentForm.techStack}
                 onChange={e => setComponentForm({ ...componentForm, techStack: e.target.value })}
                 className="bg-light shadow-sm font-monospace x-small"
@@ -336,7 +336,7 @@ export function SuiteAndComponentModals({
             </Form.Group>
             <Form.Group className="mb-2">
               <Form.Label className="x-small fw-bold text-muted">{t('casos.descriptionAndScope')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-suiteandcomponentmodalstsx-339" aria-label="Campo de formulario"
                 as="textarea"
                 rows={3}
                 value={componentForm.description}
@@ -347,7 +347,7 @@ export function SuiteAndComponentModals({
             </Form.Group>
             <Form.Group className="mb-2">
               <Form.Label className="x-small fw-bold text-muted">{t('casos.technicalVariables')}</Form.Label>
-              <Form.Control
+              <Form.Control name="a11y-suiteandcomponentmodalstsx-350" aria-label="Campo de formulario"
                 as="textarea"
                 rows={4}
                 value={componentForm.variablesText || ''}

@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import type { AttachmentMeta } from "../EvidenceUpload";
+import { normalizeBugText } from "./bugPayloadPayload";
 
-export function createExecutionBugController(context: any): any {
+export function useExecutionBugController(context: any): any {
   const { useCallback: _useCallback, ...ctx } = context;
-  const { loadBuildCaseExecutionStatus, currentBuildId, activeBuildCaseIds, buildCaseIds, setBuildCaseResultHistoryByBuild, currentProjectId, activeTab, setActiveTab, setExecutionBugDetailId, showFeedback, t, fetchWithAuth, authHeaders, API_BASE, loggedUser, selectedTest, isValidUUID, getLatestFailureExecutionContext, isFailureStatus, buildInternalBugPayloadFromContext, setCreatingInternalBugContextId, setOpenBugsByCase, setOpenBugsLoading, openBugsByCase, relatedCaseBugs, setRelatedCaseBugs, setRelatedCaseBugsLoading, getStatusColor, normalizeExecutionHistory, uniqueAttachmentList, attachmentIds, setSnapshotAttachments, setSnapshotNotes, setGeneralExecutionAttachments, setGeneralExecutionNote, setGeneralExecutionStatus, setGeneralExecutionSnapshot, setShowRedminePrompt, setRedmineDecisionByExecution, setInternalBugDraft, setInternalBugAdditionalContext, setInternalBugEvidence, internalBugDraft, internalBugAdditionalContext, internalBugEvidence, canAccessCapability, setBugTrackerRefreshToken, setRelatedBugDecision, relatedBugDecision, setCurrentExecutionCase, setShowRedmineDrawer, setExecutionMode, setAutomationMonitor, aiDryRunInFlightRef, setAiDryRunRunning, setIaLogs, stringifyFeedbackMessage, buildsList, projectsList, componentsList, currentCompId, currentProjectEnvironments, selectedExecutionEnvironmentId, executionDatasetPreview, generateBugDescription, stepResults, generalExecutionStatus, snapshotNotes, generalExecutionNote, executionSnapshots, currentExecutionCase, snapshotAttachments, generalExecutionAttachments, generalExecutionSnapshot, getExecutionCompletionPlan, advanceToNextTest, relatedBugDecisionResolverRef, createExecutionDryRunActions, readBackendError, isOpenBugState, ...rest } = ctx;
+  const { loadBuildCaseExecutionStatus, currentBuildId, activeBuildCaseIds, buildCaseIds, setBuildCaseResultHistoryByBuild, currentProjectId, activeTab, setActiveTab, setExecutionBugDetailId, showFeedback, t, fetchWithAuth, authHeaders, API_BASE, loggedUser, selectedTest, currentExecutionRun, isValidUUID, getLatestFailureExecutionContext, isFailureStatus, buildInternalBugPayloadFromContext, setCreatingInternalBugContextId, setOpenBugsByCase, setOpenBugsLoading, openBugsByCase, relatedCaseBugs, setRelatedCaseBugs, setRelatedCaseBugsLoading, getStatusColor, normalizeExecutionHistory, uniqueAttachmentList, attachmentIds, setSnapshotAttachments, setSnapshotNotes, setGeneralExecutionAttachments, setGeneralExecutionNote, setGeneralExecutionStatus, setGeneralExecutionSnapshot, setShowRedminePrompt, setRedmineDecisionByExecution, setInternalBugDraft, setInternalBugAdditionalContext, setInternalBugEvidence, internalBugDraft, internalBugAdditionalContext, internalBugEvidence, canAccessCapability, setBugTrackerRefreshToken, setRelatedBugDecision, relatedBugDecision, setCurrentExecutionCase, setShowRedmineDrawer, setExecutionMode, setAutomationMonitor, aiDryRunInFlightRef, setAiDryRunRunning, setIaLogs, stringifyFeedbackMessage, buildsList, projectsList, componentsList, currentCompId, currentProjectEnvironments, selectedExecutionEnvironmentId, executionDatasetPreview, generateBugDescription, stepResults, generalExecutionStatus, snapshotNotes, generalExecutionNote, executionSnapshots, currentExecutionCase, snapshotAttachments, generalExecutionAttachments, generalExecutionSnapshot, getExecutionCompletionPlan, advanceToNextTest, relatedBugDecisionResolverRef, createExecutionDryRunActions, readBackendError, isOpenBugState, ...rest } = ctx;
+  const selectedExecutionDatasetId = (ctx as any).selectedExecutionDatasetId;
   void _useCallback; void rest;
   const refreshCurrentBuildExecutionStatus = useCallback(async () => {
     if (!currentBuildId || !isValidUUID(currentBuildId)) return;
@@ -39,6 +41,7 @@ export function createExecutionBugController(context: any): any {
     context: {
       getCurrentBuildFailureContext, buildsList, currentBuildId, projectsList,
       currentProjectId, componentsList, currentCompId, currentProjectEnvironments,
+      currentExecutionRun,
       selectedExecutionEnvironmentId, executionDatasetPreview, selectedTest,
       generateBugDescription, stepResults, generalExecutionStatus, snapshotNotes,
       generalExecutionNote, executionSnapshots,
@@ -145,6 +148,11 @@ export function createExecutionBugController(context: any): any {
         snapshot,
         note: bugNote,
       });
+      const finalPayload = {
+        ...bugPayload,
+        ...(payloadOverride || {}),
+      };
+      finalPayload.datos_prueba = normalizeBugText(finalPayload.datos_prueba);
       const mergedMetadata = {
         ...(bugPayload.metadata_json || {}),
         ...((payloadOverride?.metadata_json || {}) as Record<string, any>),
@@ -153,8 +161,7 @@ export function createExecutionBugController(context: any): any {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...bugPayload,
-          ...(payloadOverride || {}),
+          ...finalPayload,
           metadata_json: mergedMetadata,
           resultado_obtenido:
             payloadOverride?.resultado_obtenido ||

@@ -50,15 +50,15 @@ export function ProfileSettingsTab({
           <Row className="g-3">
             <Col md={6}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.profileName')}</Form.Label>
-              <Form.Control value={profileDraft.nombre_completo} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, nombre_completo: e.target.value })} />
+              <Form.Control name="a11y-profilesettingstabtsx-53" aria-label="Campo de formulario" value={profileDraft.nombre_completo} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, nombre_completo: e.target.value })} />
             </Col>
             <Col md={6}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.profileDisplayName')}</Form.Label>
-              <Form.Control value={profileDraft.display_name} placeholder={t('configuracion.profileDisplayNamePlaceholder')} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, display_name: e.target.value })} />
+              <Form.Control name="a11y-profilesettingstabtsx-57" aria-label="Campo de formulario" value={profileDraft.display_name} placeholder={t('configuracion.profileDisplayNamePlaceholder')} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, display_name: e.target.value })} />
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.profileAvatar')}</Form.Label>
-              <Form.Select value={profileDraft.avatar_provider} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, avatar_provider: e.target.value })}>
+              <Form.Select name="a11y-profilesettingstabtsx-61" aria-label="Campo de formulario" value={profileDraft.avatar_provider} disabled={!canEditProfile} onChange={(e) => setProfileDraft({ ...profileDraft, avatar_provider: e.target.value })}>
                 <option value="gravatar">{t('configuracion.profileAvatarGravatar')}</option>
                 <option value="none">{t('configuracion.profileAvatarInitials')}</option>
               </Form.Select>
@@ -66,7 +66,7 @@ export function ProfileSettingsTab({
             </Col>
             <Col md={4} className="opacity-75">
               <Form.Label className="fw-bold small text-muted">{t('configuracion.profileDensity')} <span className="badge bg-light text-secondary border ms-1">{t('configuracion.unknown')}</span></Form.Label>
-              <Form.Select value={profileDraft.density} disabled>
+              <Form.Select name="a11y-profilesettingstabtsx-69" aria-label="Campo de formulario" value={profileDraft.density} disabled>
                 <option value="comfortable">{t('configuracion.profileDensityComfortable')}</option>
                 <option value="compact">{t('configuracion.profileDensityCompact')}</option>
               </Form.Select>
@@ -74,7 +74,7 @@ export function ProfileSettingsTab({
             </Col>
             <Col md={4}>
               <Form.Label className="fw-bold small text-muted">{t('configuracion.profileLanguage')}</Form.Label>
-              <Form.Select value={locale} onChange={(e) => { const next = e.target.value as 'es' | 'en'; setLocale(next); saveLanguage(next) }}>
+              <Form.Select name="a11y-profilesettingstabtsx-77" aria-label="Campo de formulario" value={locale} onChange={(e) => { const next = e.target.value as 'es' | 'en'; setLocale(next); saveLanguage(next) }}>
                 <option value="es">{t('configuracion.languageSpanish')}</option>
                 <option value="en">{t('configuracion.languageEnglish')}</option>
               </Form.Select>

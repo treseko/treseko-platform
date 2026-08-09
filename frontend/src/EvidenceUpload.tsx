@@ -164,7 +164,7 @@ export const EvidenceUpload = ({
 
   return (
     <div ref={containerRef} className="evidence-upload" tabIndex={0}>
-      <input
+      <input name="a11y-evidenceuploadtsx-167" aria-label="Campo de formulario"
         type="file"
         ref={fileInputRef}
         onChange={handleFileSelect}

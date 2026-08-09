@@ -3,6 +3,7 @@ import { CheckCircle2, Edit, FileText, Layers, Link, MoreHorizontal, Plus, Searc
 import { PremiumGate } from '../premium/PremiumGate'
 import { formatDateTime, toDateTimeLocalInput } from '../../shared/utils/dateTime'
 import { firstUrlFromText } from '../../app/mappers'
+import { isBuildReadOnly } from '../../app/buildState'
 
 export function ProjectComponentsTab({ context }: { context: any }) {
   const { t,
@@ -20,6 +21,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
     managingProjectId,
     currentCompId,
     buildsList,
+    canEditProjectBuilds,
     canEditProjectBuildsEffective,
     handleCreateBuild,
     showBuildCreateOptions,
@@ -73,7 +75,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                 <div className="p-3 border-bottom bg-white rounded-top-3">
                                   <div className="input-group input-group-sm">
                                     <span className="input-group-text bg-light border-end-0 text-muted"><Search size={14} /></span>
-                                    <Form.Control
+                                    <Form.Control name="a11y-projectcomponentstabtsx-76" aria-label="Campo de formulario"
                                       type="text"
                                       placeholder={t('proyectos.searchComponent')}
                                       className="bg-light border-start-0 shadow-none ps-0"
@@ -230,7 +232,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                             : t('proyectos.buildHistoric')
                                         const showWindowStatusBadge = windowState.label !== buildStatusLabel
                                         return (
-                                        <div key={build.id} className={`p-3 border rounded-3 shadow-sm transition-all project-build-item build-row-card ${build.active ? 'is-active' : ''} ${build.hidden ? 'opacity-75' : ''}`}>
+                                        <div key={build.id} className={`p-3 border rounded-3 shadow-sm transition-all project-build-item build-row-card ${build.active ? 'is-active' : ''} ${build.hidden ? 'is-hidden' : ''}`}>
                                           <div className="d-flex justify-content-between align-items-start gap-3 project-build-item-main">
                                             <div className="d-flex align-items-start gap-3 flex-grow-1">
                                               <div className="bg-white border rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style={{ width: '32px', height: '32px' }}>
@@ -272,7 +274,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                   <Dropdown.Toggle variant="outline-secondary" size="sm" className="rounded-pill px-3 fw-bold x-small shadow-none d-flex align-items-center gap-1">
                                                     <FileText size={13} /> {t('proyectos.reportsDropdown')}
                                                   </Dropdown.Toggle>
-                                                  <Dropdown.Menu className="shadow-sm border-0">
+                                              <Dropdown.Menu className="shadow-sm border-0">
                                                     {buildReport?.loading ? (
                                                       <Dropdown.Item disabled>{t('proyectos.loadingReports')}</Dropdown.Item>
                                                     ) : latestReport ? (
@@ -329,12 +331,12 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                   <Dropdown.Item onClick={() => setExpandedBuildDetails(prev => ({ ...prev, [build.id]: !prev[build.id] }))}>
                                                     {isBuildExpanded ? t('proyectos.hideDetails') : t('proyectos.showDetails')}
                                                   </Dropdown.Item>
-                                                  {canEditProjectBuildsEffective && (
+                                                  {canEditProjectBuilds && (
                                                     <Dropdown.Item onClick={() => handleToggleBuildHidden(build.id)}>
                                                       {build.hidden ? t('proyectos.showBuild') : t('proyectos.hideBuild')}
                                                     </Dropdown.Item>
                                                   )}
-                                                  {canEditProjectBuildsEffective && (
+                                                  {canEditProjectBuilds && !isBuildReadOnly(build) ? (
                                                     build.active ? (
                                                       <Dropdown.Item onClick={() => handleSetInactiveBuild(build.id)}>
                                                         {t('proyectos.deactivateBuild')}
@@ -344,8 +346,12 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                         {t('proyectos.activateBuild')}
                                                       </Dropdown.Item>
                                                     )
-                                                  )}
-                                                  {canEditProjectBuildsEffective && (
+                                                  ) : canEditProjectBuilds ? (
+                                                    <Dropdown.Item disabled title="La build histórica se conserva en modo consulta.">
+                                                      {build.active ? t('proyectos.deactivateBuild') : t('proyectos.activateBuild')}
+                                                    </Dropdown.Item>
+                                                  ) : null}
+                                                  {canEditProjectBuilds && !isBuildReadOnly(build) && (
                                                     <>
                                                       <Dropdown.Divider />
                                                       <Dropdown.Item className="text-danger" onClick={() => handleDeleteBuild(build.id)}>
@@ -353,11 +359,16 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                       </Dropdown.Item>
                                                     </>
                                                   )}
+                                                  {canEditProjectBuilds && isBuildReadOnly(build) && (
+                                                    <Dropdown.Item disabled title="La build histórica se conserva en modo consulta.">
+                                                      {t('proyectos.deleteBuild')}
+                                                    </Dropdown.Item>
+                                                  )}
                                                 </Dropdown.Menu>
                                               </Dropdown>
                                             </div>
                                           </div>
-                                          {isBuildExpanded && canEditProjectBuildsEffective && (
+                                          {isBuildExpanded && canEditProjectBuilds && !isBuildReadOnly(build) && (
                                             <Form
                                               key={`${build.id}:${build.startDate || ''}:${build.endDate || ''}:${build.changeContext || ''}`}
                                               className="mt-3 border-top pt-3 build-row-detail"
