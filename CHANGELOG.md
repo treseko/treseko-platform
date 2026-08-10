@@ -1,5 +1,12 @@
 # Treseko
 
+## 1.0.2 — Release de plataforma
+
+- Versiones coordinadas para el producto, frontend, motor y worker.
+- Control de cambios documentado para promover la release sin modificar historiales de versiones anteriores.
+- Trazabilidad, evidencias, reportes y ejecuciones preparados para conservar el contexto de cada build.
+- La publicación Community mantiene fuera servicios privados, instaladores gráficos y secretos operativos.
+
 ## 1.0.1 — Actualizador preparado para futuras migraciones
 
 - Contrato documentado para planes de actualización, hooks y rollback.

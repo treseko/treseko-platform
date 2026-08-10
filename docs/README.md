@@ -61,7 +61,7 @@ usarla y qué revisar si algo no sale como esperás.
 
 ## Versión distribuida
 
-La versión estable distribuida es `1.0.1`. Incluye mejoras operativas en instalación,
+La versión estable distribuida es `1.0.2`. Incluye mejoras operativas en instalación,
 actualizaciones, portabilidad de casos, trazabilidad, reportes, automatización,
 IA y administración.
 

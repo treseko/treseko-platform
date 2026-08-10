@@ -63,7 +63,7 @@ use it and what to check if something does not behave as expected.
 
 ## Distributed version
 
-The distributed stable version is `1.0.1`. It includes operational improvements in installation,
+The distributed stable version is `1.0.2`. It includes operational improvements in installation,
 updates, case portability, traceability, reports, automation,
 AI and administration.
 
