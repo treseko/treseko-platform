@@ -41,8 +41,11 @@ export function AiProviderProfilesPanel({ fetchWithAuth, canEdit, showFeedback, 
   const [newProvider, setNewProvider] = useState('lm-studio')
   const [newLabel, setNewLabel] = useState('')
   const [newSecret, setNewSecret] = useState('')
-  const [newEndpoint, setNewEndpoint] = useState('http://127.0.0.1:1234/v1')
-  const [newModel, setNewModel] = useState('lm-studio')
+  const [newEndpoint, setNewEndpoint] = useState(() => activeConfig?.llm_endpoint || 'http://127.0.0.1:1234/v1')
+  const [newModel, setNewModel] = useState(() => activeConfig?.model || '')
+  const [newModelCatalog, setNewModelCatalog] = useState<any[]>([])
+  const [newScanStatus, setNewScanStatus] = useState<'idle' | 'loading' | 'ok' | 'empty' | 'error'>('idle')
+  const [newScanError, setNewScanError] = useState('')
   const [editingProfile, setEditingProfile] = useState<any | null>(null)
   const [editedProfileName, setEditedProfileName] = useState('')
   const [editedCredentialLabel, setEditedCredentialLabel] = useState('')
@@ -58,6 +61,11 @@ export function AiProviderProfilesPanel({ fetchWithAuth, canEdit, showFeedback, 
     return nextProfiles
   }
   useEffect(() => { void load().catch(error => showFeedback(t('configuracion.aiProfilesTitle'), error.message, 'danger')) }, [])
+  useEffect(() => {
+    if (newLabel.trim() || busyId === 'new') return
+    if (activeConfig?.llm_endpoint) setNewEndpoint(activeConfig.llm_endpoint)
+    if (activeConfig?.model) setNewModel(activeConfig.model)
+  }, [activeConfig?.llm_endpoint, activeConfig?.model])
 
   const credentialOptions = (provider: string) => credentials.filter(item => item.active && item.provider === provider)
   const providerLabel = (provider: string) => providerOptions.find(item => item.value === provider)?.label || provider
@@ -86,6 +94,27 @@ export function AiProviderProfilesPanel({ fetchWithAuth, canEdit, showFeedback, 
     } catch (error: any) {
       showFeedback(t('configuracion.aiModelsTitle'), error.message || t('configuracion.aiProfilesCatalogUpdateFailed'), 'warning')
     } finally { setBusyId('') }
+  }
+
+  const scanNewProvider = async () => {
+    setNewScanStatus('loading')
+    setNewScanError('')
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/ai-engine/models/scan`, {
+        method: 'POST', body: JSON.stringify({ provider: newProvider, llm_endpoint: newEndpoint }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.detail || t('configuracion.backendResponded', { status: response.status }))
+      const models = Array.isArray(result.models) ? result.models : []
+      setNewModelCatalog(models)
+      const firstModel = models[0]?.id || models[0]?.name || ''
+      setNewModel(current => models.some((item: any) => item?.id === current || item?.name === current) ? current : firstModel)
+      setNewScanStatus(result.status === 'ok' ? 'ok' : 'empty')
+      if (result.status !== 'ok') setNewScanError(result.detail || t('configuracion.aiModelsScanError'))
+    } catch (error: any) {
+      setNewScanStatus('error')
+      setNewScanError(error.message || t('configuracion.aiModelsScanError'))
+    }
   }
 
   const updateProfile = async (profile: any, patch: any) => {
@@ -158,17 +187,20 @@ export function AiProviderProfilesPanel({ fetchWithAuth, canEdit, showFeedback, 
     } catch (error: any) { showFeedback(t('configuracion.aiProfileTitle'), error.message, 'danger') } finally { setBusyId('') }
   }
 
+  const requiresModelScan = ['lm-studio', 'ollama', 'openai-compatible'].includes(newProvider)
+
   return (
     <section className="mt-3" aria-labelledby="ai-provider-profiles-title">
       {canEdit && <div className="border rounded-3 p-3 bg-light-subtle mb-3">
         <div className="small fw-bold mb-2"><KeyRound size={14} className="me-1" />{t('configuracion.addProvider')}</div>
         <Row className="g-2 align-items-end">
-          <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.provider')}</Form.Label><Form.Select aria-label={t('configuracion.provider')} value={newProvider} onChange={event => { const option = providerOptions.find(item => item.value === event.target.value); setNewProvider(event.target.value); setNewEndpoint(option?.defaultEndpoint || ''); setNewModel(option?.defaultModel || '') }}>{providerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Form.Select></Col>
+          <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.provider')}</Form.Label><Form.Select aria-label={t('configuracion.provider')} value={newProvider} onChange={event => { const provider = event.target.value; const option = providerOptions.find(item => item.value === provider); setNewProvider(provider); setNewEndpoint(provider === 'lm-studio' && activeConfig?.llm_endpoint ? activeConfig.llm_endpoint : (option?.defaultEndpoint || '')); setNewModel(provider === 'lm-studio' && activeConfig?.model ? activeConfig.model : (option?.defaultModel || '')); setNewModelCatalog([]); setNewScanStatus('idle'); setNewScanError('') }}>{providerOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Form.Select></Col>
           <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.profileLabel')}</Form.Label><Form.Control name="a11y-aiproviderprofilespaneltsx-167" aria-label="Campo de formulario" value={newLabel} onChange={event => setNewLabel(event.target.value)} placeholder={t('configuracion.aiProfilesMainPlaceholder')} autoComplete="off" /></Col>
           <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.endpoint')}</Form.Label><Form.Control name="a11y-aiproviderprofilespaneltsx-168" aria-label="Campo de formulario" value={newEndpoint} onChange={event => setNewEndpoint(event.target.value)} disabled={newProvider === 'opencode'} /></Col>
-          <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.initialModel')}</Form.Label><Form.Control name="a11y-aiproviderprofilespaneltsx-169" aria-label="Campo de formulario" value={newModel} onChange={event => setNewModel(event.target.value)} placeholder={t('configuracion.modelIdPlaceholder')} /></Col>
+          <Col md={3}><Form.Label className="small fw-bold">{t('configuracion.initialModel')}</Form.Label>{newModelCatalog.length ? <Form.Select name="a11y-aiproviderprofilespaneltsx-169" aria-label={t('configuracion.initialModel')} value={newModel} onChange={event => setNewModel(event.target.value)}>{newModelCatalog.map(item => <option key={item.id || item.name} value={item.id || item.name}>{item.name || item.id}</option>)}</Form.Select> : <Form.Control name="a11y-aiproviderprofilespaneltsx-169" aria-label="Campo de formulario" value={newModel} onChange={event => setNewModel(event.target.value)} placeholder={requiresModelScan ? 'Escaneá modelos antes de crear' : t('configuracion.modelIdPlaceholder')} disabled={requiresModelScan} />}</Col>
+          {requiresModelScan && <Col md={12}><div className="d-flex align-items-center gap-2 mt-1"><Button type="button" size="sm" variant="outline-primary" disabled={!newEndpoint || newScanStatus === 'loading'} onClick={() => void scanNewProvider()}><RefreshCw size={13} className="me-1" />{newScanStatus === 'loading' ? t('configuracion.aiModelsScanning') : 'Escanear modelos'}</Button>{newScanStatus === 'ok' && <span className="small text-success">{t('configuracion.aiModelsDetected', { count: newModelCatalog.length })}</span>}{newScanError && <span className="small text-danger">{newScanError}</span>}</div></Col>}
           {providerOptions.find(item => item.value === newProvider)?.requiresApiKey && <Col md={8}><Form.Label className="small fw-bold">{t('configuracion.apiKeyName')}</Form.Label><Form.Control name="a11y-aiproviderprofilespaneltsx-170" aria-label="Campo de formulario" type="password" value={newSecret} onChange={event => setNewSecret(event.target.value)} autoComplete="off" /></Col>}
-          <Col md={providerOptions.find(item => item.value === newProvider)?.requiresApiKey ? 4 : 12}><Button type="button" className="w-100" disabled={busyId === 'new' || (Boolean(providerOptions.find(item => item.value === newProvider)?.requiresApiKey) && !newSecret) || (newProvider !== 'opencode' && (!newModel || !newEndpoint))} onClick={() => void saveProvider()}><Check size={14} className="me-1" />{busyId === 'new' ? t('configuracion.saving') : newProvider === 'opencode' ? t('configuracion.saveApiKey') : t('configuracion.createProfile')}</Button></Col>
+          <Col md={providerOptions.find(item => item.value === newProvider)?.requiresApiKey ? 4 : 12}><Button type="button" className="w-100" disabled={busyId === 'new' || (Boolean(providerOptions.find(item => item.value === newProvider)?.requiresApiKey) && !newSecret) || (newProvider !== 'opencode' && (!newModel || !newEndpoint || (requiresModelScan && newScanStatus !== 'ok')))} onClick={() => void saveProvider()}><Check size={14} className="me-1" />{busyId === 'new' ? t('configuracion.saving') : newProvider === 'opencode' ? t('configuracion.saveApiKey') : t('configuracion.createProfile')}</Button></Col>
         </Row>
       </div>}
 

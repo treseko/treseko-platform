@@ -135,6 +135,10 @@ services:
       context: engine
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Permite usar un proveedor LLM local del host (Ollama/LM Studio) desde
+    # el contenedor sin confundir localhost con el propio contenedor.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       ENGINE_PORT: 3010
       OPENCODE_VERSION: ${OPENCODE_VERSION:-1.18.5}

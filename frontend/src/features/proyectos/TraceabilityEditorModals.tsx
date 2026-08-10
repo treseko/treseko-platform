@@ -13,6 +13,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
         size="lg"
         centered
         scrollable
+        dialogClassName="traceability-editor-modal"
       >
         <Form onSubmit={saveRequirement}>
           <Modal.Header closeButton className="border-0 pb-2">
@@ -156,6 +157,7 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
         size="lg"
         centered
         scrollable
+        dialogClassName="traceability-editor-modal"
       >
         <Form onSubmit={saveStory}>
           <Modal.Header closeButton className="border-0 pb-2">

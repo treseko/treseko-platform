@@ -72,6 +72,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     handleCloneSuite,
     setExpandedSuites,
     authoringCases,
+    allAuthoringCases,
     caseArchiveView = 'active',
     setCaseArchiveView,
     caseArchiveCounts = { active: 0, archived: 0, all: 0 },
@@ -144,9 +145,16 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     canAccessCapability
   } = props
   const { t } = useI18n()
-  const editingCaseCode = editingCasoMasterId
-    ? authoringCases.find((item: any) => String(item.masterId || item.master_id || '') === String(editingCasoMasterId))?.code
-    : ''
+  const editingCasePool = allAuthoringCases || authoringCases || []
+  const editingAuthoringCase = editingCasoMasterId
+    ? editingCasePool.find((item: any) => {
+        const itemId = String(item.id ?? '')
+        const itemMasterId = String(item.masterId ?? item.master_id ?? '')
+        const editingId = String(editingCasoMasterId)
+        return itemId === editingId || itemMasterId === editingId
+      })
+    : null
+  const editingCaseCode = editingAuthoringCase?.code || ''
   const canUseCapability = canAccessCapability || (() => true)
   const canEditSuites = canUseCapability('crear_pruebas.suites', 'edit')
   const canEditCases = canUseCapability('crear_pruebas.casos', 'edit')
@@ -162,6 +170,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   const [cloneTargetSuiteId, setCloneTargetSuiteId] = useState('')
   const [moveSourceCase, setMoveSourceCase] = useState<any | null>(null)
   const [moveTargetSuiteId, setMoveTargetSuiteId] = useState('')
+  const [movingCase, setMovingCase] = useState(false)
   const [cloneSourceSuite, setCloneSourceSuite] = useState<any | null>(null)
   const [cloneSuiteName, setCloneSuiteName] = useState('')
   const [cloneSuiteParentId, setCloneSuiteParentId] = useState('')
@@ -246,7 +255,10 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     if (!moveSourceCase) return []
     return flattenSuites(suitesTree).filter((suite: any) => {
       const suiteComponentId = suite.componente_id || suite.componentId || ''
-      if (!moveSourceCase.componentId) return !suiteComponentId
+      // Some persisted cases are loaded without the component relation in the
+      // normalized frontend model. Do not make the destination list empty in
+      // that situation; the backend still validates the project and suite.
+      if (!moveSourceCase.componentId) return true
       return suiteComponentId === moveSourceCase.componentId
     })
   }, [moveSourceCase, suitesTree])
@@ -295,6 +307,18 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     setMoveTargetSuiteId('')
   }
 
+  const handleChangeCaseFolder = () => {
+    // In the editor, “Cambiar” must move the persisted case. The generic
+    // location modal is only for choosing the destination while creating a
+    // new case (or when there is no persisted case to move yet).
+    if (editingCasoMasterId && editingAuthoringCase) {
+      setShowLocationModal(false)
+      openMoveCaseModal(editingAuthoringCase)
+      return
+    }
+    setShowLocationModal(true)
+  }
+
   const confirmCloneCase = async () => {
     if (!cloneSourceCase) return
     const destinationSuiteId = cloneTargetSuiteId || cloneSourceCase.suiteId || ''
@@ -316,13 +340,18 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
 
   const confirmMoveCase = async () => {
     if (!moveSourceCase || !moveTargetSuiteValid) return
-    const moved = await handleMoveCaso?.(moveSourceCase.id, moveTargetSuiteId)
-    if (moved) {
-      await loadCasosFromBackend?.(currentProjectId, componentsList)
-      setExpandedSuites?.((current: Record<string, boolean>) => ({ ...current, [moveTargetSuiteId]: true }))
-      selectSuiteTarget(moveTargetSuiteId)
-      setMoveSourceCase(null)
-      setMoveTargetSuiteId('')
+    setMovingCase(true)
+    try {
+      const moved = await handleMoveCaso?.(moveSourceCase.id, moveTargetSuiteId)
+      if (moved) {
+        await loadCasosFromBackend?.(currentProjectId, componentsList)
+        setExpandedSuites?.((current: Record<string, boolean>) => ({ ...current, [moveTargetSuiteId]: true }))
+        selectSuiteTarget(moveTargetSuiteId)
+        setMoveSourceCase(null)
+        setMoveTargetSuiteId('')
+      }
+    } finally {
+      setMovingCase(false)
     }
   }
 
@@ -354,6 +383,11 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     currentSuiteBreadcrumb, canSaveCurrentCase, cloneDestinationSuites, cloneTargetSuiteValid,
     moveCaseDestinationSuites, moveTargetSuiteValid, cloneSuiteIds, cloneSuiteDestinationSuites,
     cloneSuiteCasesCount, cloneSuiteName, setCloneSuiteName, cloneSuiteParentId, setCloneSuiteParentId,
+    showLocationModal, setShowLocationModal,
+    cloneSourceCase, setCloneSourceCase, cloneTargetSuiteId, setCloneTargetSuiteId,
+    moveSourceCase, setMoveSourceCase, moveTargetSuiteId, setMoveTargetSuiteId,
+    movingCase,
+    cloneSourceSuite, setCloneSourceSuite,
     commitTagDraft, removeTag, insertFunctionUsage, openCloneCaseModal,
     openMoveCaseModal, confirmCloneCase, confirmMoveCase, openCloneSuiteModal, confirmCloneSuite,
     uuidOrNull, mobileExplorerOpen, setMobileExplorerOpen,
@@ -409,7 +443,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                   <Folders size={15} className="text-primary" /> {t('casos.folder')} {currentSuiteBreadcrumb}
                 </span>
                 {canEditCases && (
-                  <Button type="button" variant="outline-primary" size="sm" className="rounded-pill fw-bold py-0 px-3" onClick={() => setShowLocationModal(true)}>
+                  <Button type="button" variant="outline-primary" size="sm" className="rounded-pill fw-bold py-0 px-3" onClick={handleChangeCaseFolder}>
                     {t('casos.change')}
                   </Button>
                 )}

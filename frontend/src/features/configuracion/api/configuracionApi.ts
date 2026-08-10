@@ -1,14 +1,11 @@
 import { API_BASE } from '../../../app/constants'
+import { readBackendError } from '../../../app/errorMessages'
 
 export type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
 
 async function readJsonOrThrow(response: Response, fallback: string) {
   if (response.ok) return response.json()
-  const error = await response.json().catch(() => null)
-  const detail = Array.isArray(error?.detail)
-    ? error.detail.map((item: any) => item?.msg || item?.message || JSON.stringify(item)).join('; ')
-    : error?.detail || error?.message
-  throw new Error(typeof detail === 'string' ? detail : fallback)
+  throw new Error(await readBackendError(response, fallback))
 }
 
 export async function fetchAttachmentConfig(fetchWithAuth: FetchWithAuth) {

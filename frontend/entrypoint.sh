@@ -127,4 +127,22 @@ if [ ! -f "$FRONTEND_HTML_DIR/maintenance.html" ]; then
 HTML
 fi
 
+# El backend reemplaza el bundle en el volumen compartido y deja esta marca
+# para que el frontend también reinicie. Se elimina antes de salir para que
+# restart: unless-stopped lo levante una sola vez con el contenido nuevo.
+watch_update_restart() {
+  marker="$FRONTEND_HTML_DIR/.treseko-update-restart"
+  while :; do
+    if [ -f "$marker" ]; then
+      rm -f "$marker"
+      echo "Actualizacion lista; reiniciando frontend."
+      kill -TERM 1 2>/dev/null || true
+      return 0
+    fi
+    sleep 2
+  done
+}
+
+watch_update_restart &
+
 exec nginx -g 'daemon off;'

@@ -1,5 +1,5 @@
 from .updater import *
-from .updater import _utc_iso
+from .updater import _pg_dump_url, _utc_iso
 
 async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool) -> None:
     state = self._tasks[task_id]

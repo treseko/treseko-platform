@@ -24,10 +24,11 @@ export function allowedEndpoint(endpoint: unknown) {
     const parsed = new URL(String(endpoint || ""));
     if (!["http:", "https:"].includes(parsed.protocol)) return false;
     const allowedHosts = (process.env.AI_ALLOWED_LLM_HOSTS || "").split(",").map((item) => item.trim()).filter(Boolean);
-    const isPrivate = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1" || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(parsed.hostname);
+    const isDockerHostAlias = parsed.hostname === "host.docker.internal";
+    const isPrivate = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1" || isDockerHostAlias || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(parsed.hostname);
     // The backend/Engine and a locally hosted model commonly communicate over
     // loopback. That is a local process boundary, not an external SSRF target.
-    if (isPrivate && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) return true;
+    if (isPrivate && ["localhost", "127.0.0.1", "::1", "host.docker.internal"].includes(parsed.hostname)) return true;
     if (isPrivate) return false;
     return allowedHosts.length === 0 ? !IS_PRODUCTION : allowedHosts.includes(parsed.hostname);
   } catch (_) {

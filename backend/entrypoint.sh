@@ -350,6 +350,12 @@ PY
     validate_frontend_runtime "$expected_frontend_version"
   fi
 
+  # Frontend es otro contenedor. La marca permite que su entrypoint cierre
+  # nginx y Docker lo levante con el bundle ya reemplazado.
+  if [ -d "$FRONTEND_HTML_DIR" ]; then
+    : > "$FRONTEND_HTML_DIR/.treseko-update-restart"
+  fi
+
   if [ -d "$update_dir/engine" ]; then
     echo "  Reemplazando engine..."
     mkdir -p "$ENGINE_DIR"

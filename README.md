@@ -20,6 +20,8 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 
 Para ver el detalle completo de cambios, consultá el [changelog](CHANGELOG.md).
 
+Podés ver capturas de las principales secciones en la [galería de capturas](screenshots/README.md).
+
 ### Novedades de 1.0.1
 
 - Actualizador preparado para futuras migraciones, hooks y rollback.

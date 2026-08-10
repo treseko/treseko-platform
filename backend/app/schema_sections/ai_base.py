@@ -165,8 +165,13 @@ def validate_ai_provider_endpoint(value: str) -> str:
         raise ValueError("El endpoint IA es invalido") from exc
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("El endpoint IA no puede contener credenciales, query ni fragment")
-    local = (parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"}
-    if parsed.scheme != "https" and not (parsed.scheme == "http" and local):
+    hostname = (parsed.hostname or "").lower()
+    local = hostname in {"localhost", "127.0.0.1", "::1"}
+    # Local providers may run on another machine in the same private/Tailscale
+    # network (for example LM Studio on Windows). Keep HTTP restricted to
+    # non-public address ranges; public providers still require HTTPS.
+    private_http = bool(re.match(r"^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d)\.|100\.1\d\d\.)", hostname))
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and (local or private_http)):
         raise ValueError("El endpoint IA debe usar HTTPS; HTTP se permite solo en loopback local")
     if not parsed.hostname:
         raise ValueError("El endpoint IA debe incluir un host")

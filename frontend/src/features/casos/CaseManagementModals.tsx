@@ -1,4 +1,4 @@
-import { Button, Form, Modal } from "react-bootstrap";
+import { Button, Form, Modal, Spinner } from "react-bootstrap";
 import { FileText, Folders } from "lucide-react";
 import { flattenSuites } from "../../testRepositoryUtils";
 
@@ -10,7 +10,7 @@ export function CaseManagementModals({ context }: Props) {
     selectSuiteTarget, suitesTree, getSuiteDepth, cloneSourceCase, setCloneSourceCase,
     cloneTargetSuiteId, setCloneTargetSuiteId, cloneDestinationSuites, cloneTargetSuiteValid,
     confirmCloneCase, moveSourceCase, setMoveSourceCase, moveTargetSuiteId,
-    setMoveTargetSuiteId, moveCaseDestinationSuites, moveTargetSuiteValid, confirmMoveCase,
+    setMoveTargetSuiteId, moveCaseDestinationSuites, moveTargetSuiteValid, confirmMoveCase, movingCase,
     cloneSourceSuite, setCloneSourceSuite, cloneSuiteIds, cloneSuiteCasesCount, cloneSuiteName,
     setCloneSuiteName, cloneSuiteParentId, setCloneSuiteParentId, cloneSuiteDestinationSuites,
     confirmCloneSuite,
@@ -91,7 +91,7 @@ export function CaseManagementModals({ context }: Props) {
     </Button>
   </Modal.Footer>
 </Modal>
-<Modal show={Boolean(moveSourceCase)} onHide={() => setMoveSourceCase(null)} centered fullscreen="sm-down">
+<Modal show={Boolean(moveSourceCase)} onHide={() => { if (!movingCase) setMoveSourceCase(null) }} centered fullscreen="sm-down">
   <Modal.Header closeButton className="bg-light border-bottom text-dark">
     <Modal.Title className="fw-bold fs-6 d-flex align-items-center gap-2">
       <FileText size={18} className="text-primary" /> Mover prueba
@@ -123,11 +123,18 @@ export function CaseManagementModals({ context }: Props) {
     )}
   </Modal.Body>
   <Modal.Footer className="border-0 pt-0">
-    <Button variant="outline-secondary" className="fw-bold rounded-pill px-4" onClick={() => setMoveSourceCase(null)}>
+    <Button variant="outline-secondary" className="fw-bold rounded-pill px-4" disabled={movingCase} onClick={() => setMoveSourceCase(null)}>
       {t('common.cancel')}
     </Button>
-    <Button variant="primary" className="fw-bold rounded-pill px-4" disabled={!moveTargetSuiteValid} onClick={confirmMoveCase}>
-      Mover prueba
+    <Button
+      variant="primary"
+      className="fw-bold rounded-pill px-4 d-inline-flex align-items-center justify-content-center gap-2"
+      disabled={!moveTargetSuiteValid || movingCase}
+      aria-busy={movingCase}
+      onClick={confirmMoveCase}
+    >
+      {movingCase && <Spinner animation="border" size="sm" aria-hidden="true" />}
+      {movingCase ? t('common.loading') : 'Mover prueba'}
     </Button>
   </Modal.Footer>
 </Modal>

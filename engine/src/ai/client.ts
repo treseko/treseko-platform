@@ -306,11 +306,12 @@ Responde SOLO JSON con esta forma minima:
   }
   async checkHealthDetailed(): Promise<{ ok: boolean; category?: string; status?: number }> {
     try {
-      const response = await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16 });
-      try {
-        parseAIJson(response.content);
-      } catch (_) {
-        throw new ProviderRequestError('Respuesta IA no válida', 'invalid_response');
+      const response = await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16, disableThinking: this.disableThinking });
+      // Health only verifies transport/provider availability. Models may
+      // legitimately include reasoning text in a minimal probe; structured
+      // JSON is validated by the execution request that needs it.
+      if (!String(response.content || '').trim()) {
+        throw new ProviderRequestError('Respuesta IA vacía', 'invalid_response');
       }
       return { ok: true };
     } catch (error: any) {

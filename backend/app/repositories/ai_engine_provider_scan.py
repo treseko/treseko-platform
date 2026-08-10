@@ -3,6 +3,7 @@ from .ai_provider_catalog import AI_PROVIDER_KEY_ENV, AI_PROVIDER_NO_KEY, AI_PRO
 from .core_settings_ai_workflow_helpers import ai_provider_api_key_status, get_configured_ai_provider_api_key
 from ..services.error_sanitizer import sanitize_external_error
 from .ai_provider_profiles import resolve_ai_provider_credential
+from .repository_app_settings import get_ai_engine_config
 
 
 def _safe_ai_monitor_detail(value: object) -> str:

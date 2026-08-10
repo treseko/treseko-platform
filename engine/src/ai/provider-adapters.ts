@@ -143,6 +143,7 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
     if (provider === 'azure-openai') headers['api-key'] = config.apiKey;
     else headers.Authorization = `Bearer ${config.apiKey}`;
   }
+  const supportsJsonObjectResponseFormat = provider !== 'lm-studio';
   return {
     kind: provider === 'azure-openai' ? 'azure-openai-chat' : 'openai-chat',
     url: `${endpoint}/chat/completions`,
@@ -152,7 +153,7 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
       messages: request.messages,
       temperature: request.temperature,
       max_tokens: request.maxTokens,
-      response_format: { type: 'json_object' },
+      ...(supportsJsonObjectResponseFormat ? { response_format: { type: 'json_object' } } : {}),
       ...(request.disableThinking ? { reasoning_effort: 'none', chat_template_kwargs: { enable_thinking: false } } : {}),
     },
   };

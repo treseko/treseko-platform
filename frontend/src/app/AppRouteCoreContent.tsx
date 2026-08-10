@@ -220,6 +220,7 @@ export function AppRouteCoreContent({ options }: { options: any }) {
           handleCloneSuite={handleCloneSuite}
           setExpandedSuites={setExpandedSuites}
           authoringCases={visibleAuthoringCases}
+          allAuthoringCases={allAuthoringCases}
           caseArchiveView={caseArchiveView}
           setCaseArchiveView={setCaseArchiveView}
           caseArchiveCounts={{

@@ -102,7 +102,7 @@ export type AiProviderOption = {
 
 export const aiProviderOptions: AiProviderOption[] = [
   { value: 'opencode', label: 'OpenCode', kind: 'compatible', defaultEndpoint: 'http://127.0.0.1:4096', defaultModel: '', scan: 'Catalogo OpenCode de la cuenta (incluye Zen/Go autorizados)', requiresApiKey: true, apiKeyEnv: undefined },
-  { value: 'lm-studio', label: 'LM Studio', kind: 'local', defaultEndpoint: 'http://127.0.0.1:1234/v1', defaultModel: 'lm-studio', scan: 'Auto-scan local OpenAI /models', requiresApiKey: false },
+  { value: 'lm-studio', label: 'LM Studio', kind: 'local', defaultEndpoint: 'http://127.0.0.1:1234/v1', defaultModel: '', scan: 'Auto-scan local OpenAI /models', requiresApiKey: false },
   { value: 'ollama', label: 'Ollama', kind: 'local', defaultEndpoint: 'http://127.0.0.1:11434/v1', defaultModel: 'llama3', scan: 'Auto-scan local Ollama /api/tags', requiresApiKey: false },
   { value: 'openai-compatible', label: 'OpenAI Compatible', kind: 'compatible', defaultEndpoint: 'http://127.0.0.1:1234/v1', defaultModel: 'gpt-4o-mini', scan: 'Auto-scan /models si el endpoint lo permite', requiresApiKey: false },
   { value: 'openai', label: 'OpenAI', kind: 'cloud', defaultEndpoint: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini', scan: 'Catalogo preset + key por entorno', requiresApiKey: true, apiKeyEnv: 'OPENAI_API_KEY' },

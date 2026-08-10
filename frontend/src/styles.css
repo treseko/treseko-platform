@@ -2496,6 +2496,27 @@ button.theme-choice.is-selected,
   overscroll-behavior: contain;
 }
 
+.modal-dialog.traceability-editor-modal .modal-content {
+  max-height: calc(100vh - 2rem);
+}
+
+.modal-dialog.traceability-editor-modal .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 2rem);
+}
+
+.modal-dialog.traceability-editor-modal .modal-header,
+.modal-dialog.traceability-editor-modal .modal-footer {
+  flex-shrink: 0;
+}
+
+.modal-dialog.traceability-editor-modal .modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .modal-dialog.workflow-builder-modal {
   width: 100%;
   height: 100%;

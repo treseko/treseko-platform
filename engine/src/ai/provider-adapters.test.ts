@@ -33,6 +33,9 @@ test('Azure usa api-key y OpenAI-compatible usa bearer', () => {
   const compatible = providerRequest({ ...base, provider: 'openai-compatible' }, request);
   assert.equal(compatible.headers.Authorization, 'Bearer secret');
   assert.deepEqual(compatible.body.response_format, { type: 'json_object' });
+
+  const lmStudio = providerRequest({ ...base, provider: 'lm-studio' }, request);
+  assert.equal(lmStudio.body.response_format, undefined);
 });
 
 test('normaliza usage y texto de los tres protocolos nativos', () => {
