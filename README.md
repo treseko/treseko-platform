@@ -22,6 +22,18 @@ Para ver el detalle completo de cambios, consultá el [changelog](CHANGELOG.md).
 
 Podés ver capturas de las principales secciones en la [galería de capturas](screenshots/README.md).
 
+### Vista rápida
+
+Así se ve Treseko Community en las áreas principales de trabajo:
+
+<p align="center">
+  <a href="screenshots/dashboard.png"><img src="screenshots/dashboard.png" alt="Dashboard de calidad de Treseko" width="31%"></a>
+  <a href="screenshots/proyectos.png"><img src="screenshots/proyectos.png" alt="Proyectos y trazabilidad en Treseko" width="31%"></a>
+  <a href="screenshots/ejecutar-pruebas.png"><img src="screenshots/ejecutar-pruebas.png" alt="Ejecución de pruebas en Treseko" width="31%"></a>
+</p>
+
+Explorá las [33 capturas de la galería](screenshots/README.md) para conocer el flujo completo de proyectos, casos, ejecuciones, evidencias, automatización, reportes y configuración.
+
 ### Novedades de 1.0.1
 
 - Actualizador preparado para futuras migraciones, hooks y rollback.
