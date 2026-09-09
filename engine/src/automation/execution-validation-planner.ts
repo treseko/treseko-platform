@@ -32,6 +32,7 @@ export function planStep(step: QAEngineStep): RuntimeStepValidationPlan {
   const data = String(step.data || '').trim();
   const structuredData = parseStepData(data);
   const resolvedData = interpretStepData(data);
+  const explicitInputValue = structuredData.value ?? structuredData.input ?? structuredData.text;
   const assertions: Omit<StepAssertion, 'id'>[] = [];
 
   // A form described by its controls is a UI-state assertion, not a literal
@@ -61,11 +62,21 @@ export function planStep(step: QAEngineStep): RuntimeStepValidationPlan {
   const compactCredentialData = data.split('/').map((value) => value.trim()).filter(Boolean).length === 2;
   if (assertions.length === 0 && data && (expectsFieldValue || writesValue) && !compactCredentialData) {
     if (mentionsUsernameField) {
-      const value = valueForRole(resolvedData, ['username', 'email']) ?? structuredData.username ?? structuredData.usuario ?? structuredData.user ?? structuredData.email ?? structuredData.login ?? data;
+      const value = explicitInputValue ?? valueForRole(resolvedData, ['username', 'email']) ?? structuredData.username ?? structuredData.usuario ?? structuredData.user ?? structuredData.email ?? structuredData.login ?? data;
       assertions.push(assertion('element_value', expected, 'username', value));
     } else if (mentionsPasswordField) {
-      const value = valueForRole(resolvedData, ['password']) ?? structuredData.password ?? structuredData.contrasena ?? structuredData['contraseña'] ?? structuredData.pass ?? data;
+      const value = explicitInputValue ?? valueForRole(resolvedData, ['password']) ?? structuredData.password ?? structuredData.contrasena ?? structuredData['contraseña'] ?? structuredData.pass ?? data;
       assertions.push(assertion('element_value', expected, 'password', value));
+    } else {
+      const conventionalField = [
+        ['first name', /\bfirst\s*name\b/],
+        ['last name', /\blast\s*name\b/],
+        ['postal code', /\b(?:postal\s*code|zip\s*code|codigo\s*postal)\b/],
+      ] as const;
+      const target = conventionalField.find(([, pattern]) => pattern.test(text))?.[0];
+      if (target && explicitInputValue !== undefined) {
+        assertions.push(assertion('element_value', expected, target, explicitInputValue));
+      }
     }
   }
 

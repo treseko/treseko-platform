@@ -44,6 +44,30 @@ async def trigger_ai_run(
         )
     if ejecucion.estado_resultado == models.EstadoResultado.EJECUTANDO_AI:
         raise HTTPException(status_code=409, detail="Esta prueba IA ya está en ejecución.")
+    is_chatbot = caso.formato_prueba == models.FormatoPrueba.CONVERSACIONAL
+    if is_chatbot:
+        requested_mode = models.ExecutionMode.IA if (run.origen == "IA" or caso.tipo_prueba == models.TipoPrueba.AUTOMATIZADA_AI) else models.ExecutionMode.AUTOMATIZADA
+        # Conversational executions enter the durable AI queue first. The
+        # execution becomes EJECUTANDO_AI only when a scheduler slot is
+        # claimed and dispatch starts, so a restart cannot strand an
+        # in-memory BackgroundTask or make timeout recovery start too early.
+        ejecucion.ai_report = {
+            **(ejecucion.ai_report or {}),
+            "chatbot": True,
+            "execution_mode": requested_mode.value,
+            "chatbot_execution_strategy": "profile_goal" if requested_mode == models.ExecutionMode.IA else "fixed",
+        }
+        from ...services.ai_execution_queue import enqueue_ai_execution, drain_ai_execution_queue
+        job = await enqueue_ai_execution(db, ejecucion, current_user.id, requested_mode)
+        await db.commit()
+        await drain_ai_execution_queue()
+        return {
+            "message": "Evaluación Chatbot encolada",
+            "mode": requested_mode.value,
+            "status": "PENDING",
+            "job_id": str(job.id),
+            "execution_id": str(ejecucion.id),
+        }
     if run.origen == "IA" or caso.tipo_prueba == models.TipoPrueba.AUTOMATIZADA_AI:
         await ensure_feature_enabled(db, "ai.basic_execution")
         ai_config = await crud.get_ai_engine_config(db)

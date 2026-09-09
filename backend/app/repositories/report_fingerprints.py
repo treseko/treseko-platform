@@ -11,17 +11,25 @@ DEFAULT_PROJECT_REPORT_SETTINGS: Dict[str, Any] = {
             "kpis": True,
             "risks": True,
             "trend": True,
+            # Executive reports focus on decisions and material findings;
+            # technical format metrics remain available through configuration.
+            "format_metrics": False,
             "findings": True,
         }
     },
     "development": {
         "sections": {
             "summary": True,
-            "distribution": True,
+            # Development reports are exception-focused by default. The full
+            # execution inventory remains available through configuration and
+            # the internal report.
+            "distribution": False,
             "failures": True,
+            "format_metrics": False,
             "bugs": True,
             "bug_details": True,
             "bug_tracking": True,
+            "corrected_bugs": True,
             "regressions": True,
             "actions": True,
         }
@@ -88,7 +96,10 @@ def _report_metrics_fingerprint(metrics: Dict[str, Any], report_type: str = "exe
     raw = json.dumps(comparable, sort_keys=True, default=str, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-REPORT_SNAPSHOT_BUNDLE_VERSION = "qa-report-bundle-v2"
+# v5 freezes complete, separately classified development findings and readable
+# context. Existing snapshots are not rewritten; incomplete v4 bundles must not
+# be reused when a user generates a new report.
+REPORT_SNAPSHOT_BUNDLE_VERSION = "qa-report-bundle-v5"
 REPORT_BUNDLE_TYPES = ("executive", "development", "internal")
 
 REPORT_BUNDLE_VOLATILE_KEYS = {
@@ -142,7 +153,12 @@ def _report_bug_snapshot_digest(bugs: List[Dict[str, Any]]) -> Dict[str, Any]:
         by_severity[severity] = by_severity.get(severity, 0) + 1
     return {"total": len([bug for bug in bugs or [] if isinstance(bug, dict)]), "by_status": by_status, "by_severity": by_severity}
 
-def _report_bundle_fingerprint(metrics: Dict[str, Any], bugs_digest: Optional[Dict[str, Any]] = None, report_settings: Optional[Dict[str, Any]] = None) -> str:
+def _report_bundle_fingerprint(
+    metrics: Dict[str, Any],
+    bugs_digest: Optional[Dict[str, Any]] = None,
+    report_settings: Optional[Dict[str, Any]] = None,
+    branding: Optional[Dict[str, Any]] = None,
+) -> str:
     comparable = {
         "snapshot_bundle_version": REPORT_SNAPSHOT_BUNDLE_VERSION,
         "build_id": metrics.get("build_id"),
@@ -162,6 +178,10 @@ def _report_bundle_fingerprint(metrics: Dict[str, Any], bugs_digest: Optional[Di
         "comparison": _report_stable_fingerprint_value(metrics.get("comparison") or {}),
         "bugs": bugs_digest or {},
         "report_settings": normalize_project_report_settings(report_settings or {}),
+        "branding": {
+            "brand_name": str((branding or {}).get("brand_name") or "Treseko").strip(),
+            "logo_url": str((branding or {}).get("logo_url") or "").strip(),
+        },
     }
     raw = json.dumps(comparable, sort_keys=True, default=str, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -176,6 +196,7 @@ def _shared_report_payload_bundle_hash(payload: Dict[str, Any]) -> Optional[str]
         metrics,
         _report_bug_snapshot_digest(payload.get("bugs") or []),
         payload.get("report_settings") if isinstance(payload.get("report_settings"), dict) else {},
+        (payload.get("metadata") or {}).get("branding") if isinstance((payload.get("metadata") or {}).get("branding"), dict) else {},
     )
 
 def _legacy_report_metrics_fingerprint(metrics: Dict[str, Any]) -> str:

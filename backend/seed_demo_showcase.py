@@ -39,7 +39,7 @@ class ProjectSpec:
     description: str
     components: tuple[tuple[str, str, str], ...]
     environments: tuple[tuple[str, str, str], ...]
-    builds: tuple[tuple[str, int, int, bool], ...]
+    builds: tuple[tuple[str, int, int, str], ...]
     suites: tuple[tuple[str, str, str], ...]
     case_prefix: str
 
@@ -58,9 +58,9 @@ PROJECTS = (
             ("Staging Web", "https://staging-commerce.demo.treseko.local", "staging"),
         ),
         builds=(
-            ("v1.5.0-rc.2", -3, 4, True),
-            ("v1.4.0", -12, -8, False),
-            ("v1.3.0", -20, -16, False),
+            ("v1.5.0-rc.2", -3, 4, "PREPARACION"),
+            ("v1.4.0", -12, -8, "HISTORICA"),
+            ("v1.3.0", -20, -16, "HISTORICA"),
         ),
         suites=(
             ("Login y sesion", "#E0F2FE", "shield-check"),
@@ -84,8 +84,8 @@ PROJECTS = (
             ("API Sandbox", "https://api-sandbox.demo.treseko.local", "sandbox"),
         ),
         builds=(
-            ("mobile-2.8.0-beta", -4, 5, True),
-            ("mobile-2.7.0", -15, -11, False),
+            ("mobile-2.8.0-beta", -4, 5, "ACTIVA"),
+            ("mobile-2.7.0", -15, -11, "HISTORICA"),
         ),
         suites=(
             ("Autenticacion mobile", "#FFE4E6", "smartphone"),
@@ -360,7 +360,7 @@ async def upsert_environments(session, project: models.Proyecto, spec: ProjectSp
 
 async def upsert_builds(session, project: models.Proyecto, component: models.Componente, spec: ProjectSpec, base_time: datetime) -> list[models.Build]:
     builds = []
-    for name, start_offset, end_offset, active in spec.builds:
+    for name, start_offset, end_offset, lifecycle_state in spec.builds:
         result = await session.execute(
             select(models.Build).where(
                 models.Build.proyecto_id == project.id,
@@ -374,7 +374,8 @@ async def upsert_builds(session, project: models.Proyecto, component: models.Com
             session.add(build)
             await session.flush()
         build.contexto_cambio = f"{SEED_MARK}: release demo con cambios funcionales, regresion y bugs trazables."
-        build.activo = active
+        build.estado = lifecycle_state
+        build.activo = lifecycle_state == "ACTIVA"
         build.oculto = False
         build.fecha_inicio = base_time + timedelta(days=start_offset)
         build.fecha_fin = base_time + timedelta(days=end_offset)
@@ -694,12 +695,36 @@ async def create_bugs_for_failures(session, project: models.Proyecto, build: mod
         bug.severidad = "ALTA" if index == 1 else "MEDIA"
         bug.prioridad = "P1" if index == 1 else "P2"
         bug.estado = "ABIERTO"
-        bug.resultado_esperado = "El flujo finaliza correctamente."
-        bug.resultado_obtenido = "El flujo fallo durante la validacion demo."
+        step_action = snapshot.accion_congelada if snapshot else "Ejecutar el flujo funcional del caso."
+        step_data = snapshot.datos_congelados if snapshot else None
+        step_expected = snapshot.resultado_esperado_congelado if snapshot else "El flujo finaliza correctamente."
+        step_observed = snapshot.error_log if snapshot and snapshot.error_log else "El flujo fallo durante la validacion demo."
+        bug.precondiciones = "Usuario QA autenticado, build demo activa y datos de prueba disponibles."
+        bug.pasos_reproduccion = "\n".join([
+            f"1. Abrir el entorno demo {env.nombre}.",
+            f"2. Ejecutar el caso {case.codigo} en la build {build.codigo}.",
+            f"3. Llegar al paso {snapshot.numero_paso if snapshot else 1}: {step_action}",
+            "4. Repetir la validacion con los mismos datos de prueba y observar el fallo.",
+        ])
+        bug.datos_prueba = step_data or "Datos sintéticos del showcase demo."
+        bug.resultado_esperado = step_expected
+        bug.resultado_obtenido = step_observed
+        bug.comportamiento_actual = "La validacion no completa el flujo y deja el resultado en estado de fallo."
         bug.ambiente_nombre = env.nombre
         bug.ambiente_url = env.url
         bug.version_app = build.nombre
-        bug.logs_relevantes = "Log sintetico: selector no visible / validacion funcional fallida."
+        bug.url_afectada = env.url
+        bug.navegador = "Chromium 131"
+        bug.dispositivo = "Desktop"
+        bug.resolucion = "1440x900"
+        bug.sistema_operativo = "Linux"
+        bug.logs_relevantes = snapshot.error_log if snapshot and snapshot.error_log else "Log sintético: selector no visible / validación funcional fallida."
+        bug.error_tecnico = "Validación funcional fallida en el paso reproducible del snapshot."
+        bug.notas_qa = "Bug sintético del showcase: la evidencia y el snapshot están vinculados a la ejecución fallida."
+        bug.reproducibilidad = "siempre"
+        bug.frecuencia = "100% en la ejecución demo"
+        bug.impacto_negocio = "Puede bloquear la validación del flujo antes del release."
+        bug.modulo_funcional = case.componente.nombre if case.componente else project.nombre
         bug.criticidad = "ALTA" if index == 1 else "MEDIA"
         bug.bloquea_release = index == 1
         bug.bloquea_caso = True

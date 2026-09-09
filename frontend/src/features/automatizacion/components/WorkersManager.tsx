@@ -47,6 +47,16 @@ export function WorkersManager({
   schedulerEnabled = true
 }: WorkersManagerProps) {
   const { t } = useI18n()
+  const statusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      ONLINE: t('automatizacion.statusOnline'), BUSY: t('automatizacion.statusBusy'), RUNNING: t('automatizacion.statusRunning'),
+      OFFLINE: t('automatizacion.statusOffline'), DISABLED: t('automatizacion.statusDisabled'), DEGRADED: t('automatizacion.statusDegraded'),
+      PENDING: t('automatizacion.statusPending'), CLAIMED: t('automatizacion.statusClaimed'), PASSED: t('automatizacion.statusPassed'),
+      FAILED: t('automatizacion.statusFailed'), ERROR: t('automatizacion.statusError'), TIMEOUT: t('automatizacion.statusTimeout'),
+      BLOCKED: t('automatizacion.statusBlocked'), BLOCKED_BY_RUNNER: t('automatizacion.statusBlockedByRunner'),
+    }
+    return labels[status] || t('automatizacion.statusUnknown')
+  }
   const [runners, setRunners] = useState<WorkerRunner[]>([])
   const [pairingRequests, setPairingRequests] = useState<PairingRequest[]>([])
   const [jobs, setJobs] = useState<AutomationJob[]>([])
@@ -139,7 +149,7 @@ export function WorkersManager({
     try {
       const response = await fetchWithAuth(`/api/automation-runners/pairing-requests/${request.code}/approve`, { method: 'POST' })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo aprobar la vinculacion.')
+      if (!response.ok) throw new Error(data?.detail || t('automatizacion.approveWorkerError'))
       showFeedback(t('automatizacion.workerApproved'), t('automatizacion.workerApprovedMessage', { name: request.nombre }), 'success')
       await refreshAll()
     } catch (error: any) {
@@ -154,7 +164,7 @@ export function WorkersManager({
     try {
       const response = await fetchWithAuth(`/api/automation-runners/pairing-requests/${request.code}/deny`, { method: 'POST' })
       const data = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(data?.detail || 'No se pudo rechazar la solicitud.')
+      if (!response.ok) throw new Error(data?.detail || t('automatizacion.denyWorkerError'))
       showFeedback(t('automatizacion.pairingRequestDenied'), t('automatizacion.pairingRequestDeniedMessage', { name: request.nombre }), 'warning')
       await refreshAll()
     } catch (error: any) {
@@ -291,7 +301,7 @@ export function WorkersManager({
                   <div className="fw-bold">{runner.nombre}</div>
                   <div className="small text-muted">{runner.tipo} · {runner.id.slice(0, 8)}</div>
                 </td>
-                <td><Badge bg={statusVariant(status)}>{status}</Badge></td>
+                <td><Badge bg={statusVariant(status)}>{statusLabel(status)}</Badge></td>
                 <td className="small">
                   <div className="d-flex flex-column gap-1">
                     {getFrameworkLanguageRows(runner.capabilities).map(row => (
@@ -373,7 +383,7 @@ export function WorkersManager({
                     </div>
                     <div className="small text-muted">Job {job.id.slice(0, 8)}</div>
                   </td>
-                  <td><Badge bg={jobStatusVariant(job.estado)} text={job.estado === 'PENDING' ? 'dark' : undefined}>{job.estado}</Badge></td>
+                  <td><Badge bg={jobStatusVariant(job.estado)} text={job.estado === 'PENDING' ? 'dark' : undefined}>{statusLabel(job.estado)}</Badge></td>
                   <td className="small">
                     {runner ? (
                       <>

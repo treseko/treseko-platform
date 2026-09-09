@@ -1,41 +1,36 @@
 # Notificaciones y correo
 
-Las notificaciones por correo están disponibles con la capacidad Premium
-correspondiente. Permiten avisar eventos importantes dentro de la plataforma y
-por email: bugs asignados, cambios de estado, fallos o bloqueos de ejecución,
-revisiones de IA y eventos de calidad.
+Las notificaciones pueden aparecer en la bandeja interna y, si la instalación
+lo permite, enviarse por email. Incluyen eventos de bugs, estados, ejecuciones,
+evidencia, revisiones IA y calidad.
 
 ## Configurar correo como administrador
 
-1. Confirmá que la licencia incluya **Notificaciones y email**.
-2. Abrí **Configuración → Correo**.
-2. Completá el servidor SMTP, puerto, remitente y credenciales requeridas.
-3. Guardá la configuración.
-4. Enviá un correo de prueba antes de activar notificaciones para el equipo.
+1. Abrí **Configuración → Correo**.
+2. Completá SMTP, puerto, remitente y credenciales.
+3. Guardá.
+4. Enviá un correo de prueba.
+5. Activá reglas después de comprobar la entrega.
 
-La contraseña SMTP queda protegida y no vuelve a mostrarse en la interfaz. Si
-la cambiás en el proveedor de correo, actualizala también en Treseko y repetí la
-prueba.
+La contraseña SMTP no vuelve a mostrarse. Si cambia, actualizala y repetí la
+prueba. No pongas credenciales en plantillas ni capturas.
 
-## Administrar reglas y plantillas
+## Reglas, plantillas y preferencias
 
-En la misma sección podés activar o desactivar reglas, elegir destinatarios y
-ajustar las plantillas. Revisá cada regla antes de habilitarla para evitar
-notificaciones innecesarias.
+Según tus permisos podés activar reglas, administrar y previsualizar plantillas,
+controlar preferencias, consultar inbox y marcar mensajes como leídos. También
+pueden existir digests diarios, semanales o mensuales. Las plantillas deben
+usar enlaces y nombres legibles, sin secretos ni payloads innecesarios.
 
-Las preferencias personales permiten que cada persona controle los avisos que
-recibe dentro de la plataforma cuando esa opción está habilitada.
+## Entrega y auditoría
 
-## Revisar entregas
+Los eventos y entregas permiten revisar si un aviso fue creado, procesado,
+enviado o falló. Si no llega:
 
-Las entregas se registran para auditoría. Desde **Configuración → Auditoría**
-podés revisar qué se intentó enviar, a quién y con qué resultado. Si una
-entrega falla, corregí la configuración SMTP o el destinatario antes de
-reintentarla.
+1. enviá una prueba SMTP;
+2. revisá destinatario, regla y preferencia;
+3. consultá el estado de entrega;
+4. corregí y reintentá solo después de resolver la causa.
 
-## Ayuda rápida
-
-- Si no llega un correo, enviá primero una prueba SMTP.
-- Revisá las reglas activas y las preferencias del destinatario.
-- Verificá que el servidor SMTP permita conexiones desde el host de Treseko.
-- No pongas contraseñas SMTP en plantillas, notas o capturas de pantalla.
+Inbox y email son canales distintos: un correo fallido no elimina el evento
+interno. Los destinatarios externos deben respetar el alcance permitido.

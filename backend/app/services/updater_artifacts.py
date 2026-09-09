@@ -123,6 +123,7 @@ async def _backup_code(self, version: str, task_id: str) -> Path:
     def create_archive() -> None:
         with tarfile.open(backup_path, "w:gz") as tar:
             for label, path in {
+                "backend_version": self.settings.app_dir / "VERSION",
                 "backend_entrypoint": self.settings.app_dir / "entrypoint.sh",
                 "backend_app": self.settings.app_dir / "app",
                 "backend_alembic": self.settings.app_dir / "alembic",
@@ -156,6 +157,7 @@ async def _restore_code_backup(self, backup_path: Path, task_id: str) -> None:
             self._safe_extract(tar, restore_dir)
 
         targets = {
+            "backend_version": self.settings.app_dir / "VERSION",
             "backend_entrypoint": self.settings.app_dir / "entrypoint.sh",
             "backend_app": self.settings.app_dir / "app",
             "backend_alembic": self.settings.app_dir / "alembic",
@@ -167,37 +169,33 @@ async def _restore_code_backup(self, backup_path: Path, task_id: str) -> None:
             source = restore_dir / label
             if not source.exists():
                 continue
-            if target.exists() and not (label == "backend_app" and target.is_dir()):
-                if target.is_dir():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink()
+            if target.is_symlink():
+                raise ValueError(f"Rollback target must not be a symlink: {label}")
             target.parent.mkdir(parents=True, exist_ok=True)
-            if label == "backend_app":
+            if source.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
+                preserved = ({"static"} if label == "backend_app" else
+                             {".maintenance", ".treseko-update-fence"} if label == "frontend_html" else set())
                 for child in target.iterdir():
-                    if child.name != "static":
-                        if child.is_dir():
+                    if child.name not in preserved:
+                        if child.is_dir() and not child.is_symlink():
                             shutil.rmtree(child)
                         else:
                             child.unlink()
                 for child in source.iterdir():
-                    if child.name == "static":
+                    if child.name in preserved:
                         continue
                     destination = target / child.name
                     if child.is_dir():
                         shutil.copytree(child, destination)
                     else:
                         shutil.copy2(child, destination)
-            elif source.is_dir():
-                shutil.copytree(source, target)
             else:
                 shutil.copy2(source, target)
 
-    try:
-        await asyncio.to_thread(restore)
-    finally:
-        shutil.rmtree(restore_dir, ignore_errors=True)
+    # Failed recovery must retain its extracted backup for diagnosis/retry.
+    await asyncio.to_thread(restore)
+    shutil.rmtree(restore_dir, ignore_errors=True)
 
 async def _extract_package(self, package_path: Path, manifest: dict[str, Any], task_id: str) -> Path:
     version = manifest["version"]

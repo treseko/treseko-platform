@@ -12,6 +12,8 @@ type Props = {
 const templates = {
   empty: { label: 'Vacío seguro', adapter: 'universal-rules/v1', strategy: 'rules', mode: 'deterministic', capabilities: ['rules.evaluate'], category: 'custom' },
   context: { label: 'Contexto', adapter: 'universal-rules/v1', strategy: 'mapping', mode: 'deterministic', capabilities: ['context.read_case', 'context.read_variables', 'context.resolve_url', 'memory.write'], category: 'context' },
+  transform: { label: 'Transformación', adapter: 'universal-transform/v1', strategy: 'mapping', mode: 'deterministic', capabilities: ['context.transform', 'rules.transform', 'memory.write'], category: 'transform' },
+  subworkflow: { label: 'Subworkflow', adapter: 'universal-subworkflow/v1', strategy: 'mapping', mode: 'deterministic', capabilities: ['workflow.invoke', 'memory.read', 'memory.write', 'trace.write'], category: 'control' },
   llm: { label: 'Análisis con IA', adapter: 'universal-llm/v1', strategy: 'prompt', mode: 'llm', capabilities: ['llm.reason', 'memory.read', 'memory.write'], category: 'analysis' },
   browser: { label: 'Navegador', adapter: 'universal-browser/v1', strategy: 'hybrid', mode: 'tool_orchestrated', capabilities: ['browser.navigate', 'browser.observe', 'browser.execute_safe_action', 'evidence.capture', 'memory.write'], category: 'browser' },
   rules: { label: 'Reglas seguras', adapter: 'universal-rules/v1', strategy: 'rules', mode: 'deterministic', capabilities: ['rules.evaluate', 'rules.route', 'memory.read', 'memory.write'], category: 'validation' },
@@ -84,7 +86,7 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           </div>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentName')}</Form.Label>
-            <Form.Control name="a11y-universalagentcreatormodaltsx-87" aria-label="Campo de formulario"
+            <Form.Control name="a11y-universalagentcreatormodaltsx-87" aria-label={t('configuracion.universalAgentName')}
               value={name}
               onChange={event => setName(event.target.value)}
               required
@@ -95,11 +97,11 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           </Form.Group>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentDescription')}</Form.Label>
-            <Form.Control name="a11y-universalagentcreatormodaltsx-98" aria-label="Campo de formulario" as="textarea" rows={2} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} />
+            <Form.Control name="a11y-universalagentcreatormodaltsx-98" aria-label={t('configuracion.universalAgentDescription')} as="textarea" rows={2} value={description} onChange={event => setDescription(event.target.value)} maxLength={2000} />
           </Form.Group>
           <Form.Group>
             <Form.Label>{t('configuracion.universalAgentTemplate')}</Form.Label>
-            <Form.Select name="a11y-universalagentcreatormodaltsx-102" aria-label="Campo de formulario"
+            <Form.Select name="a11y-universalagentcreatormodaltsx-102" aria-label={t('configuracion.universalAgentTemplate')}
               value={template}
               onChange={event => setTemplate(event.target.value as keyof typeof templates)}
             >
@@ -114,7 +116,7 @@ export function UniversalAgentCreatorModal({ show, onHide, onCreate }: Props) {
           {selected.strategy !== 'none' && (
             <Form.Group>
               <Form.Label>{t('configuracion.universalAgentInstructions')}</Form.Label>
-              <Form.Control name="a11y-universalagentcreatormodaltsx-117" aria-label="Campo de formulario"
+              <Form.Control name="a11y-universalagentcreatormodaltsx-117" aria-label={t('configuracion.universalAgentInstructions')}
                 as="textarea"
                 rows={4}
                 value={instructions}

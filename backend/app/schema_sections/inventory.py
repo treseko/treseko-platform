@@ -26,6 +26,8 @@ MAX_ENV_URL_LENGTH = 255
 MAX_ENV_STATUS_LENGTH = 50
 MAX_ENV_VERSION_LENGTH = 50
 MAX_ENV_VARIABLES_BYTES = 64 * 1024
+MAX_ENV_CHATBOT_CONFIG_BYTES = 256 * 1024
+MAX_ENV_API_CONFIG_BYTES = 64 * 1024
 MAX_DATASET_NAME_LENGTH = 100
 MAX_DATASET_DESCRIPTION_LENGTH = 12000
 MAX_DATASET_VARIABLES_BYTES = 128 * 1024
@@ -82,12 +84,26 @@ def validate_environment_variables(value: Optional[Dict[str, str]], *, max_bytes
     return validate_preference_json_payload(value, max_bytes=max_bytes, label=label)
 
 
+def validate_environment_chatbot_config(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    return validate_preference_json_payload(value, max_bytes=MAX_ENV_CHATBOT_CONFIG_BYTES, label="la configuración Chatbot del ambiente")
+
+
+def validate_environment_api_config(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    bounded = validate_preference_json_payload(value, max_bytes=MAX_ENV_API_CONFIG_BYTES, label="la configuración API del ambiente") or {}
+    allowed_hosts = bounded.get("allowed_hosts")
+    if allowed_hosts is not None and (not isinstance(allowed_hosts, list) or len(allowed_hosts) > 50 or any(not isinstance(item, str) or not item.strip() for item in allowed_hosts)):
+        raise ValueError("allowed_hosts debe ser una lista de hosts válida")
+    return bounded
+
+
 class EntornoBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=MAX_ENV_NAME_LENGTH)
     url: str = Field(..., min_length=1, max_length=MAX_ENV_URL_LENGTH)
     status: Optional[str] = Field(default="Unknown", max_length=MAX_ENV_STATUS_LENGTH)
     version: Optional[str] = Field(default=None, max_length=MAX_ENV_VERSION_LENGTH)
     variables: Dict[str, str] = Field(default_factory=dict)
+    configuracion_chatbot: Dict[str, Any] = Field(default_factory=dict)
+    configuracion_api: Dict[str, Any] = Field(default_factory=dict)
     activo: bool = True
 
     @field_validator("url")
@@ -100,6 +116,16 @@ class EntornoBase(BaseModel):
     def validate_variables(cls, value):
         return validate_environment_variables(value, max_bytes=MAX_ENV_VARIABLES_BYTES, label="Las variables del entorno") or {}
 
+    @field_validator("configuracion_chatbot", mode="before")
+    @classmethod
+    def validate_chatbot_config(cls, value):
+        return validate_environment_chatbot_config(value) or {}
+
+    @field_validator("configuracion_api", mode="before")
+    @classmethod
+    def validate_api_config(cls, value):
+        return validate_environment_api_config(value) or {}
+
 class EntornoCreate(EntornoBase):
     proyecto_id: UUID
 
@@ -109,6 +135,8 @@ class EntornoUpdate(BaseModel):
     status: Optional[str] = Field(default=None, max_length=MAX_ENV_STATUS_LENGTH)
     version: Optional[str] = Field(default=None, max_length=MAX_ENV_VERSION_LENGTH)
     variables: Optional[Dict[str, str]] = None
+    configuracion_chatbot: Optional[Dict[str, Any]] = None
+    configuracion_api: Optional[Dict[str, Any]] = None
     activo: Optional[bool] = None
 
     @field_validator("url")
@@ -120,6 +148,16 @@ class EntornoUpdate(BaseModel):
     @classmethod
     def validate_variables(cls, value):
         return validate_environment_variables(value, max_bytes=MAX_ENV_VARIABLES_BYTES, label="Las variables del entorno")
+
+    @field_validator("configuracion_chatbot")
+    @classmethod
+    def validate_chatbot_config(cls, value):
+        return validate_environment_chatbot_config(value)
+
+    @field_validator("configuracion_api")
+    @classmethod
+    def validate_api_config(cls, value):
+        return validate_environment_api_config(value)
 
 class EntornoDatasetBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=MAX_DATASET_NAME_LENGTH)

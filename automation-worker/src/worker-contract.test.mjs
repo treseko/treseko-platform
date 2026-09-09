@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
+import { createTraceRuntime } from "./trace-runtime.mjs";
+import { normalizeApiBase } from "./worker-runtime-info.mjs";
 
 import {
   artifactFromBuffer,
@@ -32,6 +34,12 @@ const jobStatuses = new Map([
   ["BLOCK", "BLOCKED"], ["BLOQUEADO", "BLOCKED"], ["BLOCKED", "BLOCKED"],
   ["ERROR", "ERROR"], ["TIMEOUT", "TIMEOUT"], ["CANCELLED", "CANCELLED"],
 ]);
+
+test("QA_API_BASE no admite credenciales ni parámetros sensibles", () => {
+  assert.equal(normalizeApiBase("https://treseko.example.test/api/"), "https://treseko.example.test/api");
+  assert.throws(() => normalizeApiBase("https://user:secret@treseko.example.test"), /no puede incluir credenciales/i);
+  assert.throws(() => normalizeApiBase("https://treseko.example.test?token=secret"), /no puede incluir credenciales/i);
+});
 
 for (const [input, expected] of jobStatuses) {
   for (const decorated of [input, input.toLowerCase(), `  ${input}  `]) {
@@ -95,12 +103,32 @@ test("el contrato del worker conserva correlación en resultados y errores públ
   assert.match(source, /function withCorrelation\(result\)/);
   assert.match(source, /correlation_id: activeCorrelationId/);
   assert.match(source, /X-Correlation-ID/);
-  assert.match(source, /function formatLogArg\(arg\)/);
-  assert.match(source, /return redactTraceText\(arg\);/);
-  assert.match(source, /JSON\.stringify\(safeTraceValue\(arg\)\)/);
+  assert.match(source, /createTraceRuntime/);
   assert.match(source, /if \(typeof detail === "string"\) return redactTraceText\(detail\);/);
   assert.match(source, /console\.error\(formatLogArg\(error\.stack\)\)/);
   assert.match(source, /error: safeTraceValue\(\{ message: error\?\.message \|\| String\(error\), stack: error\?\.stack \}\)/);
+});
+
+test("las trazas redactan secretos por clave y texto", () => {
+  const entries = [];
+  const trace = createTraceRuntime({
+    fs: { mkdirSync() {}, appendFileSync(_path, contents) { entries.push(contents); } },
+    path: { join: (...parts) => parts.join("/") },
+    repoRoot: "/tmp",
+    enabled: true,
+  });
+  trace.traceEntry("secret_check", {
+    lease_token: "lease-not-visible",
+    headers: { Authorization: "Bearer runner-not-visible" },
+    nested: "password=secret-not-visible visible=ok",
+  });
+  assert.equal(entries.length, 1);
+  assert.doesNotMatch(entries[0], /lease-not-visible|runner-not-visible|secret-not-visible/);
+  assert.match(entries[0], /\[redacted\]/);
+  const jsonMessage = trace.formatLogArg('{"lease_token":"json-secret-not-visible","runner_token":"runner-secret-not-visible","visible":"ok"}');
+  assert.doesNotMatch(jsonMessage, /json-secret-not-visible/);
+  assert.doesNotMatch(jsonMessage, /runner-secret-not-visible/);
+  assert.match(jsonMessage, /\[redacted\]/);
 });
 
 test("el token de pairing puede persistirse fuera del árbol de código", () => {

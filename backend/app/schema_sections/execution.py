@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, field_validator, model_validator
 
 from ..attachment_storage import attachment_file_available, attachment_missing_reason
+from .auth_common import validate_preference_json_payload
 from ..models import (
     AiReviewStatus,
     AutomationJobStatus,
@@ -31,6 +32,7 @@ class TestRunCreate(TestRunBase):
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
     caso_ids: List[UUID] = Field(default_factory=list)
+    dynamic_seed: Optional[str] = Field(default=None, max_length=200)
 
 class TestRun(TestRunBase):
     id: UUID
@@ -41,6 +43,7 @@ class TestRun(TestRunBase):
     dataset_nombre: Optional[str] = None
     variables_resueltas: Dict[str, str] = Field(default_factory=dict)
     datasets_resueltos: Dict[str, List[Dict[str, str]]] = Field(default_factory=dict)
+    dynamic_seed: Optional[str] = None
     origen: str = "MANUAL"
     external_run_id: Optional[str] = None
     estado_run: EstadoRun
@@ -71,6 +74,46 @@ class DatasetResolveResponse(BaseModel):
     variables_resueltas: Dict[str, str] = Field(default_factory=dict)
     dataset_resuelto: List[Dict[str, str]] = Field(default_factory=list)
 
+class ChatbotManualTurnRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=20_000)
+
+class ChatbotManualCompleteRequest(BaseModel):
+    status: Literal["PASO", "FALLO", "BLOQUEADO"]
+    notes: Optional[str] = Field(default=None, max_length=20_000)
+
+
+class ChatbotConnectionTestRequest(BaseModel):
+    """Ephemeral, environment-scoped connection preview for the case editor."""
+
+    entorno_id: UUID
+    configuration: Dict[str, Any] = Field(default_factory=dict, alias="configuracion")
+    message: str = Field(min_length=1, max_length=20_000)
+    variables: Dict[str, Any] = Field(default_factory=dict)
+    session_id: Optional[str] = Field(default=None, max_length=500)
+    dynamic_seed: Optional[str] = Field(default=None, max_length=200)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_configuration_aliases(cls, value):
+        if isinstance(value, dict) and "configuration" not in value:
+            for alias in ("config", "configuracion_chatbot"):
+                if alias in value:
+                    value = {**value, "configuration": value[alias]}
+                    break
+        return value
+
+    @field_validator("configuration")
+    @classmethod
+    def validate_configuration_size(cls, value):
+        return validate_preference_json_payload(value, max_bytes=256 * 1024, label="la configuración Chatbot de prueba") or {}
+
+    @field_validator("variables")
+    @classmethod
+    def validate_variables_size(cls, value):
+        return validate_preference_json_payload(value, max_bytes=64 * 1024, label="las variables Chatbot de prueba") or {}
+
 class EjecucionCasoBase(BaseModel):
     caso_id: UUID
     version_ejecutada: int
@@ -85,6 +128,13 @@ class EjecucionCaso(EjecucionCasoBase):
     duracion_segundos: int
     observaciones: Optional[str] = None
     ai_report: Dict[str, Any] = Field(default_factory=dict)
+    evidence_policy: Dict[str, Any] = Field(default_factory=dict)
+    chatbot_config_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    chatbot_resultado: Dict[str, Any] = Field(default_factory=dict)
+    api_config_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    api_resultado: Dict[str, Any] = Field(default_factory=dict)
+    dynamic_seed: Optional[str] = None
+    dynamic_variables: Dict[str, Any] = Field(default_factory=dict)
     ai_confidence: Optional[int] = None
     ai_consensus: Optional[str] = None
     ai_failure_category: Optional[str] = None

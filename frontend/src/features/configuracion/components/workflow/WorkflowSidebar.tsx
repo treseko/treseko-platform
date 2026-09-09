@@ -4,9 +4,10 @@ import { useState, type PointerEvent } from 'react'
 import { getAgentUiMeta } from '../../../../modules/ai-workflow/config/agent-ui.config'
 import { useI18n } from '../../../../i18n'
 import type { AiAgentPreset, AiWorkflow } from '../../types/configuracion'
+import { workflowStatusLabel } from './workflowStatusPresentation'
 
 type Props = {
-  activeWorkflows: AiWorkflow[]
+  workflows: AiWorkflow[]
   workflowDraft: AiWorkflow | null
   agentPresets: AiAgentPreset[]
   canEditAi: boolean
@@ -21,7 +22,7 @@ type Props = {
 }
 
 export function WorkflowSidebar({
-  activeWorkflows,
+  workflows,
   workflowDraft,
   agentPresets,
   canEditAi,
@@ -38,7 +39,7 @@ export function WorkflowSidebar({
   const [query, setQuery] = useState('')
   const [workflowsExpanded, setWorkflowsExpanded] = useState(false)
   const normalizedQuery = query.trim().toLowerCase()
-  const visibleWorkflows = activeWorkflows.filter(workflow => `${workflow.name} ${workflow.status} v${workflow.version}`.toLowerCase().includes(normalizedQuery))
+  const visibleWorkflows = workflows.filter(workflow => `${workflow.name} ${workflow.status} v${workflow.version}`.toLowerCase().includes(normalizedQuery))
   const displayedWorkflows = normalizedQuery || workflowsExpanded
     ? visibleWorkflows
     : workflowDraft ? [workflowDraft] : visibleWorkflows.slice(0, 1)
@@ -46,7 +47,7 @@ export function WorkflowSidebar({
     const isBlock = String(preset.key || '').startsWith('BLOCK_')
     return workflowDraft?.workflow_format === 'block_v2'
       ? isBlock
-      : workflowDraft?.workflow_format === 'universal_v2'
+      : ['universal_v2', 'universal_v3'].includes(String(workflowDraft?.workflow_format))
         ? Boolean(preset.universal_agent_version_id)
         : !isBlock && !preset.universal_agent_version_id
   })
@@ -61,12 +62,12 @@ export function WorkflowSidebar({
           title={workflowsExpanded ? t('configuracion.collapseWorkflows') : t('configuracion.expandWorkflows')}
         >
           {workflowsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          <GitBranch size={14} /> {t('configuracion.workflowsLabel')} <Badge bg="light" text="dark" className="border">{activeWorkflows.length}</Badge>
+          <GitBranch size={14} /> {t('configuracion.workflowsLabel')} <Badge bg="light" text="dark" className="border">{workflows.length}</Badge>
         </button>
         {canEditAi && (
           <span className="d-flex gap-1">
             <Dropdown>
-              <Dropdown.Toggle size="sm" variant="outline-primary" title={t('configuracion.createWorkflow')}><Plus size={14} /></Dropdown.Toggle>
+              <Dropdown.Toggle size="sm" variant="outline-primary" title={t('configuracion.createWorkflow')} aria-label={t('configuracion.createWorkflow')}><Plus size={14} /></Dropdown.Toggle>
               <Dropdown.Menu align="end">
                 <Dropdown.Item onClick={createWorkflow}>{t('configuracion.workflowClassic')}</Dropdown.Item>
                 <Dropdown.Item onClick={createBlockWorkflow} disabled={!workflowDraft}>{t('configuracion.workflowBlocks')}</Dropdown.Item>
@@ -95,17 +96,17 @@ export function WorkflowSidebar({
           >
             <span className="fw-bold small">{workflow.name}</span>
               <span className="d-flex align-items-center gap-2 x-small text-muted">
-              <Badge bg={workflowStatusColor(workflow.status)}>{workflow.status}</Badge>
+              <Badge bg={workflowStatusColor(workflow.status)}>{workflowStatusLabel(workflow.status, t)}</Badge>
               <span>{t('configuracion.workflowVersionPrefix')}{workflow.version}</span>
-              <Badge bg={workflow.workflow_format === 'universal_v2' ? 'success' : workflow.workflow_format === 'block_v2' ? 'primary' : 'secondary'}>{workflow.workflow_format === 'universal_v2' ? t('configuracion.workflowUniversalFormat') : workflow.workflow_format === 'block_v2' ? t('configuracion.workflowBlocksFormat') : t('configuracion.workflowClassicFormat')}</Badge>
+              <Badge bg={workflow.workflow_format === 'universal_v3' ? 'info' : workflow.workflow_format === 'universal_v2' ? 'success' : workflow.workflow_format === 'block_v2' ? 'primary' : 'secondary'}>{workflow.workflow_format === 'universal_v3' ? 'Universal V3' : workflow.workflow_format === 'universal_v2' ? t('configuracion.workflowUniversalFormat') : workflow.workflow_format === 'block_v2' ? t('configuracion.workflowBlocksFormat') : t('configuracion.workflowClassicFormat')}</Badge>
               {workflow.is_default && <Badge bg="light" text="dark" className="border">{t('configuracion.defaultLabel')}</Badge>}
             </span>
           </button>
         ))}
-        {activeWorkflows.length === 0 && <div className="small text-muted border rounded-3 p-3">{t('configuracion.noWorkflows')}</div>}
-        {activeWorkflows.length > 0 && visibleWorkflows.length === 0 && <div className="small text-muted border rounded-3 p-3">{t('configuracion.noMatches')}</div>}
+        {workflows.length === 0 && <div className="small text-muted border rounded-3 p-3">{t('configuracion.noWorkflows')}</div>}
+        {workflows.length > 0 && visibleWorkflows.length === 0 && <div className="small text-muted border rounded-3 p-3">{t('configuracion.noMatches')}</div>}
       </div>
-      {!normalizedQuery && !workflowsExpanded && activeWorkflows.length > 1 && <div className="px-2 pb-2 x-small text-muted">{t('configuracion.expandWorkflowsHint')}</div>}
+      {!normalizedQuery && !workflowsExpanded && workflows.length > 1 && <div className="px-2 pb-2 x-small text-muted">{t('configuracion.expandWorkflowsHint')}</div>}
       {normalizedQuery && <div className="px-2 pb-2 x-small text-muted">{t('configuracion.workflowResultsCount', { count: visibleWorkflows.length })}</div>}
 
       {canEditAi && (
@@ -130,7 +131,7 @@ export function WorkflowSidebar({
                   </span>
                   <span className="min-w-0">
                   <span className="workflow-agent-name">{preset.name}</span>
-                    <span className="workflow-agent-type">{preset.status || preset.type}</span>
+                    <span className="workflow-agent-type">{preset.status ? workflowStatusLabel(preset.status, t) : preset.type}</span>
                   </span>
                 </button>
               )

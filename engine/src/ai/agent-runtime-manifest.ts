@@ -15,6 +15,36 @@ export type AgentRuntimeManifest = {
 };
 
 export const AGENT_RUNTIME_MANIFESTS: Record<string, AgentRuntimeManifest> = {
+  CHATBOT_CONTEXT_AGENT: {
+    implementation: 'chatbot-context/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_context_agent', editableStrategy: 'rules',
+    inputs: ['chatbot.config', 'context.variables'], outputs: ['sharedMemory.endpoint'],
+  },
+  CHATBOT_HTTP_AGENT: {
+    implementation: 'chatbot-http/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_http_agent', editableStrategy: 'rules',
+    inputs: ['chatbot.config', 'context.variables'], outputs: ['sharedMemory.turns', 'sharedMemory.conversation'],
+  },
+  CHATBOT_ASSERTIONS_AGENT: {
+    implementation: 'chatbot-assertions/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_assertions_agent', editableStrategy: 'rules',
+    inputs: ['sharedMemory.turns'], outputs: ['sharedMemory.assertions'],
+  },
+  CHATBOT_SECURITY_AGENT: {
+    implementation: 'chatbot-security/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_security_agent', editableStrategy: 'rules',
+    inputs: ['sharedMemory.turns'], outputs: ['sharedMemory.security_findings'],
+  },
+  CHATBOT_JUDGE_AGENT: {
+    implementation: 'chatbot-judge/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_judge_agent', editableStrategy: 'prompt',
+    inputs: ['sharedMemory.turns', 'chatbot.evaluation'], outputs: ['sharedMemory.judge'],
+  },
+  CHATBOT_REPORTER_AGENT: {
+    implementation: 'chatbot-reporter/v1', version: 1,
+    sourceModule: 'engine/src/chatbot-evaluator.ts#chatbot_reporter_agent', editableStrategy: 'none',
+    inputs: ['sharedMemory'], outputs: ['chatbot.result'],
+  },
   CONTEXT_RESOLVER: {
     implementation: 'context-resolver/v1', version: 1,
     sourceModule: 'engine/src/index.ts#ContextResolver', editableStrategy: 'prompt',

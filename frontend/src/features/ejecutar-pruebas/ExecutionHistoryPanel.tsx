@@ -4,6 +4,13 @@ import type { AttachmentMeta } from "../../EvidenceUpload";
 import { isImageAsset, resolveAssetUrl } from "../../shared/utils/assets";
 import { isEvidenceAvailable } from "../../shared/utils/evidenceAvailability";
 import { getExecutionHistoryStats, getStatusColor, normalizeExecutionHistory } from "../ejecucion/executionUtils";
+import { executionStatusLabel } from './executionPresentation';
+
+const VISIBLE_HISTORY_LIMIT = 5;
+
+function getLocalizedHistoryStatus(status: unknown, t: (key: any) => string) {
+  return executionStatusLabel(status, t);
+}
 
 export function ExecutionHistoryPanel({ options }: { options: any }) {
   const { selectedTest, t, onOpenRunHistory, onOpenEvidence } = options;
@@ -12,8 +19,13 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
     {(() => {
       const executionHistory =
         normalizeExecutionHistory(selectedTest);
-      const { total, passed, failed, successRate } =
-        getExecutionHistoryStats(executionHistory);
+      const computedStats = getExecutionHistoryStats(executionHistory);
+      const persistedStats = selectedTest?.historyStats || {};
+      const total = Number(selectedTest?.historyTotal || persistedStats.total || computedStats.total);
+      const passed = Number(persistedStats.passed ?? computedStats.passed);
+      const failed = Number(persistedStats.failed ?? computedStats.failed);
+      const blocked = Number(persistedStats.blocked ?? 0);
+      const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
       return (
         <>
           <div
@@ -29,17 +41,17 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                 text="dark"
                 className="border x-small"
               >
-                {total} ejecuciones
+                {total} {t('ejecutarPruebas.executions')}
               </Badge>
             )}
           </div>
 
           {total > 0 && (
-            <div className="d-flex gap-2 mb-3">
+            <div className="d-flex flex-wrap gap-2 mb-3">
               <div
                 className="flex-grow-1 p-2 rounded-2 text-center"
                 style={{
-                  background: "#e8f5e9",
+                  background: "var(--app-status-success-bg)",
                   fontSize: "var(--app-font-size-meta)",
                 }}
               >
@@ -53,7 +65,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
               <div
                 className="flex-grow-1 p-2 rounded-2 text-center"
                 style={{
-                  background: "#f8f9fa",
+                  background: "var(--app-status-neutral-bg)",
                   fontSize: "var(--app-font-size-meta)",
                 }}
               >
@@ -63,7 +75,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
               <div
                 className="flex-grow-1 p-2 rounded-2 text-center"
                 style={{
-                  background: "#e8f5e9",
+                  background: "var(--app-status-success-bg)",
                   fontSize: "var(--app-font-size-meta)",
                 }}
               >
@@ -75,7 +87,9 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
               <div
                 className="flex-grow-1 p-2 rounded-2 text-center"
                 style={{
-                  background: failed > 0 ? "#ffebee" : "#f8f9fa",
+                  background: failed > 0
+                    ? "var(--app-status-danger-bg)"
+                    : "var(--app-status-neutral-bg)",
                   fontSize: "var(--app-font-size-meta)",
                 }}
               >
@@ -88,7 +102,21 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                 >
                   {failed}
                 </div>
-                <div className="text-muted x-small">Fallidos</div>
+                <div className="text-muted x-small">{t('ejecutarPruebas.failed')}</div>
+              </div>
+              <div
+                className="flex-grow-1 p-2 rounded-2 text-center"
+                style={{
+                  background: blocked > 0
+                    ? "var(--app-status-info-bg)"
+                    : "var(--app-status-neutral-bg)",
+                  fontSize: "var(--app-font-size-meta)",
+                }}
+              >
+                <div className={blocked > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                  {blocked}
+                </div>
+                <div className="text-muted x-small">{t('ejecutarPruebas.blockedPlural')}</div>
               </div>
             </div>
           )}
@@ -96,24 +124,24 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
           {total > 0 ? (
             <div className="d-flex flex-column gap-2">
               {executionHistory
-                .slice(0, 5)
+                .slice(0, VISIBLE_HISTORY_LIMIT)
                 .map((historyItem: any, index: number) => {
                   const statusColor =
                     historyItem.status === "PASO" ||
                     historyItem.status === "OK"
-                      ? "#198754"
+                      ? "var(--app-success)"
                       : historyItem.status === "FALLO" ||
                           historyItem.status === "FALLIDO"
-                        ? "#dc3545"
+                        ? "var(--app-danger)"
                         : historyItem.status === "BLOQUEADO"
-                          ? "#0d6efd"
-                          : "#6c757d";
+                          ? "var(--app-primary)"
+                          : "var(--app-muted)";
                   return (
                     <div
                       key={`${historyItem.date || "hist"}-${index}`}
                       className="d-flex align-items-start gap-2 p-2 rounded-2"
                       style={{
-                        background: "#f8f9fa",
+                        background: "var(--app-status-neutral-bg)",
                         fontSize: "var(--app-font-size-meta)",
                         opacity: 0.9,
                       }}
@@ -137,7 +165,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                               )}
                               className="x-small"
                             >
-                              {historyItem.status?.toUpperCase()}
+                              {getLocalizedHistoryStatus(historyItem.status, t)}
                             </Badge>
                             {historyItem.versionExecuted && (
                               <Badge
@@ -179,10 +207,10 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                           style={{ fontSize: "var(--app-font-size-meta)" }}
                         >
                           <span className="fw-semibold text-dark">
-                            Obs:
+                            {t('ejecutarPruebas.observationLabel')}:
                           </span>{" "}
                           {historyItem.observation ||
-                            "Sin observaciones registradas"}
+                            t('ejecutarPruebas.noObservations')}
                         </div>
                         {historyItem.testRunId && (
                           <Button
@@ -196,7 +224,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                               )
                             }
                           >
-                            Ver ejecucion
+                            {t('ejecutarPruebas.viewExecution')}
                           </Button>
                         )}
                         {(historyItem.evidenceUrl ||
@@ -217,6 +245,9 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                                       title={
                                         attachment.filename_original
                                       }
+                                      aria-label={t('ejecutarPruebas.viewEvidenceFile', {
+                                        filename: attachment.filename_original || t('ejecutarPruebas.attachedEvidence'),
+                                      })}
                                       onClick={() =>
                                         onOpenEvidence(attachment)
                                       }
@@ -254,7 +285,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                                     >
                                       <FileText size={13} />{" "}
                                       {attachment.filename_original ||
-                                        "Ver evidencia"}
+                                        t('ejecutarPruebas.viewEvidence')}
                                       {!isEvidenceAvailable(
                                         attachment,
                                       ) && (
@@ -262,7 +293,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                                           bg="warning"
                                           text="dark"
                                         >
-                                          Archivo no disponible
+                                          {t('ejecutarPruebas.unavailableFile')}
                                         </Badge>
                                       )}
                                     </Button>
@@ -279,8 +310,7 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                                   )
                                 }
                               >
-                                <ImagePlus size={13} /> Ver
-                                evidencia adjunta
+                                <ImagePlus size={13} /> {t('ejecutarPruebas.attachedEvidence')}
                               </Button>
                             )}
                           </div>
@@ -290,16 +320,16 @@ export function ExecutionHistoryPanel({ options }: { options: any }) {
                   );
                 })}
 
-              {total > 5 && (
+              {total > VISIBLE_HISTORY_LIMIT && (
                 <div className="text-center x-small text-muted mt-2">
-                  + {total - 5} ejecuciones anteriores
+                  + {total - VISIBLE_HISTORY_LIMIT} {t('ejecutarPruebas.previousExecutions')}
                 </div>
               )}
             </div>
           ) : (
             <div
               className="text-muted x-small d-flex align-items-center gap-2 p-3 rounded-2"
-              style={{ background: "#f8f9fa" }}
+              style={{ background: "var(--app-status-neutral-bg)" }}
             >
               <Clock size={14} className="opacity-50" />
               <span>{t('ejecutarPruebas.noExecutionsYet')}</span>

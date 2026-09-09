@@ -34,3 +34,14 @@ test('selected case uses its current execution status', () => {
     historicalStatus: 'PASO',
   }), 'FALLO')
 })
+
+test('selected Chatbot case prefers the persisted conversational result over a stale execution field', () => {
+  assert.equal(getManualConsoleCaseStatus({
+    testId: 'case-1',
+    selectedTestId: 'case-1',
+    currentExecutionCase: {
+      estado_resultado: 'SIN_CORRER',
+      chatbot_resultado: { status: 'FALLO' },
+    },
+  }), 'FALLO')
+})

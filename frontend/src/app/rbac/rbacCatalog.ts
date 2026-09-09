@@ -1,7 +1,19 @@
 import type { CapabilityId, ModuleId } from '../types'
 
+export type WorkflowCapabilityId =
+  | 'motor_ia.workflow_view'
+  | 'motor_ia.workflow_execute'
+  | 'motor_ia.workflow_drafts'
+  | 'motor_ia.workflow_publish'
+  | 'motor_ia.workflow_activate'
+  | 'motor_ia.workflow_archive'
+  | 'motor_ia.workflow_integrations'
+  | 'motor_ia.workflow_blocked_reviews'
+
+export type CatalogCapabilityId = CapabilityId | WorkflowCapabilityId
+
 export type RbacCapability = {
-  id: CapabilityId
+  id: CatalogCapabilityId
   label: string
 }
 
@@ -72,10 +84,21 @@ export const RBAC_CAPABILITIES: RbacCapabilityGroup[] = [
     { id: 'bugs.exportar', label: 'Exportar markdown' },
     { id: 'bugs.admin', label: 'Administrar bug tracker' }
   ] },
+  { module: 'incidencias', moduleLabel: 'Centro de Incidencias', capabilities: [
+    { id: 'incidencias.ver', label: 'Ver centro de incidencias' },
+  ] },
   { module: 'motor_ia', moduleLabel: 'Motor IA', capabilities: [
     { id: 'motor_ia.ver', label: 'Ver estado' },
     { id: 'motor_ia.configuracion', label: 'Configuración' },
     { id: 'motor_ia.workflows', label: 'Workflows' },
+    { id: 'motor_ia.workflow_view', label: 'Ver workflows' },
+    { id: 'motor_ia.workflow_execute', label: 'Ejecutar workflows' },
+    { id: 'motor_ia.workflow_drafts', label: 'Crear y editar borradores' },
+    { id: 'motor_ia.workflow_publish', label: 'Publicar versiones' },
+    { id: 'motor_ia.workflow_activate', label: 'Activar workflows' },
+    { id: 'motor_ia.workflow_archive', label: 'Archivar workflows' },
+    { id: 'motor_ia.workflow_integrations', label: 'Usar agentes externos' },
+    { id: 'motor_ia.workflow_blocked_reviews', label: 'Revisar ejecuciones bloqueadas' },
     { id: 'motor_ia.logs', label: 'Logs' },
     { id: 'motor_ia.scheduler', label: 'Scheduler' }
   ] },
@@ -140,4 +163,4 @@ export const RBAC_CAPABILITIES: RbacCapabilityGroup[] = [
 
 export const CAPABILITY_TO_MODULE = Object.fromEntries(
   RBAC_CAPABILITIES.flatMap(group => group.capabilities.map(capability => [capability.id, group.module]))
-) as Record<CapabilityId, ModuleId>
+) as Record<CatalogCapabilityId, ModuleId>

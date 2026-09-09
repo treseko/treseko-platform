@@ -29,6 +29,7 @@ import {
   normalizeExecutionHistory,
 } from "../ejecucion/executionUtils";
 import { RunDetailModal } from "../historial/RunDetailModal";
+import { isBuildExecutable } from "../../app/buildState";
 import { ExecutionToolbar } from "./ExecutionToolbar";
 import { ExecutionMobileCards } from "./ExecutionMobileCards";
 import { ExecutionTestsTable } from "./ExecutionTestsTable";
@@ -64,6 +65,7 @@ type EjecutarPruebasPageProps = {
   allVisibleExecutionTestsSelected: boolean;
   toggleVisibleExecutionSelection: (checked: boolean) => void;
   selectedTest: any;
+  loadCasoExecutionHistory?: (caseId: string, buildId?: string) => Promise<any[]>;
   handleSelectTestForExecution: (test: any) => void;
   selectedExecutionTestIds: string[];
   toggleExecutionSelection: (testId: string) => void;
@@ -139,6 +141,7 @@ export function EjecutarPruebasPage({
   allVisibleExecutionTestsSelected,
   toggleVisibleExecutionSelection,
   selectedTest,
+  loadCasoExecutionHistory,
   handleSelectTestForExecution,
   selectedExecutionTestIds,
   toggleExecutionSelection,
@@ -172,6 +175,7 @@ export function EjecutarPruebasPage({
     "all",
   );
   const canStartAnyExecution =
+    isBuildExecutable(buildsList.find((build: any) => build.id === currentBuildId)) &&
     !readOnlyBuild && (!canAccessCapability ||
     canAccessCapability("ejecutar.manual", "edit") ||
     canAccessCapability("ejecutar.automatizada", "edit") ||
@@ -251,7 +255,7 @@ export function EjecutarPruebasPage({
             <div className="text-center text-muted p-3 small">
               <div className="spinner-border spinner-border-sm mb-2" />
               <br />
-              Cargando...
+              {t('common.loading')}
             </div>
           ) : executionSuiteTree.length === 0 ? (
             <div className="text-center text-muted p-3 small">
@@ -343,7 +347,7 @@ export function EjecutarPruebasPage({
 
           </div>
 
-          <ExecutionCaseDetailPanel options={{ selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs }} />
+          <ExecutionCaseDetailPanel options={{ selectedTest, t, setSelectedTest, currentBuildId, loadCasoExecutionHistory, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs }} />
         </div>
       </div>
       <RunDetailModal

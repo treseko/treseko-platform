@@ -2,38 +2,40 @@
 
 <!-- Language: en -->
 
-The state helps communicate at which stage a project is. It is chosen
-from the project configuration so the team knows whether it can continue
-planning, executing or only reviewing information.
+The state communicates and preserves the project's operational stage. It does
+not by itself guarantee an edit or execution lock, nor does it delete cases,
+runs, bugs or evidence; effective actions also depend on the role,
+capabilities, build and execution context.
 
-| State | When to use it |
-|---|---|
-| Planning | The project is being prepared and is not yet in QA operation. |
-| Active | The team works normally on cases, builds and executions. |
-| In QA | The focus is on validating a build or delivery. |
-| Blocked | There is an impediment that requires attention before continuing. |
-| Maintenance | Controlled tasks are performed and routine operation is avoided. |
-| On hold | Work is temporarily stopped. |
-| Closed | The project finished and is kept for review. |
-| Archived | Removed from the regular flow without losing its history. |
+| State | When to use it | Guidance |
+|---|---|---|
+| Planning | The project is being prepared. | Configure the team, environments and cases. |
+| Active | Normal work. | Use the usual flow according to permissions. |
+| In QA | A delivery is being validated. | Focus on execution and review. |
+| Blocked | There is an impediment. | Investigate before continuing dependencies. |
+| Maintenance | Controlled changes. | Limit routine operation. |
+| On hold | Work is temporarily stopped. | Preserve it and resume later. |
+| Closed | Work is finished. | Consult results; do not treat it as active. |
+| Archived | Removed from the regular flow. | Keep it available for historical consultation. |
 
 ## Change the state
 
 1. Open **Projects** and choose the project.
-2. Enter **Configuration and team**.
-3. Select the appropriate state.
-4. Save the changes and inform the team if the state changes their
-   way of working.
+2. Enter **Settings and team**.
+3. Select the state.
+4. Save and communicate the impact.
 
-The state does not delete cases, executions or evidence. Before closing or archiving
-a project, verify that the necessary information is saved and that there are no
-active executions that the team should finish.
+Before closing, putting on hold or archiving a project, check active
+executions, pending jobs and evidence that must be preserved. The project state
+does not replace the state of a run, job, case or bug.
 
-## Quick help
+## What changes and what does not
 
-- Use **Blocked** to make an operational impediment visible, not to
-  replace bug tracking.
-- Use **Closed** when the work finished; use **Archived** when you also
-  want to remove it from the main flow.
-- If a state does not let you perform an expected action, also review your
-  project permissions with an administrator.
+- It does not turn a historical build into an active one.
+- It does not delete or rewrite snapshots, executions, bugs or evidence.
+- Availability or visibility may vary by installation; always check the role,
+  capabilities, build, environment and dataset.
+- **Blocked** communicates a project impediment; it does not replace a bug.
+
+If an execution does not start, also review the build, environment, dataset and
+case state.

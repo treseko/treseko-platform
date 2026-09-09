@@ -7,6 +7,7 @@ from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 from ...evidence_url_security import sanitize_evidence_url
+from ...frontend_url import frontend_public_url
 from ...main_context import *
 from ...services.error_sanitizer import sanitize_external_error
 
@@ -116,25 +117,18 @@ def _report_render_bug_is_active(bug: dict) -> bool:
     return str((bug or {}).get("estado") or "").upper() not in REPORT_RENDER_CLOSED_BUG_STATUSES
 
 def _report_frontend_base_url(request: Request) -> str:
-    # Never trust the browser Origin header to build links. An attacker can
-    # control it and turn a generated bug link into an external redirect.
-    for configured_origin in (os.getenv("FRONTEND_PUBLIC_URL"), os.getenv("NOTIFICATIONS_PUBLIC_BASE_URL")):
-        parsed = urlparse((configured_origin or "").strip().rstrip("/"))
-        if parsed.scheme.lower() in {"http", "https"} and parsed.netloc:
-            return configured_origin.strip().rstrip("/")
-    host = request.url.hostname or "localhost"
-    if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
-        # In local development the API and Vite can use different ports. A
-        # relative link lets the browser preserve the origin where the app is
-        # actually open instead of guessing a stale/default Vite port.
-        return ""
-    return str(request.base_url).rstrip("/")
+    # Never trust the browser Origin header or the backend container hostname.
+    # The shared resolver uses the configured public frontend origin and falls
+    # back to the local Vite host/port used by the development launcher.
+    # Production deployments must set FRONTEND_PUBLIC_URL explicitly.
+    return frontend_public_url()
 
-def _report_bug_tracker_url(request: Request, bug: dict) -> Optional[str]:
+def _report_bug_tracker_url(request: Request, bug: dict, *, target: str = "bugs") -> Optional[str]:
     bug_id = (bug or {}).get("id")
     if not bug_id:
         return None
-    path = f"/?{urlencode({'tab': 'bugs', 'bug_id': str(bug_id)})}"
+    tab = "incidencias" if target == "incidencias" else "bugs"
+    path = f"/?{urlencode({'tab': tab, 'bug_id': str(bug_id)})}"
     base_url = _report_frontend_base_url(request)
     return f"{base_url}{path}" if base_url else path
 

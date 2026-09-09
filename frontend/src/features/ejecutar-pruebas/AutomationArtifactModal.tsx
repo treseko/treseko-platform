@@ -4,14 +4,14 @@ export function AutomationArtifactModal({ options }: { options: any }) {
   const { show, selectedArtifact, setSelectedArtifact, t } = options
   return (
 <Modal show={show && Boolean(selectedArtifact)} onHide={() => setSelectedArtifact(null)} centered size="xl" backdrop="static">
-  <Modal.Header closeButton>
-    <Modal.Title className="fw-bold">{selectedArtifact?.label || 'Evidencia'}</Modal.Title>
+  <Modal.Header closeButton closeLabel={t('common.close')}>
+    <Modal.Title className="fw-bold">{selectedArtifact?.label || t('ejecutarPruebas.evidence')}</Modal.Title>
   </Modal.Header>
   <Modal.Body className="text-center bg-dark">
     {selectedArtifact?.href ? (
       <img
         src={selectedArtifact.href}
-        alt={selectedArtifact.label || 'Evidencia'}
+        alt={selectedArtifact.label || t('ejecutarPruebas.evidence')}
         className="img-fluid rounded"
         style={{ maxHeight: '70vh', objectFit: 'contain' }}
       />
@@ -24,7 +24,8 @@ export function AutomationArtifactModal({ options }: { options: any }) {
     {selectedArtifact?.href && (
       <a
         href={selectedArtifact.href}
-        download={selectedArtifact.filename || 'evidencia.png'}
+        download={selectedArtifact.filename || t('ejecutarPruebas.defaultEvidenceFilename')}
+        aria-label={t('ejecutarPruebas.downloadEvidence')}
         className="btn btn-primary"
       >
         {t('ejecutarPruebas.download')}

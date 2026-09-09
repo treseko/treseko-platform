@@ -1,4 +1,5 @@
 export default {
+  formField: 'Form field',
   attachedEvidence: 'Attached evidence', evidenceFileUnavailable: 'File unavailable', evidenceUrlResolveFailed: 'Could not resolve the evidence URL.', loadingPreview: 'Loading preview...', previewFailed: 'Could not display the preview.', previewNotSupported: 'This file cannot be previewed in the browser.', downloadToReview: 'Download it to review it with a compatible application.', previewFallbackHint: 'If the browser does not display the preview correctly, use download.', openSeparately: 'Open separately', preparing: 'Preparing...', download: 'Download', evidenceSessionExpired: 'The session for viewing this evidence expired. Sign in again or use download with an active session.', evidenceStorageUnavailable: 'The physical file for this evidence is unavailable in storage. The record exists, but there is no file to preview or download.', evidenceLoadFailed: 'Could not load the evidence', previewLoadFailed: 'Could not load the preview.', evidenceRecordPreserved: 'The evidence record is preserved for traceability, but the physical file is not in storage.',
   appName: 'Treseko Platform',
   retry: 'Retry',
@@ -101,4 +102,7 @@ export default {
   windowExpired: 'Expired', windowInProgress: 'In progress', windowNotStarted: 'Not started', windowNoDates: 'No dates',
   clickTo: 'Click to {action}.', duration: 'Duration:', category: 'Category:', review: 'Review:', model: 'Model:', errorCode: 'Error code:', workflowUsed: 'Workflow used:', visualAudit: 'Visual audit:', visualAuditEvidence: 'Screenshots were analyzed as evidence.', deterministicValidation: 'Deterministic validation was used.', recentResultsCompared: 'Recent results compared',
   compatibleWorkerMissing: 'No compatible worker is available for {framework} + {language}. Start or pair a worker that advertises this framework and language, then run the dry-run or test again.', engineActivity: 'AI Engine activity', temporaryEvidence: 'Temporary evidence', interpretedData: 'Data interpreted by the agent', stepNumber: 'Step {step}:', noStructuredData: '(no structured data)', ambiguity: 'Ambiguity:', returnedSteps: 'Steps returned by the script', noVariablesPreview: 'No variables are available to preview.', source: 'Source', key: 'Key', currentValue: 'Current value', token: 'Token',
+  saving: 'Saving…',
+  delete: 'Delete',
+  of: 'of',
 } as const

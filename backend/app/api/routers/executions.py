@@ -25,6 +25,7 @@ async def _execution_context(db: AsyncSession, ejecucion_id: UUID):
             models.TestRun.build_id,
             models.Build.componente_id,
             models.Build.activo.label("build_activo"),
+            models.Build.estado.label("build_estado"),
             models.EjecucionCaso.caso_id,
             models.EjecucionCaso.test_run_id,
         )
@@ -42,6 +43,7 @@ async def _execution_context_for_snapshot(db: AsyncSession, snapshot_id: UUID):
             models.TestRun.build_id,
             models.Build.componente_id,
             models.Build.activo.label("build_activo"),
+            models.Build.estado.label("build_estado"),
             models.EjecucionCaso.caso_id,
             models.EjecucionCaso.test_run_id,
             models.SnapshotPaso.ejecucion_caso_id,
@@ -55,17 +57,15 @@ async def _execution_context_for_snapshot(db: AsyncSession, snapshot_id: UUID):
 
 
 def _ensure_context_build_is_active(context) -> None:
-    if context and context.build_id and context.build_activo is not True:
+    if context and context.build_id and not (context.build_activo is True and context.build_estado == "ACTIVA"):
         raise HTTPException(status_code=409, detail="La build está inactiva. No se pueden modificar ejecuciones, evidencias ni resultados de una build cerrada.")
 
 
 async def _ensure_run_build_is_active(db: AsyncSession, run: models.TestRun | None) -> None:
     if not run or not run.build_id:
         return
-    build_active = (
-        await db.execute(select(models.Build.activo).filter(models.Build.id == run.build_id))
-    ).scalar_one_or_none()
-    if build_active is not True:
+    build = await db.get(models.Build, run.build_id)
+    if not access_control.is_build_active(build):
         raise HTTPException(status_code=409, detail="La build está inactiva. No se pueden modificar ejecuciones, evidencias ni resultados de una build cerrada.")
 
 

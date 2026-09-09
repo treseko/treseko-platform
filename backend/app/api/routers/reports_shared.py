@@ -162,11 +162,17 @@ def _shared_report_csv_response(content: str, filename: str) -> Response:
     }
     return Response(content=content, media_type="text/csv; charset=utf-8", headers=headers)
 
-async def _shared_report_pdf_response(snapshot: models.SharedReportSnapshot, request: Request, has_new_values: bool, latest_url: str | None = None) -> Response:
+async def _shared_report_pdf_response(
+    snapshot: models.SharedReportSnapshot,
+    request: Request,
+    has_new_values: bool,
+    latest_url: str | None = None,
+    branding: dict | None = None,
+) -> Response:
     chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
     if not chrome:
         raise HTTPException(status_code=503, detail="Exportacion PDF no disponible en este entorno")
-    html_content = _shared_report_html(snapshot, request, has_new_values, latest_url)
+    html_content = _shared_report_html(snapshot, request, has_new_values, latest_url, branding)
     safe_filename = _safe_report_download_filename(snapshot.title or snapshot.token, "pdf")
     with tempfile.TemporaryDirectory(prefix="treseko-report-") as tmp_dir:
         html_path = os.path.join(tmp_dir, "report.html")

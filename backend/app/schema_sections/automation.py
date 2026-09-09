@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -21,10 +22,18 @@ from ..models import (
     Rol,
     TipoPrueba,
 )
+from ..services.api_worker_contract import (
+    MAX_AUTOMATION_API_RESULTS_BYTES,
+    validate_api_worker_result,
+    validate_api_worker_state_updates,
+)
 
 REDACTED_AUTOMATION_SECRET = "[redacted]"
 MAX_AUTOMATION_JSON_BYTES = 64 * 1024
 MAX_AUTOMATION_RESULT_METADATA_BYTES = 128 * 1024
+# API evidence is deliberately kept outside ``metadata``.  A response body
+# can be as large as the API runner's per-step limit, so the envelope needs a
+# separate, explicit budget instead of inheriting the small job metadata cap.
 MAX_AUTOMATION_ARTIFACT_BASE64_LENGTH = 16 * 1024 * 1024
 MAX_AUTOMATION_SCRIPT_LENGTH = 200_000
 MAX_AUTOMATION_CASE_DATA_LENGTH = 20_000
@@ -221,6 +230,7 @@ class AutomationRunnerHeartbeat(BaseModel):
     resources: Optional[Dict[str, Any]] = None
     active_jobs: Optional[int] = Field(default=None, ge=0, le=1000)
     current_job_id: Optional[UUID] = None
+    lease_token: Optional[str] = Field(default=None, min_length=32, max_length=200)
     uptime_seconds: Optional[int] = Field(default=None, ge=0, le=315360000)
 
     @field_validator("capabilities", "resources")
@@ -271,6 +281,45 @@ class AutomationJob(BaseModel):
     def serialize_job_text(self, value: Optional[str]):
         return redact_automation_sensitive_text(value) if value else value
 
+
+class AutomationWorkerJobClaim(BaseModel):
+    """Claim response for an authenticated worker only.
+
+    This schema intentionally has no serializer on ``payload_congelado``.
+    The claim route constructs it from the encrypted envelope only after the
+    authenticated runner has successfully claimed the job.  UI/list schemas
+    continue using ``AutomationJob`` and therefore remain redacted.
+    """
+
+    id: UUID
+    job_type: str = "EXECUTION"
+    test_run_id: Optional[UUID] = None
+    ejecucion_id: Optional[UUID] = None
+    caso_id: Optional[UUID] = None
+    build_id: Optional[UUID] = None
+    runner_id: Optional[UUID] = None
+    estado: AutomationJobStatus
+    required_framework: str
+    required_language: str = "javascript"
+    required_runtime: Optional[str] = None
+    timeout_seconds: int
+    payload_congelado: Dict[str, Any] = Field(default_factory=dict)
+    logs: Optional[str] = Field(default=None, max_length=12000)
+    error_message: Optional[str] = Field(default=None, max_length=4000)
+    metadata_resultado: Dict[str, Any] = Field(default_factory=dict)
+    fecha_creacion: Optional[datetime] = None
+    fecha_claim: Optional[datetime] = None
+    fecha_inicio: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
+    # Worker-only lease data.  It is intentionally absent from AutomationJob,
+    # which is used by UI/list serializers.
+    lease_token: str
+    lease_expires_at: datetime
+    attempt_count: int
+    max_attempts: int
+
+    model_config = ConfigDict(from_attributes=True)
+
 class AutomationJobResultStep(BaseModel):
     number: int = Field(ge=1, le=1000)
     status: EstadoResultado
@@ -285,7 +334,31 @@ class AutomationJobResultArtifact(BaseModel):
     base64: str = Field(min_length=1, max_length=MAX_AUTOMATION_ARTIFACT_BASE64_LENGTH)
     step_number: Optional[int] = Field(default=None, ge=1, le=1000)
 
+
+class AutomationApiJobResultItem(BaseModel):
+    """One immutable API case result returned by an API-capable worker."""
+
+    case_id: UUID
+    execution_id: UUID
+    result: Dict[str, Any]
+    state_updates: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("result")
+    @classmethod
+    def validate_api_result(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        return validate_api_worker_result(value)
+
+    @field_validator("state_updates")
+    @classmethod
+    def validate_state_updates(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        return validate_api_worker_state_updates(value)
+
 class AutomationJobResult(BaseModel):
+    # Both values are mandatory for authenticated worker callbacks.  The
+    # event id makes delivery retries explicit and the lease prevents an old
+    # worker from writing after its job has been recovered.
+    lease_token: str = Field(min_length=32, max_length=200)
+    result_event_id: str = Field(min_length=1, max_length=200)
     status: AutomationJobStatus
     duration_seconds: int = Field(default=0, ge=0, le=604800)
     observations: Optional[str] = Field(default=None, max_length=4000)
@@ -295,11 +368,29 @@ class AutomationJobResult(BaseModel):
     evidence_url: Optional[str] = Field(default=None, max_length=1000)
     steps: List[AutomationJobResultStep] = Field(default_factory=list, max_length=1000)
     artifacts: List[AutomationJobResultArtifact] = Field(default_factory=list, max_length=20)
+    api_results: List[AutomationApiJobResultItem] = Field(default_factory=list, max_length=1000)
 
     @field_validator("metadata")
     @classmethod
     def validate_metadata(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         return validate_automation_json_payload(value, max_bytes=MAX_AUTOMATION_RESULT_METADATA_BYTES) or {}
+
+    @field_validator("api_results")
+    @classmethod
+    def validate_api_results(cls, value: List[AutomationApiJobResultItem]) -> List[AutomationApiJobResultItem]:
+        total = sum(
+            len(json.dumps(
+                {"result": item.result, "state_updates": item.state_updates},
+                ensure_ascii=False,
+                default=str,
+            ).encode("utf-8"))
+            for item in value
+        )
+        if total > MAX_AUTOMATION_API_RESULTS_BYTES:
+            raise ValueError(
+                f"Los resultados API superan el límite total de {MAX_AUTOMATION_API_RESULTS_BYTES} bytes"
+            )
+        return value
 
 class AutomationDryRunRequest(BaseModel):
     script_automatizado: str = Field(min_length=1, max_length=MAX_AUTOMATION_SCRIPT_LENGTH)

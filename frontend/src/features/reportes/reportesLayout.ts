@@ -7,7 +7,7 @@ const REPORTES_BREAKPOINT_KEYS = Object.keys(REPORTES_COLS) as Array<keyof typeo
 const TRACEABILITY_COVERAGE_LAYOUT_HEIGHT = 5
 
 export const REPORTES_WIDGET_IDS = [
-  'traceabilityCoverage', 'context', 'kpis', 'temporal', 'aiMetrics',
+  'traceabilityCoverage', 'context', 'kpis', 'temporal', 'aiMetrics', 'formatMetrics', 'formatModeMatrix',
   'buildComparison', 'filters', 'bugTraceability', 'bugs', 'failures',
   'evidence', 'statusChart', 'executionModeChart', 'priority', 'suites',
   'trend', 'sharedHistory', 'qualityIntelligence',
@@ -19,19 +19,21 @@ const REPORTES_DEFAULT_LAYOUT: LayoutItem[] = [
   { i: 'kpis', x: 0, y: 7, w: 12, h: 3, minW: 4, minH: 3 },
   { i: 'temporal', x: 0, y: 10, w: 12, h: 3, minW: 4, minH: 3 },
   { i: 'aiMetrics', x: 0, y: 13, w: 12, h: 4, minW: 4, minH: 4 },
-  { i: 'buildComparison', x: 0, y: 17, w: 12, h: 3, minW: 4, minH: 3 },
-  { i: 'filters', x: 0, y: 20, w: 12, h: 2, minW: 4, minH: 2 },
-  { i: 'bugTraceability', x: 0, y: 22, w: 5, h: 3, minW: 3, minH: 3 },
-  { i: 'bugs', x: 5, y: 22, w: 7, h: 3, minW: 4, minH: 3 },
-  { i: 'failures', x: 0, y: 25, w: 7, h: 4, minW: 4, minH: 3 },
-  { i: 'evidence', x: 7, y: 25, w: 5, h: 4, minW: 3, minH: 3 },
-  { i: 'statusChart', x: 0, y: 29, w: 6, h: 4, minW: 4, minH: 4 },
-  { i: 'executionModeChart', x: 6, y: 29, w: 6, h: 4, minW: 4, minH: 4 },
-  { i: 'priority', x: 0, y: 33, w: 12, h: 4, minW: 4, minH: 3 },
-  { i: 'suites', x: 0, y: 37, w: 12, h: 5, minW: 4, minH: 4 },
-  { i: 'trend', x: 0, y: 42, w: 12, h: 4, minW: 4, minH: 4 },
-  { i: 'sharedHistory', x: 0, y: 46, w: 12, h: 4, minW: 4, minH: 3 },
-  { i: 'qualityIntelligence', x: 0, y: 50, w: 12, h: 4, minW: 4, minH: 3 },
+  { i: 'formatMetrics', x: 0, y: 17, w: 12, h: 5, minW: 4, minH: 4 },
+  { i: 'formatModeMatrix', x: 0, y: 22, w: 12, h: 5, minW: 4, minH: 4 },
+  { i: 'buildComparison', x: 0, y: 27, w: 12, h: 3, minW: 4, minH: 3 },
+  { i: 'filters', x: 0, y: 30, w: 12, h: 2, minW: 4, minH: 2 },
+  { i: 'bugTraceability', x: 0, y: 32, w: 5, h: 3, minW: 3, minH: 3 },
+  { i: 'bugs', x: 5, y: 32, w: 7, h: 3, minW: 4, minH: 3 },
+  { i: 'failures', x: 0, y: 35, w: 7, h: 4, minW: 4, minH: 3 },
+  { i: 'evidence', x: 7, y: 35, w: 5, h: 4, minW: 3, minH: 3 },
+  { i: 'statusChart', x: 0, y: 39, w: 6, h: 4, minW: 4, minH: 4 },
+  { i: 'executionModeChart', x: 6, y: 39, w: 6, h: 4, minW: 4, minH: 4 },
+  { i: 'priority', x: 0, y: 43, w: 12, h: 4, minW: 4, minH: 3 },
+  { i: 'suites', x: 0, y: 47, w: 12, h: 5, minW: 4, minH: 4 },
+  { i: 'trend', x: 0, y: 52, w: 12, h: 5, minW: 4, minH: 5 },
+  { i: 'sharedHistory', x: 0, y: 56, w: 12, h: 4, minW: 4, minH: 3 },
+  { i: 'qualityIntelligence', x: 0, y: 60, w: 12, h: 4, minW: 4, minH: 3 },
 ]
 
 const fitReportesLayoutItemToCols = (item: LayoutItem, cols: number): LayoutItem => ({
@@ -63,13 +65,20 @@ export const sanitizeReportesLayouts = (value: any): ResponsiveLayouts<string> =
     const cols = REPORTES_COLS[breakpoint]
     const incoming = Array.isArray(value?.[breakpoint]) ? value[breakpoint] : []
     const requiresMigration = !incoming.some((item: any) => item?.i === 'traceabilityCoverage')
+    const requiresFormatMetricsMigration = !incoming.some((item: any) => item?.i === 'formatMetrics')
+    const requiresFormatModeMatrixMigration = !incoming.some((item: any) => item?.i === 'formatModeMatrix')
     const byId = new Map(incoming.filter((item: any) => REPORTES_WIDGET_IDS.includes(item?.i)).map((item: any) => [item.i, sanitizeReportesLayoutItem(item)]))
     return [breakpoint, defaults[breakpoint].map((base) => {
       const savedItem = byId.get(base.i)
-      const migratedItem = savedItem && requiresMigration
-        ? { ...savedItem, y: Math.max(0, Number(savedItem.y || 0) + TRACEABILITY_COVERAGE_LAYOUT_HEIGHT) }
+      const migratedItem = savedItem
+        ? { ...savedItem, y: Math.max(0, Number(savedItem.y || 0) + (requiresMigration ? TRACEABILITY_COVERAGE_LAYOUT_HEIGHT : 0) + (requiresFormatMetricsMigration ? 5 : 0) + (requiresFormatModeMatrixMigration ? 5 : 0)) }
         : savedItem
-      return fitReportesLayoutItemToCols({ ...base, ...(migratedItem || {}) }, cols)
+      const merged = { ...base, ...(migratedItem || {}) }
+      if (base.i === 'trend') {
+        merged.h = Math.max(5, Number(merged.h || 5))
+        merged.minH = 5
+      }
+      return fitReportesLayoutItemToCols(merged, cols)
     })]
   }))
 }
@@ -82,9 +91,15 @@ export const sanitizeReportesWidgets = (widgets: any, layouts: any): string[] =>
   const migratedWidgets = hasTraceabilityLayout || savedWidgets.includes('traceabilityCoverage')
     ? savedWidgets
     : [...savedWidgets, 'traceabilityCoverage']
-  return migratedWidgets.includes('qualityIntelligence')
+  const withFormatMetrics = migratedWidgets.includes('formatMetrics')
     ? migratedWidgets
-    : [...migratedWidgets, 'qualityIntelligence']
+    : [...migratedWidgets, 'formatMetrics']
+  const withFormatModeMatrix = withFormatMetrics.includes('formatModeMatrix')
+    ? withFormatMetrics
+    : [...withFormatMetrics, 'formatModeMatrix']
+  return withFormatModeMatrix.includes('qualityIntelligence')
+    ? withFormatModeMatrix
+    : [...withFormatModeMatrix, 'qualityIntelligence']
 }
 
 const sanitizeReportesLayoutItem = (item: LayoutItem & Record<string, any>): LayoutItem => {

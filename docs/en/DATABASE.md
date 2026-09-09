@@ -2,65 +2,50 @@
 
 <!-- Language: en -->
 
-Treseko stores operational data in a relational database and attachment
-files in persistent storage. This guide helps you understand
-what is kept and how to prepare a safe operation.
+Treseko uses PostgreSQL and persistent volumes for attachments, backups,
+frontend files, the Engine and the worker runtime.
 
-## What information Treseko keeps
+## Information retained
 
-| Area | Main information |
+| Area | Information |
 |---|---|
 | Organization and projects | Solutions, projects, components, builds, teams, environments and datasets. |
-| Test design | Suites, cases, versions, steps, requirements, stories and links. |
-| Execution | Runs, results per case, step snapshots, observations and durations. |
-| Quality | Bugs, comments, states, external links and metrics. |
-| Administration | Users, roles, permissions, preferences, audit and licenses. |
-| Evidence | Attachment metadata and the location of the associated files. |
+| Design | Suites, cases, versions, steps, requirements, stories and links. |
+| Execution | Runs, results, snapshots, observations, duration and statuses. |
+| API and conversation | Frozen contract, assertions, turns, transcript and evaluation. |
+| Quality | Bugs, comments, statuses, deduplication, history and metrics. |
+| Administration | Users, roles, capabilities, preferences, license and audit. |
+| Portability | Batches, hashes, external references and rollback. |
 
-## How the history is kept
+Attachments and binary evidence are outside PostgreSQL. Restoring only the
+database does not recover those files.
 
-When you execute a case, Treseko saves a snapshot of the steps, data and
-expected result. That is why the history keeps the context that was used even if the
-case is edited later.
+## Snapshots and evidence
 
-Important operational changes, such as modifications to users, roles,
-bugs and configuration, remain available for audit according to the user's
-permissions.
+An execution keeps the configuration, permitted variables and result used. API
+and conversational executions may keep the contract, assertions, turns,
+responses, latencies and evaluation. History is read from snapshots, not from
+the current case.
 
-## Scope of a build
+Normal evidence is sanitized and limited. `evidence_policy` and
+`public_test_data` indicate the treatment applied. `public_test_data` is enabled
+only for data explicitly marked as public; it never includes tokens, cookies,
+credentials or real personal information.
 
-A build defines which cases can be executed and reported. Before starting an
-automated or external execution, verify that the case is active and assigned to
-the corresponding build.
+## Backups and migrations
 
-## Recommended backups
+1. Back up PostgreSQL.
+2. Back up attachments and evidence.
+3. Keep secrets outside the repository.
+4. Test restoration in an isolated instance.
 
-Make a copy before updating Treseko, changing server or running
-an important import:
+The database and attachments must correspond to the same moment. Run the
+migrator from the same version before starting the updated backend. Do not delete
+volumes to solve a migration without a tested backup.
 
-1. Back up the PostgreSQL database.
-2. Back up the volume or directory of attachments.
-3. Store the configuration files and deployment secrets protected, without
-   including them in repositories.
-4. Test the restore on an isolated instance before relying on the backup.
-
-The restore must recover the database and the attachments from the same moment so
-that evidence stays correctly linked.
-
-## Maintenance
-
-- Use the migrations included with your Treseko version when updating the
-  database.
-- Do not edit records directly unless you follow a validated technical
-  procedure and have a recoverable backup.
-- Review the evidence storage and the edition limits before allowing
-  massive uploads.
-
-## Quick help
-
-| Situation | What to review |
+| Situation | Review |
 |---|---|
-| A historical result does not match the current case | Check the execution snapshot; the case may have changed later. |
-| A case cannot be reported in a build | Confirm the case is active and within that build's scope. |
-| An evidence is missing after a restore | Verify that the attachment storage was also restored. |
-| An update fails | Restore the tested backup and review the migrations of the installed version. |
+| Result differs from the current case | Check the snapshot. |
+| Evidence is missing | Restore the attachments volume as well. |
+| Historical report does not open | Snapshot, permissions and storage. |
+| Import must be reverted | Batch and one-hour window. |

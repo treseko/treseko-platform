@@ -13,10 +13,10 @@ type Props = {
   onApplied: (count: number) => void;
 };
 
-const readJson = async (response: Response) => {
+const readJson = async (response: Response, fallback: string) => {
   const value = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(value?.detail || "No se pudo completar la operación.");
+    throw new Error(value?.detail || fallback);
   }
   return value;
 };
@@ -50,7 +50,7 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
             : 5;
 
   const request = async (url: string, body: any) =>
-    readJson(await fetchWithAuth(`${API_BASE}${url}`, { method: "POST", body: JSON.stringify(body) }));
+    readJson(await fetchWithAuth(`${API_BASE}${url}`, { method: "POST", body: JSON.stringify(body) }), t('proyectos.caseGenerationErrorFetch'));
 
   const structured =
     story.criterios_estructuracion_estado === "STRUCTURED" &&
@@ -99,8 +99,8 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetchWithAuth(`${API_BASE}/proyectos/${story.proyecto_id}/suites/`).then(readJson),
-      fetchWithAuth(`${API_BASE}/proyectos/${story.proyecto_id}/componentes/`).then(readJson),
+      fetchWithAuth(`${API_BASE}/proyectos/${story.proyecto_id}/suites/`).then(response => readJson(response, t('proyectos.caseGenerationErrorFetch'))),
+      fetchWithAuth(`${API_BASE}/proyectos/${story.proyecto_id}/componentes/`).then(response => readJson(response, t('proyectos.caseGenerationErrorFetch'))),
     ])
       .then(([nextSuites, nextComponents]) => {
         if (cancelled) return;

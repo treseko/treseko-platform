@@ -32,6 +32,13 @@ from ..time_utils import utc_now
 from . import case_import_adapters as adapters
 from . import case_import_json_adapters as json_adapters
 from . import case_import_xml_adapters as xml_adapters
+from .chatbot_config import normalize_chatbot_config
+from .api_dynamic_variables import (
+    DYNAMIC_VARIABLE_CATALOG_VERSION,
+    DYNAMIC_VARIABLE_NAMES,
+    POSTMAN_EXTENSION_VARIABLE_NAMES,
+    POSTMAN_OFFICIAL_DYNAMIC_VARIABLE_NAMES,
+)
 
 FORMAT_ID = "treseko.test-cases-package/v1"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -41,6 +48,9 @@ MAX_CASES = 10_000
 ROLLBACK_WINDOW = timedelta(hours=1)
 SUPPORTED_PROFILES = {
     "treseko/tcases-v1": {"tool": "treseko", "version": "tcases-v1", "extensions": [".tcases"], "status": "stable", "import_enabled": True},
+    # Legacy project exports were JSON responses from /proyectos/{id}/export/.
+    # They were commonly saved by users with a .treseko extension.
+    "treseko/legacy-project-v1": {"tool": "treseko", "version": "legacy-project-v1", "extensions": [".treseko", ".json"], "status": "stable", "import_enabled": True, "verification_label": "Compatibilidad histórica"},
     "csv/structured-v1": {"tool": "csv", "version": "structured-v1", "extensions": [".csv"], "status": "stable", "import_enabled": True},
     "testlink/xml-v1": {"tool": "testlink", "version": "xml-v1", "extensions": [".xml"], "status": "beta", "import_enabled": True, "verification_label": "Verificado", "verification_detail": "Probado con exportaciones XML reales de TestLink."},
     "xray/json-v1": {"tool": "xray", "version": "execution-testinfo-v1", "extensions": [".json"], "status": "beta", "import_enabled": True},
@@ -56,6 +66,7 @@ SUPPORTED_PROFILES = {
     "qase/json-v1": {"tool": "qase", "version": "export-api-v1", "extensions": [".json"], "status": "beta", "import_enabled": True},
     "qase/csv-v1": {"tool": "qase", "version": "csv-v1", "extensions": [".csv"], "status": "beta", "import_enabled": True},
     "gherkin/feature-v1": {"tool": "gherkin", "version": "official-parser-v1", "extensions": [".feature"], "status": "beta", "import_enabled": True},
+    "postman/collection-v2.1": {"tool": "postman", "version": "collection-v2.1", "extensions": [".json"], "status": "beta", "import_enabled": True},
 }
 
 
@@ -210,19 +221,317 @@ def _normal_case(raw: dict[str, Any], tool: str, position: int) -> dict[str, Any
         raise PortabilityError(f"El caso {position} supera ocho niveles de suites")
     if any(len(part) > 150 for part in suite_parts):
         raise PortabilityError(f"El caso {position} contiene un nombre de suite mayor a 150 caracteres")
+    chatbot_config = normalize_chatbot_config(raw.get("configuracion_chatbot") or raw.get("chatbot_config") or {})
+    if not isinstance(chatbot_config, dict):
+        raise PortabilityError(f"La configuración Chatbot del caso {position} debe ser un objeto JSON")
+    if len(json.dumps(chatbot_config, ensure_ascii=False).encode("utf-8")) > 256 * 1024:
+        raise PortabilityError(f"La configuración Chatbot del caso {position} supera 256 KB")
+    dataset = raw.get("dataset") or raw.get("datos_prueba") or []
+    if not isinstance(dataset, list) or len(dataset) > 500:
+        raise PortabilityError(f"El dataset del caso {position} no es válido o supera 500 filas")
+    normalized_dataset = []
+    for row in dataset:
+        if not isinstance(row, dict):
+            raise PortabilityError(f"El dataset del caso {position} contiene una fila inválida")
+        normalized_dataset.append({str(key): str(value or "") for key, value in row.items()})
+    if len(json.dumps(normalized_dataset, ensure_ascii=False).encode("utf-8")) > 128 * 1024:
+        raise PortabilityError(f"El dataset del caso {position} supera 128 KB")
+    traceability = raw.get("trazabilidad") or raw.get("traceability") or {}
+    if not isinstance(traceability, dict):
+        raise PortabilityError(f"La trazabilidad del caso {position} debe ser un objeto JSON")
+    code = _portable_text(raw.get("codigo") or raw.get("code")) or None
+    if code and len(code) > 20:
+        raise PortabilityError(f"El código del caso {position} supera 20 caracteres")
     return {
         "external_id": external_id, "external_version": str(raw.get("external_version") or raw.get("version") or "").strip() or None,
         "suite_path": "/".join(suite_parts) or "Importados",
+        "codigo": code,
         "titulo": _portable_text(title), "descripcion": _portable_text(raw.get("descripcion") or raw.get("description") or raw.get("objective")) or None,
         "precondiciones": _portable_text(raw.get("precondiciones") or raw.get("preconditions")) or None,
         "postcondiciones": _portable_text(raw.get("postcondiciones") or raw.get("postconditions")) or None,
         "prioridad": _enum(raw.get("prioridad") or raw.get("priority"), models.Prioridad, "MEDIA"),
         "criticidad": _enum(raw.get("criticidad") or raw.get("severity"), models.Criticidad, "MEDIA"),
         "tipo_prueba": _enum(raw.get("tipo_prueba") or raw.get("type"), models.TipoPrueba, "MANUAL"),
+        "formato_prueba": _enum(("CLASICA" if (raw.get("formato_prueba") or raw.get("format")) == "FUNCIONAL" else (raw.get("formato_prueba") or raw.get("format"))), models.FormatoPrueba, "CLASICA"),
         "estado_caso": _enum(raw.get("estado_caso") or raw.get("status"), models.EstadoCaso, "ACTIVO"),
-        "etiquetas": [str(x) for x in tags], "pasos": _steps(raw.get("pasos") or raw.get("steps") or raw.get("test_steps")),
+        "etiquetas": [str(x) for x in tags], "dataset": normalized_dataset,
+        "configuracion_chatbot": chatbot_config, "configuracion_api": raw.get("configuracion_api") if isinstance(raw.get("configuracion_api"), dict) else {},
+        "script_automatizado": _portable_text(raw.get("script_automatizado") or raw.get("script")) or None,
+        "framework": _portable_text(raw.get("framework")) or None,
+        "trazabilidad": traceability, "pasos": _steps(raw.get("pasos") or raw.get("steps") or raw.get("test_steps")),
         "source_tool": tool,
     }
+
+
+def _read_legacy_project_package(data: bytes) -> dict[str, Any]:
+    """Normalize the pre-.tcases project JSON export used by older Treseko."""
+    try:
+        package = json.loads(data.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PortabilityError("El paquete .treseko histórico no contiene JSON válido") from exc
+    if not isinstance(package, dict) or not isinstance(package.get("casos"), list):
+        raise PortabilityError("El paquete .treseko histórico no contiene la colección casos")
+    suites = package.get("suites") if isinstance(package.get("suites"), list) else []
+    suites_by_id = {str(item.get("id")): item for item in suites if isinstance(item, dict) and item.get("id")}
+
+    def suite_path(suite_id: Any) -> str:
+        names: list[str] = []
+        current = suites_by_id.get(str(suite_id))
+        seen: set[str] = set()
+        while current and str(current.get("id")) not in seen:
+            seen.add(str(current.get("id")))
+            if current.get("nombre"):
+                names.insert(0, str(current["nombre"]))
+            current = suites_by_id.get(str(current.get("parent_id")))
+        return "/".join(names) or "Importados/Treseko"
+
+    rows = []
+    for item in package["casos"]:
+        if not isinstance(item, dict):
+            continue
+        rows.append({**item, "external_id": item.get("external_id") or item.get("master_id") or item.get("id"), "external_version": item.get("external_version") or item.get("version"), "suite_path": item.get("suite_path") or suite_path(item.get("suite_id"))})
+    profile = SUPPORTED_PROFILES["treseko/legacy-project-v1"]
+    result = _adapter_package(profile, adapters.AdapterResult(rows, warnings=["Paquete histórico JSON de Treseko: los campos ausentes se completaron con valores compatibles."] if package.get("version_formato") else [], source_fields=sorted({str(key) for item in package["casos"] if isinstance(item, dict) for key in item})))
+    result["diagnostics"]["legacy_format_version"] = str(package.get("version_formato") or "unknown")
+    result["diagnostics"]["suite_count"] = len(suites_by_id)
+    return result
+
+
+def _postman_script(events: Any, listen: str) -> str | None:
+    for event in events or []:
+        if not isinstance(event, dict) or str(event.get("listen") or "").lower() != listen:
+            continue
+        script = event.get("script") or {}
+        exec_lines = script.get("exec") if isinstance(script, dict) else None
+        if isinstance(exec_lines, list):
+            value = "\n".join(str(line) for line in exec_lines).strip()
+            # Postman commonly exports an empty event before the real event.
+            # Do not let that placeholder hide a later non-empty script.
+            if value:
+                return value
+        if isinstance(exec_lines, str):
+            value = exec_lines.strip()
+            if value:
+                return value
+    return None
+
+
+def _postman_unsupported_dynamic_variables(value: Any) -> set[str]:
+    """Find Postman dynamic placeholders not implemented by the safe runner."""
+    found: set[str] = set()
+    if isinstance(value, str):
+        for match in re.finditer(r"\{\{\s*(\$[A-Za-z][A-Za-z0-9_]*)\s*\}\}", value):
+            name = match.group(1)
+            if name not in DYNAMIC_VARIABLE_NAMES:
+                found.add(name)
+    elif isinstance(value, list):
+        for item in value:
+            found.update(_postman_unsupported_dynamic_variables(item))
+    elif isinstance(value, dict):
+        for item in value.values():
+            found.update(_postman_unsupported_dynamic_variables(item))
+    return found
+
+
+def _postman_script_diagnostics(*scripts: str | None) -> tuple[set[str], set[str]]:
+    """Classify script APIs without executing imported JavaScript."""
+    source = "\n".join(str(script or "") for script in scripts)
+    supported = {
+        name for pattern, name in (
+            (r"\bpm\.test\s*\(", "pm.test"),
+            (r"\bpm\.expect\s*\(", "pm.expect"),
+            (r"\bpm\.variables\b", "pm.variables"),
+            (r"\bpm\.globals\b", "pm.globals"),
+            (r"\bpm\.collectionVariables\b", "pm.collectionVariables"),
+            (r"\bpm\.environment\b", "pm.environment"),
+            (r"\bpm\.iterationData\b", "pm.iterationData"),
+            (r"\bpm\.request\b", "pm.request"),
+            (r"\bpm\.response\b", "pm.response"),
+            (r"replaceIn\s*\(", "replaceIn"),
+        ) if re.search(pattern, source)
+    }
+    unsupported = {
+        name for pattern, name in (
+            (r"\bpm\.sendRequest\b", "pm.sendRequest"),
+            (r"\bpm\.execution\.runRequest\b", "pm.execution.runRequest"),
+            (r"\bpm\.visual\b", "pm.visual"),
+            (r"\bpm\.cookies\b", "pm.cookies"),
+            (r"\brequire\s*\(", "require"),
+            (r"\b(fetch|XMLHttpRequest|WebSocket)\b", "network API"),
+        ) if re.search(pattern, source)
+    }
+    return supported, unsupported
+
+
+def _postman_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value.get("value") if "value" in value else value.get("raw")
+    return value
+
+
+def _postman_request(request: Any) -> dict[str, Any]:
+    if isinstance(request, str):
+        return {"method": "GET", "url": request}
+    if not isinstance(request, dict):
+        raise PortabilityError("Una request Postman no tiene una definición válida")
+    url_value = request.get("url")
+    if isinstance(url_value, dict):
+        raw_url = url_value.get("raw") or ""
+        query = url_value.get("query") or []
+    else:
+        raw_url = url_value or ""
+        query = request.get("query") or []
+    query_items = []
+    for item in query if isinstance(query, list) else []:
+        if isinstance(item, dict) and item.get("key") and item.get("disabled") is not True:
+            query_items.append({"key": str(item["key"]), "value": _postman_value(item.get("value")) or "", "enabled": True})
+    headers = []
+    for item in request.get("header") or []:
+        if isinstance(item, dict) and item.get("key") and item.get("disabled") is not True:
+            headers.append({"key": str(item["key"]), "value": _postman_value(item.get("value")) or "", "enabled": True})
+    body = request.get("body") or {}
+    body_config: dict[str, Any] = {"mode": "none"}
+    if isinstance(body, dict):
+        mode = str(body.get("mode") or "none").lower()
+        if mode == "raw":
+            options = body.get("options") or {}
+            raw_options = options.get("raw") if isinstance(options, dict) else {}
+            language = raw_options.get("language") if isinstance(raw_options, dict) else None
+            body_config = {"mode": "raw", "media_type": "application/json" if language == "json" else "text/plain", "content": body.get("raw") or ""}
+        elif mode in {"urlencoded", "formdata"}:
+            fields = []
+            for item in body.get(mode) or []:
+                if isinstance(item, dict) and item.get("key") and item.get("disabled") is not True:
+                    fields.append({"key": str(item["key"]), "value": _postman_value(item.get("value")) or "", "type": item.get("type") or "text", "enabled": True})
+            body_config = {"mode": mode, "fields": fields}
+    auth = request.get("auth") or {"type": "noauth"}
+    auth_type = str(auth.get("type") or "noauth").lower() if isinstance(auth, dict) else "noauth"
+    auth_config: dict[str, Any] = {"type": "none"}
+    if auth_type in {"bearer", "basic", "apikey", "oauth2"}:
+        values = {str(item.get("key")): _postman_value(item.get("value")) for item in (auth.get(auth_type) or []) if isinstance(item, dict)}
+        if auth_type == "apikey":
+            auth_config = {"type": "api_key", "header": values.get("key") or "X-API-Key", "value": values.get("value") or ""} if str(values.get("in") or "header") == "header" else {"type": "api_key", "query": values.get("key") or "api_key", "value": values.get("value") or ""}
+        elif auth_type == "oauth2":
+            auth_config = {"type": "oauth2", "flow": values.get("grant_type") or values.get("accessTokenUrl") or "imported", "token": values.get("accessToken") or values.get("accessToken") or ""}
+        else:
+            auth_config = {"type": auth_type, **values}
+    return {"method": str(request.get("method") or "GET").upper(), "url": str(raw_url), "query": query_items, "headers": headers, "body": body_config, "auth": auth_config}
+
+
+def _postman_external_id(collection_key: str, path: list[str], position: int, item: dict[str, Any], request: dict[str, Any]) -> str:
+    """Build a deterministic identity when Postman omits ``item.id``.
+
+    A positional fallback such as ``request-1`` collides when two different
+    collections are imported into the same project. The collection identity,
+    folder path, sibling position and request definition make re-imports
+    stable without treating unrelated requests as new versions.
+    """
+    identity = {
+        "collection": collection_key,
+        "path": path,
+        "position": position,
+        "name": item.get("name") or "",
+        "method": request.get("method") or "GET",
+        "url": request.get("url") or "",
+    }
+    digest = hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return f"postman-{digest[:32]}"
+
+
+def _parse_postman_collection(data: bytes) -> dict[str, Any]:
+    try:
+        collection = json.loads(data)
+    except (TypeError, ValueError) as exc:
+        raise PortabilityError("La colección Postman no contiene JSON válido") from exc
+    if not isinstance(collection, dict) or not isinstance(collection.get("item"), list):
+        raise PortabilityError("La colección Postman debe ser v2.1 y contener item")
+    info = collection.get("info") or {}
+    collection_name = str(info.get("name") or "Colección Postman").strip()[:150]
+    collection_variables = {str(item.get("key")): _postman_value(item.get("value")) for item in collection.get("variable") or [] if isinstance(item, dict) and item.get("key")}
+    rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    ignored_fields: list[str] = []
+    script_request_count = 0
+    script_without_tests = 0
+    script_capabilities: set[str] = set()
+    unsupported_script_apis: set[str] = set()
+    unknown_dynamic_variables: set[str] = set()
+
+    collection_events = collection.get("event") if isinstance(collection.get("event"), list) else []
+    collection_auth = collection.get("auth") if isinstance(collection.get("auth"), dict) else None
+
+    def walk(items: list[Any], path: list[str], inherited_events: list[Any] | None = None, inherited_auth: dict[str, Any] | None = None) -> None:
+        nonlocal script_request_count, script_without_tests
+        inherited_events = inherited_events or []
+        inherited_auth = inherited_auth or collection_auth
+        for position, item in enumerate(items, 1):
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or f"Request {len(rows) + 1}").strip()
+            if isinstance(item.get("item"), list):
+                folder_events = item.get("event") if isinstance(item.get("event"), list) else []
+                folder_auth = item.get("auth") if isinstance(item.get("auth"), dict) else inherited_auth
+                walk(item["item"], path + [name], inherited_events + folder_events, folder_auth)
+                continue
+            if not item.get("request"):
+                warnings.append(f"Se ignoró el elemento sin request: {name}")
+                continue
+            request_source = dict(item["request"])
+            if "auth" not in request_source and inherited_auth:
+                request_source["auth"] = inherited_auth
+            request = _postman_request(request_source)
+            events = inherited_events + (item.get("event") if isinstance(item.get("event"), list) else [])
+            pre_script = _postman_script(events, "prerequest")
+            post_script = _postman_script(events, "test")
+            if pre_script or post_script:
+                script_request_count += 1
+                warnings.append(f"La request {name} contiene scripts; serán ejecutados por el sandbox controlado de Treseko.")
+            if not post_script:
+                script_without_tests += 1
+                warnings.append(f"La request {name} no contiene pruebas Postman; revisá o agregá validaciones antes de automatizarla.")
+            supported_apis, unsupported_apis = _postman_script_diagnostics(pre_script, post_script)
+            script_capabilities.update(supported_apis)
+            unsupported_script_apis.update(unsupported_apis)
+            if unsupported_apis:
+                warnings.append(f"La request {name} usa APIs de Postman fuera del sandbox declarativo: {', '.join(sorted(unsupported_apis))}; se importará la configuración y se informará durante la ejecución.")
+            unsupported_dynamic = _postman_unsupported_dynamic_variables({"request": request, "pre_request_script": pre_script, "post_response_script": post_script})
+            if unsupported_dynamic:
+                unknown_dynamic_variables.update(unsupported_dynamic)
+                warnings.append(f"La request {name} usa variables dinámicas no soportadas por Treseko: {', '.join(sorted(unsupported_dynamic))}; se conservarán sin resolver.")
+            request_obj = item.get("request") if isinstance(item.get("request"), dict) else {}
+            external_id = str(item.get("id") or request_obj.get("id") or _postman_external_id(
+                str(info.get("_postman_id") or collection_name), path, position, item, request,
+            ))
+            rows.append({
+                "external_id": external_id,
+                "external_version": str(info.get("_postman_id") or "2.1"),
+                "titulo": name,
+                "descripcion": _portable_text(item.get("description") or (item.get("request") or {}).get("description")) or None,
+                "suite_path": "/".join([collection_name, *path]) or collection_name,
+                "prioridad": "MEDIA", "criticidad": "MEDIA", "tipo_prueba": "AUTOMATIZADA", "formato_prueba": "API", "estado_caso": "ACTIVO", "etiquetas": ["postman", "api"],
+                "configuracion_api": {"schema_version": "treseko.api-test/v2", "request": request, "collection_variables": collection_variables, "variables": {}, "pre_request_script": pre_script, "post_response_script": post_script, "assertions": [], "extractors": [], "execution": {"iterations": 1, "parallelism": 1, "fail_fast": True}},
+                "pasos": [], "source_tool": "postman",
+            })
+    walk(collection["item"], [], collection_events, collection_auth)
+    if not rows:
+        raise PortabilityError("La colección Postman no contiene requests HTTP importables")
+    if collection_variables:
+        warnings.append("Las variables de colección se conservaron como variables de colección; el ambiente o dataset puede sobrescribirlas al ejecutar.")
+    return _adapter_package(
+        {"tool": "postman", "version": "collection-v2.1"},
+        adapters.AdapterResult(rows, warnings=warnings, ignored_fields=ignored_fields, metadata={
+            "runtime": "treseko-declarative-sandbox",
+            "dynamic_variable_catalog_version": DYNAMIC_VARIABLE_CATALOG_VERSION,
+            "official_dynamic_variable_count": len(POSTMAN_OFFICIAL_DYNAMIC_VARIABLE_NAMES),
+            "extension_dynamic_variables": sorted(POSTMAN_EXTENSION_VARIABLE_NAMES),
+            "scripts_detected": script_request_count,
+            "requests_without_postman_tests": script_without_tests,
+            "script_capabilities": sorted(script_capabilities),
+            "unsupported_script_apis": sorted(unsupported_script_apis),
+            "unknown_dynamic_variables": sorted(unknown_dynamic_variables),
+            "diagnostics_note": "La vista previa identifica límites de compatibilidad; la importación no ejecuta scripts.",
+        }),
+    )
 
 
 def _xml_text(node: Any, name: str, default: str = "") -> str:
@@ -359,6 +668,10 @@ def parse_import(profile_id: str, data: bytes) -> dict[str, Any]:
             return _adapter_package(profile, adapters.parse_gherkin(data))
         except adapters.AdapterError as exc:
             raise PortabilityError(str(exc)) from exc
+    if profile_id == "postman/collection-v2.1":
+        return _parse_postman_collection(data)
+    if profile_id == "treseko/legacy-project-v1":
+        return _read_legacy_project_package(data)
     if profile_id == "testlink/xml-v1":
         try: root = ET.fromstring(data)
         except (ET.ParseError, DefusedXmlException) as exc: raise PortabilityError("El XML de TestLink no es válido o contiene construcciones no permitidas") from exc

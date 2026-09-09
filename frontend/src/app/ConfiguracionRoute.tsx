@@ -12,12 +12,14 @@ type ConfiguracionRouteProps = {
   canAccessCapability: (capabilityId: any, level?: any) => boolean
   hasSystemFeature: (featureId: string) => boolean
   showFeedback: (title: string, message: string, variant?: string) => void
+  confirmAction: (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
   generalConfiguration: GeneralConfigurationState
   sessionConfiguration: SessionConfigState
   aiEngineConfiguration: AiEngineConfigState
   adminUserRolesConfiguration: AdminUserRolesConfigState
   organizations: any[]
   projectsList: any[]
+  currentProjectId: string | null
   selectedOrganizationId: string | null
   setSelectedOrganizationId: (id: string) => void
   handleCreateOrganization: (event: any) => void
@@ -45,12 +47,14 @@ export function ConfiguracionRoute({
   canAccessCapability,
   hasSystemFeature,
   showFeedback,
+  confirmAction,
   generalConfiguration,
   sessionConfiguration,
   aiEngineConfiguration,
   adminUserRolesConfiguration,
   organizations,
   projectsList,
+  currentProjectId,
   selectedOrganizationId,
   setSelectedOrganizationId,
   handleCreateOrganization,
@@ -78,6 +82,7 @@ export function ConfiguracionRoute({
       canAccessCapability={canAccessCapability}
       hasSystemFeature={hasSystemFeature}
       showFeedback={showFeedback}
+      confirmAction={confirmAction}
       apiKeys={generalConfiguration.apiKeys}
       apiKeysLoading={generalConfiguration.apiKeysLoading}
       apiKeyName={generalConfiguration.apiKeyName}
@@ -103,6 +108,7 @@ export function ConfiguracionRoute({
       checkAiEngineHealth={aiEngineConfiguration.checkAiEngineHealth}
       organizations={organizations}
       projectsList={projectsList}
+      currentProjectId={currentProjectId}
       selectedOrganizationId={selectedOrganizationId}
       setSelectedOrganizationId={setSelectedOrganizationId}
       handleCreateOrganization={handleCreateOrganization}

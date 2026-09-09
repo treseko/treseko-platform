@@ -62,7 +62,7 @@ validate_secret_key_for_runtime()
 MODULE_PERMISSIONS = {
     models.Rol.ADMIN: [
         "dashboard", "ejecutar", "crear_pruebas", "proyectos", "inventario",
-        "reportes", "bugs", "motor_ia", "redmine", "historial", "configuracion", "automatizacion",
+        "reportes", "bugs", "incidencias", "motor_ia", "redmine", "historial", "configuracion", "automatizacion",
         "clientes", "integraciones", "plugins", "notificaciones",
     ],
     models.Rol.QA_LEAD: [
@@ -211,6 +211,10 @@ def detailed_permissions_for_user(user: models.Usuario):
 def get_capability_permission(user: models.Usuario, capability_id: str):
     if capability_id not in ALL_CAPABILITIES:
         return None
+    # Perfil es una superficie de autopreferencias. Cada usuario activo puede
+    # editar su propia identidad visual sin recibir permisos administrativos.
+    if capability_id == "configuracion.perfil":
+        return "edit"
     detailed = detailed_permissions_for_user(user)
     if capability_id in detailed:
         return detailed[capability_id]
@@ -372,6 +376,19 @@ def check_capabilities(*requirements: tuple[str, str]):
         return user
 
     return capabilities_checker
+
+
+def check_any_capability(*requirements: tuple[str, str]):
+    """Require at least one capability, preserving legacy access paths."""
+    async def capability_checker(user: models.Usuario = Depends(get_current_active_user)):
+        if not any(has_capability_permission(user, capability_id, level) for capability_id, level in requirements):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para acceder a esta capacidad",
+            )
+        return user
+
+    return capability_checker
 
 
 class LoginRateLimiter:

@@ -24,6 +24,14 @@
       "version": "1",
       "workflow_purpose": "test_case_generation",
       "workflow_sha256": "03237c25f5653fa3e579b0e4eb634b709063abb7aedda416296ec320d7ce4586"
+    },
+    {
+      "filename": "chatbot-evaluation.v1.treseko-workflow.zip",
+      "package_sha256": "93bd404928602ad0271f30b8578fb7639721a393759dd6a6a5355b3e0ff4dddd",
+      "slug": "chatbot-evaluation",
+      "version": "1",
+      "workflow_purpose": "chatbot_evaluation",
+      "workflow_sha256": "b16998a345b2b67cd72677deec378af5b837d4ee5041c75c3af9aa604a850b78"
     }
   ]
 }

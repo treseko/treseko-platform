@@ -304,16 +304,31 @@ async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
         "provider": resolved["provider"], "llm_endpoint": resolved["endpoint"],
         "model": resolved["model"], "provider_api_key": resolved["api_key"],
         "max_retries": resolved["max_retries"],
+        "probe_vision": True,
     }
+    engine_url = os.getenv('ENGINE_URL', 'http://127.0.0.1:3010').rstrip('/')
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(row.request_timeout_seconds, connect=10.0)) as client:
             response = await client.post(
-                f"{os.getenv('ENGINE_URL', 'http://127.0.0.1:3010').rstrip('/')}/provider-health",
+                f"{engine_url}/provider-health",
                 json=payload,
                 headers=headers,
             )
+    except httpx.ConnectError as exc:
+        raise ValueError(
+            f"El Engine de Treseko no está disponible en {engine_url}. "
+            "Iniciá el Engine y volvé a probar el perfil."
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise ValueError(
+            f"El Engine de Treseko tardó demasiado en responder ({engine_url}). "
+            "Revisá que esté activo y que LM Studio responda."
+        ) from exc
     except httpx.HTTPError as exc:
-        raise ValueError("No se pudo conectar con el Motor IA para probar el perfil") from exc
+        raise ValueError(
+            f"No se pudo comunicar con el Engine de Treseko ({engine_url}). "
+            "Revisá sus logs y volvé a probar el perfil."
+        ) from exc
     if response.status_code >= 400:
         detail = ""
         try:
@@ -329,10 +344,15 @@ async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
             raise ValueError(f"El proveedor rechazó la prueba o no respondió correctamente (HTTP {response.status_code}): {detail}")
         raise ValueError(f"El proveedor rechazó la prueba o no respondió correctamente (HTTP {response.status_code})")
     row.capability_status = "tested"
+    response_body = response.json() if response.content else {}
+    provider_capabilities = response_body.get("capabilities") if isinstance(response_body, dict) else {}
+    vision_status = provider_capabilities.get("vision_status") if isinstance(provider_capabilities, dict) else None
     row.capabilities_json = {
         **(row.capabilities_json or {}),
         "text": True,
         "structured_json": True,
+        "vision": bool(provider_capabilities.get("vision")) if isinstance(provider_capabilities, dict) else False,
+        "vision_status": vision_status if vision_status in {"verified", "unsupported", "unknown"} else "unknown",
         "verified_at": utc_now().isoformat(),
         "verification_source": "treseko-provider-health/v1",
     }

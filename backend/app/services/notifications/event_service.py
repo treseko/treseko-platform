@@ -26,7 +26,7 @@ def _notification_type_for_event(event_type: str) -> str:
         return "ADMINISTRATIVA"
     if event_type in SECURITY_EVENT_TYPES:
         return "SEGURIDAD"
-    if event_type.startswith("ai."):
+    if event_type.startswith("ai.") or event_type.startswith("chatbot."):
         return "IA"
     if event_type.startswith("execution.") or event_type.startswith("bug."):
         return "CALIDAD"
@@ -76,6 +76,10 @@ def inbox_presentation_from_event(
         "ai.engine.unavailable": ("Motor de IA no disponible", "El motor de IA no pudo atender una solicitud."),
         "ai.execution.review_required": ("Revisión de IA requerida", "Una ejecución asistida requiere revisión humana."),
         "ai.execution.failed": ("Ejecución de IA con error", "Una ejecución asistida no pudo completarse."),
+        "chatbot.evaluation.started": ("Evaluación Chatbot iniciada", "La evaluación Chatbot comenzó a ejecutarse."),
+        "chatbot.evaluation.completed": ("Evaluación Chatbot completada", "La evaluación Chatbot terminó."),
+        "chatbot.evaluation.failed": ("Evaluación Chatbot fallida", "La evaluación Chatbot encontró un fallo."),
+        "chatbot.evaluation.review_required": ("Revisión Chatbot requerida", "La evaluación Chatbot requiere revisión humana."),
         "report.shared": ("Reporte compartido", "Hay un reporte disponible para revisar."),
         "report.generated": ("Reporte generado", "Un nuevo reporte está disponible."),
         "report.quality_gate_failed": ("Control de calidad no aprobado", "Un reporte requiere revisión antes de continuar."),

@@ -1,0 +1,23 @@
+/** Generated canonical adapter-to-handler aliases for built-in workflows. */
+export const BUILTIN_ADAPTER_HANDLER_ALIASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  "legacy-auditor/v1": Object.freeze(["Auditor", "auditor"]),
+  "legacy-context-resolver/v1": Object.freeze(["ContextResolver", "context_resolver"]),
+  "legacy-executor/v1": Object.freeze(["Executor", "executor"]),
+  "legacy-observer/v1": Object.freeze(["Observer", "observer"]),
+  "legacy-planner/v1": Object.freeze(["Planner", "planner"]),
+  "legacy-pre-execution-analyst/v1": Object.freeze(["PreExecutionAnalyst", "pre_execution_analyst"]),
+  "legacy-recovery/v1": Object.freeze(["Recovery", "recovery"]),
+  "legacy-reporter/v1": Object.freeze(["Reporter", "reporter"]),
+  "legacy-security-guard/v1": Object.freeze(["SecurityGuard", "security_guard"]),
+  "legacy-validator/v1": Object.freeze(["Validator", "validator"]),
+  "qa-action-planner/v2": Object.freeze(["Planner", "planner"]),
+  "qa-browser-action-executor/v2": Object.freeze(["Executor", "executor"]),
+  "qa-browser-observer/v2": Object.freeze(["Observer", "observer"]),
+  "qa-context-resolver/v2": Object.freeze(["ContextResolver", "context_resolver"]),
+  "qa-execution-reporter/v2": Object.freeze(["Reporter", "reporter"]),
+  "qa-final-auditor/v2": Object.freeze(["Auditor", "auditor"]),
+  "qa-pre-execution-analyst/v2": Object.freeze(["PreExecutionAnalyst", "pre_execution_analyst"]),
+  "qa-recovery-strategist/v2": Object.freeze(["Recovery", "recovery"]),
+  "qa-security-guard/v2": Object.freeze(["SecurityGuard", "security_guard"]),
+  "qa-step-validator/v2": Object.freeze(["Validator", "validator"]),
+});

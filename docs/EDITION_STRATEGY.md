@@ -1,53 +1,54 @@
 # Ediciones Community y Premium
 
-Treseko Community incluye el flujo principal de QA. Premium Team, Premium Pro y
-Enterprise amplían esa base con capacidades para equipos que necesitan más
-escala, integración y control. El plan activo se consulta desde
-**Configuración → Licencia**.
+La edición habilita entitlements y límites; el rol y las capabilities deciden
+qué usuario puede ejecutar cada acción.
 
-## Qué incluye Community
+## Community
 
-Community permite administrar una solución, hasta tres proyectos, cinco
-usuarios y un worker local. Incluye suites, casos, pasos, ejecución manual,
-automatización básica, evidencias, Bug Tracker, reportes, importación y
-exportación de casos, trazabilidad y funciones de IA con cuota semanal.
+Límites de referencia:
 
-| Área | Community | Premium Team | Premium Pro | Enterprise |
-|---|---|---|---|---|
-| Enfoque | Base QA gratuita self-hosted | Más capacidad y colaboración | Release QA activo | Operación crítica o regulada |
-| Usuarios y proyectos | Hasta 5 usuarios y 3 proyectos | Capacidad ampliada | Capacidad ampliada | Límites a medida |
-| Automatización e IA | Worker local y cuotas | Automatización e IA ampliadas | Workers y perfiles especializados | Capacidad adaptada a la operación |
-| Reportes e integraciones | Reportes básicos | Reportes compartidos e integraciones principales | Snapshots, reportes avanzados e integraciones | Configuración a medida y asistencia |
-| Identidad y soporte | Inicio local y actualizaciones Community | Soporte por email | Soporte prioritario y updates Premium | SSO, SLA, licencias offline y canal dedicado |
-| Despliegue | Self-hosted | Self-hosted | Self-hosted | Self-hosted o SaaS administrado opcional |
+- 1 organización, 5 usuarios, 3 proyectos y 1 worker.
+- 50 ejecuciones automatizadas por semana.
+- 10 ejecuciones IA por semana.
+- 20 generaciones de casos con IA por semana.
+- 1024 MB de almacenamiento.
 
-Los límites se aplican a nuevas operaciones. La información existente se
-conserva aunque una licencia Premium venza o deje de estar disponible.
+Incluye gestión QA, ejecución manual, automatización local, API declarativa por
+el worker unificado, IA dentro de cuotas, Bug Tracker, reportes básicos e
+importación/exportación.
 
-## Instalar un plan Premium
+## Premium
 
-1. Abrí **Configuración → Licencia**.
-2. Seleccioná el archivo de licencia recibido.
-3. Confirmá la instalación.
-4. Revisá el plan, las capacidades y los límites mostrados por la pantalla.
+El runtime público reconoce la edición `premium` y habilita capacidades o
+límites según los entitlements firmados en la licencia. El catálogo contempla,
+entre otras, RBAC granular, multi-worker, scheduler, automatización avanzada,
+API externa, reportes avanzados, snapshots, integraciones, notificaciones,
+auditoría, métricas históricas, branding y updates Premium.
 
-No hace falta reinstalar Treseko. La plataforma valida la licencia antes de
-habilitar funciones Premium. Si el archivo no es válido o vence, Treseko sigue
-operando con las capacidades y límites de Community.
+Los nombres y paquetes comerciales específicos se definen fuera de este
+repositorio y no deben inferirse solo por la presencia de una función en el
+catálogo.
 
-## Cuando vence una licencia
+La presencia en catálogo no prueba habilitación. Revisá plan y entitlements en
+Configuración → Licencia.
 
-- Los datos no se eliminan.
-- Las capacidades Premium dejan de estar disponibles.
-- Los nuevos usos se ajustan a los límites Community.
-- Podés instalar una licencia vigente desde la misma pantalla para recuperar
-  las capacidades habilitadas.
+## Licencia
 
-## Ayuda rápida
+1. Abrí Configuración → Licencia.
+2. Seleccioná el archivo recibido por canal confiable.
+3. Confirmá.
+4. Revisá edición, expiración, límites y capabilities.
 
-- Si no ves una función Premium después de instalar la licencia, actualizá la
-  pantalla y revisá que tu rol tenga permiso para usarla.
-- Si llegaste a un límite Community, revisá qué recursos están activos antes de
-  crear uno nuevo.
-- No edites ni compartas el contenido de una licencia: instalala siempre como
-  archivo entregado por Treseko.
+Se valida firma, vigencia y entitlement. No hace falta reinstalar. No compartas
+el contenido de la licencia.
+
+## Downgrade o vencimiento
+
+- Los datos no se eliminan automáticamente.
+- Se restringen operaciones Premium nuevas.
+- Se aplican límites Community.
+- La política histórica puede conservar lectura de snapshots, reportes, bugs y
+  auditoría existentes.
+- Para volver a Premium instalá una licencia vigente y revisá RBAC.
+
+Lectura histórica no implica edición.

@@ -1,27 +1,48 @@
 # Guía del Dashboard
 
-El Dashboard reúne una vista rápida de la calidad del proyecto y de su build activa. No modifica información por sí mismo: sirve para detectar dónde conviene actuar primero.
+El Dashboard resume la salud del proyecto y de la build seleccionada. Sirve
+para decidir qué investigar primero; no reemplaza el detalle de una ejecución,
+un bug ni un informe compartido.
 
 ## Antes de empezar
 
-Seleccioná una solución, un proyecto y, cuando corresponda, una build desde la barra superior. Los indicadores se calculan con ese contexto.
+Seleccioná solución, proyecto, componente y build en la barra superior. La
+build activa define el alcance principal de resultados, bugs y métricas. Si no
+hay build o ejecuciones, algunos bloques pueden mostrar `Sin datos`.
 
-## Cómo usarlo
+## Cómo leer la vista
 
-1. Abrí **Dashboard** desde el menú lateral.
-2. Revisá los indicadores de cobertura, ejecución, resultados, bugs y evidencias.
-3. Usá **Actualizar** cuando necesitás volver a consultar la información.
-4. Abrí el indicador o elemento que requiera seguimiento para continuar en la sección correspondiente.
+1. Abrí **Dashboard** y confirmá el contexto visible.
+2. Revisá **Resumen de calidad** y **Pruebas en build**.
+3. Continuá con **Fallos recientes**, **Bugs abiertos** y la **Ventana
+   de build** para priorizar trabajo.
+4. Usá **Actualizar** después de una ejecución o cuando necesites datos nuevos.
+
+La vista puede incluir salud de calidad, pruebas del día, ejecuciones recientes,
+ventana y tendencia por build, bugs abiertos, casos fallidos, duración promedio
+y distribución por modo de ejecución. La distribución por modo no cambia el
+formato del caso: un caso `API` o `CONVERSACIONAL` puede ejecutarse con otra
+modalidad. Consultá [Casos de prueba](TEST_CASES_GUIDE.md) y [Estados de
+ejecución](EXECUTION_STATES.md).
 
 ## Vistas personalizadas
 
-Cuando tu edición lo permita, usá **Configurar vista** para elegir los bloques que querés ver y su orden. El cambio afecta tu vista de trabajo, no elimina datos del proyecto.
+Cuando tengas permiso, usá **Editar dashboard** para elegir, ordenar y guardar
+los bloques. La personalización afecta tu vista y no elimina datos. Si solo
+podés consultar, verás la disposición sin controles de edición.
+
+El Dashboard usa una caché breve. Actualizar vuelve a consultar el resumen,
+pero no crea un informe compartido ni un snapshot histórico.
 
 ## Qué revisar primero
 
-- Casos bloqueados o fallidos.
-- Bugs abiertos sin responsable o sin evidencia.
-- Cobertura incompleta entre requisitos, historias y casos.
-- Builds con tendencia negativa frente a la ejecución anterior.
+- casos **Fallidos**, **Bloqueados** o **Sin correr**;
+- bugs abiertos sin responsable, evidencia o con prioridad alta;
+- diferencias entre builds;
+- cobertura incompleta entre requisitos, historias y casos;
+- ejecuciones con evidencia incompleta.
 
-Para interpretar los resultados de una corrida, consultá la [guía de ejecución](TEST_EXECUTION_GUIDE.md) y los [estados de ejecución](EXECUTION_STATES.md).
+Un dato vacío puede significar que no hay alcance, ejecuciones o permisos; no
+demuestra por sí solo que todo esté correcto. Para investigar, abrí
+[Historial Runs](RUN_HISTORY_GUIDE.md), [Reportes y Métricas](REPORTING_GUIDE.md)
+o [Bug Tracker](BUG_TRACKER.md).

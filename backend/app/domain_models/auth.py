@@ -40,7 +40,7 @@ class Usuario(Base):
     display_name = Column(String(255), nullable=True)
     avatar_provider = Column(String(30), default="gravatar", nullable=False)
     profile_settings = Column(JSON, default=dict, nullable=False)
-    personal_theme = Column(String(64), default="system", nullable=False)
+    personal_theme = Column(String(64), default="light", nullable=False)
     project_theme_overrides = Column(JSON, default=dict, nullable=False)
     session_version = Column(Integer, default=0, nullable=False)
 

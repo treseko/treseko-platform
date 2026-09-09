@@ -27,8 +27,10 @@ class SharedReportSnapshot(Base):
     expires_at = Column(UTCDateTime(), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     revoked_at = Column(UTCDateTime(), nullable=True)
+    revoked_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
 
     proyecto = relationship("Proyecto")
     build = relationship("Build")
     componente = relationship("Componente")
-    creator = relationship("Usuario")
+    creator = relationship("Usuario", foreign_keys=[created_by])
+    revoker = relationship("Usuario", foreign_keys=[revoked_by])

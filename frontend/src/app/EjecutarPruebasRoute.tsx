@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { ConsolaManualPage } from '../features/ejecutar-pruebas/ConsolaManualPage'
+import { ChatbotManualConsolePage } from '../features/ejecutar-pruebas/ChatbotManualConsolePage'
+import { ApiExecutionConsolePage } from '../features/ejecutar-pruebas/ApiExecutionConsolePage'
 import { EjecutarPruebasPage } from '../features/ejecutar-pruebas/EjecutarPruebasPage'
 import { EvidenceViewerModal, type EvidenceViewerItem } from '../shared/components/EvidenceViewerModal'
 import { WorkspaceContextEmptyState } from '../shared/components/WorkspaceContextEmptyState'
@@ -71,6 +73,7 @@ export function EjecutarPruebasRoute({
         allVisibleExecutionTestsSelected={props.allVisibleExecutionTestsSelected}
         toggleVisibleExecutionSelection={props.toggleVisibleExecutionSelection}
         selectedTest={selectedTest}
+        loadCasoExecutionHistory={props.loadCasoExecutionHistory}
         handleSelectTestForExecution={props.handleSelectTestForExecution}
         selectedExecutionTestIds={props.selectedExecutionTestIds}
         toggleExecutionSelection={props.toggleExecutionSelection}
@@ -144,6 +147,79 @@ export function EjecutarPruebasRoute({
         onCreateInternalBugFromExecution={props.onCreateInternalBugFromExecution}
         creatingInternalBugContextId={props.creatingInternalBugContextId}
         setZoomImage={setZoomImage}
+      />
+    )
+  }
+
+  if (activeTab === 'ejecutar' && viewMode === 'api_exec') {
+    return <ApiExecutionConsolePage
+      selectedTest={selectedTest}
+      apiExecutionResults={props.currentExecutionRun?.apiExecutionResults || props.currentExecutionRun}
+      executionDatasetPreview={props.executionDatasetPreview}
+      currentProjectEnvironments={props.currentProjectEnvironments}
+      returnToExecutionList={props.returnToExecutionList}
+      onExecuteRequest={async () => {
+        if (typeof props.handleStartExecution !== 'function') {
+          throw new Error('La consola API no pudo conectar el botón con el motor de ejecución. Volvé a abrir la prueba.')
+        }
+        if (!selectedTest?.id) {
+          throw new Error('No hay un caso API seleccionado para ejecutar.')
+        }
+        return props.handleStartExecution('manual', {
+          forceApi: true,
+          executeRequest: true,
+          runId: props.currentExecutionRun?.apiExecutionResults?.run_id,
+          environmentId: props.currentExecutionRun?.apiExecutionResults?.environment_id,
+          datasetId: props.currentExecutionRun?.apiExecutionResults?.dataset_id,
+          tests: [selectedTest],
+        })
+      }}
+      onAdvanceApiCase={props.onAdvanceApiCase}
+      onDeferApiCase={props.onDeferApiCase}
+      onSaveApiEvaluation={props.onSaveApiEvaluation}
+      onApiVerdictSaved={props.onApiVerdictSaved}
+      onRepeatExecution={() => { props.returnToExecutionList(); props.openSingleCaseExecutionSelector?.(selectedTest) }}
+      relatedCaseBugs={props.relatedCaseBugs}
+      relatedCaseBugsLoading={props.relatedCaseBugsLoading}
+      onLoadRelatedBugs={props.onLoadRelatedBugs}
+      onPrepareApiBug={props.onPrepareApiBug}
+      onLinkApiExecutionToBug={props.onLinkApiExecutionToBug}
+      onViewRelatedBug={props.onViewRelatedBug}
+      canViewBugs={props.canAccessCapability?.('bugs.ver', 'read') !== false}
+      canCreateBugs={props.canAccessCapability?.('bugs.crear', 'edit') !== false}
+      showFeedback={props.showFeedback}
+    />
+  }
+
+  if (activeTab === 'ejecutar' && viewMode === 'chatbot_manual' && selectedTest) {
+    return (
+      <ChatbotManualConsolePage
+        selectedTest={selectedTest}
+        currentProjectId={props.currentProjectId}
+        activeExecutionTests={props.activeExecutionTests}
+        currentComponentName={props.currentComponentName}
+        currentExecutionRun={props.currentExecutionRun}
+        currentExecutionCase={props.currentExecutionCase}
+        setCurrentExecutionCase={props.setCurrentExecutionCase}
+        syncExecutionCaseStatus={props.syncExecutionCaseStatus}
+        currentProjectEnvironments={props.currentProjectEnvironments}
+        selectedExecutionEnvironmentId={props.selectedExecutionEnvironmentId}
+        selectedExecutionDatasetId={props.selectedExecutionDatasetId}
+        fetchWithAuth={props.fetchWithAuth}
+        returnToExecutionList={props.returnToExecutionList}
+        handleSelectTestForExecution={props.handleSelectTestForExecution}
+        advanceToNextTest={props.advanceToNextTest}
+        showFeedback={props.showFeedback}
+        relatedCaseBugs={props.relatedCaseBugs}
+        relatedCaseBugsLoading={props.relatedCaseBugsLoading}
+        onRefreshRelatedBugs={props.onRefreshRelatedBugs}
+        onViewRelatedBug={props.onViewRelatedBug}
+        onLinkExecutionToBug={props.onLinkExecutionToBug}
+        findOpenBugForExecutionContext={props.findOpenBugForExecutionContext}
+        requestRelatedBugDecision={props.requestRelatedBugDecision}
+        openConversationalBugReport={props.openConversationalBugReport}
+        reopenConversationalBugReport={props.reopenConversationalBugReport}
+        internalBugDraft={props.internalBugDraft}
       />
     )
   }

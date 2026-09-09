@@ -22,6 +22,22 @@ export function HistorialRunsTable({
   canViewEvidence = true,
 }: Props) {
   const { t } = useI18n()
+  const modeLabel = (mode: any) => {
+    const value = String(mode?.summary || '').toUpperCase()
+    if (value === 'IA') return t('historial.ia')
+    if (value === 'AUTOMATIZADA') return t('historial.automatedLabel')
+    if (value === 'EXTERNA') return t('historial.externalLabel')
+    if (value === 'MIXTO') return t('historial.mixedLabel')
+    return t('historial.manualLabel')
+  }
+  const statusLabel = (status: any) => {
+    const value = String(status || '').toUpperCase()
+    if (['PASO', 'OK', 'PASSED'].includes(value)) return t('historial.pass')
+    if (['FALLO', 'FALLIDO', 'FAILED'].includes(value)) return t('historial.fail')
+    if (['BLOQUEADO', 'BLOCKED'].includes(value)) return t('historial.blocked')
+    if (['SIN_CORRER', 'NOT_RUN', 'PENDING', 'PENDIENTE'].includes(value)) return t('historial.notRun')
+    return status || '-'
+  }
   return (
     <Card className="border-0 shadow-sm rounded-3 bg-white p-4 history-runs-card">
       <Table responsive hover size="sm" className="align-middle border-0 history-runs-table">
@@ -69,7 +85,7 @@ export function HistorialRunsTable({
                 <td className="text-center">
                   <div className="d-inline-flex align-items-center justify-content-center gap-1">
                     <Badge bg={getExecutionModeBadge(mode.summary)} text={mode.summary === 'MIXTO' ? 'dark' : undefined} className="x-small">
-                      {mode.label}
+                      {modeLabel(mode)}
                     </Badge>
                   </div>
                   {mode.detail && <div className="x-small text-muted mt-1">{mode.detail}</div>}
@@ -98,7 +114,7 @@ export function HistorialRunsTable({
                 </td>
                 <td className="text-center" style={{ width: '120px' }}>
                   <Badge bg={getStatusColor(run.status)} className="w-100 x-small text-uppercase shadow-sm">
-                    {run.status}
+                    {statusLabel(run.status)}
                   </Badge>
                 </td>
                 <td className="text-end pe-3">

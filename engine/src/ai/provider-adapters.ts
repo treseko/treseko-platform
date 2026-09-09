@@ -8,6 +8,7 @@ export type ProviderGenerateRequest = {
   temperature: number;
   maxTokens: number;
   disableThinking?: boolean;
+  responseFormat?: 'json_schema' | 'json_object' | 'text';
 };
 
 export type NormalizedProviderResult = {
@@ -143,7 +144,30 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
     if (provider === 'azure-openai') headers['api-key'] = config.apiKey;
     else headers.Authorization = `Bearer ${config.apiKey}`;
   }
-  const supportsJsonObjectResponseFormat = provider !== 'lm-studio';
+  // LM Studio's llama.cpp endpoint accepts json_schema (not json_object).
+  // Without a grammar, reasoning text can leak into action responses and
+  // break Treseko's strict workflow contract.
+  const responseFormat = request.responseFormat === 'text'
+    ? { type: 'text' }
+    : provider === 'lm-studio'
+    ? {
+      type: 'json_schema',
+      json_schema: {
+        name: 'treseko_workflow_response',
+        strict: false,
+        schema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string' },
+            status: { type: 'string' },
+            reason: { type: 'string' },
+            confidence: { type: 'number' },
+          },
+          additionalProperties: true,
+        },
+      },
+    }
+    : { type: 'json_object' };
   return {
     kind: provider === 'azure-openai' ? 'azure-openai-chat' : 'openai-chat',
     url: `${endpoint}/chat/completions`,
@@ -153,7 +177,7 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
       messages: request.messages,
       temperature: request.temperature,
       max_tokens: request.maxTokens,
-      ...(supportsJsonObjectResponseFormat ? { response_format: { type: 'json_object' } } : {}),
+      response_format: responseFormat,
       ...(request.disableThinking ? { reasoning_effort: 'none', chat_template_kwargs: { enable_thinking: false } } : {}),
     },
   };

@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createManualExecutionActions } from './manualExecutionActions'
+import { normalizeExecutionHistoryPayload } from '../casos/caseActions'
+
+test('history payload keeps the real total while returning only the requested page', () => {
+  const history = normalizeExecutionHistoryPayload({
+    items: [{ estado: 'FALLO', fecha: '2026-08-16T12:00:00Z' }],
+    total: 32,
+    has_more: true,
+    stats: { total: 32, passed: 4, failed: 10, blocked: 18, pending: 0 },
+  }, 0, 10)
+
+  assert.equal(history.length, 1)
+  assert.equal(history.total, 32)
+  assert.equal(history.stats.failed, 10)
+  assert.equal(history.hasMore, true)
+})
 
 const createActions = (
   events: string[],
@@ -10,7 +25,10 @@ const createActions = (
     { id: 'case-2', name: 'Caso siguiente' }
   ],
   selectedTest = activeExecutionTests[0]
-) => createManualExecutionActions({
+) => {
+  const state: any = { selectedTest, casosList: activeExecutionTests, currentExecutionCase: { id: 'execution-1' } }
+  const applyState = (current: any, update: any) => typeof update === 'function' ? update(current) : update
+  const actions = createManualExecutionActions({
   activeExecutionTests,
   selectedTest,
   currentExecutionRun: activeRun,
@@ -45,8 +63,14 @@ const createActions = (
   getExecutionCompletionPlan: () => ({ canComplete: false }),
   getSnapshotStatus: () => 'PASO',
   returnToExecutionList: () => events.push('return-to-list'),
-  setSelectedTest: () => events.push('select-next'),
-  setCasosList: () => events.push('update-case-list'),
+  setSelectedTest: update => {
+    events.push('select-next')
+    state.selectedTest = applyState(state.selectedTest, update)
+  },
+  setCasosList: update => {
+    events.push('update-case-list')
+    state.casosList = applyState(state.casosList, update)
+  },
   setBuildCaseResultHistoryByBuild: () => undefined,
   setStepResults: () => events.push('clear-steps'),
   setSnapshotNotes: () => events.push('clear-notes'),
@@ -56,7 +80,10 @@ const createActions = (
   setSnapshotAttachments: () => events.push('clear-snapshot-attachments'),
   setGeneralExecutionSnapshot: () => events.push('clear-general-snapshot'),
   setGeneralExecutionAttachments: () => events.push('clear-general-attachments'),
-  setCurrentExecutionCase: () => events.push('clear-current-case'),
+  setCurrentExecutionCase: update => {
+    events.push('update-current-case')
+    state.currentExecutionCase = applyState(state.currentExecutionCase, update)
+  },
   setCurrentExecutionRun: () => events.push('update-run-statuses'),
   setRedmineDecisionByExecution: () => undefined,
   setShowRedminePrompt: () => undefined,
@@ -65,6 +92,8 @@ const createActions = (
   t: key => key,
   showFeedback: () => undefined
 } as any)
+  return Object.assign(actions, { getState: () => state })
+}
 
 test('advancing an active manual run keeps the finished case visible until the next case loads', async () => {
   const events: string[] = []
@@ -93,6 +122,57 @@ test('advancing without an active run still resets the next case state', async (
   assert.equal(events.at(-1), 'update-case-list')
 })
 
+test('advancing a case updates its visible result before remote reloads', async () => {
+  const events: string[] = []
+  const actions = createActions(events)
+
+  await actions.advanceToNextTest('case-1', 'FALLO')
+
+  assert.equal(actions.getState().casosList[0].lastResult, 'FALLO')
+  assert.deepEqual(events.slice(0, 3), [
+    'select-next',
+    'update-case-list',
+    'update-run-statuses'
+  ])
+})
+
+test('specialized consoles can synchronize a terminal result without advancing the batch', () => {
+  const events: string[] = []
+  const actions = createActions(events)
+
+  actions.syncExecutionCaseStatus('case-1', 'FALLO', { status: 'FALLO', turns: [{ status: 'FAILED' }] })
+
+  assert.equal(actions.getState().casosList[0].lastResult, 'FALLO')
+  assert.equal(events.includes('select-next'), true)
+  assert.equal(events.includes('update-case-list'), true)
+  assert.equal(events.includes('update-run-statuses'), true)
+  assert.equal(events.includes('return-to-list'), false)
+})
+
+test('chatbot sync updates the execution row even when case and execution ids differ', () => {
+  const events: string[] = []
+  const actions = createActions(events)
+
+  actions.syncExecutionCaseStatus('case-1', 'FALLO', { status: 'FALLO' })
+
+  assert.equal(actions.getState().currentExecutionCase.estado_resultado, 'FALLO')
+})
+
+test('a single chatbot case closes the batch when the logical case id is completed', async () => {
+  const events: string[] = []
+  const actions = createActions(
+    events,
+    { id: 'run-1', execution_statuses_by_case_id: { 'case-1': 'SIN_CORRER' } },
+    [{ id: 'case-1', name: 'Caso Chatbot' }],
+    { id: 'case-1', name: 'Caso Chatbot' },
+  )
+
+  await actions.advanceToNextTest('case-1', 'FALLO')
+
+  assert.equal(events.includes('return-to-list'), true)
+  assert.equal(events.includes('load-details-start'), false)
+})
+
 test('completing the last case does not close the console while another case is pending', async () => {
   const events: string[] = []
   const actions = createActions(
@@ -107,6 +187,24 @@ test('completing the last case does not close the console while another case is 
 
   await actions.advanceToNextTest('case-2', 'PASO')
 
+  assert.equal(events.includes('return-to-list'), false)
+})
+
+test('chatbot advancement finds a pending case after the current last case', async () => {
+  const events: string[] = []
+  const actions = createActions(
+    events,
+    { id: 'run-1', execution_statuses_by_case_id: { 'case-1': 'SIN_CORRER', 'case-2': 'SIN_CORRER' } },
+    [
+      { id: 'case-1', name: 'Caso pendiente' },
+      { id: 'case-2', name: 'Último caso' }
+    ],
+    { id: 'case-2', name: 'Último caso' }
+  )
+
+  await actions.advanceToNextTest('case-2', 'FALLO', { preferPending: true })
+
+  assert.equal(events.includes('load-details-start'), true)
   assert.equal(events.includes('return-to-list'), false)
 })
 

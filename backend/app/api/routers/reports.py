@@ -14,6 +14,15 @@ from .report_rendering import *
 
 
 router = APIRouter(tags=["reports"])
+
+
+def _hide_deferred_performance_metrics(metrics: dict) -> dict:
+    """Keep PERFORMANCE in the domain contract but hide it from report metrics."""
+    for key in ("por_formato_prueba", "metricas_por_formato", "metricas_por_formato_y_modo"):
+        value = metrics.get(key)
+        if isinstance(value, dict):
+            value.pop("PERFORMANCE", None)
+    return metrics
 from .reports_shared import (
     SAFE_REPORT_THUMBNAIL_SVG,
     SHARED_REPORT_TOKEN_PATH,
@@ -44,7 +53,8 @@ async def read_project_metrics(
         db_build = await access_control.require_build_access(db, current_user, build_id, "read")
         if db_build.proyecto_id != proyecto_id:
             raise HTTPException(status_code=404, detail="Build no encontrado para el proyecto")
-    return await crud.get_project_metrics(db, proyecto_id=proyecto_id, build_id=build_id)
+    metrics = await crud.get_project_metrics(db, proyecto_id=proyecto_id, build_id=build_id)
+    return _hide_deferred_performance_metrics(metrics)
 
 
 @router.get("/proyectos/{proyecto_id}/quality-intelligence/health", response_model=schemas.QualityHealthResponse)
@@ -407,6 +417,8 @@ async def read_dashboard_summary(
 def _shared_report_response(snapshot: models.SharedReportSnapshot, request: Request, has_new_values: bool = False):
     data = schemas.SharedReportSnapshotResponse.model_validate(snapshot).model_dump()
     data["public_url"] = str(request.base_url).rstrip("/") + _report_pretty_path(snapshot)
+    revoker = getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)
+    data["revoked_by_display"] = (revoker.nombre_completo or revoker.email) if revoker else None
     data["has_new_values"] = has_new_values
     return data
 
@@ -430,6 +442,8 @@ def _shared_report_bundle_response(bundle: dict, request: Request):
     for snapshot in snapshots:
         data = schemas.SharedReportSnapshotResponse.model_validate(snapshot).model_dump()
         data["public_url"] = _snapshot_url(snapshot, request)
+        revoker = getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)
+        data["revoked_by_display"] = (revoker.nombre_completo or revoker.email) if revoker else None
         data["has_new_values"] = False
         response_snapshots.append(data)
     created_at = min((snapshot.created_at for snapshot in snapshots), default=utc_now())
@@ -639,6 +653,12 @@ async def read_shared_report_status(
         has_new_values=await crud.shared_report_has_new_values(db, snapshot),
         created_at=snapshot.created_at,
         expires_at=snapshot.expires_at,
+        revoked_at=snapshot.revoked_at,
+        revoked_by=snapshot.revoked_by,
+        revoked_by_display=(
+            (getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)).nombre_completo
+            or (getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)).email
+        ) if (getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)) else None,
         report_type=_snapshot_report_type(snapshot),
         snapshot_group_id=(snapshot.payload or {}).get("metadata", {}).get("snapshot_group_id"),
         latest_url=_snapshot_url(latest, request) if latest else None,
@@ -659,7 +679,7 @@ async def delete_shared_report(
     await access_control.require_project_access(db, current_user, snapshot.proyecto_id, "edit")
     snapshot_group_id = (snapshot.payload or {}).get("metadata", {}).get("snapshot_group_id")
     report_type = _snapshot_report_type(snapshot)
-    await crud.revoke_shared_report(db, token)
+    await crud.revoke_shared_report(db, token, current_user.id)
     await crud.create_audit_log(
         db=db,
         usuario_id=current_user.id,

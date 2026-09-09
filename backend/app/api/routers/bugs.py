@@ -1,16 +1,17 @@
+import csv
+import io
 from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
 from ...attachment_access import require_attachment_link_access
 from ...main_context import *
 from ...main_context import _emit_bug_event
 from ...services.edition.entitlement_service import require_feature
-
-
+from ...services.conversational_bug_context import infer_bug_is_conversational, resolve_bug_conversational_context
+from ...repositories.bug_integrations import _redact_bug_export_value, generate_bug_markdown
 router = APIRouter(tags=["bugs"])
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
-
 # --- ENDPOINTS BUG TRACKER INTERNO ---
 
 async def _ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> None:
@@ -18,7 +19,6 @@ async def _ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) ->
         await crud.ensure_bug_build_is_active(db, bug)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-
 @router.get("/proyectos/{proyecto_id}/bugs", response_model=schemas.BugListResponse)
 @router.get("/proyectos/{proyecto_id}/bugs/", response_model=schemas.BugListResponse)
 async def read_project_bugs(
@@ -29,6 +29,7 @@ async def read_project_bugs(
     prioridad: Annotated[Optional[str], Query(max_length=50)] = None,
     componente_id: Optional[UUID] = None,
     build_id: Optional[UUID] = None,
+    build_scope: Annotated[Optional[str], Query(max_length=20)] = None,
     caso_id: Optional[UUID] = None,
     ejecucion_id: Optional[UUID] = None,
     snapshot_id: Optional[UUID] = None,
@@ -37,6 +38,9 @@ async def read_project_bugs(
     external_provider: Annotated[Optional[str], Query(max_length=80)] = None,
     has_external: Optional[bool] = None,
     origen: Annotated[Optional[str], Query(max_length=80)] = None,
+    tipo_contexto: Annotated[Optional[str], Query(max_length=20)] = None,
+    chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
+    chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
     desde: Optional[datetime] = None,
     hasta: Optional[datetime] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -54,6 +58,7 @@ async def read_project_bugs(
         prioridad=prioridad,
         componente_id=componente_id,
         build_id=build_id,
+        build_scope=build_scope,
         caso_id=caso_id,
         ejecucion_id=ejecucion_id,
         snapshot_id=snapshot_id,
@@ -62,6 +67,9 @@ async def read_project_bugs(
         external_provider=external_provider,
         has_external=has_external,
         origen=origen,
+        tipo_contexto=tipo_contexto,
+        chatbot_turn_index=chatbot_turn_index,
+        chatbot_finding_type=chatbot_finding_type,
         desde=desde,
         hasta=hasta,
         skip=skip,
@@ -71,12 +79,187 @@ async def read_project_bugs(
 @router.get("/proyectos/{proyecto_id}/bugs/summary/", response_model=schemas.BugSummaryResponse)
 async def read_project_bugs_summary(
     proyecto_id: UUID,
+    build_id: Optional[UUID] = None,
+    build_scope: Annotated[Optional[str], Query(max_length=20)] = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
-    return await crud.summarize_project_bugs(db, proyecto_id)
+    if build_id:
+        build = await access_control.require_build_access(db, current_user, build_id, "read")
+        if build.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Build no encontrada para el proyecto")
+    return await crud.summarize_project_bugs(db, proyecto_id, build_id=build_id, build_scope=build_scope)
 
+@router.get("/incidencias/centro", response_model=schemas.IncidentCenterResponse)
+@router.get("/incidencias/centro/", response_model=schemas.IncidentCenterResponse)
+async def read_incident_center(
+    proyecto_id: Optional[UUID] = None,
+    organizacion_id: Optional[UUID] = None,
+    q: Annotated[Optional[str], Query(max_length=200)] = None,
+    componente_id: Optional[UUID] = None,
+    build_id: Optional[UUID] = None,
+    asignado_a: Optional[UUID] = None,
+    estado: Annotated[Optional[str], Query(max_length=50)] = None,
+    severidad: Annotated[Optional[str], Query(max_length=50)] = None,
+    prioridad: Annotated[Optional[str], Query(max_length=50)] = None,
+    desde: Optional[datetime] = None,
+    hasta: Optional[datetime] = None,
+    tipo_contexto: Annotated[Optional[str], Query(pattern="^(CLASICO|API|CONVERSACIONAL)$")] = None,
+    chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
+    chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read"))),
+):
+    """Operational cross-project view over the existing BugIssue records."""
+    if proyecto_id is not None:
+        project = await access_control.require_project_access(db, current_user, proyecto_id, "read")
+        if organizacion_id is not None and project.organizacion_id != organizacion_id:
+            raise HTTPException(status_code=404, detail="Proyecto no encontrado en la solucion indicada")
+    if organizacion_id is not None:
+        await access_control.require_organization_access(db, current_user, organizacion_id, "read")
+    if componente_id is not None:
+        component = await access_control.require_component_access(db, current_user, componente_id, "read")
+        if proyecto_id is not None and component.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Componente no encontrado en el proyecto indicado")
+    if build_id is not None:
+        build = await access_control.require_build_access(db, current_user, build_id, "read")
+        if proyecto_id is not None and build.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Build no encontrada en el proyecto indicado")
+
+    allowed_project_ids = None
+    if not access_control.is_global_admin(current_user) and proyecto_id is None:
+        project_result = await db.execute(
+            select(models.Proyecto.id)
+            .join(models.ProyectoMiembro, models.ProyectoMiembro.proyecto_id == models.Proyecto.id)
+            .join(models.Organizacion, models.Organizacion.id == models.Proyecto.organizacion_id)
+            .filter(
+                models.ProyectoMiembro.usuario_id == current_user.id,
+                models.Organizacion.activo.is_(True),
+            )
+        )
+        allowed_project_ids = list(project_result.scalars().all())
+    return await crud.list_incident_center(
+        db,
+        proyecto_id=proyecto_id,
+        organizacion_id=organizacion_id,
+        allowed_project_ids=allowed_project_ids,
+        q=q,
+        componente_id=componente_id,
+        build_id=build_id,
+        asignado_a=asignado_a,
+        estado=estado,
+        severidad=severidad,
+        prioridad=prioridad,
+        desde=desde,
+        hasta=hasta,
+        tipo_contexto=tipo_contexto,
+        chatbot_turn_index=chatbot_turn_index,
+        chatbot_finding_type=chatbot_finding_type,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/incidencias/centro/export.csv")
+@router.get("/incidencias/centro/export.md")
+async def export_incident_center(
+    request: Request,
+    formato: Annotated[str, Query(pattern="^(csv|md)$")] = "csv",
+    proyecto_id: Optional[UUID] = None,
+    organizacion_id: Optional[UUID] = None,
+    q: Annotated[Optional[str], Query(max_length=200)] = None,
+    componente_id: Optional[UUID] = None,
+    build_id: Optional[UUID] = None,
+    asignado_a: Optional[UUID] = None,
+    estado: Annotated[Optional[str], Query(max_length=50)] = None,
+    severidad: Annotated[Optional[str], Query(max_length=50)] = None,
+    prioridad: Annotated[Optional[str], Query(max_length=50)] = None,
+    desde: Optional[datetime] = None,
+    hasta: Optional[datetime] = None,
+    tipo_contexto: Annotated[Optional[str], Query(pattern="^(CLASICO|API|CONVERSACIONAL)$")] = None,
+    chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
+    chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("bugs.exportar", "read")),
+):
+    """Export only incidents the authenticated user can already access."""
+    if request.url.path.endswith(".md"):
+        formato = "md"
+    if proyecto_id is not None:
+        project = await access_control.require_project_access(db, current_user, proyecto_id, "read")
+        if organizacion_id is not None and project.organizacion_id != organizacion_id:
+            raise HTTPException(status_code=404, detail="Proyecto no encontrado en la solucion indicada")
+    if organizacion_id is not None:
+        await access_control.require_organization_access(db, current_user, organizacion_id, "read")
+    if componente_id is not None:
+        component = await access_control.require_component_access(db, current_user, componente_id, "read")
+        if proyecto_id is not None and component.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Componente no encontrado en el proyecto indicado")
+    if build_id is not None:
+        build = await access_control.require_build_access(db, current_user, build_id, "read")
+        if proyecto_id is not None and build.proyecto_id != proyecto_id:
+            raise HTTPException(status_code=404, detail="Build no encontrada en el proyecto indicado")
+
+    allowed_project_ids = None
+    if not access_control.is_global_admin(current_user) and proyecto_id is None:
+        project_result = await db.execute(
+            select(models.Proyecto.id)
+            .join(models.ProyectoMiembro, models.ProyectoMiembro.proyecto_id == models.Proyecto.id)
+            .join(models.Organizacion, models.Organizacion.id == models.Proyecto.organizacion_id)
+            .filter(
+                models.ProyectoMiembro.usuario_id == current_user.id,
+                models.Organizacion.activo.is_(True),
+            )
+        )
+        allowed_project_ids = list(project_result.scalars().all())
+    bugs = await crud.list_incident_center_export(
+        db,
+        proyecto_id=proyecto_id,
+        organizacion_id=organizacion_id,
+        allowed_project_ids=allowed_project_ids,
+        q=q,
+        componente_id=componente_id,
+        build_id=build_id,
+        asignado_a=asignado_a,
+        estado=estado,
+        severidad=severidad,
+        prioridad=prioridad,
+        desde=desde,
+        hasta=hasta,
+        tipo_contexto=tipo_contexto,
+        chatbot_turn_index=chatbot_turn_index,
+        chatbot_finding_type=chatbot_finding_type,
+    )
+    if formato == "md":
+        content = "# Exportación de incidencias\n\n"
+        content += f"Total de incidencias: {len(bugs)}\n\n"
+        content += "\n\n---\n\n".join(generate_bug_markdown(bug) for bug in bugs)
+        return Response(
+            content=content,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="incidencias-ia.md"'},
+        )
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(("Código", "Título", "Proyecto", "Estado", "Severidad", "Prioridad", "Tipo", "Descripción", "Resultado esperado", "Resultado obtenido", "Error técnico", "Creada"))
+    for bug in bugs:
+        safe = lambda value, key=None: _redact_bug_export_value(value, key)
+        writer.writerow((
+            safe(bug.codigo), safe(bug.titulo), safe(bug.proyecto_id), safe(bug.estado),
+            safe(bug.severidad), safe(bug.prioridad), safe(getattr(bug, "tipo_contexto", "CLASICO")),
+            safe(bug.descripcion, "descripcion"), safe(bug.resultado_esperado, "resultado_esperado"),
+            safe(bug.resultado_obtenido, "resultado_obtenido"), safe(bug.error_tecnico, "error_tecnico"),
+            safe(bug.created_at),
+        ))
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="incidencias.csv"'},
+    )
 @router.get("/proyectos/{proyecto_id}/bugs/dedupe-suggestions/", response_model=List[schemas.BugDedupeSuggestionResponse])
 async def read_project_bug_dedupe_suggestions(
     proyecto_id: UUID,
@@ -94,6 +277,7 @@ async def read_project_bug_dedupe_suggestions(
 async def read_related_case_bugs(
     caso_id: UUID,
     include_closed: bool = True,
+    tipo_contexto: Annotated[Optional[str], Query(max_length=20)] = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read")),
 ):
@@ -103,21 +287,21 @@ async def read_related_case_bugs(
     if not case:
         raise HTTPException(status_code=404, detail="Caso de prueba no encontrado")
     await access_control.require_project_access(db, current_user, case.proyecto_id, "read")
-    bugs = await crud.list_related_bugs_for_case(db, caso_id, include_closed=include_closed)
+    bugs = await crud.list_related_bugs_for_case(db, caso_id, include_closed=include_closed, tipo_contexto=tipo_contexto)
     return bugs or []
-
 @router.get("/bugs/{bug_id}/", response_model=schemas.BugIssueResponse)
 async def read_bug_detail(
     bug_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
 ):
     bug = await crud.get_bug_issue(db, bug_id)
     if not bug:
         raise HTTPException(status_code=404, detail="Bug no encontrado")
     await access_control.require_project_access(db, current_user, bug.proyecto_id, "read")
+    from ...repositories.bug_context_filters import mark_legacy_chatbot_items
+    await mark_legacy_chatbot_items(db, [bug])
     return bug
-
 @router.post("/bugs", response_model=schemas.BugIssueResponse)
 @router.post("/bugs/", response_model=schemas.BugIssueResponse)
 async def create_bug(
@@ -128,13 +312,14 @@ async def create_bug(
     ))
 ):
     await access_control.require_project_access(db, current_user, payload.proyecto_id, "edit")
+    if str(payload.tipo_contexto or "CLASICO").upper() == "CONVERSACIONAL" or payload.chatbot_turn_index is not None or payload.chatbot_finding_type is not None or str(payload.origen or "").lower() == "chatbot_evaluation":
+        raise HTTPException(status_code=422, detail="Los bugs conversacionales se crean desde una ejecución Chatbot con su evidencia persistida.")
     try:
         bug = await crud.create_bug_issue(db, payload, current_user.id)
         await _emit_bug_event(db, "bug.created", bug, current_user)
         return bug
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-
 @router.post("/snapshots/{snapshot_id}/bugs/", response_model=schemas.BugIssueResponse)
 async def create_bug_from_snapshot(
     snapshot_id: UUID,
@@ -162,6 +347,22 @@ async def create_bug_from_snapshot(
         raise HTTPException(status_code=404, detail="Snapshot no encontrado")
     await _emit_bug_event(db, "bug.created_from_snapshot", bug, current_user)
     return bug
+@router.get("/bugs/{bug_id}/conversational-context/", response_model=schemas.BugConversationalContextResponse)
+async def read_conversational_bug_context(
+    bug_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read"))),
+):
+    bug = await crud.get_bug_issue(db, bug_id)
+    if not bug:
+        raise HTTPException(status_code=404, detail="Bug no encontrado")
+    await access_control.require_project_access(db, current_user, bug.proyecto_id, "read")
+    if not await infer_bug_is_conversational(db, bug):
+        raise HTTPException(status_code=409, detail="El bug no tiene contexto conversacional.")
+    context = await resolve_bug_conversational_context(db, bug)
+    if not context:
+        raise HTTPException(status_code=404, detail="La ejecución Chatbot no conserva turnos ni evidencia suficiente para reconstruir el contexto.")
+    return context
 
 @router.post("/ejecuciones/{ejecucion_id}/bugs/", response_model=schemas.BugIssueResponse)
 async def create_bug_from_execution(
@@ -189,7 +390,6 @@ async def create_bug_from_execution(
         raise HTTPException(status_code=404, detail="Ejecucion no encontrada")
     await _emit_bug_event(db, "bug.created_from_execution", bug, current_user)
     return bug
-
 @router.patch("/bugs/{bug_id}", response_model=schemas.BugIssueResponse)
 async def update_bug(
     bug_id: UUID,
@@ -215,7 +415,6 @@ async def update_bug(
         await _emit_bug_event(db, "bug.priority_changed", updated, current_user, {"old_value": old_state["prioridad"], "new_value": updated.prioridad})
     await _emit_bug_event(db, "bug.updated", updated, current_user)
     return updated
-
 @router.post("/bugs/{bug_id}/link-execution/", response_model=schemas.BugIssueResponse)
 async def link_bug_execution(
     bug_id: UUID,
@@ -255,7 +454,6 @@ async def link_bug_execution(
             },
         )
     return updated
-
 @router.post("/bugs/{bug_id}/transition/", response_model=schemas.BugIssueResponse)
 async def transition_bug(
     bug_id: UUID,
@@ -292,7 +490,7 @@ async def transition_bug(
 async def read_bug_status_history(
     bug_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read")),
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read"))),
 ):
     bug = await crud.get_bug_issue(db, bug_id)
     if not bug:
@@ -304,7 +502,7 @@ async def read_bug_status_history(
 async def read_bug_comments(
     bug_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
 ):
     bug = await crud.get_bug_issue(db, bug_id)
     if not bug:
@@ -340,7 +538,7 @@ async def create_bug_comment(
 async def read_bug_attachments(
     bug_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
 ):
     bug = await crud.get_bug_issue(db, bug_id)
     if not bug:
@@ -459,6 +657,24 @@ async def preview_bug_external_ticket(
     if not preview:
         raise HTTPException(status_code=404, detail="Bug no encontrado")
     return preview
+
+@router.get("/bugs/{bug_id}/export-markdown/")
+async def export_bug_markdown(
+    bug_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("bugs.exportar", "read")),
+):
+    """Download one authorized bug as a redacted Markdown investigation brief."""
+    bug = await crud.get_bug_issue(db, bug_id)
+    if not bug:
+        raise HTTPException(status_code=404, detail="Bug no encontrado")
+    await access_control.require_project_access(db, current_user, bug.proyecto_id, "read")
+    filename = f"{bug.codigo or 'bug'}.md".replace('"', "")
+    return Response(
+        content=generate_bug_markdown(bug),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.post("/bugs/{bug_id}/mark-duplicate/", response_model=schemas.BugIssueResponse)
 async def mark_bug_duplicate(

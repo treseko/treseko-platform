@@ -148,8 +148,8 @@ export function ConsolaManualPage({
     activeDataset?.name ||
     activeDataset?.nombre ||
     (currentExecutionRun?.dataset_id
-      ? `Dataset ${currentExecutionRun.dataset_id}`
-      : 'Sin dataset seleccionado')
+      ? `${t('ejecutarPruebas.dataset')} ${currentExecutionRun.dataset_id}`
+      : t('ejecutarPruebas.noDatasetSelected'))
   const resolvedDataset = currentExecutionRun?.datasets_resueltos?.[selectedTest?.id] || []
   const runVariables = currentExecutionRun?.variables_resueltas || {}
   const hasPlaceholder = (value: string) => /\{\{[^}]+\}\}/.test(value || '')
@@ -187,9 +187,9 @@ export function ConsolaManualPage({
   const renderExecutionDataRows = () => (
     <div className="bg-light rounded border shadow-sm overflow-hidden">
       <div className="px-2 py-1 border-bottom bg-white text-dark x-small">
-        Ambiente: <span className="text-primary fw-semibold">{currentExecutionRun?.entorno || 'Sin ambiente'}</span>
+        {t('common.environment')}: <span className="text-primary fw-semibold">{currentExecutionRun?.entorno || t('ejecutarPruebas.noEnvironment')}</span>
         <span className="mx-1 text-muted">·</span>
-        Dataset: <span className="text-primary fw-semibold">{executionDatasetName}</span>
+        {t('common.dataset')}: <span className="text-primary fw-semibold">{executionDatasetName}</span>
       </div>
       {executionDataRows.length > 0 ? (
         <div className="table-responsive">
@@ -205,7 +205,7 @@ export function ConsolaManualPage({
           </table>
         </div>
       ) : (
-        <div className="p-2 x-small text-muted">Sin datos resueltos para esta ejecucion.</div>
+        <div className="p-2 x-small text-muted">{t('ejecutarPruebas.noResolvedData')}</div>
       )}
     </div>
   )
@@ -220,7 +220,7 @@ export function ConsolaManualPage({
   }
   const openLegacyEvidence = (url?: string | null) => {
     if (!url) return
-    setViewerEvidence({ url, filename: 'Evidencia adjunta', contentType: null })
+    setViewerEvidence({ url, filename: t('common.attachedEvidence'), contentType: null })
   }
   const requireFailureDocumentation = attachmentConfig?.require_evidence_on_failure === true
   const isEvidenceRequiredStatus = (status?: string) => status === 'FALLO' || status === 'BLOQUEADO'
@@ -258,7 +258,7 @@ export function ConsolaManualPage({
     bug?.build_name ||
     bug?.build_code ||
     bug?.metadata_json?.build_code ||
-    'Build origen no registrada'
+    t('common.unregisteredOriginBuild')
   )
   const getBugDisplayComponent = (bug: any) => (
     bug?._display_component_name ||
@@ -286,7 +286,7 @@ export function ConsolaManualPage({
     if (rawComponent && rawComponent !== 'Componente no encontrado') return rawComponent
     const rawCurrentComponent = String(currentComponentName || '').trim()
     if (rawCurrentComponent) return rawCurrentComponent
-    return rawComponent || 'Sin componente asignado'
+    return rawComponent || t('ejecutarPruebas.noComponent')
   })()
   const hasConclusiveStepDocumentation = Boolean(
     hasUserDocumentationNote(conclusiveStepNote) ||
@@ -346,7 +346,7 @@ export function ConsolaManualPage({
     <div className="manual-console-shell h-100 d-flex flex-column animate__animated animate__fadeIn text-start bg-light">
       <div className="manual-console-header p-3 bg-white border-bottom d-flex justify-content-between align-items-center shadow-sm flex-shrink-0 z-1">
         <div className="d-flex align-items-center gap-3 text-dark">
-          <Button variant="light" size="sm" onClick={returnToExecutionList} className="border shadow-sm rounded-circle p-1 hover-bg-dark hover-text-white transition-all">
+          <Button variant="light" size="sm" onClick={returnToExecutionList} aria-label={t('common.backToApp')} className="border shadow-sm rounded-circle p-1 hover-bg-dark hover-text-white transition-all">
             <ArrowLeft size={20} />
           </Button>
           <div>
@@ -356,7 +356,7 @@ export function ConsolaManualPage({
             {currentExecutionRun && (
               <span className="x-small text-muted font-monospace d-flex align-items-center gap-1 mt-1">
                 <Terminal size={12}/> {t('ejecutarPruebas.activeRun')} {currentExecutionRun.nombre}
-                <span className="text-primary">· Dataset: {executionDatasetName}</span>
+                <span className="text-primary">· {t('common.dataset')}: {executionDatasetName}</span>
               </span>
             )}
           </div>
@@ -396,6 +396,7 @@ export function ConsolaManualPage({
                 setLinkComment,
                 onCreateInternalBugFromExecution,
                 executionHistory,
+                executionHistoryTotal: selectedTest?.historyTotal,
                 latestHistoryItem,
                 getStatusColor,
                 openAttachmentEvidence,
@@ -415,7 +416,7 @@ export function ConsolaManualPage({
                     <span className="text-muted small">{t('ejecutarPruebas.stepExecutionHint')}</span>
                   </div>
                   <Badge bg="primary" className="px-3 py-2 rounded-pill shadow-sm fs-6">
-                    {executionSnapshots.length} Pasos
+                    {executionSnapshots.length} {t('ejecutarPruebas.steps')}
                   </Badge>
                 </Card.Header>
 
@@ -462,7 +463,7 @@ export function ConsolaManualPage({
     <Modal show={Boolean(linkingBug)} onHide={() => setLinkingBug(null)} centered>
       <Modal.Header closeButton className="border-0 pb-2">
         <Modal.Title className="fs-6 fw-bold d-flex align-items-center gap-2">
-          <RefreshCw size={18} className="text-danger" /> Actualizar seguimiento del bug
+          <RefreshCw size={18} className="text-danger" /> {t('common.updateTracking')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="pt-0">
@@ -472,13 +473,13 @@ export function ConsolaManualPage({
             <div className="small text-muted mt-1">{linkingBug.titulo}</div>
           </div>
         )}
-        <Form.Label className="x-small fw-bold text-dark text-uppercase">Comentario de seguimiento</Form.Label>
-        <Form.Control name="a11y-consolamanualpagetsx-476" aria-label="Campo de formulario"
+        <Form.Label htmlFor="manual-bug-link-comment" className="x-small fw-bold text-dark text-uppercase">{t('bugs.comment')}</Form.Label>
+        <Form.Control id="manual-bug-link-comment" name="a11y-consolamanualpagetsx-476" aria-label={t('common.formField')}
           as="textarea"
           rows={3}
           value={linkComment}
           onChange={(event) => setLinkComment(event.target.value)}
-          placeholder="Ej: El defecto se reproduce nuevamente en esta build con la evidencia adjunta."
+          placeholder={t('bugs.addCommentPlaceholder')}
         />
         <div className="text-muted x-small mt-2">
           {t('ejecutarPruebas.linkBugDescription')}
@@ -489,7 +490,7 @@ export function ConsolaManualPage({
           {t('common.cancel')}
         </Button>
         <Button variant="danger" className="fw-bold" onClick={handleConfirmLinkBug} disabled={!linkingBug || Boolean(linkingBugId)}>
-          {linkingBugId ? <Spinner animation="border" size="sm" /> : <RefreshCw size={16} />} Actualizar seguimiento
+          {linkingBugId ? <Spinner animation="border" size="sm" /> : <RefreshCw size={16} />} {t('common.updateTracking')}
         </Button>
       </Modal.Footer>
     </Modal>

@@ -81,6 +81,29 @@ export const formatBugPriorityOption = (priority?: string | null) => (
   getBugPriorityPresentation(priority)?.optionLabel || String(priority || '')
 )
 
+export const createBugLocalizedLabels = (t: (key: string, params?: Record<string, string | number>) => string) => ({
+  status: (value: string) => {
+    const key = `bugs.status_${value}`
+    const label = t(key)
+    return label === key ? value : label
+  },
+  severity: (value: string) => {
+    const key = `bugs.severity_${value}`
+    const label = t(key)
+    return label === key ? value : label
+  },
+  priority: (value: string) => {
+    const key = `bugs.priority_${value}`
+    const label = t(key)
+    return label === key ? value : label
+  },
+})
+
+export const bugPriorityStyle = (value: string) => ({
+  bg: value === 'P0' || value === 'P1' ? 'danger' : value === 'P2' ? 'warning' : 'light',
+  text: value === 'P2' || value === 'P3' || value === 'P4' ? 'dark' : undefined,
+})
+
 export const getBugSeverityPresentation = (severity?: string | null, prefix = 'Sev.') => {
   const value = String(severity || '').toUpperCase()
   if (!value) return null

@@ -2,6 +2,7 @@ import {
   createAiWorkflow,
   copyAiWorkflowAsBlocks,
   copyAiWorkflowAsUniversal,
+  copyAiWorkflowAsUniversalV3,
   createAiUniversalAgent,
   exportAiUniversalWorkflowPackage,
   importAiUniversalWorkflowPackage,
@@ -130,6 +131,18 @@ export function useWorkflowActions({
     }
   }
 
+  const copyWorkflowAsUniversalV3 = async () => {
+    if (!workflowDraft) return
+    try {
+      const created = await copyAiWorkflowAsUniversalV3(fetchWithAuth, workflowDraft.id)
+      setAiWorkflows(prev => [created, ...prev])
+      selectWorkflow(created)
+      showFeedback(t('configuracion.workflowUniversalTitle'), t('configuracion.workflowUniversalCreated'), 'success')
+    } catch (error: any) {
+      showFeedback(t('configuracion.workflowUniversalTitle'), error?.message || t('configuracion.workflowUniversalError'), 'danger')
+    }
+  }
+
   const exportUniversalWorkflow = async () => {
     if (!workflowDraft) return
     try {
@@ -182,6 +195,7 @@ export function useWorkflowActions({
     postWorkflowAction,
     copyWorkflowAsBlocks,
     copyWorkflowAsUniversal,
+    copyWorkflowAsUniversalV3,
     exportUniversalWorkflow,
     importUniversalWorkflow,
     createUniversalAgent,

@@ -8,10 +8,15 @@ const caseVersionFields = [
   ['prioridad', 'Prioridad'],
   ['criticidad', 'Criticidad'],
   ['tipo_prueba', 'Tipo'],
+  ['formato_prueba', 'Formato'],
+  ['configuracion_chatbot', 'Configuración Chatbot'],
+  ['configuracion_api', 'Configuración API'],
+  ['script_automatizado', 'Script automatizado'],
+  ['framework', 'Framework'],
   ['estado_caso', 'Estado'],
   ['suite_id', 'Suite'],
   ['componente_id', 'Componente'],
-  ['dataset', 'Dataset'],
+  ['dataset', 'Dataset (contexto)'],
   ['etiquetas', 'Etiquetas'],
   ['pasos', 'Pasos']
 ]
@@ -42,14 +47,16 @@ export function createCaseVersionRows({ suitesTree, componentsList }: CreateCase
     caseVersionFields.map(([key, label]) => {
       const before = selected?.[key]
       const after = current?.[key]
+      const contextOnly = key === 'dataset'
       return {
         key,
         label,
+        contextOnly,
         before: formatCasoVersionValue(key, before),
         after: formatCasoVersionValue(key, after),
         beforeValue: before,
         afterValue: after,
-        changed: JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)
+        changed: !contextOnly && JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)
       }
     })
 }

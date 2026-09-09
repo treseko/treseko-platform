@@ -4,7 +4,7 @@ import type { AttachmentMeta } from '../EvidenceUpload'
 export function useAppExecutionState() {
   const [executionBugDetailId, setExecutionBugDetailId] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'manual_exec'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'manual_exec' | 'chatbot_manual' | 'api_exec'>('list')
   const [selectedSuiteId, setSelectedSuiteId] = useState<string>('s1')
   const [selectedTest, setSelectedTest] = useState<any>(null)
   const [showExecSelector, setShowExecSelector] = useState(false)
@@ -17,6 +17,10 @@ export function useAppExecutionState() {
   const [executionMode, setExecutionMode] = useState<'manual' | 'automated' | 'ia' | null>(null)
   const [selectedExecutionTestIds, setSelectedExecutionTestIds] = useState<string[]>([])
   const [executionModalCaseIds, setExecutionModalCaseIds] = useState<string[] | null>(null)
+  // Keep the batch that opened the selector separate from its current
+  // executable subset.  Removing a format from the modal must not discard
+  // the candidates needed to select it again before starting the run.
+  const [executionModalCandidateCaseIds, setExecutionModalCandidateCaseIds] = useState<string[] | null>(null)
   const [activeExecutionCaseIds, setActiveExecutionCaseIds] = useState<string[]>([])
   const [selectedExecutionEnvironmentId, setSelectedExecutionEnvironmentId] = useState('')
   const [selectedExecutionDatasetId, setSelectedExecutionDatasetId] = useState('')
@@ -56,6 +60,7 @@ export function useAppExecutionState() {
     setCurrentExecutionCase, executionSnapshots, setExecutionSnapshots, executionLoading,
     setExecutionLoading, executionMode, setExecutionMode, selectedExecutionTestIds,
     setSelectedExecutionTestIds, executionModalCaseIds, setExecutionModalCaseIds,
+    executionModalCandidateCaseIds, setExecutionModalCandidateCaseIds,
     activeExecutionCaseIds, setActiveExecutionCaseIds, selectedExecutionEnvironmentId,
     setSelectedExecutionEnvironmentId, selectedExecutionDatasetId, setSelectedExecutionDatasetId,
     executionDatasetPreview, setExecutionDatasetPreview, executionDatasetPreviewLoading,

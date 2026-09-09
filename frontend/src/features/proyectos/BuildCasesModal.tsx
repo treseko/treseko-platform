@@ -55,7 +55,7 @@ export function BuildCasesModal({
 
   return (
     <Modal show={show} onHide={onHide} centered size="lg">
-      <Modal.Header closeButton className="bg-light border-bottom text-dark">
+      <Modal.Header closeButton closeLabel={t('proyectos.cancel')} className="bg-light border-bottom text-dark">
         <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
           <Terminal size={20} className="text-primary" /> {t('proyectos.relatedCases')}
         </Modal.Title>
@@ -63,7 +63,7 @@ export function BuildCasesModal({
       <Modal.Body className="p-4 text-start">
         <div className="d-flex justify-content-between align-items-start gap-3 mb-3 flex-wrap">
           <div>
-            <div className="fw-bold text-dark">{build?.name || 'Build'}</div>
+            <div className="fw-bold text-dark">{build?.name || t('proyectos.buildLabel')}</div>
             <div className="small text-muted">{t('proyectos.casesHint')}</div>
           </div>
           <div className="d-flex gap-2 flex-wrap justify-content-end">
@@ -93,7 +93,7 @@ export function BuildCasesModal({
         </div>
         {readOnlyBuild && (
           <div className="alert alert-info border-0 small mb-3">
-            Esta build histórica está en modo consulta. El alcance y sus casos no se pueden modificar.
+            {t('proyectos.buildHistoricalReadOnly')}
           </div>
         )}
         {buildCaseDraftIds.length === 0 && availableCases.length > 0 && (

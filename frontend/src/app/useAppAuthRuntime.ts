@@ -7,11 +7,11 @@ import { canAccessCapability as canAccessCapabilityForUser, canAccessModule as c
 import { useAppPlatformState } from "./useAppPlatformState";
 
 export function useAppAuthRuntime(options: any): any {
-  const { t, translationRef, loggedUser, isAuthenticated, setLoggedUser, setIsAuthenticated, setLoginError, projectsSource, currentCompId, componentsList, setComponentsList, setBuildsList, setBuildCaseIds, setCurrentCompId, setNewTestComponent, setCurrentBuildId, setProjectSyncMessage, setLoginLoading, setActiveTab } = options;
+  const { t, translationRef, loggedUser, isAuthenticated, currentProjectId, setLoggedUser, setIsAuthenticated, setLoginError, projectsSource, currentCompId, componentsList, setComponentsList, setBuildsList, setBuildCaseIds, setCurrentCompId, setNewTestComponent, setCurrentBuildId, setProjectSyncMessage, setLoginLoading, setActiveTab } = options;
   const authClient = useMemo(() => createAuthClient({ setLoggedUser, setIsAuthenticated, setLoginError, t: (key: string, params: any) => translationRef.current(key, params) }), []);
   const canAccessModule = useCallback((moduleId: any, level: any = "read") => canAccessModuleForUser(loggedUser, moduleId, level), [loggedUser]);
   const canAccessCapability = useCallback((capabilityId: any, level: any = "read") => canAccessCapabilityForUser(loggedUser, capabilityId, level), [loggedUser]);
-  const platform = useAppPlatformState({ isAuthenticated, loggedUser, fetchWithAuth: authClient.fetchWithAuth, t });
+  const platform = useAppPlatformState({ isAuthenticated, loggedUser, currentProjectId, fetchWithAuth: authClient.fetchWithAuth, t });
   const loaders = createProjectLoaders({ projectsSource, currentCompId, componentsList, fetchWithAuth: authClient.fetchWithAuth, setComponentsList, setBuildsList, setBuildCaseIds, setCurrentCompId, setNewTestComponent, setCurrentBuildId, setProjectSyncMessage });
 
   useEffect(() => {

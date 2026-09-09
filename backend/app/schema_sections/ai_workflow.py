@@ -44,7 +44,7 @@ MAX_AI_WORKFLOW_IMPORT_ROWS = 500
 MAX_AI_MODEL_CATALOG_ITEMS = 500
 MAX_AI_AGENT_WORKFLOW_ITEMS = 200
 MAX_AI_DRY_RUN_STEPS = 200
-AI_WORKFLOW_PURPOSES = {"test_execution", "story_generation", "test_case_generation"}
+AI_WORKFLOW_PURPOSES = {"test_execution", "story_generation", "test_case_generation", "chatbot_evaluation"}
 MAX_AI_RESULT_STEPS = 500
 
 
@@ -107,8 +107,8 @@ class AiWorkflowBase(BaseModel):
     version: int = Field(default=1, ge=1, le=10_000)
     status: str = Field(default="DRAFT", min_length=1, max_length=40)
     is_default: bool = False
-    workflow_format: str = Field(default="legacy_v1", pattern="^(legacy_v1|block_v2|universal_v2)$")
-    workflow_purpose: str = Field(default="test_execution", pattern="^(test_execution|story_generation|test_case_generation)$")
+    workflow_format: str = Field(default="legacy_v1", pattern="^(legacy_v1|block_v2|universal_v2|universal_v3)$")
+    workflow_purpose: str = Field(default="test_execution", pattern="^(test_execution|story_generation|test_case_generation|chatbot_evaluation)$")
     source_workflow_id: Optional[UUID] = None
     provider_profile_id: Optional[UUID] = None
     fallback_profile_ids: List[UUID] = Field(default_factory=list, max_length=5)
@@ -129,8 +129,8 @@ class AiWorkflowUpdate(BaseModel):
     version: Optional[int] = Field(default=None, ge=1, le=10_000)
     status: Optional[str] = Field(default=None, min_length=1, max_length=40)
     is_default: Optional[bool] = None
-    workflow_format: Optional[str] = Field(default=None, pattern="^(legacy_v1|block_v2|universal_v2)$")
-    workflow_purpose: Optional[str] = Field(default=None, pattern="^(test_execution|story_generation|test_case_generation)$")
+    workflow_format: Optional[str] = Field(default=None, pattern="^(legacy_v1|block_v2|universal_v2|universal_v3)$")
+    workflow_purpose: Optional[str] = Field(default=None, pattern="^(test_execution|story_generation|test_case_generation|chatbot_evaluation)$")
     provider_profile_id: Optional[UUID] = None
     fallback_profile_ids: Optional[List[UUID]] = Field(default=None, max_length=5)
     decision_policy_json: Optional[Dict[str, Any]] = None

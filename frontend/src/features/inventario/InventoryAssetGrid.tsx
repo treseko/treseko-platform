@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Col, Row } from 'react-bootstrap'
 import { Edit, Plus, Server, Trash2 } from 'lucide-react'
+import { inventoryLabel } from './inventoryPresentation'
 
 export function InventoryAssetGrid({ options }: { options: any }) {
   const { filteredAssets, assetsByParent, assets, getAssetIcon, statusVariant, criticalityVariant, endpointLabel, t, canEditInventory, openAddModal, openEditModal, deleteAsset } = options
@@ -13,7 +14,7 @@ export function InventoryAssetGrid({ options }: { options: any }) {
     return (
       <Col xxl={3} xl={4} lg={6} key={asset.id}>
         <Card className="border-0 shadow-sm rounded-3 h-100 inventory-asset-card">
-          <Card.Body className="p-3 d-flex flex-column">
+          <Card.Body className="p-3 d-flex flex-column min-w-0">
             <div className="d-flex justify-content-between gap-2 mb-3">
               <div className="d-flex gap-2 min-w-0">
                 <span className="d-inline-flex align-items-center justify-content-center bg-primary bg-opacity-10 text-primary rounded-3 flex-shrink-0" style={{ width: 38, height: 38 }}>
@@ -21,28 +22,28 @@ export function InventoryAssetGrid({ options }: { options: any }) {
                 </span>
                 <div className="min-w-0">
                   <div className="fw-bold text-dark text-truncate">{asset.nombre}</div>
-                  <div className="small text-muted text-truncate">{asset.tipo} · {asset.naturaleza}</div>
+                  <div className="small text-muted text-truncate">{inventoryLabel(t, 'assetType', asset.tipo)} · {inventoryLabel(t, 'nature', asset.naturaleza)}</div>
                 </div>
               </div>
-              <div className="d-flex flex-column align-items-end gap-1">
-                <Badge bg={statusVariant(asset.estado)}>{asset.estado}</Badge>
-                <Badge bg={criticalityVariant(asset.criticidad)}>{asset.criticidad}</Badge>
+              <div className="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+                <Badge bg={statusVariant(asset.estado)}>{inventoryLabel(t, 'status', asset.estado)}</Badge>
+                <Badge bg={criticalityVariant(asset.criticidad)}>{inventoryLabel(t, 'criticality', asset.criticidad)}</Badge>
               </div>
             </div>
 
-            <div className="d-flex flex-wrap gap-1 mb-3">
+            <div className="d-flex flex-column gap-1 mb-3 min-w-0">
               {mainEndpoints.length ? mainEndpoints.map((endpoint, index) => (
-                <Badge key={`${endpoint.id || index}-${endpoint.valor}`} bg="light" text="dark" className="border fw-normal font-monospace">
-                  {endpoint.tipo}: {endpointLabel(endpoint)}
+                <Badge key={`${endpoint.id || index}-${endpoint.valor}`} bg="light" text="dark" className="inventory-endpoint-badge border fw-normal font-monospace">
+                  {inventoryLabel(t, 'endpointType', endpoint.tipo)}: {endpointLabel(endpoint)}
                 </Badge>
               )) : <span className="small text-muted">{t('inventario.noChildren')}</span>}
             </div>
 
-            <div className="small text-muted flex-grow-1">
-              {parent && <div className="mb-1"><Server size={13} className="me-1" />Alojado en {parent.nombre}</div>}
+            <div className="small text-muted flex-grow-1 min-w-0 inventory-asset-details">
+              {parent && <div className="mb-1"><Server size={13} className="me-1" />{t('inventario.hostedOn')}: {parent.nombre}</div>}
               {asset.ubicacion && <div className="mb-1">{t('inventario.location')}: {asset.ubicacion}</div>}
-              {asset.responsable && <div className="mb-1">Responsable: {asset.responsable}</div>}
-              {asset.sistema_operativo && <div className="mb-1">SO: {asset.sistema_operativo}</div>}
+              {asset.responsable && <div className="mb-1">{t('inventario.responsible')}: {asset.responsable}</div>}
+              {asset.sistema_operativo && <div className="mb-1">{t('inventario.os')}: {asset.sistema_operativo}</div>}
               {children.length > 0 && (
                 <div className="mt-2">
                   <div className="x-small fw-bold text-secondary mb-1">{t('inventario.children')}</div>
@@ -57,7 +58,7 @@ export function InventoryAssetGrid({ options }: { options: any }) {
             <div className="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
               {canEditInventory && (asset.tipo === 'Servidor' || asset.naturaleza !== 'digital') ? (
                 <Button size="sm" variant="outline-primary" className="rounded-pill fw-bold x-small" onClick={() => openAddModal({ tipo: 'Servicio', naturaleza: 'digital', parent_id: asset.id })}>
-                  <Plus size={12} className="me-1" /> Servicio
+                  <Plus size={12} className="me-1" /> {t('inventario.addService')}
                 </Button>
               ) : <span />}
               <div className="d-flex gap-1">

@@ -44,7 +44,7 @@ export function InventoryItemModal({
     if (type === 'env') return t('inventario.invTitleEnv')
     if (type === 'device') return t('inventario.invTitleDevice')
     if (type === 'node') return t('inventario.invTitleNode')
-    return 'Registro'
+    return t('inventario.record')
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -125,7 +125,7 @@ export function InventoryItemModal({
               </Form.Group>
               <Form.Group className="mb-3">
                 <Form.Label className="x-small fw-bold text-muted">{t('inventario.versionLabel')}</Form.Label>
-                <Form.Control name="version" defaultValue={invModalConfig.itemData?.version} required className="bg-light shadow-sm" placeholder="Ej: v1.0.0" />
+                <Form.Control name="version" defaultValue={invModalConfig.itemData?.version} required className="bg-light shadow-sm" placeholder={t('inventario.versionPlaceholder')} />
               </Form.Group>
             </>
           )}
@@ -135,7 +135,7 @@ export function InventoryItemModal({
               <Col md={6}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('inventario.resolutionLabel')}</Form.Label>
-                  <Form.Control name="resolution" defaultValue={invModalConfig.itemData?.resolution} required className="bg-light shadow-sm" placeholder="1920x1080" />
+                  <Form.Control name="resolution" defaultValue={invModalConfig.itemData?.resolution} required className="bg-light shadow-sm" placeholder={t('inventario.resolutionPlaceholder')} />
                 </Form.Group>
               </Col>
               <Col md={6}>
@@ -150,7 +150,7 @@ export function InventoryItemModal({
               <Col md={12}>
                 <Form.Group className="mt-2">
                   <Form.Label className="x-small fw-bold text-muted">{t('inventario.browserOs')}</Form.Label>
-                  <Form.Control name="browser" defaultValue={invModalConfig.itemData?.browser} required className="bg-light shadow-sm" placeholder="Chrome v126 / iOS 17" />
+                  <Form.Control name="browser" defaultValue={invModalConfig.itemData?.browser} required className="bg-light shadow-sm" placeholder={t('inventario.browserPlaceholder')} />
                 </Form.Group>
               </Col>
             </Row>
@@ -159,7 +159,7 @@ export function InventoryItemModal({
           {invModalConfig.type === 'node' && (
             <Form.Group className="mb-3">
               <Form.Label className="x-small fw-bold text-muted">{t('inventario.ipHostname')}</Form.Label>
-              <Form.Control name="ip" defaultValue={invModalConfig.itemData?.ip} required className="bg-light shadow-sm font-monospace x-small" placeholder="192.168.1.X" />
+              <Form.Control name="ip" defaultValue={invModalConfig.itemData?.ip} required className="bg-light shadow-sm font-monospace x-small" placeholder={t('inventario.ipPlaceholder')} />
             </Form.Group>
           )}
 

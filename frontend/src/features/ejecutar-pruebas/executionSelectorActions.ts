@@ -6,13 +6,14 @@ type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
 type CreateExecutionSelectorActionsParams = {
   filteredTests: any[]
-  filteredExecutionTestIds: string[]
-  selectedExecutionTestIds: string[]
+  selectedExecutionTests: any[]
   selectedExecutionDiscardedCount: number
   suiteBuildMissingCount: number
   suiteComponentMismatchCount: number
   executionModalTests: any[]
   setExecutionModalCaseIds: Dispatch<SetStateAction<string[] | null>>
+  setExecutionModalCandidateCaseIds?: Dispatch<SetStateAction<string[] | null>>
+  setSelectedExecutionTestIds?: Dispatch<SetStateAction<string[]>>
   setShowExecSelector: (show: boolean) => void
   setSelectedTest: Dispatch<SetStateAction<any>>
   setSelectedTestsForIa: Dispatch<SetStateAction<string[]>>
@@ -26,13 +27,14 @@ type CreateExecutionSelectorActionsParams = {
 
 export function createExecutionSelectorActions({
   filteredTests,
-  filteredExecutionTestIds,
-  selectedExecutionTestIds,
+  selectedExecutionTests,
   selectedExecutionDiscardedCount,
   suiteBuildMissingCount,
   suiteComponentMismatchCount,
   executionModalTests,
   setExecutionModalCaseIds,
+  setExecutionModalCandidateCaseIds,
+  setSelectedExecutionTestIds,
   setShowExecSelector,
   setSelectedTest,
   setSelectedTestsForIa,
@@ -44,7 +46,10 @@ export function createExecutionSelectorActions({
   t
 }: CreateExecutionSelectorActionsParams) {
   const openExecutionSelector = () => {
-    if (filteredTests.length === 0) {
+    // A suite/search filter only controls the visible slice. A batch may have
+    // selected cases from other suites, so only an empty global selection is
+    // a reason to stop here.
+    if (selectedExecutionTests.length === 0) {
       if (suiteBuildMissingCount > 0) {
         showFeedback(t('ejecutarPruebas.noExecutableCases'), t('ejecutarPruebas.missingBuildCases', { count: suiteBuildMissingCount }), 'warning')
       } else if (suiteComponentMismatchCount > 0) {
@@ -54,11 +59,16 @@ export function createExecutionSelectorActions({
       }
       return
     }
-    const selectedExecutableTestIds = selectedExecutionTestIds.filter(testId => filteredExecutionTestIds.includes(testId))
+    // The selection is global to the execution batch. The suite/search filter
+    // only controls what is visible and what "select all" affects; it must not
+    // silently discard selected cases from other suites when opening the
+    // execution modal.
+    const selectedExecutableTestIds = selectedExecutionTests.map(test => test.id)
     if (selectedExecutableTestIds.length === 0) {
       showFeedback(t('ejecutarPruebas.selectionRequired'), t('ejecutarPruebas.selectionRequiredMessage'), 'warning')
       return
     }
+    setExecutionModalCandidateCaseIds?.(selectedExecutableTestIds)
     setExecutionModalCaseIds(selectedExecutableTestIds)
     if (selectedExecutionDiscardedCount > 0) {
       showFeedback(t('ejecutarPruebas.selectionAdjusted'), t('ejecutarPruebas.selectionAdjustedMessage', { count: selectedExecutionDiscardedCount }), 'info')
@@ -69,12 +79,25 @@ export function createExecutionSelectorActions({
   const openSingleCaseExecutionSelector = (test: any) => {
     if (!test?.id) return
     setSelectedTest(test)
+    setExecutionModalCandidateCaseIds?.([test.id])
     setExecutionModalCaseIds([test.id])
     setShowExecSelector(true)
   }
 
+  const removeExecutionModalCase = (testId: string) => {
+    setExecutionModalCaseIds(prev => prev ? prev.filter(id => String(id) !== String(testId)) : prev)
+    setSelectedExecutionTestIds?.(prev => prev.filter(id => String(id) !== String(testId)))
+  }
+
+  const restoreExecutionModalCases = (testIds: string[]) => {
+    const normalizedIds = testIds.map(String)
+    setExecutionModalCaseIds(prev => Array.from(new Set([...(prev || []), ...normalizedIds])))
+    setSelectedExecutionTestIds?.(prev => Array.from(new Set([...prev, ...normalizedIds])))
+  }
+
   const closeExecutionSelector = () => {
     setExecutionModalCaseIds(null)
+    setExecutionModalCandidateCaseIds?.(null)
     setShowExecSelector(false)
   }
 
@@ -93,6 +116,8 @@ export function createExecutionSelectorActions({
   return {
     openExecutionSelector,
     openSingleCaseExecutionSelector,
+    removeExecutionModalCase,
+    restoreExecutionModalCases,
     closeExecutionSelector,
     openIaSchedulerFromExecutionSelector
   }

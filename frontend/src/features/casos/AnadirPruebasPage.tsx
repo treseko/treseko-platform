@@ -43,6 +43,8 @@ import { CaseMetadataCard } from './CaseMetadataCard'
 import { CaseStepsCard } from './CaseStepsCard'
 import { CaseAutomationCard } from './CaseAutomationCard'
 import { CaseIaDryRunCard } from './CaseIaDryRunCard'
+import { CaseConversationalCard } from './CaseConversationalCard'
+import { CaseApiCard } from './CaseApiCard'
 import { CaseManagementModals } from './CaseManagementModals'
 import { ScriptValidationModal } from './ScriptValidationModal'
 import type { ScriptValidationDetails } from './ScriptValidationModal'
@@ -102,6 +104,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     setNewTestStatus,
     newTestType,
     setNewTestType,
+    newTestFormat,
+    setNewTestFormat,
     newTestPre,
     setNewTestPre,
     newTestPost,
@@ -186,7 +190,9 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     const environmentProjectId = environment?.projectId || environment?.proyecto_id || environment?.project_id
     return !environmentProjectId || String(environmentProjectId) === String(currentProjectId)
   })
-  const fallbackDryRunEnvironment = projectEnvironments.find((environment: any) => String(environment?.name || environment?.nombre || '').toLowerCase() === 'qa') || projectEnvironments[0]
+  const fallbackDryRunEnvironment = projectEnvironments.find((environment: any) => String(environment?.name || environment?.nombre || '').toLowerCase() === 'qa')
+    || projectEnvironments.find((environment: any) => Boolean(environment?.chatbotConfig?.connection?.endpoint || environment?.configuracion_chatbot?.connection?.endpoint))
+    || projectEnvironments[0]
   const selectedDryRunEnvironment = projectEnvironments.find((environment: any) => String(environment?.id) === String(dryRunEnvironmentId)) || fallbackDryRunEnvironment
   const dryRunDatasets = selectedDryRunEnvironment?.datasets || []
   const fallbackDryRunDataset = dryRunDatasets.find((dataset: any) => dataset?.es_default || dataset?.isDefault) || dryRunDatasets[0]
@@ -465,9 +471,13 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
                 showFeedback={showFeedback}
               />
 
-              <CaseStepsCard context={editorContext} />
+              <CaseConversationalCard context={editorContext} />
+              <CaseApiCard context={{ ...editorContext, apiCaseId: editingAuthoringCase?.id }} />
+              {!['CONVERSACIONAL', 'API', 'PERFORMANCE'].includes(newTestFormat) && <CaseStepsCard context={editorContext} />}
 
-              <CaseAutomationCard context={editorContext} />              <CaseIaDryRunCard context={editorContext} />              <div className="text-end mb-5">
+              {!['CONVERSACIONAL', 'API', 'PERFORMANCE'].includes(newTestFormat) && <CaseAutomationCard context={editorContext} />}
+              {!['CONVERSACIONAL', 'API', 'PERFORMANCE'].includes(newTestFormat) && <CaseIaDryRunCard context={editorContext} />}
+              <div className="text-end mb-5">
                 <Button
                   variant={canSaveCurrentCase ? 'primary' : 'secondary'}
                   type="submit"

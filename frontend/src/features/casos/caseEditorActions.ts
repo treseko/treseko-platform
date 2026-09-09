@@ -2,32 +2,20 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { buildCaseEditorSnapshot } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
+import { normalizeCaseFormat, type CaseFormat } from './caseFormat'
 import { getSuiteParentMap } from '../../testRepositoryUtils'
 import { backendTestTypeToEditor, composeFrameworkLanguage, editorTestTypeToBackend, formatDatasetForInput, normalizeCaseTags, parseDatasetInput, splitFrameworkLanguage } from './caseUtils'
 import { createCaseStepEditorActions } from './caseStepEditorActions'
+import { defaultApiTestConfig } from './apiTestConfig'; import { migrateOpeningMessageToTurn } from './chatbotConfig'
 import type { I18nContextValue } from '../../i18n'
-
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
-
 type CreateCaseEditorActionsParams = {
   t: I18nContextValue['t']
-  newTestSteps: any[]
-  newTestTitle: string
-  newTestSuite: string
-  newTestSuiteSub: string
-  newTestComponent: string
-  newTestDescription: string
-  newTestPre: string
-  newTestPost: string
-  newTestData: string
-  newTestTags: string[]
-  newTestPriority: string
-  newTestCriticality: string
-  newTestStatus: string
-  newTestType: string
-  newTestScript: string
-  newTestFramework: string
-  newTestLanguage: string
+  newTestSteps: any[]; newTestTitle: string; newTestSuite: string; newTestSuiteSub: string; newTestComponent: string
+  newTestDescription: string; newTestPre: string; newTestPost: string; newTestData: string; newTestTags: string[]
+  newTestPriority: string; newTestCriticality: string; newTestStatus: string; newTestType: string; newTestFormat: string
+  newTestChatbotConfig: Record<string, any>; newTestApiConfig: Record<string, any>
+  newTestScript: string; newTestFramework: string; newTestLanguage: string
   pendingTraceabilityStoryIds: string[]
   caseEditorSaving: boolean
   editingCasoMasterId: string | null
@@ -57,6 +45,9 @@ type CreateCaseEditorActionsParams = {
   setNewTestCriticality: (value: string) => void
   setNewTestStatus: (value: string) => void
   setNewTestType: (value: string) => void
+  setNewTestFormat: (value: string) => void
+  setNewTestChatbotConfig: Dispatch<SetStateAction<Record<string, any>>>
+  setNewTestApiConfig: Dispatch<SetStateAction<Record<string, any>>>
   setNewTestComponent: (value: string) => void
   setNewTestScript: (value: string) => void
   setNewTestFramework: (value: string) => void
@@ -74,7 +65,6 @@ type CreateCaseEditorActionsParams = {
   setCasosList: Dispatch<SetStateAction<any[]>>
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
 }
-
 export function createCaseEditorActions({
   t,
   newTestSteps,
@@ -91,6 +81,9 @@ export function createCaseEditorActions({
   newTestCriticality,
   newTestStatus,
   newTestType,
+  newTestFormat,
+  newTestChatbotConfig,
+  newTestApiConfig,
   newTestScript,
   newTestFramework,
   newTestLanguage,
@@ -123,6 +116,9 @@ export function createCaseEditorActions({
   setNewTestCriticality,
   setNewTestStatus,
   setNewTestType,
+  setNewTestFormat,
+  setNewTestChatbotConfig,
+  setNewTestApiConfig,
   setNewTestComponent,
   setNewTestScript,
   setNewTestFramework,
@@ -141,13 +137,11 @@ export function createCaseEditorActions({
   showFeedback
 }: CreateCaseEditorActionsParams) {
   const stepActions = createCaseStepEditorActions(newTestSteps, setNewTestSteps)
-
-  const openCreateCaseInSuite = (suiteId: string) => {
+  const openCreateCaseInSuite = (suiteId: string, format: CaseFormat = 'CLASICA') => {
     const projectComponents = componentsList.filter(c => c.projectId === currentProjectId)
     const componentId = isValidUUID(currentCompId)
       ? currentCompId
       : (projectComponents[0]?.id || '')
-
     selectSuiteTarget(suiteId)
     setExpandedSuites(prev => ({ ...prev, [suiteId]: true }))
     setEditingCasoMasterId(null)
@@ -162,7 +156,10 @@ export function createCaseEditorActions({
     setNewTestPriority('MEDIA')
     setNewTestCriticality('MEDIA')
     setNewTestStatus('ACTIVO')
-    setNewTestType('AI Agent')
+    setNewTestType('Manual')
+    setNewTestFormat(normalizeCaseFormat(format))
+    setNewTestChatbotConfig({})
+    setNewTestApiConfig(defaultApiTestConfig())
     setNewTestSteps([])
     setNewTestComponent(componentId)
     setNewTestScript('')
@@ -180,16 +177,18 @@ export function createCaseEditorActions({
       priority: 'MEDIA',
       criticality: 'MEDIA',
       status: 'ACTIVO',
-      type: 'AI Agent',
+      type: 'Manual',
+      format: 'CLASICA',
       script: '',
       framework: composeFrameworkLanguage('playwright', 'javascript'),
-      steps: []
+      steps: [],
+      chatbotConfig: {},
+      apiConfig: defaultApiTestConfig()
     }))
     if (componentId) setCurrentCompId(componentId)
     setActiveTab('crear_pruebas')
     setProjectSyncMessage(t('casos.newCaseReady'))
   }
-
   const openEditCase = async (test: any) => {
     try {
       let fullCase: any = null
@@ -198,6 +197,15 @@ export function createCaseEditorActions({
         if (response.ok) fullCase = await response.json()
       }
       const source = fullCase || test
+      const sourceApiConfig = source.configuracion_api && typeof source.configuracion_api === 'object'
+        ? source.configuracion_api
+        : {}
+      const listedApiConfig = test.configuracion_api || test.apiConfig
+      const apiConfig = Object.keys(sourceApiConfig).length > 0
+        ? sourceApiConfig
+        : (listedApiConfig && typeof listedApiConfig === 'object' && Object.keys(listedApiConfig).length > 0
+          ? listedApiConfig
+          : defaultApiTestConfig())
       const suiteId = source.suite_id || test.suiteId
       if (suiteId) {
         selectSuiteTarget(suiteId)
@@ -233,6 +241,10 @@ export function createCaseEditorActions({
         ? backendTestTypeToEditor(source.tipo_prueba)
         : backendTestTypeToEditor(test.type || 'Manual')
       setNewTestType(editorType)
+      setNewTestFormat(source.formato_prueba || test.format || 'CLASICA')
+      const chatbotConfig = migrateOpeningMessageToTurn(source.configuracion_chatbot || test.configuracion_chatbot || {})
+      setNewTestChatbotConfig(chatbotConfig)
+      setNewTestApiConfig(apiConfig)
       setNewTestScript(source.script_automatizado || test.script || '')
       const frameworkLanguage = splitFrameworkLanguage(source.framework || test.framework || 'playwright')
       setNewTestFramework(frameworkLanguage.framework)
@@ -280,18 +292,24 @@ export function createCaseEditorActions({
         criticality: source.criticidad || test.criticality || 'MEDIA',
         status: source.estado_caso || test.caseStatus || 'ACTIVO',
         type: editorType,
+        format: source.formato_prueba || test.format || 'CLASICA',
         script: source.script_automatizado || test.script || '',
         framework: composeFrameworkLanguage(frameworkLanguage.framework, frameworkLanguage.language),
-        steps: editorSteps
+        steps: editorSteps,
+        chatbotConfig,
+        apiConfig
       }))
-      setSelectedTest(test)
+      setSelectedTest({
+        ...test, ...source,
+        title: source.titulo || test.title, format: source.formato_prueba || test.format, type: editorType,
+        configuracion_chatbot: chatbotConfig, configuracion_api: apiConfig,
+      })
       setActiveTab('crear_pruebas')
       setProjectSyncMessage(t('casos.editingCaseReady', { code: test.code || test.id }))
     } catch (error: any) {
       setProjectSyncMessage(`${t('casos.loadCaseForEditError')}: ${error.message}`)
     }
   }
-
   const linkSavedStepAttachments = async (savedCase: any) => {
     if (!savedCase?.id) return
     const response = await fetchWithAuth(`${API_BASE}/casos/${savedCase.id}`)
@@ -318,11 +336,9 @@ export function createCaseEditorActions({
       }
     }
   }
-
   const handleSaveTest = async (e: FormEvent) => {
     e.preventDefault()
     if (!newTestTitle || caseEditorSaving) return
-
     const resetTestForm = () => {
       setNewTestTitle('')
       setNewTestDescription('')
@@ -333,6 +349,9 @@ export function createCaseEditorActions({
       setNewTestPriority('MEDIA')
       setNewTestCriticality('MEDIA')
       setNewTestStatus('ACTIVO')
+      setNewTestFormat('CLASICA')
+      setNewTestChatbotConfig({})
+      setNewTestApiConfig(defaultApiTestConfig())
       setNewTestSteps([])
       setCaseEditorOpen(false)
       setEditingCasoMasterId(null)
@@ -350,14 +369,16 @@ export function createCaseEditorActions({
         criticality: 'MEDIA',
         status: 'ACTIVO',
         type: newTestType,
+        format: newTestFormat,
         script: newTestScript,
         framework: composeFrameworkLanguage(newTestFramework, newTestLanguage),
-        steps: []
+        steps: [],
+        chatbotConfig: {},
+        apiConfig: defaultApiTestConfig()
       }))
       setAddTestSuccess(true)
       setTimeout(() => setAddTestSuccess(false), 3000)
     }
-
     if (projectsSource === 'backend' && isValidUUID(currentProjectId)) {
       const selectedSuiteTarget = newTestSuiteSub || newTestSuite
       const targetSuiteId = isValidUUID(selectedSuiteTarget) ? selectedSuiteTarget : null
@@ -393,10 +414,13 @@ export function createCaseEditorActions({
           prioridad: newTestPriority,
           criticidad: newTestCriticality,
           tipo_prueba: editorTestTypeToBackend(newTestType),
+          formato_prueba: newTestFormat || 'CLASICA',
           estado_caso: newTestStatus,
           suite_id: targetSuiteId,
           componente_id: targetComponentId,
           dataset: parseDatasetInput(newTestData),
+          configuracion_chatbot: newTestFormat === 'CONVERSACIONAL' ? newTestChatbotConfig : {},
+          configuracion_api: newTestFormat === 'API' ? newTestApiConfig : {},
           etiquetas: normalizeCaseTags(newTestTags),
           script_automatizado: newTestType === 'Automatizada' ? newTestScript : null,
           framework: newTestType === 'Automatizada' ? composeFrameworkLanguage(newTestFramework, newTestLanguage) : null,
@@ -448,7 +472,6 @@ export function createCaseEditorActions({
         setCaseEditorSaving(false)
       }
     }
-
     const componentName = componentsList.find(c => c.id === newTestComponent)?.name || newTestComponent
     const newId = `t${casosList.length + 1}`
     const newCase = {
@@ -470,13 +493,13 @@ export function createCaseEditorActions({
       priority: newTestPriority,
       criticality: newTestCriticality,
       caseStatus: newTestStatus,
-      history: []
+      history: [],
+      format: newTestFormat,
+      configuracion_chatbot: newTestFormat === 'CONVERSACIONAL' ? newTestChatbotConfig : {},
     }
-
     setCasosList([...casosList, newCase])
     resetTestForm()
   }
-
   return {
     ...stepActions,
     openCreateCaseInSuite,

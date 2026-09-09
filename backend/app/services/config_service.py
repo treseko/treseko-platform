@@ -17,7 +17,7 @@ DEFAULT_SYSTEM_TIMEZONE = "America/Argentina/Buenos_Aires"
 
 DEFAULT_BRANDING = {
     "brand_name": "Treseko",
-    "logo_url": "/gecko-community-icon.png?v=3",
+    "logo_url": "/gecko-community-icon.svg?v=4",
     "enabled": False,
     "primary_color": "#172033",
     "accent_color": "#1677ff",

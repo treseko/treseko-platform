@@ -4,6 +4,10 @@ El Motor IA ayuda a generar historias y casos, y a ejecutar pruebas asistidas.
 Esta guía explica qué configura un administrador desde Treseko y qué revisar
 antes de usarlo.
 
+La generación de casos, la ejecución asistida clásica y la evaluación
+conversacional son workflows distintos. Elegí el workflow según el formato del
+caso; un workflow de generación no es un executor.
+
 ## Antes de configurar
 
 Necesitás permisos de edición en **Configuración → Pruebas con IA** y un
@@ -39,6 +43,15 @@ uso: generación de historias, generación de casos o ejecución asistida.
 Un workflow marcado como **Experimental** puede depender de capacidades que no
 están presentes en todos los proveedores. Probalo primero con datos no críticos
 y revisá el resultado antes de usarlo en un flujo operativo.
+
+El workflow `chatbot-evaluation` se aplica a casos `CONVERSACIONAL`: conserva
+la configuración congelada, los turnos, la evaluación, las trazas y las
+métricas disponibles. Su ejecución depende del catálogo, el proveedor y los
+permisos de la instancia.
+
+Los casos `API` pueden ejecutarse manualmente con el runner declarativo o de
+forma automatizada mediante el worker unificado. La modalidad IA queda sujeta
+a la ruta y evidencia certificadas por la instancia.
 
 ## Si el Motor IA no funciona
 

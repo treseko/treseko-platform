@@ -109,7 +109,7 @@ async def get_system_monitor_summary(db: AsyncSession):
     components = [backend, *(await asyncio.gather(frontend_task, database_task, redis_task))]
     for component in components:
         if component["id"] == "frontend":
-            component["version"] = PRODUCT_VERSION
+            component["version"] = await _read_frontend_runtime_version()
 
     engine_started = asyncio.get_running_loop().time()
     engine_health = await check_ai_engine_health(db)
@@ -188,6 +188,21 @@ async def get_system_monitor_summary(db: AsyncSession):
         "restart_hints": SYSTEM_RESTART_HINTS,
         "checked_at": utc_now(),
     }
+
+
+async def _read_frontend_runtime_version() -> Optional[str]:
+    """Read the version served by the frontend runtime, not the backend build."""
+    version_url = f"{SYSTEM_MONITOR_FRONTEND_URL.rstrip('/')}/version.json"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(version_url)
+        if response.status_code >= 400:
+            return None
+        payload = response.json()
+        version = payload.get("version") if isinstance(payload, dict) else None
+        return str(version).strip() if version else None
+    except Exception:
+        return None
 
 
 async def create_attachment(

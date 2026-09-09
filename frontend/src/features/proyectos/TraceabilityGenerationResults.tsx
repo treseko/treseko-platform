@@ -3,16 +3,16 @@ import { Badge, Button, Col, Form, Row, Table } from 'react-bootstrap'
 import { Eye } from 'lucide-react'
 
 export function TraceabilityGenerationResults({ options }: { options: any }) {
-  const { generationRun, generationStep, locale, tx, generationBusy, generationCompletedCount, generationRequestedCount, generationCandidates, preflightExcludedStories, selectedCandidateCount, generationRequirement, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor } = options
+  const { generationRun, generationStep, locale, tx, t, generationBusy, generationCompletedCount, generationRequestedCount, generationCandidates, preflightExcludedStories, selectedCandidateCount, generationRequirement, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor } = options
   return (
     <>
               {generationRun && generationStep === "configuration" && (
                 <div className="border-start border-primary border-3 bg-light px-3 py-3">
                   <div className="small text-uppercase text-muted fw-semibold">
-                    Propuesta de alcance
+                    {t('proyectos.scopeProposal')}
                   </div>
                   <div className="fw-semibold">
-                    {locale === "en" ? "AI proposes" : "La IA propone"} {generationRun.estimacion?.cantidad_recomendada || 1} {generationRun.estimacion?.cantidad_recomendada === 1 ? tx("story") : tx("stories")}
+                    {t('proyectos.aiProposes')} {generationRun.estimacion?.cantidad_recomendada || 1} {generationRun.estimacion?.cantidad_recomendada === 1 ? tx("story") : tx("stories")}
                   </div>
                   <div className="small text-muted mb-3">
                     {tx("scopeHint")}
@@ -22,7 +22,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                       <div className="px-3 py-2 border-bottom fw-semibold">{tx("suggestedStories")}</div>
                       {generationRun.analysis.story_outline.map((item: any, index: number) => (
                         <div key={`${item.title}-${index}`} className="px-3 py-2 border-bottom small">
-                          <div className="fw-semibold">Propuesta {index + 1}: {item.title}</div>
+                          <div className="fw-semibold">{t('proyectos.proposalNumber', { number: index + 1 })}: {item.title}</div>
                           {item.reason && <div className="text-muted">{item.reason}</div>}
                         </div>
                       ))}
@@ -32,12 +32,12 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                     <div className="border rounded bg-white mt-3 overflow-hidden" aria-live="polite">
                       <div className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
                         <span className="fw-semibold">{tx("generatedDrafts")}</span>
-                        <span className="small text-muted">{generationCompletedCount} de {generationRequestedCount} completados</span>
+                        <span className="small text-muted">{t('proyectos.draftsCompleted', { completed: generationCompletedCount, requested: generationRequestedCount })}</span>
                       </div>
                       {generationCandidates.length ? (
                         generationCandidates.map((item, index) => (
                           <div key={item.local_id || index} className="px-3 py-2 border-bottom small">
-                            <span className="fw-semibold">Borrador {index + 1}:</span> {item.title || item.titulo}
+                            <span className="fw-semibold">{t('proyectos.draftNumber', { number: index + 1 })}:</span> {item.title || item.titulo}
                           </div>
                         ))
                       ) : (
@@ -54,7 +54,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                         <div key={`${item.title}-${index}`} className="px-3 py-2 border-top small">
                           <span className="fw-semibold">{item.title}</span>
                           {item.similar_stories?.length > 0 && (
-                            <span className="text-muted"> · existente: {item.similar_stories.map((story: any) => `${story.codigo} ${story.titulo}`).join(", ")}</span>
+                            <span className="text-muted"> · {t('proyectos.existing')}: {item.similar_stories.map((story: any) => `${story.codigo} ${story.titulo}`).join(", ")}</span>
                           )}
                         </div>
                       ))}
@@ -80,7 +80,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                       </Badge>
                     </div>
                     <span className="small text-muted">
-                      {selectedCandidateCount} seleccionadas
+                      {t('proyectos.selectedCount', { count: selectedCandidateCount })}
                     </span>
                   </div>
                   <Table responsive size="sm" className="align-middle mb-0">
@@ -121,7 +121,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                               {generationRequirement.codigo}
                             </td>
                             <td>
-                              <Badge bg="secondary">{locale === "en" ? "DRAFT" : "BORRADOR"}</Badge>
+                              <Badge bg="secondary">{t('proyectos.draftState')}</Badge>
                             </td>
                             <td>0</td>
                             <td className="text-end">
@@ -170,7 +170,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                       ? tx("excludeCreation")
                                       : tx("includeCritical")
                                     : candidate.selected
-                                    ? "Incluir al crear"
+                                    ? t('proyectos.includeOnCreate')
                                     : tx("excludeCreation")
                                 }
                                 aria-label={
@@ -179,7 +179,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                       ? tx("excludeCriticalAria")
                                       : tx("includeCriticalAria")
                                     : candidate.selected
-                                    ? "Incluir al crear"
+                                    ? t('proyectos.includeOnCreate')
                                     : tx("excludeCreation")
                                 }
                                 checked={Boolean(candidate.selected)}
@@ -213,7 +213,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                             >
                               <td colSpan={5} className="p-3">
                                 <div className={`border rounded p-2 mb-3 small ${proposalQuality(candidate) === "FAIL" ? "border-danger bg-danger-subtle" : proposalQuality(candidate) === "WARN" ? "border-warning bg-warning-subtle" : "border-success bg-success-subtle"}`}>
-                                  <span className="fw-semibold">Calidad: {proposalQualityMeta(candidate).label}.</span>
+                                  <span className="fw-semibold">{t('proyectos.qualityLabel', { label: t(`proyectos.${proposalQualityMeta(candidate).label}`) })}</span>
                                   {candidate.rule_findings?.length ? (
                                     <ul className="mb-0 mt-1 ps-3">
                                       {candidate.rule_findings.map((finding: any) => <li key={`${finding.code}-${finding.message}`}>{finding.message}</li>)}
@@ -237,7 +237,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <ul className="mb-0 mt-1 ps-3">
                                       {candidate.similar_stories.map((story: any) => (
                                         <li key={`${story.id}-${story.codigo}-${story.titulo}`}>
-                                          <span className="fw-semibold">{story.codigo || "Historia"}</span>{" "}
+                                          <span className="fw-semibold">{story.codigo || t('proyectos.story')}</span>{" "}
                                           {story.titulo}{" "}
                                           <span className="text-muted">
                                             ({story.kind === "AI_INTENT"
@@ -251,7 +251,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                 )}
                                 {proposalQuality(candidate) === "FAIL" && candidate.selected && (
                                   <div className="border border-danger rounded p-2 mb-3 small">
-                                    <Form.Check name="a11y-traceabilitygenerationresultstsx-254" aria-label="Campo de formulario"
+                                    <Form.Check name="a11y-traceabilitygenerationresultstsx-254" aria-label={t('proyectos.includeOnCreate')}
                                       id={`quality-override-${index}`}
                                       label={tx("criticalOverrideLabel")}
                                       checked={Boolean(candidate.quality_override_accepted)}
@@ -262,7 +262,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold mt-2 mb-1" htmlFor={`quality-override-reason-${index}`}>
                                       {tx("decisionJustification")}
                                     </Form.Label>
-                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-265" aria-label="Campo de formulario"
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-265" aria-label={t('proyectos.decisionJustification')}
                                       id={`quality-override-reason-${index}`}
                                       size="sm"
                                       as="textarea"
@@ -280,7 +280,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold">
                                       {tx("title")}
                                     </Form.Label>
-                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-283" aria-label="Campo de formulario"
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-283" aria-label={t('proyectos.title')}
                                       size="sm"
                                       value={candidate.title}
                                       onChange={(event) =>
@@ -294,9 +294,9 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                   </Col>
                                   <Col md={4}>
                                     <Form.Label className="small fw-semibold">
-                                      Prioridad
+                                      {t('proyectos.priority')}
                                     </Form.Label>
-                                    <Form.Select name="a11y-traceabilitygenerationresultstsx-299" aria-label="Campo de formulario"
+                                    <Form.Select name="a11y-traceabilitygenerationresultstsx-299" aria-label={t('proyectos.priority')}
                                       size="sm"
                                       value={candidate.prioridad}
                                       onChange={(event) =>
@@ -309,7 +309,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     >
                                       {["ALTA", "MEDIA", "BAJA"].map(
                                         (priority) => (
-                                          <option key={priority}>
+                                          <option key={priority} value={priority}>
                                             {priority}
                                           </option>
                                         ),
@@ -320,7 +320,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     <Form.Label className="small fw-semibold">
                                       {tx("description")}
                                     </Form.Label>
-                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-323" aria-label="Campo de formulario"
+                                    <Form.Control name="a11y-traceabilitygenerationresultstsx-323" aria-label={t('proyectos.descriptionMarkdown')}
                                       as="textarea"
                                       rows={4}
                                       value={candidate.description}

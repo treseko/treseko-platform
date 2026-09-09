@@ -277,7 +277,7 @@ async def _load_enriched_snapshots_by_execution(
             "numero_paso": snapshot.numero_paso,
             "accion_congelada": snapshot.accion_congelada,
             "datos_congelados": snapshot.datos_congelados,
-            "datos_resueltos": _resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None,
+            "datos_resueltos": snapshot.datos_resueltos if snapshot.datos_resueltos is not None else (_resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None),
             "resultado_esperado_congelado": snapshot.resultado_esperado_congelado,
             "estado_paso": snapshot.estado_paso,
             "comentarios": snapshot.comentarios,

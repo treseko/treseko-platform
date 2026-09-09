@@ -1,11 +1,23 @@
 param(
   [int]$HttpPort = 9095,
   [switch]$WithDemo,
+  [switch]$Update,
+  [switch]$Uninstall,
+  [switch]$PurgeData,
+  [switch]$ConfirmPurge,
   [switch]$Reset,
-  [switch]$Force
+  [switch]$ConfirmReset
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Update -and $Uninstall) { throw "-Update y -Uninstall son incompatibles." }
+if ($PurgeData -and -not $Uninstall) { throw "-PurgeData solo se puede usar junto con -Uninstall." }
+if ($ConfirmPurge -and -not $PurgeData) { throw "-ConfirmPurge solo se puede usar junto con -PurgeData." }
+if ($PurgeData -and -not $ConfirmPurge) { throw "La purga requiere -ConfirmPurge explicito." }
+if ($Update -and $WithDemo) { throw "-WithDemo no se puede combinar con -Update." }
+if ($Reset -and -not $ConfirmReset) { throw "La recreacion destructiva requiere -ConfirmReset explicito." }
+if ($ConfirmReset -and -not $Reset) { throw "-ConfirmReset solo se puede usar junto con -Reset." }
 
 function New-TresekoSecret {
   param([int]$Length)
@@ -57,8 +69,78 @@ $SecretsDir = Join-Path $LocalDir "secrets"
 $EnvFile = Join-Path $RepoRoot "compose.production.env"
 $AdminEmail = "admin@qa.local"
 
-if ((Test-Path $EnvFile) -and -not ($Force -or $Reset)) {
-  throw "Ya existe $EnvFile. Usa -Force para regenerar o -Reset para recrear todo el entorno local."
+function Invoke-Compose {
+  param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+  & docker compose -f docker-compose.prod.yml --env-file compose.production.env @Arguments
+  Assert-LastExitCode "Docker Compose"
+}
+
+function Test-RecognizedInstallation {
+  if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) { return $false }
+  if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot "docker-compose.prod.yml") -PathType Leaf)) { return $false }
+  if (-not (Test-Path -LiteralPath $SecretsDir -PathType Container)) { return $false }
+  foreach ($name in @("db-password", "database-url", "secret-key", "ai-credentials-master-key", "ai-engine-internal-token", "admin-password")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $SecretsDir $name) -PathType Leaf)) { return $false }
+  }
+  return $true
+}
+
+function Assert-PurgePaths {
+  $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('\', '/')
+  $local = [System.IO.Path]::GetFullPath($LocalDir).TrimEnd('\', '/')
+  $env = [System.IO.Path]::GetFullPath($EnvFile)
+  if ($local -ne "$root$([System.IO.Path]::DirectorySeparatorChar).treseko-local") { throw "Ruta de purga insegura: $LocalDir" }
+  if ($env -ne "$root$([System.IO.Path]::DirectorySeparatorChar)compose.production.env") { throw "Ruta de purga insegura: $EnvFile" }
+}
+
+if (($Update -or $Uninstall) -and -not (Test-RecognizedInstallation)) {
+  throw "No existe $EnvFile; no se puede actualizar o desinstalar sin la configuracion existente."
+}
+
+Push-Location $RepoRoot
+try {
+  if ($Uninstall) {
+    if ($PurgeData) {
+      Assert-PurgePaths
+      Write-Host "PURGA: deteniendo contenedores y eliminando volumenes y configuracion local de $RepoRoot."
+      Invoke-Compose down -v --remove-orphans
+    } else {
+      Write-Host "Desinstalacion conservadora: se conservan volumenes y configuracion."
+      Invoke-Compose down --remove-orphans
+    }
+    if ($PurgeData) {
+      Remove-Item -LiteralPath $LocalDir -Recurse -Force -ErrorAction SilentlyContinue
+      Remove-Item -LiteralPath $EnvFile -Force -ErrorAction SilentlyContinue
+    }
+    exit 0
+  }
+  if ($Update) {
+    Write-Host "Actualizando con compose.production.env y secretos existentes..."
+    Invoke-Compose build
+    Invoke-Compose up -d db redis
+    Invoke-Compose run --rm migrator
+    Invoke-Compose up -d backend engine frontend
+    exit 0
+  }
+} finally {
+  Pop-Location
+}
+
+if ($Reset -and (Test-RecognizedInstallation)) {
+  Assert-PurgePaths
+  Push-Location $RepoRoot
+  try {
+    Write-Host "Reiniciando entorno local y volumenes..."
+    Invoke-Compose down -v --remove-orphans
+  } finally {
+    Pop-Location
+  }
+  Remove-Item -LiteralPath $LocalDir -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $EnvFile -Force -ErrorAction SilentlyContinue
+}
+
+if (Test-Path -LiteralPath $EnvFile -PathType Leaf) {
+  throw "Ya existe $EnvFile. Usa -Update para actualizar o -Uninstall para retirarlo de forma conservadora."
 }
 
 New-Item -ItemType Directory -Force -Path $SecretsDir | Out-Null
@@ -107,22 +189,18 @@ Push-Location $RepoRoot
 try {
   if ($Reset) {
     Write-Host "Reiniciando entorno local y volumenes..."
-    docker compose -f docker-compose.prod.yml --env-file compose.production.env down -v --remove-orphans
-    Assert-LastExitCode "La limpieza del entorno Docker"
+    Invoke-Compose down -v --remove-orphans
   }
 
   Write-Host "Construyendo y levantando Treseko local..."
-  docker compose -f docker-compose.prod.yml --env-file compose.production.env build
-  Assert-LastExitCode "La construccion de las imagenes Docker"
-  docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d db redis
-  Assert-LastExitCode "El arranque de PostgreSQL y Redis"
-  docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm migrator
-  Assert-LastExitCode "Las migraciones de la base de datos"
+  Invoke-Compose build
+  Invoke-Compose up -d db redis
+  Invoke-Compose run --rm migrator
   Get-Content -Raw -Path $AdminPasswordFile |
     docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm -T `
       --entrypoint python backend /app/seed_admin.py --password-stdin
   Assert-LastExitCode "La creacion del administrador inicial"
-  docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
+  Invoke-Compose up -d backend engine frontend
   Assert-LastExitCode "El arranque de backend, Engine y frontend"
 
   if ($WithDemo) {

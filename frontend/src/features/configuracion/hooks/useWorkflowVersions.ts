@@ -21,6 +21,7 @@ type UseWorkflowVersionsParams = {
   syncFlowFromWorkflow: (workflow: AiWorkflow | null) => void
   loadAiWorkflows: () => Promise<void>
   showFeedback: (title: string, message: string, variant?: string) => void
+  confirmAction: (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 
@@ -34,6 +35,7 @@ export function useWorkflowVersions({
   syncFlowFromWorkflow,
   loadAiWorkflows,
   showFeedback,
+  confirmAction,
   t,
 }: UseWorkflowVersionsParams) {
   const [workflowChangelog, setWorkflowChangelog] = useState('')
@@ -92,9 +94,16 @@ export function useWorkflowVersions({
 
   const activateWorkflowVersion = async (version: AiWorkflowVersion) => {
     if (!workflowDraft) return
+    const confirmRunning = await confirmAction({
+      title: t('configuracion.workflowTitle'),
+      message: t('configuracion.workflowActivateConfirm', { version: version.version }),
+      variant: 'warning',
+      confirmLabel: t('common.confirm'),
+      cancelLabel: t('common.cancel'),
+    })
+    if (!confirmRunning) return
+    setWorkflowLoading(true)
     try {
-      const confirmRunning = window.confirm(t('configuracion.workflowActivateConfirm', { version: version.version }))
-      if (!confirmRunning) return
       const saved = await activateAiWorkflowVersion(fetchWithAuth, workflowDraft.id, version.version, true)
       setWorkflowDraft(saved)
       syncFlowFromWorkflow(saved)
@@ -102,6 +111,8 @@ export function useWorkflowVersions({
       showFeedback(t('configuracion.workflowTitle'), t('configuracion.workflowVersionActivated', { version: version.version }), 'success')
     } catch (error: any) {
       showFeedback(t('configuracion.workflowTitle'), error?.message || t('configuracion.workflowActivateError'), 'danger')
+    } finally {
+      setWorkflowLoading(false)
     }
   }
 

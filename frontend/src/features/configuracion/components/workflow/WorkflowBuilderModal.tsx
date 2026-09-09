@@ -1,6 +1,8 @@
 import { Modal } from 'react-bootstrap'
 import { useEffect, useState, type PointerEvent } from 'react'
-import type { AiAgentPreset, AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../../types/configuracion'
+import type { AiAgentPreset, AiWorkflow, AiWorkflowEdge, AiWorkflowNode, AiWorkflowVersion } from '../../types/configuracion'
+import type { FetchWithAuth } from '../../api/configuracionApi'
+import type { WorkflowActionPermissions } from '../../workflowPermissions'
 import { WorkflowBuilderToolbar } from './WorkflowBuilderToolbar'
 import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowPropertiesPanel } from './WorkflowPropertiesPanel'
@@ -17,12 +19,16 @@ type Props = {
   workflowUndoAction: { operationId: string; label: string } | null
   undoLastGraphOperation: () => void
   canEditAi: boolean
+  workflowPermissions: WorkflowActionPermissions
+  fetchWithAuth: FetchWithAuth
   onOpenIaScheduler?: () => void
   autoLayoutEnabled: boolean
   workflowStatusColor: (status?: string) => string
   saveWorkflowDraft: () => void
   validateWorkflow: () => void
   publishWorkflowVersion: () => void
+  workflowVersions: AiWorkflowVersion[]
+  activateWorkflowVersion: (version: AiWorkflowVersion) => void
   executeCurrentWorkflow: () => void
   switchToAutoLayoutMode: () => void
   switchToManualMode: () => void
@@ -31,6 +37,7 @@ type Props = {
   postWorkflowAction: (action: 'duplicate' | 'archive' | 'restore-default') => void
   copyWorkflowAsBlocks: () => void
   copyWorkflowAsUniversal: () => void
+  copyWorkflowAsUniversalV3: () => void
   exportUniversalWorkflow: () => void
   importUniversalWorkflow: (file?: File) => void
   createUniversalAgent: (payload: Record<string, any>) => Promise<any>
@@ -38,7 +45,7 @@ type Props = {
   refitWorkflow: (reason: string) => void
   workflowLoadError: string
   agentPresetsError: string
-  activeWorkflows: AiWorkflow[]
+  workflows: AiWorkflow[]
   agentPresets: AiAgentPreset[]
   selectWorkflow: (workflow: AiWorkflow) => void
   createWorkflow: () => void
@@ -85,12 +92,16 @@ export function WorkflowBuilderModal({
   workflowUndoAction,
   undoLastGraphOperation,
   canEditAi,
+  workflowPermissions,
+  fetchWithAuth,
   onOpenIaScheduler,
   autoLayoutEnabled,
   workflowStatusColor,
   saveWorkflowDraft,
   validateWorkflow,
   publishWorkflowVersion,
+  workflowVersions,
+  activateWorkflowVersion,
   executeCurrentWorkflow,
   switchToAutoLayoutMode,
   switchToManualMode,
@@ -99,6 +110,7 @@ export function WorkflowBuilderModal({
   postWorkflowAction,
   copyWorkflowAsBlocks,
   copyWorkflowAsUniversal,
+  copyWorkflowAsUniversalV3,
   exportUniversalWorkflow,
   importUniversalWorkflow,
   createUniversalAgent,
@@ -106,7 +118,7 @@ export function WorkflowBuilderModal({
   refitWorkflow,
   workflowLoadError,
   agentPresetsError,
-  activeWorkflows,
+  workflows,
   agentPresets,
   selectWorkflow,
   createWorkflow,
@@ -150,7 +162,7 @@ export function WorkflowBuilderModal({
   const [validationSummaryDismissed, setValidationSummaryDismissed] = useState(false)
   const validationSummary = Object.values(workflowValidationIssues.reduce<Record<string, { severity?: string; message: string; count: number }>>((summary, issue) => {
     const severity = issue?.severity === 'error' ? 'error' : 'warning'
-    const message = String(issue?.message || 'Diagnostico de validacion sin detalle.')
+    const message = String(issue?.message || t('configuracion.workflowValidationError'))
     const key = `${severity}:${message}`
     summary[key] = summary[key]
       ? { ...summary[key], count: summary[key].count + 1 }
@@ -187,12 +199,15 @@ export function WorkflowBuilderModal({
             workflowDraft={workflowDraft}
             workflowLoading={workflowLoading}
             canEditAi={canEditAi}
+            workflowPermissions={workflowPermissions}
             onOpenIaScheduler={onOpenIaScheduler}
             autoLayoutEnabled={autoLayoutEnabled}
             workflowStatusColor={workflowStatusColor}
             saveWorkflowDraft={saveWorkflowDraft}
             validateWorkflow={validateWorkflow}
             publishWorkflowVersion={publishWorkflowVersion}
+            workflowVersions={workflowVersions}
+            activateWorkflowVersion={activateWorkflowVersion}
             executeCurrentWorkflow={executeCurrentWorkflow}
             switchToAutoLayoutMode={switchToAutoLayoutMode}
             switchToManualMode={switchToManualMode}
@@ -200,6 +215,7 @@ export function WorkflowBuilderModal({
             postWorkflowAction={postWorkflowAction}
             copyWorkflowAsBlocks={copyWorkflowAsBlocks}
             copyWorkflowAsUniversal={copyWorkflowAsUniversal}
+            copyWorkflowAsUniversalV3={copyWorkflowAsUniversalV3}
             exportUniversalWorkflow={exportUniversalWorkflow}
             importUniversalWorkflow={importUniversalWorkflow}
             closeWorkflowBuilder={closeWorkflowBuilder}
@@ -244,7 +260,7 @@ export function WorkflowBuilderModal({
 
           <div className="workflow-engine-grid">
             <WorkflowSidebar
-              activeWorkflows={activeWorkflows}
+              workflows={workflows}
               workflowDraft={workflowDraft}
               agentPresets={agentPresets}
               canEditAi={canEditAi}
@@ -296,6 +312,9 @@ export function WorkflowBuilderModal({
               updateWorkflowNode={updateWorkflowNode}
               updateWorkflowNodeConfig={updateWorkflowNodeConfig}
               agentDefinitions={agentPresets.filter(item => Boolean(item.agent_definition_id))}
+              workflowNodes={workflowDraft?.nodes || []}
+              workflowFormat={workflowDraft?.workflow_format}
+              fetchWithAuth={fetchWithAuth}
               updateWorkflowEdge={updateWorkflowEdge}
               workflowJsonError={workflowJsonError}
               setWorkflowJsonError={setWorkflowJsonError}

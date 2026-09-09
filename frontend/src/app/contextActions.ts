@@ -3,12 +3,14 @@ import type { Dispatch, SetStateAction } from 'react'
 type CreateContextActionsParams = {
   activeTab: string
   projectsSource: 'local' | 'backend'
+  managingProjectId: string | null
+  contextHydrationVersionRef: { current: number }
   currentProjectId: string
   currentCompId: string
   currentBuildId: string
   projectsList: any[]
   componentsList: any[]
-  loadComponentsForProject: (projectId: string) => Promise<any[] | undefined>
+  loadComponentsForProject: (projectId: string, preferredComponentId?: string) => Promise<any[] | undefined>
   loadBuildsForProject: (projectId: string, componentsSnapshot?: any[], preferredComponentId?: string, preferredBuildId?: string) => Promise<any>
   loadSuitesFromBackend: (projectId: string, componentId?: string, options?: { silent?: boolean }) => Promise<any>
   loadCasosFromBackend: (projectId?: string, componentsSnapshot?: any[], options?: any) => Promise<any>
@@ -23,13 +25,15 @@ type CreateContextActionsParams = {
   setCurrentProjectId: (id: string) => void
   setCurrentCompId: (id: string) => void
   setCurrentBuildId: (id: string) => void
-  setViewMode: (mode: 'list' | 'manual_exec') => void
+  setViewMode: (mode: 'list' | 'manual_exec' | 'chatbot_manual') => void
   setNewTestComponent: (componentId: string) => void
 }
 
 export function createContextActions({
   activeTab,
   projectsSource,
+  managingProjectId,
+  contextHydrationVersionRef,
   currentProjectId,
   currentCompId,
   currentBuildId,
@@ -53,6 +57,8 @@ export function createContextActions({
   setViewMode,
   setNewTestComponent
 }: CreateContextActionsParams) {
+  const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
+
   const resetExecutionSelection = () => {
     setSelectedTest(null)
     setSelectedExecutionTestIds([])
@@ -62,10 +68,12 @@ export function createContextActions({
 
   const hydrateProjectContext = async (projectId = currentProjectId, preferredComponentId = currentCompId, options?: { silent?: boolean }) => {
     if (!projectId) return null
+    const hydrationVersion = ++contextHydrationVersionRef.current
+    const isCurrentHydration = () => contextHydrationVersionRef.current === hydrationVersion
 
     if (projectsSource !== 'backend') {
-      const projectComponents = componentsList.filter(component => component.projectId === projectId)
-      const componentId = projectComponents.some(component => component.id === preferredComponentId)
+      const projectComponents = componentsList.filter(component => sameId(component.projectId, projectId))
+      const componentId = projectComponents.some(component => sameId(component.id, preferredComponentId))
         ? preferredComponentId
         : projectComponents[0]?.id || ''
       if (componentId) {
@@ -79,11 +87,12 @@ export function createContextActions({
       return { componentId, activeBuildId: '' }
     }
 
-    const loadedComponents = await loadComponentsForProject(projectId)
+    const loadedComponents = await loadComponentsForProject(projectId, preferredComponentId)
+    if (!isCurrentHydration()) return null
     const projectComponents = loadedComponents?.length
       ? loadedComponents
-      : componentsList.filter(component => component.projectId === projectId)
-    const componentId = projectComponents.some(component => component.id === preferredComponentId)
+      : componentsList.filter(component => sameId(component.projectId, projectId))
+    const componentId = projectComponents.some(component => sameId(component.id, preferredComponentId))
       ? preferredComponentId
       : projectComponents[0]?.id || ''
 
@@ -99,12 +108,16 @@ export function createContextActions({
     setCurrentCompId(componentId)
     setNewTestComponent(componentId)
     const buildContext = await loadBuildsForProject(projectId, projectComponents, componentId, currentBuildId)
+    if (!isCurrentHydration()) return null
     const contextComponentId = buildContext?.componentId || componentId
     const activeBuildId = buildContext?.activeBuildId || ''
     await loadSuitesFromBackend(projectId, contextComponentId, options)
+    if (!isCurrentHydration()) return null
     await loadCasosFromBackend(projectId, projectComponents, { preserveExecutionState: activeTab === 'ejecutar', buildId: activeBuildId, silent: options?.silent })
+    if (!isCurrentHydration()) return null
     if (activeBuildId) {
       const ids = await loadBuildCases(activeBuildId, options)
+      if (!isCurrentHydration()) return null
       await loadBuildCaseExecutionStatus(activeBuildId, ids, options)
     }
     return { componentId: contextComponentId, activeBuildId }
@@ -149,7 +162,8 @@ export function createContextActions({
     setCurrentBuildId('')
     setNewTestComponent(componentId || 'Web')
     resetExecutionSelection()
-    await hydrateProjectContext(currentProjectId, componentId)
+    const projectId = managingProjectId || currentProjectId
+    await hydrateProjectContext(projectId, componentId)
   }
 
   const refreshCurrentTestContext = async (componentId = currentCompId, options?: { silent?: boolean }) => {

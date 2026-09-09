@@ -57,7 +57,7 @@ export function CaseSuiteExplorer({ context }: Props) {
       <Form.Control name="a11y-casesuiteexplorertsx-57" aria-label="Campo de formulario" type="text" placeholder={t('casos.searchPlaceholder')} className="bg-light border-start-0 shadow-none ps-0" value={testSearchQuery} onChange={(e) => setTestSearchQuery(e.target.value)} />
     </div>
     {canEditSuites && (
-      <Button variant="primary" size="sm" className="w-100 fw-bold d-flex justify-content-center align-items-center gap-2 shadow-sm rounded-pill" onClick={() => openCreateSuiteModal()}>
+      <Button data-onboarding-target="suite-create" variant="primary" size="sm" className="w-100 fw-bold d-flex justify-content-center align-items-center gap-2 shadow-sm rounded-pill" onClick={() => openCreateSuiteModal()}>
         <FolderPlus size={16} /> {t('casos.newRootSuite')}
       </Button>
     )}

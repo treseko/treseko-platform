@@ -2,9 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { IS_DEV_ENV, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD } from './constants'
 import { createSessionUser } from './mappers'
 import type { AuthMode, SessionUser } from './types'
+import type { Locale } from '../i18n'
+import { normalizeLocale } from '../i18n/localeUtils'
 import { readInternalReportTokenFromLocation, readStoredAuthentication } from './runtime/appEntryPresentation'
 
-export function useAppSessionState({ setLocale }: { setLocale: (locale: 'es' | 'en') => void }) {
+export function getSessionLocale(language: unknown): Locale | null {
+  if (typeof language !== 'string' || !language.trim()) return null
+  return normalizeLocale(language)
+}
+
+export function useAppSessionState({ setLocale }: { setLocale: (locale: Locale) => void }) {
   const [isAuthenticated, setIsAuthenticated] = useState(readStoredAuthentication);
   const [authMode, setAuthMode] = useState<AuthMode>("local");
   const [loginForm, setLoginForm] = useState({
@@ -27,13 +34,14 @@ export function useAppSessionState({ setLocale }: { setLocale: (locale: 'es' | '
   });
 
   useEffect(() => {
-    const language = loggedUser.profileSettings?.language;
-    if (language === "es" || language === "en") setLocale(language);
+    const language = getSessionLocale(loggedUser.profileSettings?.language);
+    if (language) setLocale(language);
   }, [loggedUser.id, loggedUser.profileSettings?.language, setLocale]);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [deepLinkBugId, setDeepLinkBugId] = useState(
     () => new URLSearchParams(window.location.search).get("bug_id") || "",
   );
+  const [bugTrackerInitialFilters, setBugTrackerInitialFilters] = useState<Record<string, any>>({});
   const [internalReportToken, setInternalReportToken] = useState(() =>
     readInternalReportTokenFromLocation(),
   );
@@ -69,6 +77,8 @@ export function useAppSessionState({ setLocale }: { setLocale: (locale: 'es' | '
     setActiveTab,
     deepLinkBugId,
     setDeepLinkBugId,
+    bugTrackerInitialFilters,
+    setBugTrackerInitialFilters,
     internalReportToken,
     setInternalReportToken,
     internalReportHtml,

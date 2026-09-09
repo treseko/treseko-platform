@@ -1,4 +1,5 @@
 from .repository_context import *
+from ..services.chatbot_config import normalize_chatbot_config
 
 def _require_import_mapping(value: Any, label: str) -> dict:
     if not isinstance(value, dict):
@@ -39,6 +40,8 @@ def _bounded_import_int(value: Any, label: str, *, minimum: int, maximum: int) -
 
 def _import_enum_value(value: Any, label: str, enum_cls: type, default: str) -> str:
     text = _bounded_import_text(value if value is not None else default, label, 30, required=True)
+    if enum_cls is models.FormatoPrueba and text.upper() == "FUNCIONAL":
+        text = models.FormatoPrueba.CLASICA.value
     allowed = {item.value for item in enum_cls}
     if text not in allowed:
         raise ValueError(f"{label} invalido")
@@ -112,7 +115,18 @@ def _normalize_import_package(package: dict) -> dict:
             "version": _bounded_import_int(case.get("version", 1), f"casos[{index}].version", minimum=1, maximum=10_000),
             "prioridad": _import_enum_value(case.get("prioridad"), f"casos[{index}].prioridad", models.Prioridad, models.Prioridad.MEDIA.value),
             "tipo_prueba": _import_enum_value(case.get("tipo_prueba"), f"casos[{index}].tipo_prueba", models.TipoPrueba, models.TipoPrueba.MANUAL.value),
+            "formato_prueba": _import_enum_value(case.get("formato_prueba"), f"casos[{index}].formato_prueba", models.FormatoPrueba, models.FormatoPrueba.CLASICA.value),
             "estado_caso": _import_enum_value(case.get("estado_caso"), f"casos[{index}].estado_caso", models.EstadoCaso, models.EstadoCaso.ACTIVO.value),
+            "configuracion_chatbot": schemas.validate_preference_json_payload(
+                normalize_chatbot_config(case.get("configuracion_chatbot") or {}),
+                max_bytes=MAX_PROJECT_IMPORT_METADATA_BYTES,
+                label=f"casos[{index}].configuracion_chatbot",
+            ) or {},
+            "configuracion_api": schemas.validate_preference_json_payload(
+                case.get("configuracion_api") or {},
+                max_bytes=MAX_PROJECT_IMPORT_METADATA_BYTES,
+                label=f"casos[{index}].configuracion_api",
+            ) or {},
             "pasos": normalized_steps,
         })
 
@@ -137,7 +151,10 @@ async def export_proyecto(db: AsyncSession, proyecto_id: UUID):
     for c in casos:
         result_pasos = await db.execute(select(models.PasoPrueba).filter(models.PasoPrueba.caso_id == c.id).order_by(models.PasoPrueba.numero_paso))
         pasos = result_pasos.scalars().all()
-        package["casos"].append({"master_id": str(c.master_id), "suite_id": str(c.suite_id) if c.suite_id else None, "titulo": c.titulo, "precondiciones": c.precondiciones, "version": c.version, "prioridad": c.prioridad, "tipo_prueba": c.tipo_prueba, "estado_caso": c.estado_caso, "pasos": [{"numero_paso": p.numero_paso, "accion": p.accion, "resultado_esperado": p.resultado_esperado, "metadata_ai": p.metadata_ai} for p in pasos]})
+        tipo_prueba = getattr(c, "tipo_prueba", None)
+        formato_prueba = getattr(c, "formato_prueba", None)
+        estado_caso = getattr(c, "estado_caso", None)
+        package["casos"].append({"master_id": str(c.master_id), "suite_id": str(c.suite_id) if c.suite_id else None, "titulo": c.titulo, "precondiciones": c.precondiciones, "version": c.version, "prioridad": c.prioridad, "tipo_prueba": getattr(tipo_prueba, "value", tipo_prueba), "formato_prueba": getattr(formato_prueba, "value", formato_prueba) or "CLASICA", "estado_caso": getattr(estado_caso, "value", estado_caso), "configuracion_chatbot": getattr(c, "configuracion_chatbot", None) or {}, "configuracion_api": getattr(c, "configuracion_api", None) or {}, "pasos": [{"numero_paso": p.numero_paso, "accion": p.accion, "resultado_esperado": p.resultado_esperado, "metadata_ai": p.metadata_ai} for p in pasos]})
     return package
 
 async def import_proyecto(db: AsyncSession, package: dict, imported_by: UUID):
@@ -168,7 +185,7 @@ async def import_proyecto(db: AsyncSession, package: dict, imported_by: UUID):
     id_map_masters = {}
     for c in package["casos"]:
         if c["master_id"] not in id_map_masters: id_map_masters[c["master_id"]] = uuid.uuid4()
-        db_caso = models.CasoPrueba(master_id=id_map_masters[c["master_id"]], proyecto_id=db_proyecto.id, suite_id=id_map_suites.get(c["suite_id"]), titulo=c["titulo"], precondiciones=c.get("precondiciones"), version=c["version"], prioridad=c["prioridad"], tipo_prueba=c["tipo_prueba"], estado_caso=c.get("estado_caso", "ACTIVO"), creado_por=imported_by)
+        db_caso = models.CasoPrueba(master_id=id_map_masters[c["master_id"]], proyecto_id=db_proyecto.id, suite_id=id_map_suites.get(c["suite_id"]), titulo=c["titulo"], precondiciones=c.get("precondiciones"), version=c["version"], prioridad=c["prioridad"], tipo_prueba=c["tipo_prueba"], formato_prueba=c.get("formato_prueba", "CLASICA"), estado_caso=c.get("estado_caso", "ACTIVO"), configuracion_chatbot=c.get("configuracion_chatbot") or {}, configuracion_api=c.get("configuracion_api") or {}, creado_por=imported_by)
         db.add(db_caso)
         await db.flush()
         for p in c["pasos"]:

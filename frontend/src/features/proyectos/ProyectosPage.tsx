@@ -27,6 +27,7 @@ import { ProjectTicketsTab } from './ProjectTicketsTab'
 import { ProjectPortfolioGrid } from './ProjectPortfolioGrid'
 import { ProjectAdminWorkspace } from './ProjectAdminWorkspace'
 import { createProjectPageHelpers } from './projectPageHelpers'
+import { isBuildExecutable } from '../../app/buildState'
 
 type ProyectosPageProps = any
 
@@ -78,6 +79,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
     handleUpdateEnvironmentDataset,
     handleSetDefaultEnvironmentDataset,
     handleDeleteEnvironmentDataset,
+    loadCasosFromBackend,
+    loadSuitesFromBackend,
     wikiMode,
     setWikiMode,
     selectedWiki,
@@ -118,13 +121,16 @@ export function ProyectosPage(props: ProyectosPageProps) {
   const canEditTraceability = canUseCapability('proyectos.requisitos', 'edit') && canUseCapability('proyectos.historias', 'edit')
   const canReadProjectTickets = canUseCapability('redmine.vinculos', 'read') || canUseCapability('redmine.ver', 'read')
   const canEditProjectTickets = canUseCapability('redmine.reportar', 'edit') || canUseCapability('redmine.vinculos', 'edit')
+  const canTransitionProjectTickets = canUseCapability('bugs.triage', 'edit')
   const reportSnapshotsEnabled = featureEnabled(hasSystemFeature, 'reports.snapshots', false)
   const canViewSharedReports = canUseCapability('reportes.compartir', 'read')
   const {
     reportCacheKey, calculateQaHealth, latestReportStatus, openProjectReportLink,
     goToReports, reportButtonLabel,
   } = useProjectReportPresentation({ t, fetchWithAuth, showFeedback, handleProjectChange, setActiveTab })
-  const { bugIssues, bugsLoading, bugForm, setBugForm, loadProjectBugs, createBugIssue, updateBugIssue } = useProjectBugIssues({ managingProjectId, projectInnerTab, fetchWithAuth, showFeedback, t })
+  const { bugIssues, bugsLoading, bugForm, setBugForm, loadProjectBugs, createBugIssue, updateBugIssue,
+    transitionTarget, transitionForm, setTransitionForm, setTransitionTarget, compatibleBuilds,
+    requestTransition, confirmTransition, quickTransitioningBugId, isCorrected } = useProjectBugIssues({ managingProjectId, projectInnerTab, fetchWithAuth, showFeedback, t, buildsList })
   const canEditProject = canEditCurrentProject && canEditProjectPortfolio && buildWriteEnabled
   const canEditProjectComponentsEffective = canEditProjectComponents && buildWriteEnabled
   const canEditProjectBuildsEffective = canEditProjectBuilds && buildWriteEnabled
@@ -173,8 +179,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
       .filter((project: any) => project.orgId === currentOrgId)
       .forEach((project: any) => {
         const projectBuilds = sortBuildsNewestFirst(buildsList.filter((build: any) => build.projectId === project.id))
-        const activeBuild = projectBuilds.find((build: any) => build.active && !build.hidden)
-          || projectBuilds.find((build: any) => build.active)
+        const activeBuild = projectBuilds.find((build: any) => isBuildExecutable(build) && !build.hidden)
+          || projectBuilds.find((build: any) => isBuildExecutable(build))
           || projectBuilds[0]
         const key = reportCacheKey(project.id, activeBuild?.id)
         if (activeBuild?.id && key) targetMap.set(key, { projectId: project.id, buildId: activeBuild.id, key })
@@ -232,8 +238,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
       .filter((project: any) => project.orgId === currentOrgId)
       .map((project: any) => {
         const projectBuilds = sortBuildsNewestFirst(buildsList.filter((build: any) => build.projectId === project.id))
-        const activeBuild = projectBuilds.find((build: any) => build.active && !build.hidden)
-          || projectBuilds.find((build: any) => build.active)
+        const activeBuild = projectBuilds.find((build: any) => isBuildExecutable(build) && !build.hidden)
+          || projectBuilds.find((build: any) => isBuildExecutable(build))
           || projectBuilds[0]
         const key = reportCacheKey(project.id, activeBuild?.id)
         return { projectId: project.id, buildId: activeBuild?.id, key }
@@ -403,6 +409,8 @@ export function ProyectosPage(props: ProyectosPageProps) {
               handleComponentChange,
               componentsList,
               currentCompId,
+              loadCasosFromBackend,
+              loadSuitesFromBackend,
               buildsList,
               canEditProjectBuilds,
               canEditProjectBuildsEffective,
@@ -473,6 +481,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
               handleSaveWikiPage,
               canReadProjectTickets,
               canEditProjectTicketsEffective,
+              canTransitionProjectTickets: canTransitionProjectTickets && buildWriteEnabled,
               loadProjectBugs,
               bugsLoading,
               createBugIssue,
@@ -480,6 +489,15 @@ export function ProyectosPage(props: ProyectosPageProps) {
               setBugForm,
               bugIssues,
               updateBugIssue,
+              transitionTarget,
+              transitionForm,
+              setTransitionForm,
+              setTransitionTarget,
+              compatibleBuilds,
+              requestTransition,
+              confirmTransition,
+              quickTransitioningBugId,
+              isCorrected,
             }} />
           )}
           <ProjectModals

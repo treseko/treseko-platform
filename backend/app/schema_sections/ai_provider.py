@@ -44,7 +44,7 @@ MAX_AI_WORKFLOW_IMPORT_ROWS = 500
 MAX_AI_MODEL_CATALOG_ITEMS = 500
 MAX_AI_AGENT_WORKFLOW_ITEMS = 200
 MAX_AI_DRY_RUN_STEPS = 200
-AI_WORKFLOW_PURPOSES = {"test_execution", "story_generation", "test_case_generation"}
+AI_WORKFLOW_PURPOSES = {"test_execution", "story_generation", "test_case_generation", "chatbot_evaluation"}
 MAX_AI_RESULT_STEPS = 500
 
 

@@ -45,10 +45,11 @@ def workflow_create_payload_from_portable_graph(
     raw_workflow = graph.get("workflow") if isinstance(graph, dict) else None
     if not isinstance(raw_workflow, dict) or not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges"), list):
         raise ValueError("El workflow portable no tiene un grafo valido.")
-    if raw_workflow.get("workflow_format") != "universal_v2":
-        raise ValueError("El grafo importado no usa el formato universal_v2.")
+    workflow_format = str(raw_workflow.get("workflow_format") or "")
+    if workflow_format not in {"universal_v2", "universal_v3"}:
+        raise ValueError("El grafo importado no usa un formato universal compatible.")
     purpose = str(raw_workflow.get("workflow_purpose") or "")
-    if purpose not in {"test_execution", "story_generation", "test_case_generation"}:
+    if purpose not in {"test_execution", "story_generation", "test_case_generation", "chatbot_evaluation"}:
         raise ValueError("El workflow portable no declara un proposito valido.")
 
     node_payloads: List[schemas.AiWorkflowNodeBase] = []
@@ -115,12 +116,17 @@ def workflow_create_payload_from_portable_graph(
     if not preserve_catalog_metadata:
         for key in ("catalog_key", "catalog_source_sha256", "catalog_version"):
             decision_policy.pop(key, None)
+    if workflow_format == "universal_v3":
+        source_entry = str(decision_policy.get("entry_node_id") or "")
+        if source_entry not in id_map:
+            raise ValueError("El workflow V3 importado no tiene un entry_node_id valido.")
+        decision_policy["entry_node_id"] = str(id_map[source_entry])
     return schemas.AiWorkflowCreate(
         name=f"{raw_workflow.get('name') or 'Workflow importado'}{imported_name_suffix}",
         version=max(1, int(raw_workflow.get("version") or 1)),
         status="DRAFT",
         is_default=False,
-        workflow_format="universal_v2",
+        workflow_format=workflow_format,
         workflow_purpose=purpose,
         source_workflow_id=None,
         provider_profile_id=None,

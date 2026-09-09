@@ -1,7 +1,10 @@
 from .updater import *
 from .updater import _pg_dump_url, _utc_iso
+from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeError, CoordinatedBridgeSettings
+from .update_installation_mode import require as require_installation_mode
 
-async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool) -> None:
+async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
+                     *, download_manifest: dict[str, Any] | None = None) -> None:
     state = self._tasks[task_id]
     try:
         state.status = "in_progress"
@@ -11,6 +14,14 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool) 
         normalized_manifest = self._normalize_manifest(manifest)
         state.version = normalized_manifest["version"]
         checksum = normalized_manifest["checksum_sha256"]
+
+        mode = require_installation_mode("request")
+        if mode == "coordinated":
+            await self._run_coordinated_apply(
+                task_id, state, normalized_manifest, force,
+                download_manifest or normalized_manifest,
+            )
+            return
 
         self._update_state(state, "preflight", 8, "Validando preflight de espacio, version origen y backups.")
         await self._with_step_timeout(
@@ -88,6 +99,46 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool) 
         )
         self._persist_history()
         await self._report_failure_best_effort(state)
+
+async def _run_coordinated_apply(self, task_id, state, manifest, force, download_manifest):
+    """Prepare and optionally apply through the host bridge only."""
+    if force:
+        raise CoordinatedBridgeError("coordinated_apply_requires_explicit_restart")
+    client = CoordinatedBridgeClient(CoordinatedBridgeSettings.from_environment())
+    resolved = dict(download_manifest)
+    if (resolved.get("checksum_sha256") != manifest.get("checksum_sha256")
+            or resolved.get("package_size_bytes") != manifest.get("package_size_bytes")
+            or not str(resolved.get("package_url") or "").strip()):
+        raise CoordinatedBridgeError("download_manifest_binding_invalid")
+    self._update_state(state, "preflight", 8, "Validando preflight de update coordinado.")
+    await self._with_step_timeout(self._preflight_update(manifest, task_id), "preflight de actualizacion", 30)
+    package = await self._with_step_timeout(
+        self._download_package(resolved["package_url"], manifest["checksum_sha256"], task_id, state),
+        "descarga del paquete",
+    )
+    client.submit_prepare(task_id, manifest, package)
+    state.package_path = str(client.settings.package_inbox / manifest["checksum_sha256"])
+    state.stage = "prepare_pending"
+    state.status = "in_progress"
+    state.progress_pct = 70
+    state.message = "Preparacion coordinada enviada al host."
+    self._persist_history()
+    report = await client.wait_report(task_id, action="prepare")
+    if report is None:
+        return
+    if report.get("status") != "prepared":
+        if report.get("status") in {"prepare_pending", "apply_pending", "apply_uncertain"}:
+            state.stage = "prepare_pending"
+            state.status = "in_progress"
+            self._persist_history()
+            return
+        raise CoordinatedBridgeError("coordinated_prepare_not_complete")
+    state.stage = "prepared"
+    state.status = "in_progress"
+    state.progress_pct = 88 if force else 100
+    state.message = "Update coordinado preparado; el host conserva el estado durable."
+    self._persist_history()
+    return
 
 async def _with_step_timeout(self, awaitable: Any, step_name: str, timeout_seconds: float | None = None) -> Any:
     timeout = UPDATE_STEP_TIMEOUT_SECONDS if timeout_seconds is None else float(timeout_seconds)

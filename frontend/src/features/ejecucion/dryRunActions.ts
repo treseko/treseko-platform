@@ -3,7 +3,7 @@ import { API_BASE } from '../../app/constants'
 export function createExecutionDryRunActions({
   currentProjectId,
   fetchWithAuth,
-  setAutomationMonitor,
+  setDryRunMonitor,
   aiDryRunInFlightRef,
   setAiDryRunRunning,
   setIaLogs,
@@ -39,7 +39,7 @@ export function createExecutionDryRunActions({
       if (!response.ok) {
         throw new Error(stringifyFeedbackMessage(result?.detail || result?.message || t('configuracion.backendResponded', { status: response.status })))
       }
-      setAutomationMonitor({
+      setDryRunMonitor({
         show: true,
         mode: 'dry-run',
         run: { id: result.id, nombre: t('ejecutarPruebas.dryRunWorkerName') },
@@ -85,7 +85,7 @@ export function createExecutionDryRunActions({
       if (!response.ok) {
         throw new Error(stringifyFeedbackMessage(result?.detail || result?.message || `Backend respondio ${response.status}`))
       }
-      setAutomationMonitor({
+      setDryRunMonitor({
         show: true,
         mode: 'dry-run',
         run: { id: result.run_id, nombre: t('ejecutarPruebas.dryRunAiName') },

@@ -16,6 +16,7 @@ import redmine from './redmine'
 import onboarding from './onboarding'
 import notifications from './notifications'
 import forcePasswordChange from './forcePasswordChange'
+import incidencias from './incidencias'
 
-const catalog = { common, auth, navigation, proyectos, casos, ejecutarPruebas, historial, automatizacion, bugs, reportes, motorIa, inventario, configuracion, dashboard, redmine, onboarding, notifications, forcePasswordChange } as const
+const catalog = { common, auth, navigation, proyectos, casos, ejecutarPruebas, historial, automatizacion, bugs, reportes, motorIa, inventario, configuracion, dashboard, redmine, onboarding, notifications, forcePasswordChange, incidencias } as const
 export default catalog

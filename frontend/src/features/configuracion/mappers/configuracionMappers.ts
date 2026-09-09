@@ -161,7 +161,7 @@ export const getActiveModelCapabilities = (config: any) => {
 
 export const capabilityVariant = (enabled: boolean) => enabled ? 'success' : 'secondary'
 
-export const workflowConditionOptions = ['always', 'on_success', 'on_failed', 'on_blocked', 'on_rejected', 'confidence_lt', 'retry_count_lt']
+export const workflowConditionOptions = ['always', 'on_success', 'on_failed', 'on_blocked', 'on_rejected', 'confidence_lt', 'retry_count_lt', 'output_port', 'decision_is']
 export const workflowTypeOptions = ['ContextResolver', 'Observer', 'Planner', 'SecurityGuard', 'Executor', 'Validator', 'Recovery', 'Auditor', 'Reporter', 'llm_agent', 'rule_agent', 'browser_action_agent', 'validator_agent', 'reporter_agent', 'webhook_agent']
 
 export const workflowStatusColor = (status?: string) => status === 'ACTIVE' ? 'success' : status === 'ARCHIVED' ? 'secondary' : 'warning'
@@ -172,14 +172,14 @@ export const formatWorkflowDate = (value?: string) => {
 
 export const defaultWorkflowPositions: Record<string, { x: number, y: number }> = {
   ContextResolver: { x: 0, y: 160 },
-  Observer: { x: 300, y: 160 },
-  Planner: { x: 600, y: 160 },
-  SecurityGuard: { x: 900, y: 160 },
-  Executor: { x: 1200, y: 60 },
-  Validator: { x: 1500, y: 60 },
-  Recovery: { x: 1200, y: 300 },
-  Auditor: { x: 1800, y: 160 },
-  Reporter: { x: 2100, y: 160 },
+  Observer: { x: 420, y: 160 },
+  Planner: { x: 840, y: 160 },
+  SecurityGuard: { x: 1260, y: 160 },
+  Executor: { x: 1680, y: 60 },
+  Validator: { x: 2100, y: 60 },
+  Recovery: { x: 1680, y: 300 },
+  Auditor: { x: 2520, y: 160 },
+  Reporter: { x: 2940, y: 160 },
 }
 
 const defaultWorkflowTypes = Object.keys(defaultWorkflowPositions)

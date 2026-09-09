@@ -1,5 +1,6 @@
 from .repository_context import *
 from .ai_workflow_validation import is_valid_for_activation, validate_workflow_graph
+from app.services.ai_workflow_graph_contract import remap_entry_node_policy
 
 REDACTED_AI_EXPORT_SECRET = "[redacted]"
 AI_EXPORT_SECRET_KEYS = {
@@ -156,6 +157,7 @@ async def import_ai_workflow(db: AsyncSession, payload: schemas.AiWorkflowImport
             max_passes=max(1, int(raw_edge.get("max_passes") or 1)),
             data_mapping_json=raw_edge.get("data_mapping_json") if isinstance(raw_edge.get("data_mapping_json"), list) else [],
         ))
+    workflow.decision_policy_json = remap_entry_node_policy(workflow.decision_policy_json, id_map)
     await _replace_workflow_graph(db, workflow, node_payloads, edge_payloads, user_id, "Workflow importado")
     await db.flush()
     await db.commit()
@@ -339,6 +341,7 @@ async def restore_ai_workflow_version_as_draft(
         for edge in edge_payloads
         if edge.source_node_id in id_map and edge.target_node_id in id_map
     ]
+    workflow.decision_policy_json = remap_entry_node_policy(workflow.decision_policy_json, id_map)
     await _replace_workflow_graph(db, workflow, cloned_nodes, cloned_edges, user_id, f"Rollback desde version {version}")
     await db.commit()
     return await get_ai_workflow(db, workflow.id)

@@ -25,6 +25,7 @@ export function CasePortabilityPanel({
   showFeedback,
   canEdit,
   initialProjectId,
+  onImportCompleted,
   embedded = false,
 }: Props) {
   const { t } = useI18n();
@@ -121,7 +122,7 @@ export function CasePortabilityPanel({
         .then((data) => {
           const next = Array.isArray(data) ? data : [];
           setComponents(next);
-          setImportComponentId(next[0]?.id || "");
+          setImportComponentId("");
         });
     }
     loadBatches();
@@ -197,6 +198,11 @@ export function CasePortabilityPanel({
       setBusy(false);
     }
   };
+  useEffect(() => {
+    if (!file || !projectId || !profileId) return;
+    void runPreview();
+  }, [file, projectId, profileId]);
+
   const importCases = async () => {
     try {
       setBusy(true);
@@ -212,6 +218,7 @@ export function CasePortabilityPanel({
       setExpandedImportCases([]);
       setShowImportModal(false);
       await loadBatches();
+      await onImportCompleted?.(importComponentId);
       showFeedback(
         t("configuracion.importCompleted"),
         t("configuracion.importSummary", { cases: data.summary?.new || 0, versions: data.summary?.new_versions || 0 }),
@@ -226,6 +233,16 @@ export function CasePortabilityPanel({
     } finally {
       setBusy(false);
     }
+  };
+  const openImportModal = (show: boolean) => {
+    if (show) {
+      setImportComponentId("");
+      setPreview(null);
+      setSelectedImportIds([]);
+      setExpandedImportSuites([]);
+      setExpandedImportCases([]);
+    }
+    setShowImportModal(show);
   };
   const exportCases = async () => {
     try {
@@ -349,7 +366,7 @@ export function CasePortabilityPanel({
           setFile={setFile}
           setPreview={setPreview}
           setShowExportPicker={setShowExportPicker}
-          setShowImportModal={setShowImportModal}
+          setShowImportModal={openImportModal}
           exportProps={{
             ...exportProps,
             t,
@@ -388,6 +405,16 @@ export function CasePortabilityPanel({
                   <td>
                     {batch.summary?.new || 0} nuevos /{" "}
                     {batch.summary?.new_versions || 0} versiones
+                    {(batch.summary?.restored || 0) > 0 && (
+                      <span className="text-success">
+                        {" · "}{batch.summary?.restored} restaurados
+                      </span>
+                    )}
+                    {(batch.summary?.duplicates || 0) > 0 && (
+                      <span className="text-muted">
+                        {" · "}{batch.summary?.duplicates} sin cambios
+                      </span>
+                    )}
                   </td>
                   <td>
                     <Badge

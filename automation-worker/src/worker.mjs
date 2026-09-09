@@ -10,8 +10,18 @@ import { createReportRuntime } from "./report-runtime.mjs";
 import { createApiRuntime } from "./api-runtime.mjs";
 import { createArtifactRuntime } from "./artifact-runtime.mjs";
 import { createWorkerValues } from "./worker-values.mjs";
+import { createResultDelivery } from "./result-delivery.mjs";
+import { createUpdateAdmission } from "./update-admission.mjs";
+import { createClaimIntent } from "./claim-intent.mjs";
+import { createLeaseHeartbeat } from "./lease-manager.mjs";
+import { buildHeartbeatPayload } from "./heartbeat-payload.mjs";
+import { claimConflictMessage, isClaimConflict } from "./queue-messages.mjs";
+import { createTraceRuntime } from "./trace-runtime.mjs";
+import { loadEnv, localIps, normalizeApiBase, readWorkerVersion } from "./worker-runtime-info.mjs";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import { createWorkerCapabilities } from "./worker-capabilities.mjs";
 
 const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,143 +32,60 @@ const RUN_ONCE = process.argv.includes("--once");
 const startedAt = Date.now();
 const STARTED_AT_ISO = new Date(startedAt).toISOString();
 
-loadEnv(envPath);
+loadEnv(envPath, fs);
 
 // Keep credentials outside the code tree for systemd installs. The local
 // default remains compatible with Docker and developer checkouts.
 const tokenPath = process.env.QA_RUNNER_TOKEN_FILE || path.join(ROOT_DIR, ".runner-token");
-const API_BASE = (process.env.QA_API_BASE || "http://localhost:8000").replace(/\/+$/, "");
+const pairingStatePath = process.env.QA_RUNNER_PAIRING_STATE_FILE || `${tokenPath}.pairing`;
+const workerInstanceIdPath = process.env.QA_WORKER_INSTANCE_ID_FILE || path.join(ROOT_DIR, ".worker-instance-id");
+const API_BASE = normalizeApiBase(process.env.QA_API_BASE || "http://localhost:8000");
 const ORGANIZACION_ID = process.env.QA_ORGANIZACION_ID || process.env.QA_ORGANIZATION_ID || "";
 const POLL_INTERVAL_MS = Number(process.env.QA_POLL_INTERVAL_MS || 3000);
 const HEARTBEAT_INTERVAL_MS = Number(process.env.QA_HEARTBEAT_INTERVAL_MS || 10000);
 const REQUEST_TIMEOUT_MS = Number(process.env.QA_REQUEST_TIMEOUT_MS || 10000);
 const HEADLESS = String(process.env.QA_HEADLESS || "true").toLowerCase() !== "false";
 const ARTIFACT_MAX_BYTES = 10 * 1024 * 1024;
-const ARTIFACT_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".webp",
-  ".gif",
-  ".txt",
-  ".json",
-  ".csv",
-  ".xml",
-  ".pdf",
-  ".zip",
-  ".xls",
-  ".xlsx",
-  ".doc",
-  ".docx",
-  ".ppt",
-  ".pptx",
-  ".mp4",
-  ".webm",
-]);
+const ARTIFACT_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".json", ".csv", ".xml", ".pdf", ".zip", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".mp4", ".webm"]);
 const RUNNER_NAME = process.env.QA_RUNNER_NAME || os.hostname() || "Local Playwright Worker";
+const workerInstanceId = readOrCreateWorkerInstanceId();
 const MAX_PARALLEL_JOBS = Number(process.env.QA_MAX_PARALLEL_JOBS || 1);
 const TAGS = String(process.env.QA_RUNNER_TAGS || "local,v1,playwright")
   .split(",")
   .map((item) => item.trim())
   .filter(Boolean);
-const WORKER_VERSION = readWorkerVersion();
+const WORKER_VERSION = readWorkerVersion({
+  candidates: [process.env.TRESEKO_WORKER_VERSION, process.env.TRESEKO_VERSION, path.join(ROOT_DIR, "VERSION"), process.env.npm_package_version].filter(Boolean),
+  fs,
+  require,
+  packagePath: path.join(ROOT_DIR, "package.json"),
+  fallback: "0.0.0-dev",
+});
+const RESULT_SPOOL_DIR = process.env.QA_RESULT_SPOOL_DIR
+  || path.join(os.homedir(), ".treseko", "automation-worker", "result-spool");
+const RESULT_RETRY_ATTEMPTS = Number(process.env.QA_RESULT_RETRY_ATTEMPTS || 3);
+const RESULT_RETRY_BASE_MS = Number(process.env.QA_RESULT_RETRY_BASE_MS || 1000);
+const RESULT_RETRY_MAX_MS = Number(process.env.QA_RESULT_RETRY_MAX_MS || 30_000);
+const claimIntent = createClaimIntent(process.env.QA_CLAIM_INTENT_DIR
+  || path.join(path.dirname(RESULT_SPOOL_DIR), "claim-intent"));
+const updateAdmission = createUpdateAdmission({
+  directory: process.env.QA_UPDATE_CONTROL_DIR || path.join(path.dirname(RESULT_SPOOL_DIR), "update-control"),
+  version: WORKER_VERSION,
+});
 
 let runnerToken = process.env.QA_RUNNER_TOKEN || readTokenFile();
 let runnerId = "";
 let activeJobId = "";
+let activeJobLeaseToken = "";
 let activeJobs = 0;
 let activeCorrelationId = "";
 
-function localIps() {
-  const interfaces = os.networkInterfaces();
-  const ips = [];
-  for (const entries of Object.values(interfaces)) {
-    for (const entry of entries || []) {
-      if (!entry.internal && entry.family === "IPv4") ips.push(entry.address);
-    }
-  }
-  return ips;
-}
-
-function readWorkerVersion() {
-  const candidates = [
-    process.env.TRESEKO_WORKER_VERSION,
-    process.env.TRESEKO_VERSION,
-    path.join(ROOT_DIR, "VERSION"),
-    process.env.npm_package_version,
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    if (!String(candidate).includes("/") && !String(candidate).includes("\\")) return String(candidate).trim();
-    try {
-      if (fs.existsSync(candidate)) {
-        const version = fs.readFileSync(candidate, "utf8").trim();
-        if (version) return version;
-      }
-    } catch (_) {
-      // Version lookup must not prevent worker startup.
-    }
-  }
-  try {
-    return require(path.join(ROOT_DIR, "package.json")).version || "0.0.0-dev";
-  } catch (_) {
-    return "0.0.0-dev";
-  }
-}
-
-function traceEnabled() {
-  return String(process.env.QA_TEST_TRACE_ENABLED || "").toLowerCase().match(/^(1|true|yes|on)$/);
-}
-
-const TRACE_SECRET_KEY = /(authorization|api[_-]?key|cookie|password|refresh[_-]?token|secret|token|credential|private[_-]?key)/i;
-const TRACE_SECRET_TEXT = /(authorization|api[_-]?key|cookie|password|refresh[_-]?token|secret|token|credential|private[_-]?key|key)(\s*[:=]\s*)(bearer\s+)?[^\s&,'"}]+/gi;
-function redactTraceText(value) {
-  return String(value).replace(TRACE_SECRET_TEXT, (_match, key, separator) => `${key}${separator}[redacted]`);
-}
-
-function safeTraceValue(value, depth = 0) {
-  if (depth > 8) return "[max-depth]";
-  if (value == null || typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const redacted = redactTraceText(value);
-    return redacted.length > 2000 ? `${redacted.slice(0, 2000)}…` : redacted;
-  }
-  if (Array.isArray(value)) return value.slice(0, 50).map(item => safeTraceValue(item, depth + 1));
-  if (typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [
-      key,
-      TRACE_SECRET_KEY.test(key) ? "[redacted]" : safeTraceValue(item, depth + 1),
-    ]));
-  }
-  return String(value);
-}
-
-function traceEntry(event, payload = {}) {
-  if (!traceEnabled()) return;
-  const dir = path.join(REPO_ROOT, "logs", "test-trace");
-  fs.mkdirSync(dir, { recursive: true });
-  const day = new Date().toISOString().slice(0, 10);
-  const entry = {
-    ts: new Date().toISOString(),
-    source: "automation-worker",
-    event,
-    ...payload,
-  };
-  fs.appendFileSync(path.join(dir, `automation-worker-${day}.jsonl`), `${JSON.stringify(safeTraceValue(entry))}\n`, "utf8");
-}
-
-function loadEnv(filePath) {
-  if (!fs.existsSync(filePath)) return;
-  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const index = trimmed.indexOf("=");
-    if (index === -1) continue;
-    const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim();
-    if (!process.env[key]) process.env[key] = value;
-  }
-}
+const { redactTraceText, safeTraceValue, traceEntry, formatLogArg } = createTraceRuntime({
+  fs,
+  path,
+  repoRoot: REPO_ROOT,
+  enabled: /^(1|true|yes|on)$/i.test(String(process.env.QA_TEST_TRACE_ENABLED || "")),
+});
 
 function readTokenFile() {
   if (!fs.existsSync(tokenPath)) return "";
@@ -191,16 +118,6 @@ function clearRunnerCredentials() {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function formatLogArg(arg) {
-  if (typeof arg === "string") return redactTraceText(arg);
-  if (arg instanceof Error) return redactTraceText(arg.message || String(arg));
-  try {
-    return JSON.stringify(safeTraceValue(arg));
-  } catch {
-    return redactTraceText(String(arg));
-  }
-}
-
 const { contentTypeForFile, artifactFromBuffer, artifactFromFile, collectArtifacts } = createArtifactRuntime({
   fs, path, ARTIFACT_MAX_BYTES, ARTIFACT_EXTENSIONS,
 });
@@ -226,7 +143,7 @@ const apiState = {
 };
 
 const { fetchJson, api, registerIfNeeded, pairWithPlatform, createPairingRequest } = createApiRuntime({
-  API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, state: apiState,
+  API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, pairingStatePath, workerInstanceId, state: apiState,
   capabilities: () => capabilities(), isInvalidRunnerTokenError, clearRunnerCredentials,
   saveTokenFile, traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
 });
@@ -236,6 +153,17 @@ function getPlaywrightVersion() {
     return require("playwright/package.json").version;
   } catch {
     return "unknown";
+  }
+}
+
+function readOrCreateWorkerInstanceId() {
+  try {
+    if (fs.existsSync(workerInstanceIdPath)) return fs.readFileSync(workerInstanceIdPath, "utf8").trim();
+    const id = randomUUID();
+    fs.writeFileSync(workerInstanceIdPath, `${id}\n`, { mode: 0o600 });
+    return id;
+  } catch (_error) {
+    return randomUUID();
   }
 }
 
@@ -251,92 +179,38 @@ function getPythonCommand() {
   return process.env.QA_PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
 }
 
-function resources() {
-  const memoryUsedMb = Math.round((os.totalmem() - os.freemem()) / 1024 / 1024);
-  let diskFreeMb = null;
-  try {
-    if (typeof fs.statfsSync === "function") {
-      const stats = fs.statfsSync(ROOT_DIR);
-      diskFreeMb = Math.round((stats.bavail * stats.bsize) / 1024 / 1024);
-    }
-  } catch {
-    diskFreeMb = null;
-  }
-  return {
-    memory_used_mb: memoryUsedMb,
-    memory_total_mb: Math.round(os.totalmem() / 1024 / 1024),
-    disk_free_mb: diskFreeMb,
-    loadavg: os.loadavg?.() || [],
-  };
-}
-
-function capabilities() {
-  const frameworkLanguages = {
-    playwright: ["javascript", "typescript"],
-    puppeteer: ["javascript", "typescript"],
-    cypress: ["javascript", "typescript"],
-    selenium: ["python"],
-  };
-  const versions = {
-    automation_worker: WORKER_VERSION,
-    playwright: getPlaywrightVersion(),
-    puppeteer: getPackageVersion("puppeteer"),
-    cypress: getPackageVersion("cypress"),
-    selenium: process.env.QA_SELENIUM_VERSION || "python",
-  };
-  return {
-    frameworks: ["playwright", "puppeteer", "cypress", "selenium"],
-    component: "automation-worker",
-    component_version: WORKER_VERSION,
-    worker_version: WORKER_VERSION,
-    framework_languages: frameworkLanguages,
-    languages: frameworkLanguages,
-    language_status: {
-      playwright: { javascript: "local_worker_supported", typescript: "local_worker_supported" },
-      puppeteer: { javascript: "local_worker_supported", typescript: "local_worker_supported" },
-      cypress: { javascript: "local_worker_supported", typescript: "local_worker_supported" },
-      selenium: { python: "local_worker_supported" },
-    },
-    versions,
-    playwright_version: getPlaywrightVersion(),
-    puppeteer_version: versions.puppeteer,
-    cypress_version: versions.cypress,
-    selenium_version: versions.selenium,
-    selenium_language: "python",
-    python_bin: getPythonCommand(),
-    browsers: ["chromium", "firefox", "webkit", "chrome (puppeteer)", "cypress"],
-    os: `${os.type()} ${os.release()}`,
-    platform: process.platform,
-    arch: process.arch,
-    hostname: os.hostname(),
-    local_ips: localIps(),
-    pid: process.pid,
-    api_base: API_BASE,
-    started_at: STARTED_AT_ISO,
-    node_version: process.version,
-    tags: TAGS,
-    max_parallel_jobs: MAX_PARALLEL_JOBS,
-    active_jobs: activeJobs,
-    current_job_id: activeJobId || null,
-    uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
-  };
-}
+const { capabilities, resources } = createWorkerCapabilities({
+  os, fs, process, rootDir: ROOT_DIR, workerVersion: WORKER_VERSION,
+  apiBase: API_BASE, runnerName: RUNNER_NAME, tags: TAGS,
+  maxParallelJobs: MAX_PARALLEL_JOBS, startedAtIso: STARTED_AT_ISO, startedAt,
+  localIps, getPlaywrightVersion, getPackageVersion, getPythonCommand,
+  getSeleniumVersion: () => process.env.QA_SELENIUM_VERSION || "python",
+  workerInstanceId,
+  getActiveJobs: () => activeJobs, getActiveJobId: () => activeJobId,
+});
 
 async function heartbeat(status = "ONLINE") {
   if (!runnerId) return;
   await api(`/automation-runners/${runnerId}/heartbeat`, {
     method: "POST",
-    body: JSON.stringify({
-      estado: status,
+    body: JSON.stringify(buildHeartbeatPayload({
+      status,
       capabilities: capabilities(),
       resources: resources(),
-      active_jobs: activeJobs,
-      current_job_id: activeJobId || null,
-      uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
-    }),
+      activeJobs,
+      currentJobId: activeJobId,
+      leaseToken: activeJobLeaseToken,
+      uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+    })),
   });
   restartIfUpdateIsReady();
 }
+
+const leaseHeartbeat = createLeaseHeartbeat({
+  intervalMs: HEARTBEAT_INTERVAL_MS,
+  heartbeat: () => heartbeat("BUSY"),
+  log: (_event, message) => console.warn(message),
+});
 
 function restartIfUpdateIsReady() {
   if (activeJobs > 0 || fs.existsSync(rollbackMarkerPath) || !fs.existsSync(restartMarkerPath)) return;
@@ -390,13 +264,56 @@ const executeJob = createJobExecutor({
   compileScript, normalizeDataset, normalizeStepResult, normalizeJobStatus, isAssertionLike,
   artifactFromBuffer, formatLogArg, formatErrorDetail, redact, replacePlaceholders,
   frameworkKey, languageKey, localWorkerSupports, detectScriptFormat, compactPlaywrightMetadata,
+  allowLoopbackForTests: process.env.NODE_ENV === "test" && process.env.QA_API_WORKER_ALLOW_LOOPBACK_TESTS === "true",
 });
+
+const resultDelivery = createResultDelivery({
+  spoolDir: RESULT_SPOOL_DIR,
+  maxAttempts: RESULT_RETRY_ATTEMPTS,
+  retryBaseMs: RESULT_RETRY_BASE_MS,
+  retryMaxMs: RESULT_RETRY_MAX_MS,
+  postResult: async (jobId, payload) => {
+    const result = await api(`/automation-jobs/${jobId}/result`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    claimIntent.confirmed(jobId);
+    return result;
+  },
+  log: (_event, message) => console.info(message),
+});
+
+async function activatePendingDeliveryLease(envelope) {
+  activeJobId = String(envelope.job_id || "");
+  activeJobLeaseToken = String(envelope.lease_token || "");
+  activeJobs = activeJobId && activeJobLeaseToken ? 1 : 0;
+  if (!activeJobs) return;
+  leaseHeartbeat.start();
+  // tick() deliberately absorbs temporary and permanent heartbeat errors.
+  // The result POST remains authoritative: it either ACKs the event or sends
+  // it to quarantine with the backend's final lease/ownership diagnosis.
+  await leaseHeartbeat.tick();
+}
+
+async function releasePendingDeliveryLease() {
+  leaseHeartbeat.stop();
+  activeJobId = "";
+  activeJobLeaseToken = "";
+  activeJobs = 0;
+  await heartbeat("ONLINE");
+}
 
 async function loop() {
   let lastHeartbeat = 0;
 
   while (true) {
     try {
+      // Unpaired/idle workers can also acknowledge a safe stop. Pending results
+      // must still go through normal delivery/lease handling before readiness.
+      if (!claimIntent.pending() && activeJobs === 0 && resultDelivery.pendingFiles().length === 0
+          && updateAdmission.pause({ activeJobs, pendingResults: 0 })) {
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
       if (!runnerId) {
         await registerIfNeeded();
         if (!runnerId) {
@@ -406,6 +323,36 @@ async function loop() {
         await heartbeat("ONLINE");
         traceEntry("job_event", { message: "worker_started", runner_name: RUNNER_NAME, api_base: API_BASE, capabilities: capabilities() });
   console.log(`Worker ${RUNNER_NAME} conectado a ${API_BASE}. Ctrl+C para detener.`);
+      }
+
+      const hadPendingDelivery = resultDelivery.pendingFiles().length > 0;
+      const pendingDelivered = await resultDelivery.flushPending({
+        runOnce: RUN_ONCE,
+        beforeEach: activatePendingDeliveryLease,
+      });
+      if (!pendingDelivered) {
+        if (RUN_ONCE) {
+          process.exitCode = 1;
+          return;
+        }
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
+      if (hadPendingDelivery && activeJobId) {
+        await releasePendingDeliveryLease();
+      }
+      if (claimIntent.pending()) {
+        updateAdmission.pause({ activeJobs, pendingResults: resultDelivery.pendingFiles().length,
+          unresolvedClaims: 1 });
+        const attemptId = claimIntent.attemptId();
+        if (attemptId) {
+          const decision = await api(`/automation-jobs/${claimIntent.pending()}/claim-intents/${attemptId}/reconcile`,
+            { method: "POST" });
+          claimIntent.reconciled(decision);
+        }
+        // No new jobs until the previous intent is authoritatively resolved.
+        await sleep(POLL_INTERVAL_MS);
+        continue;
       }
 
       if (Date.now() - lastHeartbeat > HEARTBEAT_INTERVAL_MS) {
@@ -418,40 +365,99 @@ async function loop() {
         continue;
       }
 
+      if (updateAdmission.pause({ activeJobs, pendingResults: resultDelivery.pendingFiles().length })) {
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
       const job = await api("/automation-jobs/next");
       if (!job) {
         if (RUN_ONCE) return;
         await sleep(POLL_INTERVAL_MS);
         continue;
       }
-      traceEntry("job_event", { message: "job_received", job });
+      traceEntry("job_event", {
+        message: "job_received",
+        job_id: job.id,
+        job_type: job.job_type,
+        required_framework: job.required_framework,
+        required_language: job.required_language,
+      });
 
-      const claimed = await api(`/automation-jobs/${job.id}/claim`, { method: "POST" });
-      traceEntry("job_event", { message: "job_claimed", job: claimed });
+      let claimed;
+      try {
+        // The request may have arrived while /next was in flight. If it arrives
+        // during /claim, finish that claimed job before acknowledging readiness.
+        if (updateAdmission.pause({ activeJobs, pendingResults: resultDelivery.pendingFiles().length })) {
+          await sleep(POLL_INTERVAL_MS);
+          continue;
+        }
+        claimIntent.begin(job.id);
+        claimed = await api(`/automation-jobs/${job.id}/claim`, {
+          method: "POST", headers: { "X-Claim-Intent": claimIntent.attemptId() },
+        });
+      } catch (error) {
+        if (isClaimConflict(error)) {
+          console.warn(claimConflictMessage(job.id));
+          traceEntry("job_event", { message: "job_claim_conflict", job_id: job.id });
+          await sleep(0);
+          continue;
+        }
+        throw error;
+      }
+      traceEntry("job_event", {
+        message: "job_claimed",
+        job_id: claimed.id,
+        job_type: claimed.job_type,
+        required_framework: claimed.required_framework,
+        required_language: claimed.required_language,
+        attempt_count: claimed.attempt_count,
+      });
+      if (!claimed.lease_token || !claimed.lease_expires_at || !Number.isFinite(Number(claimed.attempt_count)) || !Number.isFinite(Number(claimed.max_attempts))) {
+        throw new Error("El backend devolvió un claim incompleto: se requieren lease_token, lease_expires_at, attempt_count y max_attempts.");
+      }
       activeJobId = claimed.id;
+      activeJobLeaseToken = claimed.lease_token;
       activeJobs = 1;
       await heartbeat("BUSY");
+      leaseHeartbeat.start();
       const isDryRun = claimed.job_type === "DRY_RUN" || claimed.payload_congelado?.dry_run === true;
       const jobLabel = claimed.payload_congelado?.case_code || claimed.caso_id || "DRY-RUN";
       console.log(`${isDryRun ? "Ejecutando prueba temporal del editor" : "Ejecutando job"} ${claimed.id} (${jobLabel})`);
       traceEntry("job_event", { message: "job_execution_started", job_id: claimed.id, job_label: jobLabel, dry_run: isDryRun });
       const result = await executeJob(claimed);
       console.log(`Resultado local del job ${claimed.id}: ${result.status}`);
-      traceEntry("job_event", { message: "job_execution_finished", job_id: claimed.id, result });
-      await api(`/automation-jobs/${claimed.id}/result`, {
-        method: "POST",
-        body: JSON.stringify(result),
+      traceEntry("job_event", {
+        message: "job_execution_finished",
+        job_id: claimed.id,
+        status: result.status,
+        duration_seconds: result.duration_seconds,
       });
-      traceEntry("job_event", { message: "job_result_reported", job_id: claimed.id, status: result.status });
-      console.log(`Job ${claimed.id} reportado como ${result.status}`);
+      const delivery = await resultDelivery.deliver({
+        jobId: claimed.id,
+        leaseToken: claimed.lease_token,
+        resultEventId: randomUUID(),
+        result,
+        runOnce: RUN_ONCE,
+      });
+      if (delivery.status === "PENDING") {
+        traceEntry("job_event", { message: "job_result_pending", job_id: claimed.id, status: result.status });
+        console.warn(`Resultado del job ${claimed.id} pendiente; el lease seguirá renovándose hasta confirmar la entrega.`);
+        continue;
+      }
+      leaseHeartbeat.stop();
+      traceEntry("job_event", { message: "job_result_reported", job_id: claimed.id, status: result.status, delivery_status: delivery.status });
+      if (delivery.status === "CONFIRMED") console.info(`Job ${claimed.id} reportado como ${result.status}. Resultado confirmado.`);
       activeJobId = "";
+      activeJobLeaseToken = "";
       activeJobs = 0;
       await heartbeat("ONLINE");
       if (RUN_ONCE) return;
     } catch (error) {
       const failedJobId = activeJobId;
       const failedCorrelationId = activeCorrelationId;
+      leaseHeartbeat.stop();
       activeJobId = "";
+      activeJobLeaseToken = "";
       activeJobs = 0;
       console.error("Error procesando worker:", formatLogArg(error?.message || error), `correlation_id=${failedCorrelationId}`);
       traceEntry("error", {
@@ -497,4 +503,8 @@ export {
 
 const invokedAsMain = process.argv[1]
   && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
-if (invokedAsMain) loop();
+if (invokedAsMain) {
+  // Diagnostic identity only: not a readiness/drain acknowledgement.
+  updateAdmission.publishIdentity();
+  loop();
+}

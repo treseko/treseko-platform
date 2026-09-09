@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_BASE } from './constants'
 import { DEFAULT_BRANDING, normalizeBrandingState, type BrandingState } from './branding'
+import { DEFAULT_THEME_ID } from './themes/themeCatalog'
+import { applyCustomTheme, applyProjectTheme, applyWallpaper, clearCustomTheme, clearProjectTheme, normalizeCustomThemes, normalizeProjectTheme } from './themes/themeCustomization'
 import type { ModuleId } from './types'
 
 type PlatformStateOptions = {
@@ -8,9 +10,10 @@ type PlatformStateOptions = {
   loggedUser: any
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   t: (key: string) => string
+  currentProjectId?: string | null
 }
 
-export function useAppPlatformState({ isAuthenticated, loggedUser, fetchWithAuth, t }: PlatformStateOptions) {
+export function useAppPlatformState({ isAuthenticated, loggedUser, fetchWithAuth, t, currentProjectId }: PlatformStateOptions) {
   const [systemFeatureIds, setSystemFeatureIds] = useState<Set<string>>(new Set())
   const [systemFeaturesLoaded, setSystemFeaturesLoaded] = useState(false)
   const [systemEdition, setSystemEdition] = useState<'community' | 'premium'>('community')
@@ -104,11 +107,35 @@ export function useAppPlatformState({ isAuthenticated, loggedUser, fetchWithAuth
   const hasSystemFeature = useCallback((featureId: string) => systemFeatureIds.has(featureId), [systemFeatureIds])
 
   useEffect(() => {
-    const theme = loggedUser.personalTheme || 'system'
+    const theme = loggedUser.personalTheme || DEFAULT_THEME_ID
     const density = loggedUser.profileSettings?.density || 'comfortable'
     document.documentElement.dataset.qaTheme = theme
     document.documentElement.dataset.qaDensity = density
-  }, [loggedUser.personalTheme, loggedUser.profileSettings])
+    const customTheme = normalizeCustomThemes(loggedUser.profileSettings?.custom_themes).find(item => item.id === theme)
+    clearCustomTheme()
+    clearProjectTheme()
+    if (customTheme) applyCustomTheme(customTheme)
+    const storedPersonalTheme = loggedUser.profileSettings?.personal_theme_config
+    const personalTheme = storedPersonalTheme?.schemaVersion === 1
+      ? normalizeProjectTheme(storedPersonalTheme)
+      : null
+    const storedProjectTheme = loggedUser.projectThemeOverrides?.[currentProjectId || '']
+    const projectTheme = storedProjectTheme?.schemaVersion === 1
+      ? normalizeProjectTheme(storedProjectTheme)
+      : null
+    if (personalTheme) applyProjectTheme(personalTheme)
+    else if (projectTheme) applyProjectTheme(projectTheme)
+    // Legacy personal wallpaper presets must not tint the light theme globally.
+    // Project gradients are applied explicitly by applyProjectTheme below.
+    applyWallpaper('none')
+    if (personalTheme) applyProjectTheme(personalTheme)
+    else if (projectTheme) applyProjectTheme(projectTheme)
+    const themeColor = document.querySelector('meta[name="theme-color"]')
+    const pageBackground = getComputedStyle(document.documentElement)
+      .getPropertyValue('--app-bg')
+      .trim()
+    if (themeColor && pageBackground) themeColor.setAttribute('content', pageBackground)
+  }, [currentProjectId, loggedUser.personalTheme, loggedUser.profileSettings, loggedUser.projectThemeOverrides])
 
   return { systemFeatureIds, systemFeaturesLoaded, systemEdition, firstRunState, setFirstRunState, firstRunLoaded, branding, setBranding, canAccessEntitledModule, hasSystemFeature }
 }

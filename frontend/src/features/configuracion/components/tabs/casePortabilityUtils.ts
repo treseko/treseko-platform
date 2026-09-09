@@ -5,6 +5,7 @@ export type Props = {
   showFeedback: (title: string, message: string, variant?: string) => void;
   canEdit: boolean;
   initialProjectId?: string;
+  onImportCompleted?: (componentId: string) => Promise<void> | void;
   embedded?: boolean;
 };
 export type Project = { id: string; nombre: string };
@@ -28,7 +29,7 @@ export type ImportBatch = {
   source_version: string;
   file_name?: string | null;
   status: string;
-  summary?: { new?: number; new_versions?: number };
+  summary?: { new?: number; new_versions?: number; restored?: number; duplicates?: number };
   rollback_available: boolean;
 };
 
@@ -49,6 +50,14 @@ export const profileVisual = (tool = "") => {
       initials: "CSV",
       color: "#15803d",
       background: "#dcfce7",
+    };
+  if (value === "postman")
+    return {
+      Icon: FileJson,
+      logo: "/tool-logos/postman.svg",
+      initials: "PM",
+      color: "#f97316",
+      background: "#ffedd5",
     };
   if (value.includes("azure-test-plans"))
     return {
@@ -138,6 +147,7 @@ export const profileVisual = (tool = "") => {
 export const profileLabel = (tool = "", translate?: (key: string) => string) => {
   const labels: Record<string, string> = {
     treseko: "Treseko",
+    postman: "Postman Collection",
     csv: "configuracion.csvStructured",
     testlink: "TestLink",
     xray: "Xray",

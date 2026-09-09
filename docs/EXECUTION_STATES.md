@@ -1,44 +1,60 @@
 # Estados de ejecución
 
-Los estados muestran el resultado de una prueba, de cada paso y de una
-ejecución completa. Usalos para decidir qué revisar, repetir o reportar.
+Treseko usa estados distintos para el caso o paso, el `run` completo y los
+jobs del worker. No los mezcles al interpretar un historial o informe.
+
+## Formato y modalidad
+
+`formato_prueba` describe la estructura: `CLASICA`, `API`, `CONVERSACIONAL` o
+`PERFORMANCE`. `tipo_prueba` describe la modalidad: `MANUAL`, `AUTOMATIZADA` o
+`AUTOMATIZADA_AI`. Además, cada ejecución registra un modo operativo:
+`MANUAL`, `IA`, `AUTOMATIZADA` o `EXTERNA`.
+
+Un caso conversacional no es automáticamente una prueba con IA. `PERFORMANCE`
+es reservado y no tiene un ejecutor de carga documentado.
 
 ## Estados de un caso o paso
 
 | Estado | Qué significa | Qué hacer |
 |---|---|---|
-| Sin correr | Todavía no hay un resultado registrado. | Ejecutá la prueba cuando esté lista. |
-| Pasó | El resultado observado coincide con lo esperado. | Guardá el resultado y continuá. |
-| Falló | El comportamiento no coincide con lo esperado. | Agregá observaciones y evidencia; reportá un bug si corresponde. |
-| Bloqueado | No fue posible validar el caso por una dependencia o impedimento. | Indicá el motivo y vinculá o creá un bug cuando aplique. |
-| Pendiente | El paso está abierto durante una ejecución manual. | Seleccioná el resultado antes de finalizar. |
+| Sin correr | Todavía no hay resultado. | Ejecutá cuando el contexto esté listo. |
+| Pasó | Coincide con lo esperado. | Conservá evidencia y continuá. |
+| Falló | No coincide con lo esperado. | Registrá obtenido, observaciones y evidencia. |
+| Bloqueado | Una dependencia impidió validar. | Explicá el bloqueo y dejá seguimiento. |
+| Ejecutando IA | Hay evaluación IA en curso. | Esperá el cierre o revisá su estado. |
 
-Un caso solo queda en **Pasó** cuando todos sus pasos requeridos fueron
-validados correctamente. Un fallo o bloqueo deja el resultado visible en el
-historial y en los reportes.
+En API se evalúan status, headers, cuerpo y aserciones. En conversacional se
+conservan turnos, respuestas, expectativas y evaluación.
 
 ## Estados de un run
 
 | Estado | Uso |
 |---|---|
-| Abierto | La ejecución está en curso y admite resultados. |
-| Cerrado | Se guardaron los resultados y el run quedó finalizado. |
-| Cancelado | La ejecución se detuvo sin completarse. |
+| Abierto | Fue creado y admite resultados. |
+| En progreso | Hay casos o pasos en ejecución. |
+| Cerrado | Quedó finalizado y persistido. |
 
-## Registrar un resultado manual
+## Estados de jobs automatizados
+
+Los jobs del worker pueden estar `PENDING`, `CLAIMED`, `RUNNING`, `PASSED`,
+`FAILED`, `BLOCKED`, `ERROR`, `TIMEOUT`, `CANCELLED` o
+`BLOCKED_BY_RUNNER`. Son estados técnicos de cola y no sustituyen el resultado
+funcional. El worker unificado también ejecuta API declarativa; no existe un
+worker API separado.
+
+## Revisión IA y resultado manual
+
+Una ejecución IA puede requerir revisión humana. Revisá confianza, consenso,
+informe y estado de revisión antes de decidir. Un diagnóstico no confirma causa
+raíz ni crea un bug automáticamente.
+
+Para registrar manualmente:
 
 1. Abrí **Ejecutar Pruebas** y seleccioná el caso.
-2. Revisá la acción, los datos y el resultado esperado de cada paso.
-3. Elegí el veredicto y agregá una observación si ayuda a entender el resultado.
-4. Adjuntá evidencia cuando sea necesaria.
-5. Finalizá y guardá el resultado.
+2. Confirmá build, ambiente y dataset.
+3. Usá la consola propia del formato.
+4. Elegí resultado, observación y evidencia.
+5. Finalizá y verificá en [Historial Runs](RUN_HISTORY_GUIDE.md).
 
-## Ayuda rápida
-
-- Usá **Falló** cuando el sistema respondió de forma incorrecta.
-- Usá **Bloqueado** cuando una condición externa impide probarlo, por ejemplo
-  un ambiente caído o una credencial no disponible.
-- No reemplaces un fallo por un bloqueo para ocultarlo: los reportes distinguen
-  ambos casos.
-- Si necesitás investigar un resultado anterior, abrí **Historial Runs** o el
-  historial del caso.
+Usá **Bloqueado** para una dependencia real, no para ocultar un fallo. Consultá
+[Adjuntos y evidencias](ATTACHMENTS_EVIDENCE.md).

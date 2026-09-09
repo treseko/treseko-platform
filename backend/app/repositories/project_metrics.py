@@ -5,6 +5,7 @@ from .project_metrics_suite import build_suite_tree
 from .project_metrics_history import build_project_history
 from .project_metrics_rules import _qa_decision, _risk_level
 from .project_metrics_derived import build_derived_metrics
+from .project_metrics_formats import _empty_format_metrics, _empty_format_mode_metrics, _finalize_format_metrics, _finalize_format_mode_metrics
 BUG_OPEN_STATES = {"ABIERTO", "TRIAGE", "ASIGNADO", "EN_PROGRESO", "LISTO_PARA_RETEST", "EN_RETEST", "REABIERTO", "BLOQUEADO"}
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 BUG_SLA_HOURS = {"CRITICA": 24, "ALTA": 48, "MEDIA": 120, "BAJA": 240, "COSMETICA": 240}
@@ -16,6 +17,90 @@ def _hours_between(start, end):
     return round(max((end - start).total_seconds(), 0) / 3600, 2)
 def _safe_percent(numerator: int, denominator: int) -> float:
     return round((numerator / denominator) * 100, 2) if denominator else 0.0
+
+
+def _chatbot_result_metrics(result: Any) -> dict[str, Any]:
+    result = result if isinstance(result, dict) else {}
+    turns = [item for item in (result.get("turns") or []) if isinstance(item, dict)]
+    performance = result.get("performance") if isinstance(result.get("performance"), dict) else {}
+    assertions = [item for item in (result.get("assertions") or []) if isinstance(item, dict)]
+    failed_assertions = [item for item in assertions if item.get("passed") is False]
+    security = [item for item in (result.get("security_findings") or []) if isinstance(item, dict)]
+    memory_checks = [item for item in (result.get("memory_checks") or []) if isinstance(item, dict)]
+    tool_results = [item for item in (result.get("tools") or []) if isinstance(item, dict)]
+    http_errors = [item for item in (result.get("http_errors") or [])]
+    latencies = sorted(float(item.get("latencyMs") or item.get("latency_ms") or 0) for item in turns)
+    p95 = float(performance.get("p95_latency_ms") or (latencies[min(len(latencies) - 1, max(0, int(len(latencies) * .95) - 1))] if latencies else 0))
+    return {
+        "turn_count": int(performance.get("turn_count") or len(turns)),
+        "total_latency_ms": float(performance.get("total_latency_ms") or sum(latencies)),
+        "p95_latency_ms": p95,
+        "http_error_count": len(http_errors),
+        "validation_failure_count": len(failed_assertions) + int(result.get("failed_assertions") or 0 if isinstance(result.get("failed_assertions"), int) else 0),
+        "security_finding_count": len(security),
+        "memory_failure_count": len([item for item in memory_checks if item.get("passed") is False or item.get("status") == "FAILED"]),
+        "tool_failure_count": len([item for item in tool_results if item.get("status") == "FAILED"]),
+        "tool_not_observable_count": len([item for item in tool_results if item.get("status") == "NOT_OBSERVABLE"]),
+        "tool_blocked_count": len([item for item in tool_results if item.get("status") == "BLOCKED"]),
+        "semantic": result.get("judge") if isinstance(result.get("judge"), dict) else {},
+        "status": result.get("status"),
+    }
+
+
+def _api_result_metrics(result: Any) -> dict[str, Any]:
+    """Aggregate deterministic metrics from one persisted API execution."""
+    result = result if isinstance(result, dict) else {}
+    steps = [item for item in (result.get("steps") or []) if isinstance(item, dict)]
+    latencies = sorted(
+        float((item.get("response") or {}).get("timings", {}).get("total_ms") or 0)
+        for item in steps
+    )
+    statuses = [
+        int((item.get("response") or {}).get("status"))
+        for item in steps
+        if isinstance((item.get("response") or {}).get("status"), (int, float))
+    ]
+    assertions = [
+        assertion
+        for item in steps
+        for assertion in (item.get("assertions") or [])
+        if isinstance(assertion, dict)
+    ]
+    failed_assertions = [item for item in assertions if item.get("status") == "FAILED" or item.get("passed") is False]
+    error_items = [error for step in steps for error in (step.get("errors") or []) if isinstance(error, dict)]
+    # The API runner may expose the same failed assertion in both
+    # ``assertions`` and ``errors``. Count it once in the report metrics.
+    failed_assertion_ids = {
+        str(item.get("id"))
+        for item in failed_assertions
+        if item.get("id") is not None
+    }
+    additional_errors = [
+        error for error in error_items
+        if error.get("id") is None or str(error.get("id")) not in failed_assertion_ids
+    ]
+    http_errors = [status for status in statuses if status >= 400]
+    http_errors += [None for item in steps if item.get("response") is None]
+    return {
+        "requests": len(steps),
+        "total_latency_ms": float(result.get("duration_ms") or sum(latencies)),
+        "p95_latency_ms": latencies[min(len(latencies) - 1, max(0, int(len(latencies) * .95) - 1))] if latencies else 0,
+        "http_errors": len(http_errors),
+        "validation_failures": len(failed_assertions) + len(additional_errors),
+        "status_2xx": len([status for status in statuses if 200 <= status < 300]),
+        "status_4xx": len([status for status in statuses if 400 <= status < 500]),
+        "status_5xx": len([status for status in statuses if status >= 500]),
+    }
+
+
+def _empty_chatbot_metrics() -> dict[str, Any]:
+    return {
+        "total": 0, "passed": 0, "failed": 0, "blocked": 0, "pending": 0,
+        "turns": 0, "total_latency_ms": 0, "p95_latency_ms": 0,
+        "http_errors": 0, "validation_failures": 0, "security_findings": 0,
+        "memory_failures": 0, "tool_failures": 0, "tools_not_observable": 0, "tools_blocked": 0,
+    }
+
 
 def _seconds_to_hours(seconds: Optional[int]) -> float:
     return round(float(seconds or 0) / 3600, 2)
@@ -83,6 +168,10 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "por_tipo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_modo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_tipo_prueba": {"manual": 0, "automatizada": 0, "automatizada_ia": 0},
+            "por_formato_prueba": {"CLASICA": 0, "API": 0, "PERFORMANCE": 0, "CONVERSACIONAL": 0},
+            "chatbot_metrics": _empty_chatbot_metrics(),
+            "metricas_por_formato": _empty_format_metrics(),
+            "metricas_por_formato_y_modo": _empty_format_mode_metrics(),
             "por_prioridad": {},
             "por_suite": {},
             "por_suite_tree": [],
@@ -109,6 +198,10 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "por_tipo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_modo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_tipo_prueba": {"manual": 0, "automatizada": 0, "automatizada_ia": 0},
+            "por_formato_prueba": {"CLASICA": 0, "API": 0, "PERFORMANCE": 0, "CONVERSACIONAL": 0},
+            "chatbot_metrics": _empty_chatbot_metrics(),
+            "metricas_por_formato": _empty_format_metrics(),
+            "metricas_por_formato_y_modo": _empty_format_mode_metrics(),
             "por_prioridad": {},
             "por_suite": {},
             "por_suite_tree": [],
@@ -140,6 +233,10 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "por_tipo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_modo_ejecucion": {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0},
             "por_tipo_prueba": {"manual": 0, "automatizada": 0, "automatizada_ia": 0},
+            "por_formato_prueba": {"CLASICA": 0, "API": 0, "PERFORMANCE": 0, "CONVERSACIONAL": 0},
+            "chatbot_metrics": _empty_chatbot_metrics(),
+            "metricas_por_formato": _empty_format_metrics(),
+            "metricas_por_formato_y_modo": _empty_format_mode_metrics(),
             "por_prioridad": {},
             "por_suite": {},
             "por_suite_tree": [],
@@ -198,6 +295,10 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
     stats = {"pasados": 0, "fallados": 0, "bloqueados": 0, "pendientes": total_asignados}
     por_modo_ejecucion = {"manual": 0, "automatizada": 0, "ia": 0, "externa": 0}
     por_tipo_prueba = {"manual": 0, "automatizada": 0, "automatizada_ia": 0}
+    por_formato_prueba = {"CLASICA": 0, "API": 0, "PERFORMANCE": 0, "CONVERSACIONAL": 0}
+    metricas_por_formato = _empty_format_metrics()
+    metricas_por_formato_y_modo = _empty_format_mode_metrics()
+    chatbot_metrics = _empty_chatbot_metrics()
     por_prioridad = {}
     por_suite = {}
     caso_ultimo_estado = {}
@@ -210,6 +311,44 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             por_prioridad[prioridad] = {"total": 0, "pasados": 0, "fallados": 0, "bloqueados": 0, "pendientes": 0}
         por_prioridad[prioridad]["total"] += 1
         por_prioridad[prioridad]["pendientes"] += 1
+
+    # The case cards use the latest result per logical case, but the execution
+    # matrix and API telemetry must retain every mode executed for this build.
+    # Otherwise the last mode (for example EXTERNA) hides MANUAL, AUTOMATIZADA
+    # and IA from the report.
+    for ejecucion, run in ejecucion_rows:
+        caso_ejecutado = casos_info.get(ejecucion.caso_id)
+        if not caso_ejecutado:
+            continue
+        formato_ejecutado = str(
+            caso_ejecutado.formato_prueba.value
+            if hasattr(caso_ejecutado.formato_prueba, "value")
+            else caso_ejecutado.formato_prueba or "CLASICA"
+        ).upper()
+        formato_ejecutado = formato_ejecutado if formato_ejecutado in por_formato_prueba else "CLASICA"
+        modo_ejecutado = _execution_mode_value(
+            ejecucion,
+            caso_ejecutado,
+            run.origen,
+        )
+        matrix_metrics = metricas_por_formato_y_modo[formato_ejecutado][modo_ejecutado]
+        matrix_metrics["total"] += 1
+        matrix_metrics["executed"] += 1
+        estado_ejecutado = ejecucion.estado_resultado.value if hasattr(ejecucion.estado_resultado, "value") else ejecucion.estado_resultado
+        if estado_ejecutado == "PASO":
+            matrix_metrics["passed"] += 1
+        elif estado_ejecutado == "FALLO":
+            matrix_metrics["failed"] += 1
+        elif estado_ejecutado == "BLOQUEADO":
+            matrix_metrics["blocked"] += 1
+        if formato_ejecutado == "API":
+            api_detail = _api_result_metrics(ejecucion.api_resultado if isinstance(ejecucion.api_resultado, dict) else {})
+            api_specific = metricas_por_formato["API"]["specific"]
+            for key in api_specific:
+                if key == "p95_latency_ms":
+                    api_specific[key] = max(api_specific[key], api_detail[key])
+                else:
+                    api_specific[key] += api_detail[key]
 
     # Obtener nombres de usuarios para las ejecuciones
     ejecutor_ids = set(ejec.ejecutado_por for ejec in ejecuciones if ejec.ejecutado_por)
@@ -259,6 +398,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "descripcion": caso.descripcion or "",
             "prioridad": prioridad,
             "tipo_prueba": caso.tipo_prueba.value if hasattr(caso.tipo_prueba, 'value') else caso.tipo_prueba,
+            "formato_prueba": caso.formato_prueba.value if hasattr(caso.formato_prueba, 'value') else caso.formato_prueba,
             "execution_mode": execution_mode,
             "review_status": _review_status_for_execution(ejecucion) if ejecucion else None,
             "estado": estado,
@@ -274,6 +414,22 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             "snapshots": [],
             "bugs": [],
         }
+        formato = str(caso.formato_prueba.value if hasattr(caso.formato_prueba, 'value') else caso.formato_prueba or "CLASICA").upper()
+        formato = formato if formato in por_formato_prueba else "CLASICA"
+        por_formato_prueba[formato] += 1
+        format_metrics = metricas_por_formato[formato]
+        format_metrics["total"] += 1
+        format_metrics["pending"] += 1
+        if ejecucion:
+            format_metrics["executed"] += 1
+            format_metrics["duration_seconds"] += int(ejecucion.duracion_segundos or 0)
+            format_metrics["pending"] = max(int(format_metrics["pending"] or 0) - 1, 0)
+            if estado == "PASO":
+                format_metrics["passed"] += 1
+            elif estado == "FALLO":
+                format_metrics["failed"] += 1
+            elif estado == "BLOQUEADO":
+                format_metrics["blocked"] += 1
         ai_report = (
             ejecucion.ai_report
             if ejecucion and isinstance(ejecucion.ai_report, dict)
@@ -300,6 +456,50 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
                 "workflow_trace_count": len(ai_report.get("workflow_traces") or ai_report.get("timeline") or []),
             }
             _accumulate_ai_metrics(ai_metrics, ejecucion, estado)
+        if formato == "CONVERSACIONAL":
+            chatbot_result = (ejecucion.chatbot_resultado if ejecucion and isinstance(ejecucion.chatbot_resultado, dict) else {})
+            chatbot_config = (ejecucion.chatbot_config_snapshot if ejecucion and isinstance(ejecucion.chatbot_config_snapshot, dict) else (caso.configuracion_chatbot if isinstance(caso.configuracion_chatbot, dict) else {}))
+            chatbot_detail = _chatbot_result_metrics(chatbot_result)
+            chatbot_conversation = chatbot_config.get("conversation") if isinstance(chatbot_config.get("conversation"), dict) else {}
+            caso_detalle["chatbot"] = {
+                "config_snapshot": chatbot_config,
+                "resultado": chatbot_result,
+                "workflow_version": chatbot_result.get("workflow_version") or chatbot_config.get("workflow_version"),
+                "metrics": chatbot_detail,
+                "transcription": chatbot_result.get("turns") or [],
+                "variables": chatbot_result.get("variables") or {},
+                "profile": chatbot_result.get("profile") or chatbot_config.get("profile") or {},
+                "opening_message": chatbot_result.get("opening_message") or chatbot_conversation.get("opening_message", {}),
+                "memory_checks": chatbot_result.get("memory_checks") or [],
+                "tools": chatbot_result.get("tools") or [],
+                "human_review_status": _review_status_for_execution(ejecucion) if ejecucion else None,
+            }
+            chatbot_metrics["total"] += 1
+            chatbot_metrics["turns"] += chatbot_detail["turn_count"]
+            chatbot_metrics["total_latency_ms"] += chatbot_detail["total_latency_ms"]
+            chatbot_metrics["p95_latency_ms"] = max(chatbot_metrics["p95_latency_ms"], chatbot_detail["p95_latency_ms"])
+            chatbot_metrics["http_errors"] += chatbot_detail["http_error_count"]
+            chatbot_metrics["validation_failures"] += chatbot_detail["validation_failure_count"]
+            chatbot_metrics["security_findings"] += chatbot_detail["security_finding_count"]
+            chatbot_metrics["memory_failures"] += chatbot_detail["memory_failure_count"]
+            chatbot_metrics["tool_failures"] += chatbot_detail["tool_failure_count"]
+            chatbot_metrics["tools_not_observable"] += chatbot_detail["tool_not_observable_count"]
+            chatbot_metrics["tools_blocked"] += chatbot_detail["tool_blocked_count"]
+            conversational_specific = metricas_por_formato["CONVERSACIONAL"]["specific"]
+            conversational_specific["turns"] += chatbot_detail["turn_count"]
+            conversational_specific["total_latency_ms"] += chatbot_detail["total_latency_ms"]
+            conversational_specific["p95_latency_ms"] = max(conversational_specific["p95_latency_ms"], chatbot_detail["p95_latency_ms"])
+            conversational_specific["http_errors"] += chatbot_detail["http_error_count"]
+            conversational_specific["validation_failures"] += chatbot_detail["validation_failure_count"]
+            conversational_specific["security_findings"] += chatbot_detail["security_finding_count"]
+            conversational_specific["memory_failures"] += chatbot_detail["memory_failure_count"]
+            conversational_specific["tool_failures"] += chatbot_detail["tool_failure_count"]
+            conversational_specific["tools_not_observable"] += chatbot_detail["tool_not_observable_count"]
+            conversational_specific["tools_blocked"] += chatbot_detail["tool_blocked_count"]
+            if estado == "PASO": chatbot_metrics["passed"] += 1
+            elif estado == "FALLO": chatbot_metrics["failed"] += 1
+            elif estado == "BLOQUEADO": chatbot_metrics["blocked"] += 1
+            else: chatbot_metrics["pending"] += 1
         if ejecucion:
             details = await get_execution_history_details(db, ejecucion.id)
             caso_detalle["evidencia_url"] = details.get("evidencia_url")
@@ -362,8 +562,20 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         else:
             por_suite[suite_id]["pendientes"] += 1
 
+    for master_id, caso in assigned_by_master.items():
+        if master_id in caso_ultimo_estado:
+            continue
+        formato_sin_ejecucion = str(
+            caso.formato_prueba.value if hasattr(caso.formato_prueba, "value") else caso.formato_prueba or "CLASICA"
+        ).upper()
+        formato_sin_ejecucion = formato_sin_ejecucion if formato_sin_ejecucion in por_formato_prueba else "CLASICA"
+        metricas_por_formato_y_modo[formato_sin_ejecucion]["SIN_EJECUTAR"]["total"] += 1
+        metricas_por_formato_y_modo[formato_sin_ejecucion]["SIN_EJECUTAR"]["pending"] += 1
+
     total_ejecutados = len(ejecutados_masters)
     cobertura = round((total_ejecutados / total_asignados) * 100, 2) if total_asignados > 0 else 0.0
+    metricas_por_formato = _finalize_format_metrics(metricas_por_formato)
+    metricas_por_formato_y_modo = _finalize_format_mode_metrics(metricas_por_formato_y_modo)
     bug_metrics = await _build_bug_metrics(db, proyecto_id, build.id)
 
     project_result = await db.execute(
@@ -431,6 +643,10 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         "por_tipo_ejecucion": por_modo_ejecucion,
         "por_modo_ejecucion": por_modo_ejecucion,
         "por_tipo_prueba": por_tipo_prueba,
+        "por_formato_prueba": por_formato_prueba,
+        "metricas_por_formato": metricas_por_formato,
+        "metricas_por_formato_y_modo": metricas_por_formato_y_modo,
+        "chatbot_metrics": chatbot_metrics,
         "por_prioridad": por_prioridad,
         "por_suite": por_suite,
         "por_suite_tree": root_nodes,

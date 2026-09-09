@@ -5,7 +5,7 @@ import { formatBugPriorityOption } from '../bugs/bugPresentation'
 import { BugBuildHistoryMetrics } from './BugBuildHistoryMetrics'
 
 export function ReportDetailWidgets(options: any): ReactNode[] {
-  const { renderReportesWidget, t, setDetailFilters, detailFilters, suiteFilterOptions, priorityFilterOptions, uniqueOptions, allReportBugs, failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent, bugTraceability, bugMetrics, filteredReportBugs, filteredFailures, filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant, onOpenBugTracker, canViewBugs = true, showFeedback, evidenceSummary } = options
+  const { renderReportesWidget, t, setDetailFilters, detailFilters, suiteFilterOptions, priorityFilterOptions, uniqueOptions, allReportBugs, failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent, bugTraceability, bugMetrics, filteredReportBugs, filteredFailures, filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant, onOpenBugTracker, currentBuildId, canViewBugs = true, showFeedback, evidenceSummary } = options
   return [
           renderReportesWidget('filters', (
           <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
@@ -107,7 +107,12 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                   <h6 className="fw-bold text-secondary text-start d-flex align-items-center gap-2 m-0">
                     <Bug size={18} /> {t('reportes.buildBugs')}
                   </h6>
-                  <Badge bg="light" text="dark" className="border">{formatInt(filteredReportBugs.length)} registros</Badge>
+                  <div className="d-flex align-items-center gap-2">
+                    <Badge bg="light" text="dark" className="border">{formatInt(filteredReportBugs.length)} registros</Badge>
+                    <Button variant="outline-primary" size="sm" disabled={!canViewBugs || !currentBuildId} title={t('reportes.openBuildBugs')} onClick={() => onOpenBugTracker?.(undefined, { buildId: currentBuildId, scope: 'reported' })}>
+                      {t('reportes.viewBuildBugs')}
+                    </Button>
+                  </div>
                 </div>
                 <Table hover responsive className="mb-0 align-middle">
                   <thead>

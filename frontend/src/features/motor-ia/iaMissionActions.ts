@@ -3,6 +3,7 @@ import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { fromDateTimeLocalInput, formatDateTime } from '../../shared/utils/dateTime'
 import type { TranslationKey } from '../../i18n'
+import { humanizeAiError } from '../../app/errorMessages'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -13,6 +14,8 @@ const iaLog = (level: string, message: string, extra: Record<string, any> = {}) 
   message,
   ...extra,
 })
+
+const FINAL_IA_STATUSES = ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT', 'SKIPPED', 'CANCELLED', 'REQUIERE_REVISION', 'STREAM_CERRADO']
 
 type CreateIaMissionActionsParams = {
   projectsSource: 'local' | 'backend'
@@ -63,7 +66,7 @@ export function createIaMissionActions({
 }: CreateIaMissionActionsParams) {
   const waitForIaExecutionToFinish = async (runId: string, executionId: string, timeoutMs = 20 * 60 * 1000) => {
     const startedAt = Date.now()
-    const finalStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
+    const finalStatuses = new Set(FINAL_IA_STATUSES)
     while (Date.now() - startedAt < timeoutMs) {
       await new Promise(resolve => window.setTimeout(resolve, 2000))
       const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
@@ -87,7 +90,7 @@ export function createIaMissionActions({
 
   const handleLaunchIaMission = async (mode: 'now' | 'scheduled' = 'now') => {
     if (readOnlyBuild) {
-      showFeedback(t('motorIa.executionStartFailed'), 'La build histórica está en modo consulta y no admite ejecuciones IA.', 'warning')
+      showFeedback(t('motorIa.executionStartFailed'), t('motorIa.historicalBuildReadOnly'), 'warning')
       return
     }
     if (selectedTestsForIa.length === 0) return
@@ -119,11 +122,11 @@ export function createIaMissionActions({
       try {
         const executionBuild = buildsList.find(build => build.id === currentBuildId)
         if (!executionBuild || !isValidUUID(executionBuild.id) || !executionBuild.active) {
-          throw new Error('Selecciona una build activa para lanzar la ejecución IA')
+          throw new Error(t('motorIa.selectActiveBuild'))
         }
         const selectedIaTests = currentProjectCases.filter(test => selectedTestsForIa.includes(test.id))
         if (selectedIaTests.some(test => test.componentId && test.componentId !== executionBuild.componentId)) {
-          throw new Error('La ejecución IA solo puede incluir casos del componente de la build activa')
+          throw new Error(t('motorIa.componentBuildMismatch'))
         }
         setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
         const response = await fetchWithAuth(`${API_BASE}/test-runs/`, {
@@ -139,7 +142,7 @@ export function createIaMissionActions({
         })
         if (!response.ok) {
           const errorText = await response.text()
-          throw new Error(errorText || `Backend respondió ${response.status}`)
+          throw new Error(errorText || t('motorIa.backendResponded', { status: response.status }))
         }
         const run = await response.json()
         const ejecucionesResponse = await fetchWithAuth(`${API_BASE}/test-runs/${run.id}/ejecuciones/?limit=200`)
@@ -160,10 +163,10 @@ export function createIaMissionActions({
               caseId: item.caso_id,
               runId: run.id,
               caseCode: test?.code || test?.codigo || '',
-              caseTitle: test?.title || test?.titulo || 'Caso IA',
+              caseTitle: test?.title || test?.titulo || t('motorIa.aiCase'),
               runName: run.nombre,
               status: 'EN_ESPERA',
-              lastMessage: 'Esperando turno para ejecutar IA.',
+              lastMessage: t('motorIa.queueWaitingExecution'),
             }
           })
           if (queuedStreams.length > 0) {
@@ -176,12 +179,15 @@ export function createIaMissionActions({
           const maxParallelIa = Math.max(1, Math.min(5, Number(aiMaxParallelRuns || 1)))
           setIaLogs(prev => [
             ...prev,
-            iaLog('run', `${run.nombre} en cola IA con ${queuedStreams.length} caso(s). Max paralelo: ${maxParallelIa}.`),
-            ...queuedStreams.map(item => iaLog('queue', `${item.caseTitle}: esperando turno`, { caseCode: item.caseCode, executionId: item.executionId })),
+            iaLog('run', t('motorIa.queueSummary', { name: run.nombre, count: queuedStreams.length, parallel: maxParallelIa })),
+            ...queuedStreams.map(item => iaLog('queue', `${item.caseTitle}: ${t('motorIa.queueWaiting')}`, { caseCode: item.caseCode, executionId: item.executionId })),
           ])
-          setProjectSyncMessage(`Ejecución ${run.nombre} creada para la build activa con ${selectedTestsForIa.length} casos.`)
+          setProjectSyncMessage(t('motorIa.executionCreatedForBuild', { name: run.nombre, count: selectedTestsForIa.length }))
           setShowIaScheduler(false)
-          showFeedback(t('motorIa.executionStarted'), t('motorIa.executionStartedMessage', { count: selectedTestsForIa.length, build: executionBuild.name || t('motorIa.noBuild') }), 'success')
+          const startedMessageKey = selectedTestsForIa.length === 1
+            ? 'motorIa.executionStartedSingleMessage'
+            : 'motorIa.executionStartedPluralMessage'
+          showFeedback(t('motorIa.executionStarted'), t(startedMessageKey, { count: selectedTestsForIa.length, build: executionBuild.name || t('motorIa.noBuild') }), 'success')
           if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
           onAfterLaunch?.()
 
@@ -192,10 +198,10 @@ export function createIaMissionActions({
               const item = ejecuciones[queueIndex++]
             const test = selectedIaTests.find(candidate => candidate.id === item.caso_id)
             setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-              ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: 'Ejecutando IA.' }
+              ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: t('motorIa.executionRunning') }
               : stream
             ))
-            setIaLogs(prev => [...prev, iaLog('run', `${test?.code || test?.codigo || 'Caso IA'} inicia ejecucion IA.`, { caseCode: test?.code || test?.codigo, executionId: item.id })])
+            setIaLogs(prev => [...prev, iaLog('run', `${test?.code || test?.codigo || t('motorIa.aiCase')} ${t('motorIa.executionStarting')}`, { caseCode: test?.code || test?.codigo, executionId: item.id })])
             const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, { method: 'POST' })
             const payload = await response.json().catch(() => null)
             const result = {
@@ -203,8 +209,8 @@ export function createIaMissionActions({
               executionId: item.id,
               caseId: item.caso_id,
               caseCode: test?.code || test?.codigo || '',
-              caseTitle: test?.title || test?.titulo || 'Caso IA',
-              error: payload?.detail || `Backend respondio ${response.status}`,
+              caseTitle: test?.title || test?.titulo || t('motorIa.aiCase'),
+              error: payload?.detail || t('motorIa.backendResponded', { status: response.status }),
             }
             started.push(result)
             if (response.ok) {
@@ -215,7 +221,7 @@ export function createIaMissionActions({
                       ...stream,
                       status: finished.estado_resultado === 'PASO' ? 'PASO' : finished.estado_resultado,
                       endedAt: new Date().toISOString(),
-                      lastMessage: finished.observaciones || `Finalizo con estado ${finished.estado_resultado}.`,
+                      lastMessage: finished.observaciones || t('motorIa.executionFinishedWithStatus', { status: finished.estado_resultado }),
                     }
                   : stream
                 ))
@@ -227,25 +233,25 @@ export function createIaMissionActions({
             .then(() => {
               setIaLogs(prev => [
                 ...prev,
-                iaLog('run', `${run.nombre} proceso IA secuencial completo para ${started.filter(item => item.ok).length}/${started.length} caso(s).`),
+                iaLog('run', t('motorIa.sequenceComplete', { name: run.nombre, passed: started.filter(item => item.ok).length, total: started.length })),
                 ...started.filter(item => !item.ok).map(item => iaLog('error', `${item.caseTitle}: ${item.error}`, { caseCode: item.caseCode, executionId: item.executionId }))
               ])
               if (started.filter(item => item.ok).length === 0 && started.length > 0) {
-                showFeedback(t('motorIa.executionStartFailed'), started.find(item => !item.ok)?.error || t('motorIa.executionStartFailedMessage'), 'danger')
+                showFeedback(t('motorIa.executionStartFailed'), humanizeAiError(started.find(item => !item.ok)?.error) || t('motorIa.executionStartFailedMessage'), 'danger')
               }
             })
             .catch((error: any) => {
-              const message = error?.message || t('motorIa.launchFailedMessage')
-              setProjectSyncMessage(`Error durante la ejecucion IA: ${message}`)
-              setIaLogs(prev => [...prev, iaLog('error', `Error durante IA: ${message}`)])
+              const message = humanizeAiError(error) || t('motorIa.launchFailedMessage')
+              setProjectSyncMessage(t('motorIa.executionErrorSync', { message }))
+              setIaLogs(prev => [...prev, iaLog('error', t('motorIa.executionErrorSync', { message }))])
               showFeedback(t('motorIa.executionError'), message, 'danger')
             })
           return
         }
-        setProjectSyncMessage(`Ejecución ${run.nombre} creada para la build activa con ${selectedTestsForIa.length} casos.`)
+        setProjectSyncMessage(t('motorIa.executionCreatedForBuild', { name: run.nombre, count: selectedTestsForIa.length }))
       } catch (error: any) {
-        const message = error?.message || t('motorIa.executionStartFailedMessage')
-        setProjectSyncMessage(`No se pudo crear la ejecución de build: ${message}`)
+        const message = humanizeAiError(error) || t('motorIa.executionStartFailedMessage')
+        setProjectSyncMessage(t('motorIa.buildExecutionCreationFailed', { message }))
         setIaLogs(prev => [...prev, iaLog('error', `${t('motorIa.executionStartFailed')}: ${message}`)])
         setShowIaScheduler(false)
         if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
@@ -257,7 +263,10 @@ export function createIaMissionActions({
 
     setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
     setShowIaScheduler(false)
-    showFeedback(t('motorIa.executionStarted'), t('motorIa.executionStartedMessage', { count: selectedTestsForIa.length, build: buildsList.find(build => build.id === currentBuildId)?.name || t('motorIa.noBuild') }), 'success')
+    const startedMessageKey = selectedTestsForIa.length === 1
+      ? 'motorIa.executionStartedSingleMessage'
+      : 'motorIa.executionStartedPluralMessage'
+    showFeedback(t('motorIa.executionStarted'), t(startedMessageKey, { count: selectedTestsForIa.length, build: buildsList.find(build => build.id === currentBuildId)?.name || t('motorIa.noBuild') }), 'success')
     if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
     onAfterLaunch?.()
   }

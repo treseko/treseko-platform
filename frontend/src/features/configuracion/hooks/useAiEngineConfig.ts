@@ -6,6 +6,7 @@ import {
   type FetchWithAuth,
 } from '../api/configuracionApi'
 import { useI18n } from '../../../i18n'
+import { humanizeAiError } from '../../../app/errorMessages'
 
 type UseAiEngineConfigParams = {
   isAuthenticated: boolean
@@ -100,7 +101,7 @@ export function useAiEngineConfig({
       }
       return health
     } catch (error: any) {
-      const health = { status: 'error', detail: error.message || t('configuracion.aiUnavailable') }
+      const health = { status: 'error', detail: humanizeAiError(error) || t('configuracion.aiUnavailable') }
       setAiEngineHealth(health)
       if (!options.silent) {
         showFeedback(t('configuracion.aiTitle'), health.detail, 'danger')

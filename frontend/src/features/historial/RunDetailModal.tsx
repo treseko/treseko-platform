@@ -182,12 +182,12 @@ function FrozenValue({
     <div className="d-flex align-items-center gap-1 flex-wrap">
       <span className="font-monospace small text-break" title={isUuid ? value : undefined}>{displayValue || '-'}</span>
       {isUuid && (
-        <Button variant="light" size="sm" className="py-0 px-1 border" title={t('historial.copyFullId')} onClick={() => navigator.clipboard?.writeText(value)}>
+        <Button variant="light" size="sm" className="py-0 px-1 border" title={t('historial.copyFullId')} aria-label={t('historial.copyFullId')} onClick={() => navigator.clipboard?.writeText(value)}>
           <Copy size={12} />
         </Button>
       )}
       {sensitive && canRevealSecrets && !isRevealed && (
-        <Button variant="outline-secondary" size="sm" className="py-0 px-1 x-small" onClick={() => onRevealSecret(fieldKey)}>
+        <Button variant="outline-secondary" size="sm" className="py-0 px-1 x-small" aria-label={t('historial.show')} onClick={() => onRevealSecret(fieldKey)}>
           <Eye size={12} className="me-1" /> {t('historial.show')}
         </Button>
       )}
@@ -269,7 +269,7 @@ const caseTypeCopy = (label: string | undefined, t: Translator) => t('historial.
 const runStateLabel = (state: string | undefined, t: Translator) => {
   const value = String(state || '').toUpperCase()
   if (value === 'ABIERTO') return t('historial.openRun')
-  if (value === 'EN_PROGRESO') return t('historial.inProgress')
+  if (['EN_PROGRESO', 'EN_CURSO', 'IN_PROGRESS', 'RUNNING'].includes(value)) return t('historial.inProgress')
   if (value === 'CERRADO') return t('historial.closed')
   return state || '-'
 }
@@ -283,14 +283,16 @@ const effectiveExecutionMode = (detail: any, caso?: any) => {
   return mode || 'MANUAL'
 }
 
-const effectiveExecutionModeLabel = (mode: string, fallback?: string) => {
-  if (mode === 'IA') return 'IA'
-  if (mode === 'AUTOMATIZADA') return 'Automatizada'
-  if (mode === 'EXTERNA') return 'Externa'
-  return fallback || 'Manual'
+const effectiveExecutionModeLabel = (mode: string, fallback: string | undefined, t: Translator) => {
+  const value = String(mode || fallback || '').toUpperCase()
+  if (['IA', 'AI'].includes(value)) return t('historial.ia')
+  if (['AUTOMATIZADA', 'AUTOMATED'].includes(value)) return t('historial.automatedLabel')
+  if (['EXTERNA', 'EXTERNAL'].includes(value)) return t('historial.externalLabel')
+  if (['MIXTO', 'MIXED'].includes(value)) return t('historial.mixedLabel')
+  return fallback || t('historial.manualLabel')
 }
 
-const buildHistoryAiReportPayload = (detail: any, caso: any) => {
+const buildHistoryAiReportPayload = (detail: any, caso: any, t: Translator) => {
   const mode = effectiveExecutionMode(detail, caso)
   const executionId = getExecutionId(caso)
   const existingReport = caso.ai_report && typeof caso.ai_report === 'object' ? caso.ai_report : {}
@@ -299,7 +301,7 @@ const buildHistoryAiReportPayload = (detail: any, caso: any) => {
     schema_version: 1,
     legacy: true,
     execution_id: executionId,
-    summary: caso.observaciones || 'Ejecucion IA sin reporte estructurado.',
+    summary: caso.observaciones || t('historial.aiExecutionNoStructuredReport'),
     status: caso.estado,
     confidence: caso.ai_confidence ?? 0,
     consensus: caso.ai_consensus || caso.estado,
@@ -317,6 +319,11 @@ const buildHistoryAiReportPayload = (detail: any, caso: any) => {
   const snapshotsByStep = new Map<number, any>(snapshots.map((snapshot: any) => [Number(snapshot.numero_paso), snapshot]))
   const generatedReport = {
     ...baseReport,
+    ...(caso.formato_prueba === 'CONVERSACIONAL' ? {
+      chatbot: true,
+      chatbot_config_snapshot: caso.chatbot_config_snapshot || {},
+      chatbot_resultado: caso.chatbot_resultado || baseReport.chatbot_resultado || {},
+    } : {}),
     steps: (Array.isArray(baseReport.steps) ? baseReport.steps : []).map((step: any) => {
       const snapshot = snapshotsByStep.get(Number(step.number))
       if (!snapshot) return step
@@ -342,6 +349,9 @@ const buildHistoryAiReportPayload = (detail: any, caso: any) => {
     execution_mode: mode,
     review_status: caso.ai_review_status || generatedReport.human_review_status,
     human_review_required: Boolean(caso.ai_human_review_required || generatedReport.human_review_required),
+    formato_prueba: caso.formato_prueba,
+    chatbot_config_snapshot: caso.chatbot_config_snapshot || {},
+    chatbot_resultado: caso.chatbot_resultado || generatedReport.chatbot_resultado || {},
     ai_report: generatedReport,
   }
 }
@@ -405,6 +415,25 @@ export function RunDetailModal({
   )
   const canRevealSecrets = Boolean(canAccessCapability?.('configuracion.monitor', 'read'))
 
+  const createChatbotBug = async (executionId: string, turnIndex?: number, findingType?: string) => {
+    if (!fetchWithAuth || !executionId) return
+    const findingMap: Record<string, string> = {
+      http: 'HTTP_FAILURE', validation: 'TURN_EXPECTATION_MISMATCH', tool: 'TOOL_FAILURE',
+      conversation: 'INVALID_RESPONSE', memory: 'MEMORY_FAILURE', safety: 'SAFETY_VIOLATION',
+    }
+    const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${executionId}/bugs/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatbot_turn_index: turnIndex ?? null, chatbot_finding_type: findingMap[String(findingType || '').toLowerCase()] || findingType || 'OTHER' }),
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}))
+      showFeedback?.(t('historial.chatbotBugTitle'), detail?.detail || t('historial.chatbotBugCreateError'), 'danger')
+      return
+    }
+    const bug = await response.json()
+    showFeedback?.(t('historial.conversationalBugTitle'), t('historial.conversationalBugAssociated', { code: bug.codigo || 'Bug' }), 'success')
+  }
+
   useEffect(() => {
     const cases = detail?.casos || []
     setLocalCases(focusedExecutionId ? cases.filter((caso: any) => getExecutionId(caso) === focusedExecutionId) : cases)
@@ -420,7 +449,7 @@ export function RunDetailModal({
   const revealSecret = async (variable: string) => {
     if (!canRevealSecrets) return
     try {
-      if (!fetchWithAuth) throw new Error('No hay canal seguro para auditar la visualizacion del secreto.')
+      if (!fetchWithAuth) throw new Error(t('historial.secretAuditChannelError'))
       const response = await fetchWithAuth(`${API_BASE}/audit/secret-reveals/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -482,7 +511,7 @@ export function RunDetailModal({
     canViewEvidence, onOpenEvidence, getStatusColor, runStateLabel,
     executionModeBadge, executionModeCopy, caseTypeBadge, caseTypeCopy,
     effectiveExecutionMode, effectiveExecutionModeLabel, getExecutionId,
-    buildHistoryAiReportPayload, markAiReviewed, markingReviewIds, reviewActionError,
+    buildHistoryAiReportPayload, createChatbotBug, markAiReviewed, markingReviewIds, reviewActionError,
     reviewConfirmCase, setReviewConfirmCase, reviewNote, setReviewNote, aiReportCase,
     setAiReportCase, showExecutionSnapshot, setShowExecutionSnapshot,
     showTechnicalVariables, setShowTechnicalVariables, frozenVariables,

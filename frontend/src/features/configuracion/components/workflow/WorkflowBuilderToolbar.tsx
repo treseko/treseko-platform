@@ -1,19 +1,24 @@
 import { Badge, Button, Dropdown, Form } from 'react-bootstrap'
 import { Archive, Blocks, CheckCircle2, Copy, Download, MoreHorizontal, Network, PlayCircle, RotateCcw, Save, Upload } from 'lucide-react'
 import { useI18n } from '../../../../i18n'
-import type { AiWorkflow } from '../../types/configuracion'
+import { workflowStatusLabel } from './workflowStatusPresentation'
+import type { AiWorkflow, AiWorkflowVersion } from '../../types/configuracion'
+import type { WorkflowActionPermissions } from '../../workflowPermissions'
 import { canExportPortableWorkflow } from './workflowBuilderUtils'
 
 type Props = {
   workflowDraft: AiWorkflow | null
   workflowLoading: boolean
   canEditAi: boolean
+  workflowPermissions: WorkflowActionPermissions
   onOpenIaScheduler?: () => void
   autoLayoutEnabled: boolean
   workflowStatusColor: (status?: string) => string
   saveWorkflowDraft: () => void
   validateWorkflow: () => void
   publishWorkflowVersion: () => void
+  workflowVersions?: AiWorkflowVersion[]
+  activateWorkflowVersion?: (version: AiWorkflowVersion) => void
   executeCurrentWorkflow: () => void
   switchToAutoLayoutMode: () => void
   switchToManualMode: () => void
@@ -21,6 +26,7 @@ type Props = {
   postWorkflowAction: (action: 'duplicate' | 'archive' | 'restore-default') => void
   copyWorkflowAsBlocks: () => void
   copyWorkflowAsUniversal: () => void
+  copyWorkflowAsUniversalV3: () => void
   exportUniversalWorkflow: () => void
   importUniversalWorkflow: (file?: File) => void
   closeWorkflowBuilder: () => void
@@ -30,12 +36,15 @@ export function WorkflowBuilderToolbar({
   workflowDraft,
   workflowLoading,
   canEditAi,
+  workflowPermissions,
   onOpenIaScheduler,
   autoLayoutEnabled,
   workflowStatusColor,
   saveWorkflowDraft,
   validateWorkflow,
   publishWorkflowVersion,
+  workflowVersions = [],
+  activateWorkflowVersion,
   executeCurrentWorkflow,
   switchToAutoLayoutMode,
   switchToManualMode,
@@ -43,6 +52,7 @@ export function WorkflowBuilderToolbar({
   postWorkflowAction,
   copyWorkflowAsBlocks,
   copyWorkflowAsUniversal,
+  copyWorkflowAsUniversalV3,
   exportUniversalWorkflow,
   importUniversalWorkflow,
   closeWorkflowBuilder,
@@ -56,8 +66,8 @@ export function WorkflowBuilderToolbar({
         <div className="workflow-toolbar-meta">
           <span>{workflowDraft?.name || t('configuracion.workflowToolbarNoWorkflow')}</span>
           <span>v{workflowDraft?.version || 1}</span>
-          <Badge bg={workflowDraft?.workflow_format === 'universal_v2' ? 'success' : workflowDraft?.workflow_format === 'block_v2' ? 'primary' : 'secondary'}>{workflowDraft?.workflow_format === 'universal_v2' ? t('configuracion.workflowToolbarUniversalFormat') : workflowDraft?.workflow_format === 'block_v2' ? t('configuracion.workflowToolbarBlocksFormat') : t('configuracion.workflowToolbarClassicFormat')}</Badge>
-          <Badge bg={workflowStatusColor(workflowDraft?.status)}>{workflowDraft?.status || t('configuracion.workflowToolbarDraftStatus')}</Badge>
+          <Badge bg={workflowDraft?.workflow_format === 'universal_v3' ? 'info' : workflowDraft?.workflow_format === 'universal_v2' ? 'success' : workflowDraft?.workflow_format === 'block_v2' ? 'primary' : 'secondary'}>{workflowDraft?.workflow_format === 'universal_v3' ? 'UNIVERSAL V3' : workflowDraft?.workflow_format === 'universal_v2' ? t('configuracion.workflowToolbarUniversalFormat') : workflowDraft?.workflow_format === 'block_v2' ? t('configuracion.workflowToolbarBlocksFormat') : t('configuracion.workflowToolbarClassicFormat')}</Badge>
+          <Badge bg={workflowStatusColor(workflowDraft?.status)}>{workflowStatusLabel(workflowDraft?.status || 'DRAFT', t)}</Badge>
         </div>
       </div>
       <div className="workflow-main-actions">
@@ -69,17 +79,37 @@ export function WorkflowBuilderToolbar({
             <Save size={15} /> {t('configuracion.workflowToolbarSaveDraft')}
           </Button>
         )}
-        {canEditAi && (
+        {workflowPermissions.view && (
           <Button size="sm" variant="outline-success" className="workflow-action-btn" type="button" disabled={!workflowDraft || workflowLoading} onClick={validateWorkflow}>
             <CheckCircle2 size={15} /> {t('configuracion.workflowToolbarValidate')}
           </Button>
         )}
-        {canEditAi && (
-          <Button size="sm" variant="primary" className="workflow-action-btn" type="button" disabled={!workflowDraft || workflowLoading} onClick={publishWorkflowVersion}>
+        {workflowPermissions.publish && (
+          <Button
+            size="sm"
+            variant="primary"
+            className="workflow-action-btn"
+            type="button"
+            disabled={!workflowDraft || workflowLoading || !canEditAi}
+            onClick={publishWorkflowVersion}
+          >
             <Upload size={15} /> {t('configuracion.workflowToolbarPublish')}
           </Button>
         )}
-        {canEditAi && (
+        {workflowPermissions.activate && workflowDraft?.status !== 'ACTIVE' && workflowVersions.length > 0 && activateWorkflowVersion && (
+          <Button
+            size="sm"
+            variant="outline-success"
+            className="workflow-action-btn"
+            type="button"
+            disabled={!workflowDraft || workflowLoading}
+            onClick={() => activateWorkflowVersion(workflowVersions[0])}
+            title={t('configuracion.workflowToolbarActivateTitle', { version: workflowVersions[0].version })}
+          >
+            <PlayCircle size={15} /> {t('configuracion.workflowToolbarActivate', { version: workflowVersions[0].version })}
+          </Button>
+        )}
+        {workflowPermissions.execute && (
           <Button
             size="sm"
             variant="outline-primary"
@@ -127,16 +157,17 @@ export function WorkflowBuilderToolbar({
             <MoreHorizontal size={18} />
           </Dropdown.Toggle>
           <Dropdown.Menu>
-            {canEditAi && <Dropdown.Item onClick={() => postWorkflowAction('duplicate')} disabled={!workflowDraft}><Copy size={14} className="me-2" />{t('configuracion.workflowToolbarDuplicate')}</Dropdown.Item>}
-            {canEditAi && workflowDraft?.workflow_format !== 'block_v2' && <Dropdown.Item onClick={copyWorkflowAsBlocks} disabled={!workflowDraft}><Blocks size={14} className="me-2" />{t('configuracion.workflowToolbarCreateBlockCopy')}</Dropdown.Item>}
-            {canEditAi && workflowDraft?.workflow_format !== 'universal_v2' && <Dropdown.Item onClick={copyWorkflowAsUniversal} disabled={!workflowDraft}><Blocks size={14} className="me-2" />{t('configuracion.workflowToolbarCreateUniversalCopy')}</Dropdown.Item>}
-            {canEditAi && <Dropdown.Item onClick={() => postWorkflowAction('archive')} disabled={!workflowDraft?.id || workflowDraft?.is_default}><Archive size={14} className="me-2" />{t('configuracion.workflowToolbarArchive')}</Dropdown.Item>}
-            {canEditAi && <Dropdown.Item onClick={() => postWorkflowAction('restore-default')} disabled={!workflowDraft}><RotateCcw size={14} className="me-2" />{t('configuracion.workflowToolbarRestoreDefault')}</Dropdown.Item>}
-            {canEditAi && <Dropdown.Divider />}
+            {workflowPermissions.drafts && <Dropdown.Item onClick={() => postWorkflowAction('duplicate')} disabled={!workflowDraft}><Copy size={14} className="me-2" />{t('configuracion.workflowToolbarDuplicate')}</Dropdown.Item>}
+            {workflowPermissions.drafts && workflowDraft?.workflow_format !== 'block_v2' && <Dropdown.Item onClick={copyWorkflowAsBlocks} disabled={!workflowDraft}><Blocks size={14} className="me-2" />{t('configuracion.workflowToolbarCreateBlockCopy')}</Dropdown.Item>}
+            {workflowPermissions.drafts && !['universal_v2', 'universal_v3'].includes(String(workflowDraft?.workflow_format)) && <Dropdown.Item onClick={copyWorkflowAsUniversal} disabled={!workflowDraft}><Blocks size={14} className="me-2" />{t('configuracion.workflowToolbarCreateUniversalCopy')}</Dropdown.Item>}
+            {workflowPermissions.drafts && workflowDraft?.workflow_format === 'universal_v2' && <Dropdown.Item onClick={copyWorkflowAsUniversalV3} disabled={!workflowDraft}><Network size={14} className="me-2" />{t('configuracion.workflowToolbarCreateUniversalCopy')}</Dropdown.Item>}
+            {workflowPermissions.archive && <Dropdown.Item onClick={() => postWorkflowAction('archive')} disabled={!workflowDraft?.id || workflowDraft?.is_default}><Archive size={14} className="me-2" />{t('configuracion.workflowToolbarArchive')}</Dropdown.Item>}
+            {workflowPermissions.activate && <Dropdown.Item onClick={() => postWorkflowAction('restore-default')} disabled={!workflowDraft}><RotateCcw size={14} className="me-2" />{t('configuracion.workflowToolbarRestoreDefault')}</Dropdown.Item>}
+            {(workflowPermissions.drafts || workflowPermissions.archive || workflowPermissions.activate) && <Dropdown.Divider />}
             <Dropdown.Item onClick={exportUniversalWorkflow} disabled={!canExportPortableWorkflow(workflowDraft)}>
               <Download size={14} className="me-2" />{t('configuracion.workflowToolbarExportPortable')}
             </Dropdown.Item>
-            {canEditAi && <Dropdown.Item as="label" className="mb-0">
+            {workflowPermissions.drafts && <Dropdown.Item as="label" className="mb-0">
               <Upload size={14} className="me-2" />{t('configuracion.workflowToolbarImportPortable')}
               <Form.Control
                 id="workflow-portable-file"

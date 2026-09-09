@@ -81,6 +81,7 @@ function ConfiguracionPageInner({
   canAccessCapability,
   hasSystemFeature,
   showFeedback,
+  confirmAction,
   apiKeys,
   apiKeysLoading,
   apiKeyName,
@@ -106,6 +107,7 @@ function ConfiguracionPageInner({
   checkAiEngineHealth,
   organizations,
   projectsList,
+  currentProjectId,
   selectedOrganizationId,
   setSelectedOrganizationId,
   handleCreateOrganization,
@@ -171,13 +173,14 @@ function ConfiguracionPageInner({
     }
   }, [configTab, setConfigTab, visibleConfigTabs])
 
-  const { profileDraft, setProfileDraft, saveMyProfile, saveLanguage } = useProfileSettings({
+  const { profileDraft, setProfileDraft, saveMyProfile, saveLanguage, saveProjectTheme, resetProjectTheme } = useProfileSettings({
     loggedUser,
     fetchWithAuth,
     onLoggedUserUpdated,
     onPreferencesUpdated,
     showFeedback,
     t,
+    currentProjectId,
   })
   const { attachmentMimeGroups, toggleAttachmentMime } = useAttachmentMimeOptions({
     attachmentConfig,
@@ -222,6 +225,10 @@ function ConfiguracionPageInner({
               setProfileDraft={setProfileDraft}
               saveMyProfile={saveMyProfile}
               saveLanguage={saveLanguage}
+              currentProjectId={currentProjectId}
+              currentProjectName={projectsList.find(project => String(project.id) === String(currentProjectId))?.name || ''}
+              saveProjectTheme={saveProjectTheme}
+              resetProjectTheme={resetProjectTheme}
               canEditProfile={canAccessCapability('configuracion.perfil', 'edit')}
             />
           )}
@@ -347,6 +354,7 @@ function ConfiguracionPageInner({
             saveAiEngineConfig={saveAiEngineConfig}
             fetchWithAuth={fetchWithAuth}
             showFeedback={showFeedback}
+            confirmAction={confirmAction}
             t={t}
             onOpenIaScheduler={onOpenIaScheduler}
             setActiveTab={setActiveTab}
@@ -360,6 +368,10 @@ function ConfiguracionPageInner({
               fetchWithAuth={fetchWithAuth}
               showFeedback={showFeedback}
               canAccessCapability={canAccessCapability}
+              organizations={organizations}
+              projectsList={projectsList}
+              currentProjectId={currentProjectId}
+              loggedUser={loggedUser}
             />
           )}
 

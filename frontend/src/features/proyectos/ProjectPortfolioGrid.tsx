@@ -3,6 +3,7 @@ import { Bug, Building2, Folders, History, Layers, Link, Server, Settings, Termi
 import { PremiumGate } from '../premium/PremiumGate'
 import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { formatDateTime } from '../../shared/utils/dateTime'
+import { isBuildExecutable } from '../../app/buildState'
 
 export function ProjectPortfolioGrid({ context }: { context: any }) {
   const {
@@ -51,7 +52,7 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                   </h4>
 
                   {canEditProjectPortfolio && (
-                    <Form className="project-create-form d-flex align-items-center bg-white p-1 rounded-pill shadow-sm border border-light-subtle" onSubmit={handleCreateProject}>
+                    <Form data-onboarding-target="project-create" className="project-create-form d-flex align-items-center bg-white p-1 rounded-pill shadow-sm border border-light-subtle" onSubmit={handleCreateProject}>
                       <Form.Control name="projName" size="sm" type="text" placeholder={t('proyectos.newProjectPlaceholder')} className="border-0 shadow-none bg-transparent text-dark px-3" required />
                       <Button type="submit" variant="primary" size="sm" className="fw-bold text-nowrap rounded-pill px-4 shadow-sm" disabled={projectsLoading}>
                         {projectsLoading ? t('proyectos.syncing') : t('proyectos.create')}
@@ -72,7 +73,13 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                   const isSelected = currentProjectId === p.id;
                   const projectComponents = componentsList.filter(c => c.projectId === p.id);
                   const projectBuilds = sortBuildsNewestFirst(buildsList.filter(b => b.projectId === p.id));
-                  const activeBuild = projectBuilds.find(b => b.active && !b.hidden) || projectBuilds.find(b => b.active) || projectBuilds[0];
+                  const activeBuild = projectBuilds.find(b => isBuildExecutable(b) && !b.hidden) || projectBuilds.find(b => isBuildExecutable(b)) || projectBuilds[0];
+                  const activeBuildExecutable = isBuildExecutable(activeBuild)
+                  const activeBuildLifecycleLabel = activeBuild?.state === 'PREPARACION'
+                    ? t('proyectos.buildInPreparation')
+                    : activeBuild?.state === 'ACTIVA'
+                      ? t('proyectos.buildActive')
+                      : t('proyectos.buildHistoric')
                   const activeBuildWindow = activeBuild ? buildWindowState(activeBuild) : null;
                   const activeBuildReportKey = reportCacheKey(p.id, activeBuild?.id);
                   const activeBuildReport = activeBuildReportKey ? latestBuildReports[activeBuildReportKey] : null;
@@ -97,7 +104,7 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                         <div className="p-4 bg-white border-bottom rounded-top-4 flex-shrink-0">
                           <div className="d-flex justify-content-between align-items-start mb-2">
                             <span className="badge bg-light text-secondary border fw-bold small"><Building2 size={10} className="me-1 mb-0.5" /> {orgName}</span>
-                            <Badge bg={projectStatusVariant(p.status)} text={projectStatusVariant(p.status) === 'light' ? 'secondary' : undefined} className="shadow-sm">{p.status}</Badge>
+                            <Badge bg={projectStatusVariant(p.status)} text={projectStatusVariant(p.status) === 'light' ? 'secondary' : undefined} className="shadow-sm">{({ Planificacion: t('proyectos.planning'), Activo: t('proyectos.activeStatus'), 'En QA': t('proyectos.inQa'), Bloqueado: t('proyectos.blocked'), Mantenimiento: t('proyectos.maintenance'), 'En Pausa': t('proyectos.onHold'), Cerrado: t('proyectos.closed'), Archivado: t('proyectos.archived') } as Record<string, string>)[p.status] || p.status}</Badge>
                           </div>
                           <div className="d-flex align-items-center gap-3 min-w-0">
                             <div className="project-avatar flex-shrink-0">
@@ -162,13 +169,18 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                           <div className="project-portfolio-build bg-white rounded-3 border border-light-subtle p-3">
                             <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                               <div className="min-w-0">
-                                <div className="x-small fw-bold text-secondary text-uppercase mb-1">{t('proyectos.activeBuild')}</div>
+                                <div className="x-small fw-bold text-secondary text-uppercase mb-1">{activeBuildExecutable ? t('proyectos.activeBuild') : t('proyectos.selectedBuild')}</div>
                                 <div className="fw-bold text-dark text-truncate font-monospace" title={activeBuild?.name || t('proyectos.noActiveBuild')}>{activeBuild?.name || t('proyectos.noActiveBuild')}</div>
                               </div>
                               {activeBuild ? (
-                                <Badge bg={activeBuild.active ? 'success' : 'light'} text={activeBuild.active ? undefined : 'secondary'} className={activeBuild.active ? '' : 'border'}>
-                                  {activeBuild.active ? t('proyectos.active') : t('proyectos.historic')}
+                                <div className="d-flex flex-wrap justify-content-end gap-1">
+                                <Badge bg={activeBuild?.state === 'ACTIVA' ? 'success' : activeBuild?.state === 'PREPARACION' ? 'warning' : 'light'} text={activeBuild?.state === 'ACTIVA' || activeBuild?.state === 'PREPARACION' ? undefined : 'secondary'} className={activeBuild?.state === 'HISTORICA' ? 'border' : ''}>
+                                  {t('proyectos.buildStatusPrefix')}: {activeBuildLifecycleLabel}
                                 </Badge>
+                                <Badge bg={activeBuildExecutable ? 'success' : 'light'} text={activeBuildExecutable ? undefined : 'secondary'} className={activeBuildExecutable ? '' : 'border'}>
+                                  {t('proyectos.buildAvailabilityPrefix')}: {activeBuildExecutable ? t('proyectos.buildExecutable') : t('proyectos.buildNotExecutable')}
+                                </Badge>
+                                </div>
                               ) : (
                                 <Badge bg="light" text="secondary" className="border">{t('proyectos.pending')}</Badge>
                               )}
@@ -206,7 +218,7 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                                         {(['executive', 'development', 'internal'] as const).map(type => (
                                           latestReport.links?.[type] ? (
                                             <Button key={type} type="button" variant="outline-primary" size="sm" className="px-2 py-0 x-small" onClick={() => openProjectReportLink(latestReport.links[type], type)}>
-                                              {type === 'executive' ? 'Ejecutivo' : type === 'development' ? 'Desarrollo' : 'Interno'}
+                                              {type === 'executive' ? t('proyectos.reportExecutive') : type === 'development' ? t('proyectos.reportDevelopment') : t('proyectos.reportInternal')}
                                             </Button>
                                           ) : null
                                         ))}

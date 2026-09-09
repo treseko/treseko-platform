@@ -28,6 +28,10 @@ export type ThemeDefinition = {
   tokens: ThemeTokenSet
 }
 
+// The classic light theme is the stable first-run experience. Users can still
+// opt into System, Dark, or a custom theme from their profile preferences.
+export const DEFAULT_THEME_ID = 'light'
+
 export const BUILTIN_THEMES: ThemeDefinition[] = [
   {
     id: 'system',
@@ -133,4 +137,4 @@ export const BUILTIN_THEMES: ThemeDefinition[] = [
 ]
 
 export const getThemeDefinition = (themeId?: string) =>
-  BUILTIN_THEMES.find(theme => theme.id === themeId) || BUILTIN_THEMES[0]
+  BUILTIN_THEMES.find(theme => theme.id === themeId) || BUILTIN_THEMES.find(theme => theme.id === DEFAULT_THEME_ID) || BUILTIN_THEMES[0]

@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import models
@@ -20,8 +20,25 @@ from ..time_utils import utc_now
 from .case_portability_parser import (
     FORMAT_ID, MAX_CASES, PortabilityError, _canonical, parse_import, profiles, validate_file_extension,
 )
+from .chatbot_config import normalize_chatbot_config
 
 ROLLBACK_WINDOW = timedelta(hours=1)
+
+
+async def _export_traceability(db: AsyncSession, case_master_id: UUID) -> dict[str, Any]:
+    """Read optional traceability without breaking lightweight legacy DBs/tests."""
+    try:
+        story_links = (await db.execute(select(models.CasoHistoria).where(models.CasoHistoria.caso_master_id == case_master_id))).scalars().all()
+        story_ids = [link.historia_id for link in story_links]
+        stories = (await db.execute(select(models.HistoriaUsuario).where(models.HistoriaUsuario.id.in_(story_ids)))).scalars().all() if story_ids else []
+        criteria_links = (await db.execute(select(models.AcceptanceCriterionCase).where(models.AcceptanceCriterionCase.caso_master_id == case_master_id))).scalars().all()
+        criterion_ids = [link.acceptance_criterion_id for link in criteria_links]
+        criteria = (await db.execute(select(models.AcceptanceCriterion).where(models.AcceptanceCriterion.id.in_(criterion_ids)))).scalars().all() if criterion_ids else []
+    except OperationalError:
+        return {"historias": []}
+    stories_by_id = {story.id: story for story in stories}
+    criteria_by_id = {criterion.id: criterion for criterion in criteria}
+    return {"historias": [{"codigo": story.codigo, "titulo": story.titulo, "criterios": [criteria_by_id[link.acceptance_criterion_id].codigo for link in criteria_links if link.acceptance_criterion_id in criteria_by_id and criteria_by_id[link.acceptance_criterion_id].historia_id == story.id]} for story in stories_by_id.values()]}
 
 async def export_tcases(db: AsyncSession, project_id: UUID, component_id: UUID, suite_ids: list[UUID] | None = None, case_ids: list[UUID] | None = None) -> bytes:
     suites = (await db.execute(select(models.Suite).where(
@@ -50,7 +67,8 @@ async def export_tcases(db: AsyncSession, project_id: UUID, component_id: UUID, 
     for case in cases:
         steps = (await db.execute(select(models.PasoPrueba).where(models.PasoPrueba.caso_id == case.id).order_by(models.PasoPrueba.numero_paso))).scalars().all()
         step_data = [{"numero_paso": p.numero_paso, "accion": p.accion, "datos": p.datos, "resultado_esperado": p.resultado_esperado} for p in steps]
-        entry = {"external_id": str(case.master_id), "external_version": str(case.version), "suite_id": str(case.suite_id) if case.suite_id else None, "titulo": case.titulo, "descripcion": case.descripcion, "precondiciones": case.precondiciones, "postcondiciones": case.postcondiciones, "prioridad": case.prioridad.value, "criticidad": case.criticidad.value, "tipo_prueba": case.tipo_prueba.value, "estado_caso": case.estado_caso.value, "etiquetas": case.etiquetas or [], "pasos": step_data}
+        traceability = await _export_traceability(db, case.master_id)
+        entry = {"external_id": str(case.master_id), "external_version": str(case.version), "codigo": case.codigo, "suite_id": str(case.suite_id) if case.suite_id else None, "titulo": case.titulo, "descripcion": case.descripcion, "precondiciones": case.precondiciones, "postcondiciones": case.postcondiciones, "prioridad": case.prioridad.value, "criticidad": case.criticidad.value, "tipo_prueba": case.tipo_prueba.value, "formato_prueba": case.formato_prueba.value, "estado_caso": case.estado_caso.value, "etiquetas": case.etiquetas or [], "dataset": case.dataset or [], "script_automatizado": case.script_automatizado, "framework": case.framework, "configuracion_chatbot": normalize_chatbot_config(case.configuracion_chatbot or {}), "configuracion_api": case.configuracion_api or {}, "trazabilidad": traceability, "pasos": step_data}
         for step in steps:
             links = (await db.execute(select(models.PasoAttachment).where(models.PasoAttachment.paso_id == step.id))).scalars().all()
             for link in links:
@@ -64,7 +82,7 @@ async def export_tcases(db: AsyncSession, project_id: UUID, component_id: UUID, 
                 attachment_files[archive_path] = content
         case_data.append(entry); versions.append({"master_id": str(case.master_id), "version": case.version, "case": entry})
     payloads = {"cases.json": case_data, "suites.json": suite_data, "versions.json": versions, "attachments.json": attachments}
-    manifest = {"format": FORMAT_ID, "created_at": utc_now().isoformat(), "project_id": str(project_id), "checksums": {name: hashlib.sha256(_canonical(value)).hexdigest() for name, value in payloads.items()}, "case_count": len(case_data)}
+    manifest = {"format": FORMAT_ID, "schema_version": "1.1", "created_at": utc_now().isoformat(), "project_id": str(project_id), "capabilities": ["case_metadata", "dataset", "automation", "api", "chatbot", "traceability", "step_attachments"], "checksums": {name: hashlib.sha256(_canonical(value)).hexdigest() for name, value in payloads.items()}, "case_count": len(case_data)}
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", _canonical(manifest)); [archive.writestr(name, _canonical(value)) for name, value in payloads.items()]
@@ -74,15 +92,23 @@ async def export_tcases(db: AsyncSession, project_id: UUID, component_id: UUID, 
 
 async def preview_import(db: AsyncSession, project_id: UUID, profile_id: str, data: bytes, *, include_binary: bool = False) -> dict[str, Any]:
     package = parse_import(profile_id, data)
-    results, new, changed, duplicate = [], 0, 0, 0
+    results, new, changed, restored, duplicate = [], 0, 0, 0, 0
     for item in package["cases"]:
         digest = hashlib.sha256(_canonical(item)).hexdigest()
         ref = (await db.execute(select(models.CaseExternalRef).where(models.CaseExternalRef.proyecto_id == project_id, models.CaseExternalRef.source_tool == item["source_tool"], models.CaseExternalRef.external_id == item["external_id"]).order_by(models.CaseExternalRef.created_at.desc()).limit(1))).scalar_one_or_none()
-        outcome = "new" if not ref else ("duplicate" if ref.content_sha256 == digest else "new_version")
-        new += outcome == "new"; changed += outcome == "new_version"; duplicate += outcome == "duplicate"
+        referenced_case = await db.get(models.CasoPrueba, ref.caso_id) if ref else None
+        # An external reference can outlive a soft-deleted case. Such a case
+        # must be importable again; only an active matching case is a duplicate.
+        if not ref or not referenced_case:
+            outcome = "new"
+        elif not referenced_case.activo:
+            outcome = "restore" if ref.content_sha256 == digest else "new_version"
+        else:
+            outcome = "duplicate" if ref.content_sha256 == digest else "new_version"
+        new += outcome == "new"; changed += outcome == "new_version"; restored += outcome == "restore"; duplicate += outcome == "duplicate"
         results.append({"external_id": item["external_id"], "titulo": item["titulo"], "outcome": outcome})
     response_package = package if include_binary else {key: value for key, value in package.items() if key != "attachment_files"}
-    return {"source_tool": package["tool"], "source_version": package["version"], "file_sha256": hashlib.sha256(data).hexdigest(), "summary": {"total": len(results), "new": new, "new_versions": changed, "duplicates": duplicate}, "diagnostics": package.get("diagnostics", {}), "items": results, "package": response_package}
+    return {"source_tool": package["tool"], "source_version": package["version"], "file_sha256": hashlib.sha256(data).hexdigest(), "summary": {"total": len(results), "new": new, "new_versions": changed, "restored": restored, "duplicates": duplicate}, "diagnostics": package.get("diagnostics", {}), "items": results, "package": response_package}
 
 
 async def _suite_for_path(db: AsyncSession, project_id: UUID, path: str, created: list[str], descriptions: dict[str, str | None] | None = None, component_id: UUID | None = None) -> UUID | None:
@@ -90,37 +116,142 @@ async def _suite_for_path(db: AsyncSession, project_id: UUID, path: str, created
     names = [part.strip() for part in path.replace("\\", "/").split("/") if part.strip()][:8]
     for index, name in enumerate(names):
         existing = (await db.execute(select(models.Suite).where(models.Suite.proyecto_id == project_id, models.Suite.parent_id == parent_id, models.Suite.nombre == name, models.Suite.componente_id == component_id))).scalar_one_or_none()
-        if existing: parent_id = existing.id; continue
+        if existing:
+            # Re-importing a previously deleted case should make its authoring
+            # path visible again, unless the suite was explicitly archived.
+            if not existing.archivado:
+                existing.activo = True
+            parent_id = existing.id
+            continue
         current_path = "/".join(names[: index + 1])
-        suite = models.Suite(proyecto_id=project_id, componente_id=component_id, parent_id=parent_id, nombre=name, descripcion=(descriptions or {}).get(current_path))
+        # Imported suites are authoring containers. They must be active so they
+        # are returned by the normal suite explorer; build assignment remains a
+        # separate, explicit action by the user.
+        suite = models.Suite(
+            proyecto_id=project_id,
+            componente_id=component_id,
+            parent_id=parent_id,
+            nombre=name,
+            descripcion=(descriptions or {}).get(current_path),
+            activo=True,
+            archivado=False,
+        )
         db.add(suite); await db.flush(); parent_id = suite.id; created.append(str(suite.id))
     return parent_id
 
 
+async def _restore_traceability(db: AsyncSession, project_id: UUID, case_master_id: UUID, traceability: dict[str, Any], actor_id: UUID) -> None:
+    """Relink exported stories/criteria when matching stable codes exist."""
+    stories_data = traceability.get("historias") if isinstance(traceability, dict) else []
+    if not isinstance(stories_data, list):
+        return
+    story_codes = {str(item.get("codigo")).strip() for item in stories_data if isinstance(item, dict) and str(item.get("codigo") or "").strip()}
+    if not story_codes:
+        return
+    stories = (await db.execute(select(models.HistoriaUsuario).where(models.HistoriaUsuario.proyecto_id == project_id, models.HistoriaUsuario.codigo.in_(story_codes)))).scalars().all()
+    for story in stories:
+        existing_story = await db.scalar(select(models.CasoHistoria).where(models.CasoHistoria.caso_master_id == case_master_id, models.CasoHistoria.historia_id == story.id))
+        if not existing_story:
+            db.add(models.CasoHistoria(caso_master_id=case_master_id, historia_id=story.id, creado_por=actor_id, historia_actualizada_en_vinculo=story.ultima_actualizacion))
+        selected = next((item for item in stories_data if isinstance(item, dict) and str(item.get("codigo") or "").strip() == story.codigo), {})
+        criterion_codes = {str(value).strip() for value in (selected.get("criterios") or []) if str(value).strip()}
+        if not criterion_codes:
+            continue
+        criteria = (await db.execute(select(models.AcceptanceCriterion).where(models.AcceptanceCriterion.historia_id == story.id, models.AcceptanceCriterion.codigo.in_(criterion_codes)))).scalars().all()
+        for criterion in criteria:
+            existing_criterion = await db.scalar(select(models.AcceptanceCriterionCase).where(models.AcceptanceCriterionCase.caso_master_id == case_master_id, models.AcceptanceCriterionCase.acceptance_criterion_id == criterion.id))
+            if not existing_criterion:
+                db.add(models.AcceptanceCriterionCase(acceptance_criterion_id=criterion.id, caso_master_id=case_master_id, creado_por=actor_id))
+
+
 async def commit_import(db: AsyncSession, project_id: UUID, profile_id: str, data: bytes, file_name: str | None, actor_id: UUID, selected_external_ids: list[str] | None = None, component_id: UUID | None = None, build_id: UUID | None = None) -> models.CaseImportBatch:
+    # Lazy import avoids the repository facade cycle during app startup/tests.
+    from ..repositories.suites_cases import generate_case_code
     preview = await preview_import(db, project_id, profile_id, data, include_binary=True); package = preview.pop("package")
     if selected_external_ids is not None:
         allowed = set(selected_external_ids); package["cases"] = [item for item in package["cases"] if str(item.get("external_id")) in allowed]
+        selected_items = [item for item in preview["items"] if str(item.get("external_id")) in allowed]
+        preview["items"] = selected_items
+        preview["summary"] = {
+            "total": len(selected_items),
+            "new": sum(item.get("outcome") == "new" for item in selected_items),
+            "new_versions": sum(item.get("outcome") == "new_version" for item in selected_items),
+            "restored": sum(item.get("outcome") == "restore" for item in selected_items),
+            "duplicates": sum(item.get("outcome") == "duplicate" for item in selected_items),
+        }
+        diagnostics = preview.get("diagnostics") or {}
+        diagnostics["case_count"] = len(selected_items)
+        diagnostics["cases_without_steps"] = sum(not item.get("pasos") for item in package["cases"])
+        diagnostics["step_count"] = sum(len(item.get("pasos") or []) for item in package["cases"])
+        preview["diagnostics"] = diagnostics
     batch = models.CaseImportBatch(proyecto_id=project_id, source_tool=package["tool"], source_version=package["version"], file_name=(file_name or "import" )[:255], file_sha256=preview["file_sha256"], status="RUNNING", summary_json={}, item_results=[], created_case_ids=[], created_suite_ids=[], created_by=actor_id)
     db.add(batch); await db.flush(); created_cases: list[str] = []; created_suites: list[str] = []; results = []
     try:
         for item in package["cases"]:
             digest = hashlib.sha256(_canonical(item)).hexdigest()
             ref = (await db.execute(select(models.CaseExternalRef).where(models.CaseExternalRef.proyecto_id == project_id, models.CaseExternalRef.source_tool == item["source_tool"], models.CaseExternalRef.external_id == item["external_id"]).order_by(models.CaseExternalRef.created_at.desc()).limit(1))).scalar_one_or_none()
-            if ref and ref.content_sha256 == digest:
+            latest = await db.get(models.CasoPrueba, ref.caso_id) if ref else None
+            if ref and latest and latest.activo and ref.content_sha256 == digest:
                 results.append({"external_id": item["external_id"], "outcome": "duplicate"}); continue
             suite_id = await _suite_for_path(
                 db, project_id, item["suite_path"], created_suites,
                 {item["suite_path"]: item.get("suite_description")},
                 component_id,
             )
-            latest = await db.get(models.CasoPrueba, ref.caso_id) if ref else None
-            case = models.CasoPrueba(master_id=(latest.master_id if latest else uuid4()), codigo=(latest.codigo if latest else None), proyecto_id=project_id, suite_id=suite_id, componente_id=component_id, titulo=item["titulo"], descripcion=item["descripcion"], precondiciones=item["precondiciones"], postcondiciones=item["postcondiciones"], version=((latest.version + 1) if latest else 1), prioridad=item["prioridad"], criticidad=item["criticidad"], tipo_prueba=item["tipo_prueba"], estado_caso=item["estado_caso"], etiquetas=item["etiquetas"], creado_por=actor_id)
+            if ref and latest and not latest.activo and ref.content_sha256 == digest:
+                latest.activo = True
+                latest.estado_caso = item["estado_caso"]
+                latest.suite_id = suite_id
+                latest.componente_id = component_id
+                latest.codigo = item.get("codigo") or latest.codigo
+                latest.titulo = item["titulo"]
+                latest.descripcion = item["descripcion"]
+                latest.precondiciones = item["precondiciones"]
+                latest.postcondiciones = item["postcondiciones"]
+                latest.prioridad = item["prioridad"]
+                latest.criticidad = item["criticidad"]
+                latest.tipo_prueba = item["tipo_prueba"]
+                latest.formato_prueba = item.get("formato_prueba", "CLASICA")
+                latest.etiquetas = item["etiquetas"]
+                latest.dataset = item.get("dataset") or []
+                latest.configuracion_chatbot = item.get("configuracion_chatbot") or {}
+                latest.configuracion_api = item.get("configuracion_api") or {}
+                latest.script_automatizado = item.get("script_automatizado")
+                latest.framework = item.get("framework")
+                await _restore_traceability(db, project_id, latest.master_id, item.get("trazabilidad") or {}, actor_id)
+                results.append({"external_id": item["external_id"], "case_id": str(latest.id), "outcome": "restore"})
+                continue
+            case = models.CasoPrueba(
+                master_id=(latest.master_id if latest else uuid4()),
+                codigo=(latest.codigo if latest else (item.get("codigo") or await generate_case_code(db))),
+                proyecto_id=project_id,
+                suite_id=suite_id,
+                componente_id=component_id,
+                titulo=item["titulo"],
+                descripcion=item["descripcion"],
+                precondiciones=item["precondiciones"],
+                postcondiciones=item["postcondiciones"],
+                version=((latest.version + 1) if latest else 1),
+                prioridad=item["prioridad"],
+                criticidad=item["criticidad"],
+                tipo_prueba=item["tipo_prueba"],
+                formato_prueba=("CLASICA" if item.get("formato_prueba") == "FUNCIONAL" else item.get("formato_prueba", "CLASICA")),
+                estado_caso=item["estado_caso"],
+                etiquetas=item["etiquetas"],
+                dataset=item.get("dataset") or [],
+                configuracion_chatbot=item.get("configuracion_chatbot") or {},
+                configuracion_api=item.get("configuracion_api") or {},
+                script_automatizado=item.get("script_automatizado"),
+                framework=item.get("framework"),
+                creado_por=actor_id,
+                activo=True,
+            )
             db.add(case); await db.flush()
             imported_steps = []
             for step in item["pasos"]:
                 row = models.PasoPrueba(caso_id=case.id, **step); db.add(row); imported_steps.append(row)
             await db.flush()
+            await _restore_traceability(db, project_id, case.master_id, item.get("trazabilidad") or {}, actor_id)
             for attachment in package.get("attachments", []):
                 if attachment.get("case_external_id") != item["external_id"]: continue
                 step = next((row for row in imported_steps if row.numero_paso == attachment.get("step_number")), None)
@@ -162,6 +293,8 @@ async def rollback_eligibility(
         return False, "La ventana de una hora para revertir este lote ya venció", expires_at
 
     ids = [UUID(value) for value in (batch.created_case_ids or [])]
+    if not ids and not (batch.created_suite_ids or []):
+        return False, "El lote no creó casos ni suites nuevos", expires_at
     if ids:
         execution_id = await db.scalar(
             select(models.EjecucionCaso.id)

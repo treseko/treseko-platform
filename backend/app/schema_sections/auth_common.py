@@ -27,7 +27,9 @@ from ..models import (
 )
 
 MAX_PROFILE_SETTINGS_BYTES = 128 * 1024
-MAX_PROJECT_THEME_OVERRIDES_BYTES = 64 * 1024
+# Project themes may contain one bounded, user-uploaded static background image
+# encoded as a data URL. Keep the limit finite while allowing normal web images.
+MAX_PROJECT_THEME_OVERRIDES_BYTES = 2 * 1024 * 1024
 MAX_PREFERENCE_JSON_DEPTH = 8
 MAX_PREFERENCE_DICT_KEYS = 500
 MAX_PREFERENCE_LIST_ITEMS = 2000

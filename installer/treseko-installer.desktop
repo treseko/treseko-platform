@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Treseko Community Installer
+Comment=Instalador gráfico de Treseko Community
+Exec=sh -c 'cd "$(dirname "$1")/.." && ./installer/launch_installer.sh' dummy %k
+Icon=treseko-installer
+Terminal=false
+Categories=Development;Testing;
+StartupWMClass=treseko-installer

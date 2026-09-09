@@ -1,9 +1,10 @@
 import { memo, useMemo, useState, type CSSProperties } from 'react'
 import { Button, Dropdown } from 'react-bootstrap'
-import { Archive, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FileText, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, PlusCircle, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
+import { Archive, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
 import { compareTestsBySuiteOrder } from './testOrdering'
 import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 import { useI18n } from './i18n'
+import { caseCreationFormats, caseFormatPresentation, normalizeCaseFormat, type CaseFormat } from './features/casos/caseFormat'
 
 type SuiteTreeProps = {
   suites: any[]
@@ -16,7 +17,7 @@ type SuiteTreeProps = {
   testSearchQuery: string
   onSelectSuite: (suiteId: string) => void
   onToggleSuite: (suiteId: string) => void
-  onCreateCase: (suiteId: string) => void
+  onCreateCase: (suiteId: string, format?: CaseFormat) => void
   onCreateSuite: (parentId: string) => void
   onEditSuite: (suite: any) => void
   onCloneSuite?: (suite: any) => void
@@ -198,6 +199,7 @@ const SuiteTreeNode = ({
     : hasExpandableContent
       ? `${t('common.folder')}: ${suiteFullName}. ${t('common.clickTo', { action: isExpanded ? t('common.collapse') : t('common.expand') })}`
       : `${t('common.folder')}: ${suiteFullName}`
+  const suiteMenuOpen = openSuiteDropdown === suite.id
   const handleSuiteToggle = () => {
     onSelectSuite(suite.id)
     onToggleSuite(suite.id)
@@ -224,7 +226,7 @@ const SuiteTreeNode = ({
         aria-expanded={hasExpandableContent ? isExpanded : undefined}
         className={`suite-tree-suite-row p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${isSelected ? 'is-selected border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
         style={{ marginLeft: level * 16, minHeight: '38px', '--suite-color': suiteColor, cursor: 'pointer' } as CSSProperties}
-        title={suiteTooltip}
+        title={suiteMenuOpen ? undefined : suiteTooltip}
         aria-label={suiteTooltip}
       >
         <span className="flex-shrink-0 d-flex align-items-center justify-content-center me-2" style={{ width: '16px' }}>
@@ -235,8 +237,8 @@ const SuiteTreeNode = ({
           )}
         </span>
 
-        <SuiteIcon size={16} className="flex-shrink-0 me-2" style={{ color: isSelected ? '#0d6efd' : suiteIconColor(suiteColor) }} />
-        <span className="app-small text-truncate flex-grow-1" title={suiteTooltip} aria-label={suiteTooltip}>{suiteFullName}</span>
+        <SuiteIcon size={16} className="flex-shrink-0 me-2" style={{ color: isSelected ? 'var(--app-primary)' : suiteIconColor(suiteColor) }} />
+        <span className="app-small text-truncate flex-grow-1" title={suiteMenuOpen ? undefined : suiteTooltip} aria-label={suiteTooltip}>{suiteFullName}</span>
         {suite.archivado && (
           <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">{t('common.archived')}</span>
         )}
@@ -254,17 +256,34 @@ const SuiteTreeNode = ({
         )}
 
         {showActions && !isUnsuitedRoot && <div className="ms-auto pl-2 flex-shrink-0">
-          <Dropdown show={openSuiteDropdown === suite.id} onToggle={(isOpen) => onToggleSuiteDropdown?.(isOpen ? suite.id : null)} onClick={(e) => e.stopPropagation()}>
+          <Dropdown show={suiteMenuOpen} onToggle={(isOpen) => onToggleSuiteDropdown?.(isOpen ? suite.id : null)} onClick={(e) => e.stopPropagation()}>
             <Dropdown.Toggle variant="link" size="sm" className="p-1 text-muted shadow-none border-0 hover-text-primary d-flex align-items-center flex-shrink-0">
               <Settings size={14} />
             </Dropdown.Toggle>
             <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
-              <Dropdown.Item onClick={() => onCreateCase(suite.id)} className="d-flex align-items-center gap-2 text-dark"><PlusCircle size={14}/> {t('common.newTestCase')}</Dropdown.Item>
+              <Dropdown.Header className="px-3 pb-1 text-uppercase x-small text-muted">{t('common.newTestCase')}</Dropdown.Header>
+              {caseCreationFormats.map((format) => {
+                const FormatIcon = caseFormatPresentation[format].icon
+                const label = t(caseFormatPresentation[format].labelKey)
+                return (
+                  <Dropdown.Item
+                    key={format}
+                    onClick={() => onCreateCase(suite.id, format)}
+                    className="d-flex align-items-center gap-2 text-dark"
+                  >
+                    <FormatIcon size={14} style={{ color: caseFormatPresentation[format].color }} aria-hidden="true" />
+                    {label}
+                  </Dropdown.Item>
+                )
+              })}
               <Dropdown.Divider />
               <Dropdown.Item onClick={() => onCreateSuite(suite.id)} className="d-flex align-items-center gap-2 text-dark"><FolderPlus size={14}/> {t('common.newSubfolder')}</Dropdown.Item>
               <Dropdown.Item onClick={() => onEditSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Edit size={14}/> {t('common.editFolder')}</Dropdown.Item>
               {onCloneSuite && (
-                <Dropdown.Item onClick={() => onCloneSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><ClipboardCopy size={14}/> {t('common.copySuite')}</Dropdown.Item>
+                <Dropdown.Item onClick={() => onCloneSuite(suite)} className="d-flex align-items-center gap-2 text-dark">
+                  <ClipboardCopy size={14} className="flex-shrink-0" aria-hidden="true" />
+                  <span className="text-truncate">{t('common.copySuite')}</span>
+                </Dropdown.Item>
               )}
               {onMoveSuite && (
                 <Dropdown.Item onClick={() => onMoveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><MoveRight size={14}/> {t('common.moveFolder')}</Dropdown.Item>
@@ -304,7 +323,10 @@ const SuiteTreeNode = ({
             const isSelectedTest = selectedTest?.id === test.id
             const testCode = test.code || test.id.slice(0, 8).toUpperCase()
             const testFullName = String(test.title || t('common.noName'))
-            const testTooltip = `${testCode} - ${testFullName}`
+            const format = normalizeCaseFormat(test.format)
+            const CaseIcon = caseFormatPresentation[format].icon
+            const formatLabel = t(caseFormatPresentation[format].labelKey)
+            const testTooltip = `${testCode} - ${testFullName} · ${formatLabel}`
             const visibleTags = (test.tags || []).slice(0, 2)
             const hiddenTagCount = Math.max(0, (test.tags || []).length - visibleTags.length)
             return (
@@ -319,7 +341,18 @@ const SuiteTreeNode = ({
               title={testTooltip}
               aria-label={testTooltip}
             >
-              <FileText size={12} className={`flex-shrink-0 ${isSelectedTest ? 'text-primary' : tone.icon}`} />
+              <span
+                className={`suite-tree-case-format-icon flex-shrink-0 ${isSelectedTest ? 'is-selected' : ''}`}
+                style={{
+                  color: isSelectedTest ? 'var(--app-primary)' : caseFormatPresentation[format].color,
+                  backgroundColor: isSelectedTest ? 'rgba(13, 110, 253, 0.1)' : `${caseFormatPresentation[format].color}14`,
+                  borderColor: isSelectedTest ? 'rgba(13, 110, 253, 0.35)' : `${caseFormatPresentation[format].color}55`
+                }}
+                aria-label={formatLabel}
+                title={formatLabel}
+              >
+                <CaseIcon size={14} strokeWidth={2.2} aria-hidden="true" />
+              </span>
               <span className="font-monospace x-small fw-bold text-secondary flex-shrink-0">{testCode}</span>
               <span className="x-small text-truncate flex-grow-1" title={testTooltip} aria-label={testTooltip}>{testFullName}</span>
               <span className="suite-tree-case-tags d-inline-flex align-items-center gap-1">

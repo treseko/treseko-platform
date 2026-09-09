@@ -42,7 +42,7 @@ export const SUITE_ICONS = [
 ]
 
 export const MODULE_PERMISSIONS: Record<RoleKey, ModuleId[]> = {
-  ADMIN: ['dashboard', 'ejecutar', 'crear_pruebas', 'proyectos', 'inventario', 'reportes', 'bugs', 'motor_ia', 'redmine', 'historial', 'configuracion', 'automatizacion', 'clientes', 'integraciones', 'plugins', 'notificaciones'],
+  ADMIN: ['dashboard', 'ejecutar', 'crear_pruebas', 'proyectos', 'inventario', 'reportes', 'bugs', 'incidencias', 'motor_ia', 'redmine', 'historial', 'configuracion', 'automatizacion', 'clientes', 'integraciones', 'plugins', 'notificaciones'],
   QA_LEAD: ['dashboard', 'ejecutar', 'crear_pruebas', 'proyectos', 'inventario', 'reportes', 'bugs', 'motor_ia', 'historial', 'automatizacion', 'integraciones', 'notificaciones'],
   TESTER: ['dashboard', 'ejecutar', 'crear_pruebas', 'proyectos', 'bugs', 'historial', 'notificaciones'],
   VIEWER: ['dashboard', 'proyectos', 'reportes', 'bugs', 'historial', 'notificaciones']

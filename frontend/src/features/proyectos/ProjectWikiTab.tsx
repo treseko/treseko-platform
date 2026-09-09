@@ -71,7 +71,7 @@ export function ProjectWikiTab({ context }: { context: any }) {
                         <div className="d-flex flex-column h-100">
                           <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3 flex-shrink-0">
                             <div className="d-flex align-items-center gap-3">
-                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" onClick={() => setWikiMode('list')}><ArrowLeft size={16} /></Button>
+                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" aria-label={t('proyectos.backToDocuments')} title={t('proyectos.backToDocuments')} onClick={() => setWikiMode('list')}><ArrowLeft size={16} /></Button>
                               <h5 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><FileText size={20} className="text-primary" /> {selectedWiki.title}</h5>
                             </div>
                             <div className="d-flex gap-2">
@@ -96,7 +96,7 @@ export function ProjectWikiTab({ context }: { context: any }) {
                         <div className="d-flex flex-column h-100">
                           <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3 flex-shrink-0">
                             <div className="d-flex align-items-center gap-3">
-                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" onClick={() => setWikiMode('list')}><ArrowLeft size={16} /></Button>
+                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" aria-label={t('proyectos.backToDocuments')} title={t('proyectos.backToDocuments')} onClick={() => setWikiMode('list')}><ArrowLeft size={16} /></Button>
                               <h5 className="fw-bold text-dark m-0">{selectedWiki ? t('proyectos.editDocument') : t('proyectos.newDocument')}</h5>
                             </div>
                             <Button variant="success" size="sm" className="fw-bold rounded-pill px-4 shadow-sm d-flex align-items-center gap-2" onClick={handleSaveWikiPage}>
@@ -104,9 +104,9 @@ export function ProjectWikiTab({ context }: { context: any }) {
                             </Button>
                           </div>
                           <div className="flex-grow-1 d-flex flex-column gap-3">
-                            <Form.Control name="a11y-projectwikitabtsx-107" aria-label="Campo de formulario" size="lg" type="text" placeholder={t('proyectos.documentTitle')} className="fw-bold border-light-subtle shadow-sm" value={wikiFormData.title} onChange={(e) => setWikiFormData({ ...wikiFormData, title: e.target.value })} />
+                            <Form.Control name="a11y-projectwikitabtsx-107" aria-label={t('proyectos.docTitle')} size="lg" type="text" placeholder={t('proyectos.documentTitle')} className="fw-bold border-light-subtle shadow-sm" value={wikiFormData.title} onChange={(e) => setWikiFormData({ ...wikiFormData, title: e.target.value })} />
                             <div className="flex-grow-1 position-relative">
-                              <Form.Control name="a11y-projectwikitabtsx-109" aria-label="Campo de formulario" as="textarea" placeholder={t('proyectos.markdownHint')} className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4 app-small" style={{ resize: 'none' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
+                              <Form.Control name="a11y-projectwikitabtsx-109" aria-label={t('proyectos.markdownContent')} as="textarea" placeholder={t('proyectos.markdownHint')} className="h-100 font-monospace bg-light border-light-subtle shadow-sm p-4 app-small" style={{ resize: 'none' }} value={wikiFormData.content} onChange={(e) => setWikiFormData({ ...wikiFormData, content: e.target.value })} />
                             </div>
                           </div>
                         </div>
@@ -117,7 +117,7 @@ export function ProjectWikiTab({ context }: { context: any }) {
                         <div className="d-flex flex-column h-100">
                           <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3 flex-shrink-0">
                             <div className="d-flex align-items-center gap-3">
-                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" onClick={() => setWikiMode('view')}><ArrowLeft size={16} /></Button>
+                              <Button variant="white" size="sm" className="border shadow-sm rounded-circle p-2" aria-label={t('proyectos.backToDocument')} title={t('proyectos.backToDocument')} onClick={() => setWikiMode('view')}><ArrowLeft size={16} /></Button>
                               <h5 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><History size={20} className="text-secondary" /> {t('proyectos.historyOf', { title: selectedWiki.title })}</h5>
                             </div>
                           </div>

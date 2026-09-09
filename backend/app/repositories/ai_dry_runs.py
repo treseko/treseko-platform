@@ -1,5 +1,6 @@
 from .repository_context import *
 from .ai_provider_profiles import provider_payload_for_definition
+from .ai_workflow_serialization import runtime_agent_workflow
 
 async def run_ai_engine_dry_run(
     db: AsyncSession,
@@ -52,7 +53,7 @@ async def run_ai_engine_dry_run(
         "headless": bool(config.get("headless")) and not payload.debug_mode,
         "viewport_width": int(config.get("viewport_width") or 1920),
         "viewport_height": int(config.get("viewport_height") or 1080),
-        "agent_workflow": config.get("agent_workflow") or _legacy_agent_workflow_from_definition(workflow_definition),
+        "agent_workflow": runtime_agent_workflow(config, workflow_definition),
         "workflow_definition": workflow_definition,
         "max_parallel_ai_runs": int(config.get("max_parallel_ai_runs") or 1),
         **provider_payload,

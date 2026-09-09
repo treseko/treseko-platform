@@ -31,10 +31,15 @@ responden que MCP no está habilitado.
 
 ## 2. Crear la credencial
 
-MCP usa una API key separada de la sesión del navegador. Creala desde
-**Configuración → Preferencias → API keys de automatización externa**. La key
-queda asociada al usuario que la creó, por lo que ese usuario debe tener acceso
-de lectura al proyecto y a su organización.
+MCP usa una credencial dedicada (`X-MCP-API-Key`), separada de la sesión del
+navegador y de la API key para reportar ejecuciones externas. La creación y
+gobernanza de esa credencial dependen de la edición y configuración de la
+instancia; no reutilices una key de `/external/executions/report`.
+
+La identidad técnica necesita capability de lectura y alcance simultáneo sobre
+la organización y el `project_id`. Si la interfaz de tu instalación no ofrece
+la gestión de una credencial MCP, solicitá al administrador que la cree por el
+mecanismo operativo de la instancia; no la reemplaces por un JWT de navegador.
 
 Guardá la key en el almacén de secretos del cliente MCP. No la incluyas en
 repositorios, capturas, prompts, archivos `.env` versionados ni logs.
@@ -83,13 +88,23 @@ tenga acceso. Para listar builds, cambiá `name` por `treseko.builds.list`.
 - La autenticación usa únicamente `X-MCP-API-Key`; no se aceptan JWT del navegador.
 - MCP permanece deshabilitado por defecto.
 - La allowlist no puede habilitar herramientas desconocidas o prohibidas.
+- La allowlist inicial sólo incluye `treseko.project.get` y
+  `treseko.builds.list`; no hay shell, filesystem, secretos, base de datos ni
+  red genérica.
+- Solo las invocaciones de herramientas que llegan a ejecutarse correctamente
+  quedan auditadas con actor, herramienta, argumentos saneados, estado
+  `success` y `correlation_id`. Los rechazos de autenticación, RBAC,
+  validación, allowlist o límite ocurren antes de crear ese registro.
 - El límite es de 30 llamadas por minuto.
 - Cada solicitud admite hasta 64 KiB y cada respuesta hasta 256 KiB.
-- Las llamadas exitosas quedan auditadas con actor, herramienta, argumentos saneados,
-  resultado y `correlation_id`.
+- El resultado completo no se guarda en el audit log; la respuesta se entrega
+  al cliente MCP y el registro conserva el estado `success`.
 - Revocar la API key o deshabilitar MCP bloquea las llamadas siguientes.
 
 ## Problemas frecuentes
+
+Las respuestas de la tabla son mensajes literales emitidos por el backend
+actual y se conservan para facilitar el diagnóstico.
 
 | Respuesta | Causa probable |
 |---|---|

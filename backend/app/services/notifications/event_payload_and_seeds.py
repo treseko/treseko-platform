@@ -254,7 +254,7 @@ SEED_RULES = [
     },
     {
         "nombre": "Revision IA requerida",
-        "event_types": ["ai.execution.review_required", "ai.execution.failed", "ai.engine.unavailable"],
+        "event_types": ["ai.execution.review_required", "ai.execution.failed", "ai.engine.unavailable", "chatbot.evaluation.review_required", "chatbot.evaluation.failed"],
         "conditions_json": {},
         "actions_json": {"channels": ["in_app", "email"]},
         "recipient_strategy_json": {"project_roles": ["QA_LEAD"], "global_roles": ["ADMIN"]},

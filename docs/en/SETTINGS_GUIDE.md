@@ -2,38 +2,45 @@
 
 <!-- Language: en -->
 
-**Settings** contains administrative options. The tabs you see depend on your
-role, permissions and Treseko edition.
+**Settings** brings together administrative and personal options. The tabs and
+actions depend on the role, capabilities, instance and available edition.
 
-## Preferences
+## Preferences and account
 
-Manage instance preferences and, when available, **external automation API
-keys**. Generate a key, save it once in a secrets manager and revoke it when it
-is no longer used.
+In **My Profile**, maintain your personal data and preferences. If the instance
+offers a language setting, it is saved for your account; some backend-generated
+messages or exports may depend on the format configuration.
 
-## Profile, users and roles
+In **Preferences**, review general options and, when enabled, external
+automation keys. Store each key in a secrets manager and revoke it when it is
+no longer used.
 
-- **My Profile:** update personal data and options available to your account.
-- **User Management:** create, edit, activate or deactivate authorized accounts.
-- **Roles:** assign permissions according to the team's real responsibilities.
+## Users, roles and audit
 
-Read [Access, users and permissions](AUTH_RBAC_GUIDE.md) before granting
-administrative access.
+**User Management** administers accounts; **Roles** assign capabilities and
+**Audit** lets you review administrative actions. Available expiration is configured in
+**Preferences → Session and security**; the base edition does not include a
+general inbox for reviewing or revoking active sessions. Effective access
+combines the role, module permission and specific capability. If you need more
+access, ask an administrator to confirm your role and capabilities.
 
-## Email, AI and monitor
+## Email, AI, monitor and integrations
 
-- **Email:** configure notifications and check SMTP connectivity when allowed.
-- **AI Tests:** define enabled providers, models and workflows.
-- **Monitor:** check the status of instance components and workers.
+- **Email:** SMTP, rules, templates, inbox and delivery.
+- **AI testing:** providers, models and workflows.
+- **Monitor:** components, workers and technical executions.
+- **Integrations:** catalog, state, connection test and configuration.
+- **Plugins:** available connections and links.
+- **Attachments and evidence:** upload limits and policy.
 
-The [notifications](NOTIFICATIONS_EMAIL.md) and [AI Engine](AI_ENGINE_CONFIG.md)
-guides provide more detail.
+See [Notifications](NOTIFICATIONS_EMAIL.md), [AI Engine](AI_ENGINE_CONFIG.md)
+and [Attachments](ATTACHMENTS_EVIDENCE.md). Visible integrations depend on the
+installation and its permissions.
 
 ## License and updates
 
-Under **License**, review the active edition and install a signed file when
-appropriate. Under **Updates**, check the available version before planning an
-update. Back up and test in a controlled environment before updating
-production.
-
-The **Plugins** tab is not yet documented in this guide.
+In **License**, review the edition and capabilities recognized by the instance.
+The commercial name does not replace checking a capability. In **Updates**,
+review the version, backup and controlled environment before updating
+production. This guide does not promise commercial capabilities that cannot be
+verified in the installation.

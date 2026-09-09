@@ -1,7 +1,11 @@
 # Capturas de Treseko Community
 
-Estas capturas muestran la interfaz de Treseko Community 1.0.2 y sus principales
-flujos de trabajo. Seleccioná una imagen para verla en tamaño completo.
+Estas capturas muestran flujos de referencia de Treseko Community 1.0.3 con
+datos sintéticos. No contienen credenciales ni datos operativos; los nombres,
+UUID, correos de prueba y direcciones loopback visibles pertenecen al entorno
+demo y no deben reutilizarse como configuración real. Para el contrato vigente
+de formatos, ejecución y evidencia, consultá la documentación técnica enlazada
+desde el README principal. Seleccioná una imagen para verla en tamaño completo.
 
 ## Inicio y configuración
 

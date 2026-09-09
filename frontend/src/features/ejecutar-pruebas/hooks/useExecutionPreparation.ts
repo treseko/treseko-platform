@@ -24,6 +24,7 @@ export function useExecutionPreparation(params: any) {
     testSearchQuery: params.testSearchQuery,
     selectedExecutionTestIds: params.selectedExecutionTestIds,
     executionModalCaseIds: params.executionModalCaseIds,
+    executionModalCandidateCaseIds: params.executionModalCandidateCaseIds,
     activeExecutionCaseIds: params.activeExecutionCaseIds,
   })
 
@@ -44,12 +45,16 @@ export function useExecutionPreparation(params: any) {
         dataset_id: params.selectedExecutionDatasetId || null
       })
     })
-      .then((response: Response) => response.ok ? response.json() : null)
+      .then(async (response: Response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || payload?.message || `No se pudo resolver el dataset (${response.status})`)
+        return payload
+      })
       .then((data: any) => {
         if (!cancelled) params.setExecutionDatasetPreview(data)
       })
-      .catch(() => {
-        if (!cancelled) params.setExecutionDatasetPreview(null)
+      .catch((error: any) => {
+        if (!cancelled) params.setExecutionDatasetPreview({ error: error.message || 'No se pudieron resolver las variables del dataset.' })
       })
       .finally(() => {
         if (!cancelled) params.setExecutionDatasetPreviewLoading(false)
@@ -109,13 +114,14 @@ export function useExecutionPreparation(params: any) {
 
   const selectorActions = createExecutionSelectorActions({
     filteredTests: viewModel.filteredTests,
-    filteredExecutionTestIds: viewModel.filteredExecutionTestIds,
-    selectedExecutionTestIds: params.selectedExecutionTestIds,
+    selectedExecutionTests: viewModel.selectedExecutionTests,
     selectedExecutionDiscardedCount: viewModel.selectedExecutionDiscardedCount,
     suiteBuildMissingCount: viewModel.suiteBuildMissingCount,
     suiteComponentMismatchCount: viewModel.suiteComponentMismatchCount,
     executionModalTests: viewModel.executionModalTests,
     setExecutionModalCaseIds: params.setExecutionModalCaseIds,
+    setExecutionModalCandidateCaseIds: params.setExecutionModalCandidateCaseIds,
+    setSelectedExecutionTestIds: params.setSelectedExecutionTestIds,
     setShowExecSelector: params.setShowExecSelector,
     setSelectedTest: params.setSelectedTest,
     setSelectedTestsForIa: params.setSelectedTestsForIa,

@@ -1,6 +1,6 @@
 import type { Locale } from './types'
 
-const localeMap: Record<Locale, string> = { es: 'es-ES', en: 'en-US' }
+const localeMap: Record<Locale, string> = { es: 'es-ES', en: 'en-US', pt: 'pt-BR' }
 
 function resolveLocale(locale: Locale): string {
   return localeMap[locale] || 'es-ES'

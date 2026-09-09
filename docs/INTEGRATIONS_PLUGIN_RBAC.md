@@ -1,51 +1,37 @@
-# Integraciones y complementos
+# Integraciones, complementos y RBAC
 
-Una integración conecta Treseko con un sistema externo. Un complemento agrega
-una capacidad dentro de Treseko. La sección **Complementos** muestra qué está
-incluido, disponible o próximo para tu edición.
+Dependen de provider, capability, scope y entitlement. Que aparezcan en catálogo
+no significa que estén habilitados.
 
-## Usar integraciones
+## Integraciones
 
-Las integraciones permiten relacionar el trabajo de QA con herramientas como
-Redmine, Jira, GitHub Issues, GitLab, Azure DevOps o un pipeline CI/CD cuando
-la capacidad esté habilitada para tu instalación.
+El catálogo contempla Redmine, Jira, GitHub Issues, GitLab, Azure DevOps, Slack,
+Teams y CI/CD, con disponibilidad Community, Premium, legacy o planificada
+según provider. Revisá el estado de la instalación.
 
-1. Abrí **Configuración → Complementos** o la sección de integración
-   correspondiente.
-2. Revisá si la integración figura como incluida, disponible o Premium.
-3. Configurá solo las credenciales y datos autorizados por tu organización.
-4. Probá la conexión antes de usarla en un proyecto.
+Las vinculaciones de bugs son explícitas: Treseko no publica issues externos
+automáticamente. Revisá el resumen y guardá vínculo/identificador. Usá cuentas
+técnicas de menor alcance y nunca pegues tokens en casos o evidencia.
 
-Treseko no muestra secretos ya guardados. Si actualizás un token, guardalo en
-la configuración de la integración y evitá copiarlo en casos, comentarios o
-evidencias.
+## plugin-runner
 
-## Vincular bugs con herramientas externas
+El profile `plugins` está declarado en el Compose, pero el snapshot público
+actual no contiene el contexto de build de `plugin-runner`. Por eso no está
+operativo ni debe iniciarse desde este paquete. La existencia del perfil no
+implica soporte disponible para complementos de terceros.
 
-Desde el detalle de un bug podés preparar un resumen para copiar y pegar en una
-herramienta externa y guardar el identificador o enlace del ticket creado. La
-vinculación es explícita: Treseko no publica issues externos automáticamente.
+## Portabilidad
 
-Cada vínculo pertenece a un bug concreto. Si dos defectos necesitan tickets
-distintos, registrá un vínculo para cada uno.
+Usa capabilities de provider y perfiles. Revisá [CASE_PORTABILITY.md](CASE_PORTABILITY.md).
+Los importadores no ejecutan scripts como código libre; Postman conserva
+diagnósticos y usa el runtime declarativo admitido.
 
-## Complementos
+## MCP
 
-Los complementos incluidos amplían funciones como portabilidad de casos, Bug
-Tracker interno, Motor IA y generación asistida. La tienda también puede mostrar
-capacidades futuras o Premium; esas tarjetas informan su disponibilidad, no
-instalan código de terceros en segundo plano.
+No es la API externa de reportes. Está deshabilitado por defecto, usa
+X-MCP-API-Key y no acepta JWT de navegador. La allowlist actual expone
+treseko.project.get y treseko.builds.list, de lectura.
 
-## Permisos
-
-La configuración de integraciones, secretos y complementos está restringida a
-roles autorizados. Si podés ver una integración pero no configurarla, pedí al
-administrador que revise tus permisos en Configuración.
-
-## Ayuda rápida
-
-- Verificá la conexión antes de usar una integración con datos reales.
-- Usá una cuenta técnica con el menor alcance posible en la herramienta externa.
-- Revocá y reemplazá un token si se expone.
-- Consultá el estado de la licencia si una integración o complemento aparece
-  como Premium.
+Cada llamada requiere capability, organización y proyecto mediante project_id,
+validación, límites, rate limit y auditoría. No hay shell, filesystem, secretos,
+DB ni red genérica.

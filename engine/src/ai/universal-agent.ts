@@ -30,9 +30,13 @@ const ALLOWED_ADAPTERS = new Set([
   'legacy-context-resolver/v1', 'legacy-pre-execution-analyst/v1', 'legacy-observer/v1',
   'legacy-planner/v1', 'legacy-security-guard/v1', 'legacy-executor/v1',
   'legacy-validator/v1', 'legacy-recovery/v1', 'legacy-auditor/v1', 'legacy-reporter/v1',
+  'qa-context-resolver/v2', 'qa-pre-execution-analyst/v2', 'qa-browser-observer/v2',
+  'qa-action-planner/v2', 'qa-security-guard/v2', 'qa-browser-action-executor/v2',
+  'qa-step-validator/v2', 'qa-recovery-strategist/v2', 'qa-final-auditor/v2',
+  'qa-execution-reporter/v2',
   'universal-llm/v1', 'universal-rules/v1', 'universal-transform/v1', 'universal-browser/v1',
   'universal-validator/v1', 'universal-human-approval/v1', 'universal-http/v1',
-  'universal-mcp/v1', 'universal-reporter/v1', 'universal-script-sandbox/v1', 'universal-a2a-disabled/v1',
+  'universal-mcp/v1', 'universal-reporter/v1', 'universal-script-sandbox/v1', 'universal-a2a-disabled/v1', 'universal-subworkflow/v1',
 ]);
 
 function valueAtPath(source: any, path: string): any {
@@ -57,6 +61,16 @@ function requestedOutputPort(output: AgentOutput): string {
 export function universalEnvelopeFor(node: WorkflowNode): UniversalAgentEnvelope | null {
   const candidate = (node as WorkflowNode & { universal_agent?: UniversalAgentEnvelope }).universal_agent;
   if (!candidate || !candidate.contract) return null;
+  const runtimeAdapter = (node.config_json as any)?.runtime_adapter;
+  if (typeof runtimeAdapter === 'string' && runtimeAdapter.trim() && runtimeAdapter !== candidate.contract.implementation.native_adapter) {
+    return {
+      ...candidate,
+      contract: {
+        ...candidate.contract,
+        implementation: { ...candidate.contract.implementation, native_adapter: runtimeAdapter.trim() },
+      },
+    };
+  }
   return candidate;
 }
 

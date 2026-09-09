@@ -4,6 +4,8 @@ from .routers import (
     audit,
     ai_dry_run,
     ai_engine,
+    api_bug_context,
+    api_tests,
     auth,
     auth_ad,
     attachments,
@@ -13,6 +15,8 @@ from .routers import (
     builds,
     cases,
     case_portability,
+    chatbot_manual_execution,
+    chatbot_connection,
     components,
     executions,
     extensions,
@@ -44,6 +48,8 @@ from .routers import (
 api_router = APIRouter()
 api_router.include_router(audit.router)
 api_router.include_router(ai_engine.router)
+api_router.include_router(api_bug_context.router)
+api_router.include_router(api_tests.router)
 api_router.include_router(ai_dry_run.router)
 api_router.include_router(auth.router)
 api_router.include_router(auth_ad.router)
@@ -76,6 +82,8 @@ api_router.include_router(mcp.router)
 api_router.include_router(system_monitor.router)
 api_router.include_router(suites.router)
 api_router.include_router(test_runs.router)
+api_router.include_router(chatbot_manual_execution.router)
+api_router.include_router(chatbot_connection.router)
 api_router.include_router(traceability.router)
 api_router.include_router(websocket_sync.router)
 api_router.include_router(wiki.router)

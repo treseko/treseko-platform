@@ -12,6 +12,7 @@ type ProyectosRouteProps = {
   projectsState: any
   projectActions: any
   handleProjectChange: (projectId: string) => void
+  handleComponentChange: (componentId: string) => void
   componentState: any
   componentActions: any
   buildState: any
@@ -38,6 +39,8 @@ type ProyectosRouteProps = {
   confirmAction: (options: { title: string, message: string, variant?: 'danger' | 'warning' | 'info', confirmLabel?: string, cancelLabel?: string | null }) => Promise<boolean>
   onCreateCaseFromStory: (story: any, requirement: any) => void
   onOpenLinkedCase: (masterId: string) => void
+  loadCasosFromBackend: (projectId?: string, components?: any[], options?: any) => Promise<any>
+  loadSuitesFromBackend: (projectId: string, componentId?: string, options?: any) => Promise<any>
 }
 
 export function ProyectosRoute({
@@ -52,6 +55,7 @@ export function ProyectosRoute({
   projectsState,
   projectActions,
   handleProjectChange,
+  handleComponentChange,
   componentState,
   componentActions,
   buildState,
@@ -78,6 +82,8 @@ export function ProyectosRoute({
   confirmAction,
   onCreateCaseFromStory,
   onOpenLinkedCase,
+  loadCasosFromBackend,
+  loadSuitesFromBackend,
 }: ProyectosRouteProps) {
   return (
     <ProyectosPage
@@ -109,7 +115,7 @@ export function ProyectosRoute({
       setShowComponentModal={componentState.setShowComponentModal}
       componentSearchQuery={componentState.componentSearchQuery}
       setComponentSearchQuery={componentState.setComponentSearchQuery}
-      handleComponentChange={componentActions.handleComponentChange}
+      handleComponentChange={handleComponentChange}
       currentCompId={componentState.currentCompId}
       handleDeleteComponent={componentActions.handleDeleteComponent}
       handleCreateBuild={buildActions.handleCreateBuild}
@@ -143,6 +149,8 @@ export function ProyectosRoute({
       confirmAction={confirmAction}
       onCreateCaseFromStory={onCreateCaseFromStory}
       onOpenLinkedCase={onOpenLinkedCase}
+      loadCasosFromBackend={loadCasosFromBackend}
+      loadSuitesFromBackend={loadSuitesFromBackend}
     />
   )
 }

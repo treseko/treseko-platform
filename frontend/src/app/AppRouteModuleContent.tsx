@@ -1,6 +1,7 @@
 import { AnadirPruebasPage } from '../features/casos/AnadirPruebasPage'
 import { AutomatizacionPage } from '../features/automatizacion/AutomatizacionPage'
 import { BugTrackerPage } from '../features/bugs/BugTrackerPage'
+import { IncidentCenterPage } from '../features/incidencias/IncidentCenterPage'
 import { ConfiguracionRoute } from './ConfiguracionRoute'
 import { DashboardRoute } from './DashboardRoute'
 import { EjecutarPruebasRoute } from './EjecutarPruebasRoute'
@@ -23,7 +24,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
     configTab, confirmAction, consumeDeepLinkBug, copyToClipboard, creatingInternalBugContextId, currentAuthoringCases, currentBuildId, currentBuildIsReadOnly,
     currentCompId, currentComponentCases, currentComponentName, currentExecutionCase, currentExecutionRun, currentOrgId, currentProjectAgents, currentProjectCases,
     currentProjectCustomInventoryItems, currentProjectDevices, currentProjectEnvironments, currentProjectIaQueue, currentProjectId, currentProjectInventoryCategories, currentProjectRedmineBugs, currentProjectRunHistory,
-    customInventoryItems, deepLinkBugId, devices, duplicateStepInput, editingCasoMasterId, environmentActions, environments, executionBugDetailId,
+    customInventoryItems, deepLinkBugId, bugTrackerInitialFilters, devices, duplicateStepInput, editingCasoMasterId, environmentActions, environments, executionBugDetailId,
     executionInitialLoading, executionRefreshing, executionRunDetail, executionRunDetailError, executionRunDetailLoading, executionSnapshots, executionSuiteTree, expandedMetricSuites,
     fetchWithAuth, filteredTests, focusedExecutionId, generalConfiguration, generalExecutionAttachments, generalExecutionNote, generalExecutionSnapshot, generalExecutionStatus,
     getExecutionActionLabel, getExecutionCompletionPlan, getExecutionReferenceCount, getExecutionStatusKey, getSnapshotReferences, getSnapshotStatus, getSuiteDepth, handleAssignOrganizationMember,
@@ -41,7 +42,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
     projectsSource, redmineUrl, relatedCaseBugs, relatedCaseBugsLoading, removeStepInput, renderAuthoringSuiteTree, renderCaseReferences, renderExecutionSuiteTree,
     returnToExecutionList, scriptTestResult, scriptTesting, selectSuiteTarget, selectedExecutionTestIds, selectedExecutionTests, selectedOrganizationId, selectedSuiteId,
     selectedTest, selectedWiki, sessionConfiguration, setActiveTab, setAgents, setBranding, setBugTrackerRefreshToken, setCaseArchiveView,
-    setCaseEditorOpen, setCollapsedSections, setComponentForm, setComponentSearchQuery, setComponentsList, setConfigTab, setCustomInventoryItems, setDevices,
+    setCaseEditorOpen, setCollapsedSections, setComponentForm, setComponentSearchQuery, setComponentsList, setConfigTab, setCustomInventoryItems, setDevices, setBugTrackerInitialFilters,
     setEditingCasoMasterId, setEnvironments, setExecutionBugDetailId, setExpandedMetricSuites, setExpandedSuites, setGeneralExecutionNote, setGeneralExecutionStatus, setIaExecutionStreams,
     setIaLogs, setIaQueue, setInvModalConfig, setInventoryCategories, setManagingProjectId, setNewTestComponent, setNewTestCriticality, setNewTestData,
     setNewTestDescription, setNewTestFramework, setNewTestLanguage, setNewTestPost, setNewTestPre, setNewTestPriority, setNewTestScript, setNewTestStatus,
@@ -51,6 +52,30 @@ export function AppRouteModuleContent({ options }: { options: any }) {
     suitesTree, testSearchQuery, toggleExecutionSelection, toggleVisibleExecutionSelection, traceabilityRefreshToken, updateStepAttachments, viewMode, visibleAuthoringCases,
     visibleAuthoringSuiteTree, visibleSuiteTree, wikiActions, wikiFormData, wikiMode, wikiPages,
   } = options
+  const openBugCase = (bug: any) => {
+    const caseId = String(bug?.caso_id || '')
+    const caseCode = String(bug?.case_code || '').trim()
+    const caseItem = [...(currentProjectCases || []), ...(allAuthoringCases || [])].find((item: any) =>
+      (caseId && String(item?.id || '') === caseId)
+      || (caseCode && String(item?.codigo || item?.code || '').trim() === caseCode),
+    )
+    if (!caseItem) {
+      showFeedback('Bug Tracker', 'No se encontró el caso de prueba asociado.', 'warning')
+      return
+    }
+    setSelectedTest(caseItem)
+    setEditingCasoMasterId(caseItem.master_id || caseItem.masterId || caseItem.id)
+    setCaseEditorOpen(true)
+    setActiveTab('crear_pruebas')
+  }
+
+  const openBugExecution = (bug: any) => {
+    const filters: Record<string, string> = {}
+    if (bug?.case_code) filters.case_code = String(bug.case_code)
+    if (bug?.build_id) filters.build_id = String(bug.build_id)
+    openHistorialRuns(filters, String(bug?.test_run_id || ''))
+  }
+
   return (
     <>
       {/* INVENTARIO */}
@@ -102,7 +127,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           hasSystemFeature,
           loggedUser,
           onPreferencesUpdated: handleLoggedUserPreferencesUpdated,
-          onOpenBugTracker: (bug: any) => {
+          onOpenBugTracker: (bug: any, options?: { buildId?: string; scope?: 'reported' | 'historical' }) => {
             if (!canAccessCapability('bugs.ver', 'read')) {
               showFeedback('Bug Tracker', 'No tienes permiso para ver bugs.', 'warning');
               return;
@@ -113,6 +138,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
               return;
             }
             setActiveTab("bugs");
+            setBugTrackerInitialFilters(options?.buildId ? { build_id: options.buildId, build_scope: options.scope || 'reported' } : {});
           },
         }}
       />
@@ -134,8 +160,29 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           onBugsChanged={() =>
             setBugTrackerRefreshToken((value) => value + 1)
           }
+          onOpenRelatedCase={openBugCase}
+          onOpenRelatedExecution={openBugExecution}
+          initialFilters={bugTrackerInitialFilters}
           deepLinkBugId={deepLinkBugId}
           onDeepLinkConsumed={consumeDeepLinkBug}
+        />
+      )}
+
+      {/* CENTRO DE INCIDENCIAS */}
+      {activeTab === "incidencias" && (
+        <IncidentCenterPage
+          deepLinkBugId={deepLinkBugId}
+          onDeepLinkConsumed={consumeDeepLinkBug}
+          projects={projectsList}
+          organizations={organizations}
+          builds={buildsList}
+          components={componentsList}
+          users={appUsers}
+          currentUserId={loggedUser?.id}
+          fetchWithAuth={fetchWithAuth}
+          canAccessCapability={canAccessCapability}
+          onOpenCase={openBugCase}
+          onOpenExecution={openBugExecution}
         />
       )}
       {executionBugDetailId && (
@@ -149,6 +196,8 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           fetchWithAuth={fetchWithAuth}
           showFeedback={showFeedback}
           canAccessCapability={canAccessCapability}
+          onOpenRelatedCase={openBugCase}
+          onOpenRelatedExecution={openBugExecution}
           deepLinkBugId={executionBugDetailId}
           modalOnly
           onDetailClosed={() => setExecutionBugDetailId("")}
@@ -167,6 +216,9 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           setIaExecutionStreams={setIaExecutionStreams}
           setIaQueue={setIaQueue}
           currentProjectCases={currentProjectCases}
+          currentProjectEnvironments={currentProjectEnvironments}
+          openSingleCaseExecutionSelector={openSingleCaseExecutionSelector}
+          openCaseEditor={selectedTest => { setSelectedTest(selectedTest); setActiveTab('crear_pruebas') }}
           fetchWithAuth={fetchWithAuth}
           showFeedback={showFeedback}
           setActiveTab={setActiveTab}
@@ -179,6 +231,8 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       {/* INTEGRACION REDMINE */}
       {activeTab === "redmine" && (
         <RedminePage
+          currentProjectId={currentProjectId}
+          currentOrgId={currentOrgId}
           currentProjectRedmineBugs={currentProjectRedmineBugs}
           currentProjectCases={currentProjectCases}
           redmineUrl={redmineUrl}
@@ -250,12 +304,14 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           canAccessCapability={canAccessCapability}
           hasSystemFeature={hasSystemFeature}
           showFeedback={showFeedback}
+          confirmAction={confirmAction}
           generalConfiguration={generalConfiguration}
           sessionConfiguration={sessionConfiguration}
           aiEngineConfiguration={aiEngineConfiguration}
           adminUserRolesConfiguration={adminUserRolesConfiguration}
           organizations={organizations}
           projectsList={projectsList}
+          currentProjectId={currentProjectId}
           selectedOrganizationId={selectedOrganizationId}
           setSelectedOrganizationId={setSelectedOrganizationId}
           handleCreateOrganization={handleCreateOrganization}

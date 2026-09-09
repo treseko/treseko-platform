@@ -1,6 +1,8 @@
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
 import { Bug, CheckCircle2, KanbanSquare, RefreshCw } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
+import { BugTransitionModal } from '../bugs/BugTransitionModal'
+import { createBugLocalizedLabels } from '../bugs/bugPresentation'
 
 const BUG_STATUS_OPTIONS = [
   'ABIERTO', 'TRIAGE', 'ASIGNADO', 'EN_PROGRESO', 'LISTO_PARA_RETEST', 'EN_RETEST',
@@ -15,7 +17,10 @@ const PROJECT_BUG_COLUMNS = [
 
 export function ProjectTicketsTab({ context }: { context: any }) {
   const { t, canEditProjectTicketsEffective, loadProjectBugs, bugsLoading, createBugIssue, bugForm, setBugForm,
-    componentsList, managingProjectId, buildsList, bugIssues, updateBugIssue } = context
+    componentsList, managingProjectId, buildsList, bugIssues, updateBugIssue,
+    canTransitionProjectTickets, transitionTarget, transitionForm, setTransitionForm, setTransitionTarget,
+    compatibleBuilds, requestTransition, confirmTransition, quickTransitioningBugId, isCorrected } = context
+  const labels = createBugLocalizedLabels(t)
   return (
 <div className="animate__animated animate__fadeIn">
                       <div className="d-flex justify-content-between align-items-center border-bottom pb-2 mb-4">
@@ -28,34 +33,34 @@ export function ProjectTicketsTab({ context }: { context: any }) {
                           <Row className="g-3">
                             <Col md={5}>
                               <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('proyectos.bugTitle')}</RequiredLabel></Form.Label>
-                              <Form.Control name="a11y-projectticketstabtsx-31" aria-label="Campo de formulario" value={bugForm.titulo} onChange={(e) => setBugForm({ ...bugForm, titulo: e.target.value })} placeholder={t('proyectos.bugTitlePlaceholder')} required />
+                              <Form.Control name="a11y-projectticketstabtsx-31" aria-label={t('proyectos.bugTitle')} value={bugForm.titulo} onChange={(e) => setBugForm({ ...bugForm, titulo: e.target.value })} placeholder={t('proyectos.bugTitlePlaceholder')} required />
                             </Col>
                             <Col md={2}>
                               <Form.Label className="x-small fw-bold text-muted">{t('proyectos.severity')}</Form.Label>
-                              <Form.Select name="a11y-projectticketstabtsx-35" aria-label="Campo de formulario" value={bugForm.severidad} onChange={(e) => setBugForm({ ...bugForm, severidad: e.target.value })}>
-                                {['BLOCKER', 'CRITICA', 'ALTA', 'MEDIA', 'BAJA'].map(item => <option key={item} value={item}>{item}</option>)}
+                              <Form.Select name="a11y-projectticketstabtsx-35" aria-label={t('proyectos.severity')} value={bugForm.severidad} onChange={(e) => setBugForm({ ...bugForm, severidad: e.target.value })}>
+                                {['BLOCKER', 'CRITICA', 'ALTA', 'MEDIA', 'BAJA'].map(item => <option key={item} value={item}>{labels.severity(item)}</option>)}
                               </Form.Select>
                             </Col>
                             <Col md={2}>
                               <Form.Label className="x-small fw-bold text-muted">{t('proyectos.priority')}</Form.Label>
-                              <Form.Select name="a11y-projectticketstabtsx-41" aria-label="Campo de formulario" value={bugForm.prioridad} onChange={(e) => setBugForm({ ...bugForm, prioridad: e.target.value })}>
-                                {['ALTA', 'MEDIA', 'BAJA'].map(item => <option key={item} value={item}>{item}</option>)}
+                              <Form.Select name="a11y-projectticketstabtsx-41" aria-label={t('proyectos.priority')} value={bugForm.prioridad} onChange={(e) => setBugForm({ ...bugForm, prioridad: e.target.value })}>
+                                {['ALTA', 'MEDIA', 'BAJA'].map(item => <option key={item} value={item}>{labels.priority(item)}</option>)}
                               </Form.Select>
                             </Col>
                             <Col md={3}>
                               <Form.Label className="x-small fw-bold text-muted">{t('proyectos.component')}</Form.Label>
-                              <Form.Select name="a11y-projectticketstabtsx-47" aria-label="Campo de formulario" value={bugForm.componente_id} onChange={(e) => setBugForm({ ...bugForm, componente_id: e.target.value })}>
+                              <Form.Select name="a11y-projectticketstabtsx-47" aria-label={t('proyectos.component')} value={bugForm.componente_id} onChange={(e) => setBugForm({ ...bugForm, componente_id: e.target.value })}>
                                 <option value="">{t('proyectos.noComponent')}</option>
                                 {componentsList.filter((c: any) => c.projectId === managingProjectId).map((component: any) => <option key={component.id} value={component.id}>{component.name}</option>)}
                               </Form.Select>
                             </Col>
                             <Col md={9}>
                               <Form.Label className="x-small fw-bold text-muted">{t('proyectos.description')}</Form.Label>
-                              <Form.Control name="a11y-projectticketstabtsx-54" aria-label="Campo de formulario" as="textarea" rows={2} value={bugForm.descripcion} onChange={(e) => setBugForm({ ...bugForm, descripcion: e.target.value })} placeholder={t('proyectos.descriptionPlaceholder')} />
+                              <Form.Control name="a11y-projectticketstabtsx-54" aria-label={t('proyectos.description')} as="textarea" rows={2} value={bugForm.descripcion} onChange={(e) => setBugForm({ ...bugForm, descripcion: e.target.value })} placeholder={t('proyectos.descriptionPlaceholder')} />
                             </Col>
                             <Col md={3}>
                               <Form.Label className="x-small fw-bold text-muted">{t('proyectos.build')}</Form.Label>
-                              <Form.Select name="a11y-projectticketstabtsx-58" aria-label="Campo de formulario" value={bugForm.build_id} onChange={(e) => setBugForm({ ...bugForm, build_id: e.target.value })}>
+                              <Form.Select name="a11y-projectticketstabtsx-58" aria-label={t('proyectos.build')} value={bugForm.build_id} onChange={(e) => setBugForm({ ...bugForm, build_id: e.target.value })}>
                                 <option value="">{t('proyectos.activeBuildLabel')}</option>
                                 {buildsList.filter((build: any) => build.projectId === managingProjectId).map((build: any) => <option key={build.id} value={build.id}>{build.name}</option>)}
                               </Form.Select>
@@ -79,16 +84,16 @@ export function ProjectTicketsTab({ context }: { context: any }) {
                                   {items.length === 0 && <div className="small text-muted p-3 bg-white rounded-3 border">{t('proyectos.noBugs')}</div>}
                                   {items.map((bug: any) => (
                                     <div key={bug.id} className={`p-3 bg-white border rounded-3 shadow-sm border-start border-4 ${bug.severidad === 'BLOCKER' || bug.severidad === 'CRITICA' ? 'border-danger' : bug.severidad === 'ALTA' ? 'border-warning' : 'border-primary'}`}>
-                                      <div className="d-flex justify-content-between mb-1"><strong className="small text-dark">{bug.codigo}</strong> <Badge bg={bug.severidad === 'BLOCKER' || bug.severidad === 'CRITICA' ? 'danger' : bug.severidad === 'ALTA' ? 'warning' : 'secondary'}>{bug.severidad}</Badge></div>
-                                      <Badge bg="light" text="dark" className="border mb-2">{String(bug.estado || 'ABIERTO').replaceAll('_', ' ')}</Badge>
+                                      <div className="d-flex justify-content-between mb-1"><strong className="small text-dark">{bug.codigo}</strong> <Badge bg={bug.severidad === 'BLOCKER' || bug.severidad === 'CRITICA' ? 'danger' : bug.severidad === 'ALTA' ? 'warning' : 'secondary'}>{labels.severity(bug.severidad)}</Badge></div>
+                                      <Badge bg="light" text="dark" className="border mb-2">{labels.status(String(bug.estado || 'ABIERTO'))}</Badge>
                                       <p className="x-small text-muted mb-2">{bug.titulo}</p>
                                       {bug.descripcion && <div className="x-small text-secondary mb-2">{bug.descripcion}</div>}
-                                      {canEditProjectTicketsEffective ? (
-                                        <Form.Select name="a11y-projectticketstabtsx-87" aria-label="Campo de formulario" size="sm" value={bug.estado} onChange={(e) => updateBugIssue(bug, { estado: e.target.value })}>
-                                          {BUG_STATUS_OPTIONS.map(item => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}
+                                      {canEditProjectTicketsEffective && canTransitionProjectTickets ? (
+                                        <Form.Select name="a11y-projectticketstabtsx-87" aria-label={t('proyectos.status')} size="sm" value={bug.estado} onChange={(e) => requestTransition(bug, e.target.value)}>
+                                          {BUG_STATUS_OPTIONS.map(item => <option key={item} value={item}>{labels.status(item)}</option>)}
                                         </Form.Select>
                                       ) : (
-                                        <Badge bg="light" text="dark" className="border">{String(bug.estado || 'ABIERTO').replaceAll('_', ' ')}</Badge>
+                                        <Badge bg="light" text="dark" className="border">{labels.status(String(bug.estado || 'ABIERTO'))}</Badge>
                                       )}
                                     </div>
                                   ))}
@@ -98,6 +103,17 @@ export function ProjectTicketsTab({ context }: { context: any }) {
                           )
                         })}
                       </Row>
+
+                      <BugTransitionModal
+                        target={transitionTarget}
+                        form={transitionForm}
+                        builds={transitionTarget ? compatibleBuilds(transitionTarget.bug) : []}
+                        busy={Boolean(transitionTarget && quickTransitioningBugId === transitionTarget.bug.id)}
+                        isCorrected={isCorrected}
+                        onChange={setTransitionForm}
+                        onClose={() => setTransitionTarget(null)}
+                        onConfirm={confirmTransition}
+                      />
 
                       <Row className="g-2 d-none">
                         <Col md={4}>

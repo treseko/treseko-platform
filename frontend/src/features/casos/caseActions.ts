@@ -10,10 +10,86 @@ type ConfirmAction = (options: { title: string; message: string; variant?: 'dang
 
 const CASES_PAGE_SIZE = 200
 
+// Several callers can refresh the project cases at the same time (for example
+// after saving a case while the initial load is still in flight). Keep only
+// the result of the most recent request so an older response cannot overwrite
+// a newer list in the UI.
+const casesLoadGenerationByProject = new Map<string, number>()
+
 type LoadCasesOptions = {
   preserveExecutionState?: boolean
   buildId?: string
   silent?: boolean
+}
+
+export type ExecutionHistoryStats = {
+  total: number
+  passed: number
+  failed: number
+  blocked: number
+  pending: number
+  counts?: Record<string, number>
+}
+
+export type ExecutionHistoryItems = any[] & {
+  total: number
+  stats: ExecutionHistoryStats
+  hasMore: boolean
+  skip: number
+  limit: number
+}
+
+export const normalizeExecutionHistoryPayload = (
+  payload: any,
+  skip = 0,
+  limit = 10,
+): ExecutionHistoryItems => {
+  const rawHistory = Array.isArray(payload)
+    ? payload
+    : (Array.isArray(payload?.items) ? payload.items : [])
+  const historial = rawHistory.map((item: any) => ({
+    date: item.fecha ? formatDateTime(item.fecha) : '',
+    status: item.estado,
+    executedBy: item.ejecutado_por_nombre || item.ejecutado_por || '',
+    duration: item.duracion_segundos ? `${Math.floor(item.duracion_segundos / 60)}m ${item.duracion_segundos % 60}s` : '',
+    failedStep: item.paso_fallido || null,
+    evidenceUrl: item.evidencia_url || null,
+    evidencias: Array.isArray(item.evidencias) ? item.evidencias : [],
+    observation: item.observaciones || null,
+    versionExecuted: item.version_ejecutada || null,
+    testRunId: item.test_run_id || null,
+    executionId: item.id || item.execution_id || null,
+    snapshotId: item.snapshot_id || null,
+    buildId: item.build_id || null,
+    buildName: item.build_nombre || null,
+    buildCode: item.build_codigo || null,
+    componentId: item.componente_id || null,
+    componentName: item.componente_nombre || null,
+    environmentId: item.entorno_id || null,
+    environmentName: item.entorno_nombre || null,
+    datasetId: item.dataset_id || null,
+    datasetName: item.dataset_nombre || null,
+    testData: item.datos_prueba || null,
+    expected: item.resultado_esperado || null,
+    action: item.accion || null,
+    executionMode: item.execution_mode || null,
+    aiReviewStatus: item.ai_review_status || null,
+    aiHumanReviewRequired: Boolean(item.ai_human_review_required),
+  }))
+  const stats = payload?.stats || {
+    total: historial.length,
+    passed: historial.filter((item: any) => item.status === 'PASO').length,
+    failed: historial.filter((item: any) => item.status === 'FALLO').length,
+    blocked: historial.filter((item: any) => item.status === 'BLOQUEADO').length,
+    pending: 0,
+  }
+  return Object.assign(historial, {
+    total: Number(payload?.total ?? stats.total ?? historial.length),
+    stats,
+    hasMore: Boolean(payload?.has_more),
+    skip: Number(payload?.skip ?? skip),
+    limit: Number(payload?.limit ?? limit),
+  })
 }
 
 type CreateCaseActionsParams = {
@@ -116,6 +192,9 @@ export function createCaseActions({
     options: LoadCasesOptions = {}
   ) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return
+    const requestId = (casesLoadGenerationByProject.get(projectId) || 0) + 1
+    casesLoadGenerationByProject.set(projectId, requestId)
+    const isLatestRequest = () => casesLoadGenerationByProject.get(projectId) === requestId
     const silent = Boolean(options.silent)
     if (!silent) setCasosLoading(true)
     try {
@@ -125,7 +204,7 @@ export function createCaseActions({
       const cachedResultHistory = resultBuildId ? buildCaseResultHistoryByBuild[resultBuildId] || {} : {}
       const applyCachedBuildResult = (test: any) => {
         if (!resultBuildId || !Object.prototype.hasOwnProperty.call(cachedResultHistory, test.id)) return test
-        const history = cachedResultHistory[test.id] || []
+        const history = (cachedResultHistory[test.id] || []) as ExecutionHistoryItems
         const latest = history[0]
         return {
           ...test,
@@ -133,10 +212,13 @@ export function createCaseActions({
           lastExecutedAt: latest?.date || null,
           lastExecutedBy: latest?.executedBy || null,
           lastExecutedVersion: latest?.versionExecuted || null,
-          history
+          history,
+          historyTotal: history.total ?? history.length,
+          historyStats: history.stats || null,
         }
       }
       const mapped = casos.map((caso: any) => applyCachedBuildResult(mapBackendCasoToTest(caso, componentsSnapshot)))
+      if (!isLatestRequest()) return
       if (options.preserveExecutionState) {
         setCasosList(prev => {
           const previousById = new Map(prev.map(test => [test.id, test]))
@@ -149,7 +231,9 @@ export function createCaseActions({
               lastExecutedAt: previous.lastExecutedAt ?? test.lastExecutedAt,
               lastExecutedBy: previous.lastExecutedBy ?? test.lastExecutedBy,
               lastExecutedVersion: previous.lastExecutedVersion ?? test.lastExecutedVersion,
-              history: Array.isArray(previous.history) && previous.history.length > 0 ? previous.history : test.history
+              history: Array.isArray(previous.history) && previous.history.length > 0 ? previous.history : test.history,
+              historyTotal: previous.historyTotal || test.historyTotal,
+              historyStats: previous.historyStats || test.historyStats,
             }
           })
           const historicalBuildCases = prev.filter(test =>
@@ -170,9 +254,11 @@ export function createCaseActions({
         })
       }
     } catch (error: any) {
-      setProjectSyncMessage(`${t('casos.loadCasesError')}: ${error.message}`)
+      if (isLatestRequest()) {
+        setProjectSyncMessage(`${t('casos.loadCasesError')}: ${error.message}`)
+      }
     } finally {
-      if (!silent) setCasosLoading(false)
+      if (!silent && isLatestRequest()) setCasosLoading(false)
     }
   }
 
@@ -348,46 +434,24 @@ export function createCaseActions({
     }
   }
 
-  const loadCasoExecutionHistory = async (casoId: string, buildId = currentBuildId, limit = 10) => {
+  const loadCasoExecutionHistory = async (casoId: string, buildId = currentBuildId, limit = 10, skip = 0): Promise<ExecutionHistoryItems> => {
+    const emptyHistory = (): ExecutionHistoryItems => Object.assign([], {
+      total: 0,
+      stats: { total: 0, passed: 0, failed: 0, blocked: 0, pending: 0, counts: {} },
+      hasMore: false,
+      skip,
+      limit,
+    })
     try {
-      const params = new URLSearchParams({ limit: String(limit) })
+      const params = new URLSearchParams({ limit: String(limit), skip: String(skip), include_total: 'true' })
       if (buildId && isValidUUID(buildId)) params.set('build_id', buildId)
       const response = await fetchWithAuth(`${API_BASE}/casos/${casoId}/historial?${params.toString()}`)
       if (!response.ok) {
         throw new Error(`Backend respondió ${response.status}`)
       }
-      const historial = await response.json()
-      return historial.map((item: any) => ({
-        date: item.fecha ? formatDateTime(item.fecha) : '',
-        status: item.estado,
-        executedBy: item.ejecutado_por_nombre || item.ejecutado_por || '',
-        duration: item.duracion_segundos ? `${Math.floor(item.duracion_segundos / 60)}m ${item.duracion_segundos % 60}s` : '',
-        failedStep: item.paso_fallido || null,
-        evidenceUrl: item.evidencia_url || null,
-        evidencias: Array.isArray(item.evidencias) ? item.evidencias : [],
-        observation: item.observaciones || null,
-        versionExecuted: item.version_ejecutada || null,
-        testRunId: item.test_run_id || null,
-        executionId: item.id || item.execution_id || null,
-        snapshotId: item.snapshot_id || null,
-        buildId: item.build_id || null,
-        buildName: item.build_nombre || null,
-        buildCode: item.build_codigo || null,
-        componentId: item.componente_id || null,
-        componentName: item.componente_nombre || null,
-        environmentId: item.entorno_id || null,
-        environmentName: item.entorno_nombre || null,
-        datasetId: item.dataset_id || null,
-        datasetName: item.dataset_nombre || null,
-        testData: item.datos_prueba || null,
-        expected: item.resultado_esperado || null,
-        action: item.accion || null,
-        executionMode: item.execution_mode || null,
-        aiReviewStatus: item.ai_review_status || null,
-        aiHumanReviewRequired: Boolean(item.ai_human_review_required),
-      }))
+      return normalizeExecutionHistoryPayload(await response.json(), skip, limit)
     } catch {
-      return []
+      return emptyHistory()
     }
   }
 

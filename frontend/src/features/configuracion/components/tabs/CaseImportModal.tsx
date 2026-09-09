@@ -60,6 +60,9 @@ export function CaseImportModal({
   expandedImportSuites, setExpandedImportSuites, expandedImportCases,
   setExpandedImportCases,
 }: Props) {
+  const acceptedExtensions = Array.from(
+    new Set(profiles.flatMap((profile) => profile.extensions || [])),
+  );
   return (<Modal
   show={show}
   onHide={onHide}
@@ -236,9 +239,16 @@ export function CaseImportModal({
       id="case-import-file"
       name="case_import_file"
       type="file"
-      accept={(selectedProfile?.extensions || []).join(",")}
+      accept={acceptedExtensions.join(",")}
       onChange={(event) => {
-        setFile((event.target as HTMLInputElement).files?.[0] || null);
+        const nextFile = (event.target as HTMLInputElement).files?.[0] || null;
+        if (nextFile && /postman[_ .-]*collection/i.test(nextFile.name)) {
+          const postman = profiles.find(
+            (profile) => profile.id === "postman/collection-v2.1" && isProfileEnabled(profile),
+          );
+          if (postman && postman.id !== profileId) setProfileId(postman.id);
+        }
+        setFile(nextFile);
         setPreview(null);
         setExpandedImportCases([]);
       }}
@@ -246,7 +256,7 @@ export function CaseImportModal({
     />
     <div className="x-small text-muted mt-1">
       {t("configuracion.profileFormats")}{" "}
-      {selectedProfile?.extensions?.join(", ") || "—"}.
+      {acceptedExtensions.join(", ") || "—"}.
     </div>
     <Button
       className="mt-3"
@@ -258,27 +268,6 @@ export function CaseImportModal({
     </Button>
     {preview && (
       <>
-        {(preview.diagnostics?.warnings?.length > 0 ||
-          preview.diagnostics?.ignored_fields?.length > 0) && (
-          <Alert variant="warning" className="small mt-3 mb-2">
-            <div className="fw-semibold mb-1">
-              {t("configuracion.reviewDifferences")}
-            </div>
-            <ul className="mb-0 ps-3">
-              {(preview.diagnostics?.warnings || []).map(
-                (warning: string) => (
-                  <li key={warning}>{warning}</li>
-                ),
-              )}
-              {preview.diagnostics?.ignored_fields?.length > 0 && (
-                <li>
-                  {t("configuracion.unmappedFields")}:{" "}
-                  {preview.diagnostics.ignored_fields.join(", ")}
-                </li>
-              )}
-            </ul>
-          </Alert>
-        )}
         <div className="d-flex flex-wrap gap-2 mt-3 mb-2">
           <Badge bg="light" text="dark">
             {preview.diagnostics?.suite_count || 0} {t("configuracion.suites")}
@@ -324,7 +313,7 @@ export function CaseImportModal({
         !isProfileEnabled(selectedProfile)
       }
     >
-      {t("configuracion.importSelected", { count: selectedImportIds.length || t("configuracion.selection") })}
+      {t("configuracion.importSelected")} ({selectedImportIds.length})
     </Button>
   </Modal.Footer>
 </Modal>);

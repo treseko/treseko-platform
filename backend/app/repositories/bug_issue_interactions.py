@@ -1,4 +1,5 @@
 from .repository_context import *
+from ..services.api_evidence_policy import evidence_policy_marker, public_test_data_evidence_enabled
 
 async def add_bug_comment(db: AsyncSession, bug_id: UUID, payload: schemas.BugCommentCreate, autor_id: Optional[UUID]):
     bug = await get_bug_issue(db, bug_id)
@@ -108,13 +109,18 @@ async def create_bug_from_snapshot(db: AsyncSession, snapshot_id: UUID, payload:
     environment = None
     if run.entorno_id:
         environment = (await db.execute(select(models.Entorno).filter(models.Entorno.id == run.entorno_id))).scalar_one_or_none()
+    public_evidence = public_test_data_evidence_enabled(environment=environment, case=case, execution=execution)
     dataset = None
     if run.dataset_id:
         dataset = (await db.execute(select(models.EntornoDataset).filter(models.EntornoDataset.id == run.dataset_id))).scalar_one_or_none()
     resolved_dataset = await resolve_case_dataset(db, case.id, run.build_id, run.entorno_id, run.dataset_id)
     dataset_values = (resolved_dataset or {}).get("dataset_resuelto") or []
     run_variables = {str(key): str(value) for key, value in ((run.variables_resueltas if run else {}) or {}).items()}
-    snapshot_data = _resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None
+    snapshot_data = (
+        snapshot.datos_resueltos
+        if snapshot.datos_resueltos is not None
+        else (_resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None)
+    )
     base = {
         "proyecto_id": run.proyecto_id,
         "componente_id": component_id,
@@ -169,6 +175,9 @@ async def create_bug_from_snapshot(db: AsyncSession, snapshot_id: UUID, payload:
             "executed_by": str(execution.ejecutado_por),
             "case_version": execution.version_ejecutada,
             "legacy_evidence_url": snapshot.evidencia_url,
+            "format": "CLASICO",
+            "public_test_data": public_evidence,
+            **evidence_policy_marker(public_evidence),
         },
     }
     overrides = payload.model_dump(exclude_unset=True)

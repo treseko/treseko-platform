@@ -1,11 +1,19 @@
 from .repository_context import *
 
 def _normalize_bug_text(value: Optional[str]) -> str:
-    return re.sub(r"\s+", " ", (value or "").strip().lower())
+    # Versiones y otros campos de contexto pueden llegar como enteros desde
+    # snapshots antiguos; la normalización debe ser total y no romper el
+    # cálculo de deduplicación.
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
 
 def _bug_payload_dict(payload: schemas.BugIssueCreate | schemas.BugIssueUpdate) -> Dict[str, Any]:
     return payload.model_dump(exclude_unset=isinstance(payload, schemas.BugIssueUpdate))
+
+
+def normalize_chatbot_finding_type(value: Optional[str]) -> str:
+    normalized = str(value or "OTHER").strip().upper()
+    return normalized if normalized in schemas.CHATBOT_BUG_FINDING_TYPES else "OTHER"
 
 
 def compute_bug_dedupe_hash(data: Dict[str, Any]) -> str:
@@ -15,8 +23,24 @@ def compute_bug_dedupe_hash(data: Dict[str, Any]) -> str:
         str(data.get("build_id") or ""),
         str(data.get("caso_id") or ""),
         str(data.get("numero_paso") or ""),
+        str(data.get("chatbot_turn_index") if data.get("chatbot_turn_index") is not None else "execution"),
+        _normalize_bug_text(data.get("chatbot_finding_type")),
         _normalize_bug_text(data.get("titulo")),
         _normalize_bug_text(data.get("error_tecnico")),
+        _normalize_bug_text(data.get("resultado_obtenido") or data.get("descripcion")),
+    ])
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+def compute_conversational_bug_dedupe_hash(data: Dict[str, Any]) -> str:
+    base = "|".join([
+        str(data.get("proyecto_id") or ""),
+        str(data.get("case_master_id") or data.get("caso_id") or ""),
+        _normalize_bug_text(data.get("case_version") or data.get("version_app")),
+        _normalize_bug_text(data.get("chatbot_finding_type")),
+        str(data.get("chatbot_turn_index") if data.get("chatbot_turn_index") is not None else "execution"),
+        _normalize_bug_text(data.get("error_tecnico")),
+        _normalize_bug_text(data.get("resultado_esperado")),
         _normalize_bug_text(data.get("resultado_obtenido") or data.get("descripcion")),
     ])
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
@@ -53,8 +77,11 @@ def _bug_options():
     return (
         selectinload(models.BugIssue.build),
         selectinload(models.BugIssue.resolved_build),
+        selectinload(models.BugIssue.caso),
+        selectinload(models.BugIssue.componente),
         selectinload(models.BugIssue.comments).selectinload(models.BugComment.autor),
         selectinload(models.BugIssue.comments).selectinload(models.BugComment.attachments).selectinload(models.BugAttachment.attachment),
         selectinload(models.BugIssue.attachments).selectinload(models.BugAttachment.attachment),
         selectinload(models.BugIssue.external_links),
+        selectinload(models.BugIssue.conversational_context),
     )

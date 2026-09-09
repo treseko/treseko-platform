@@ -24,6 +24,7 @@ export const allSidebarItems: SidebarItem[] = [
   { id: 'inventario', label: 'Inventario', icon: Server },
   { id: 'reportes', label: 'Reportes y Métricas', icon: BarChart3 },
   { id: 'bugs', label: 'Bug Tracker', icon: Bug },
+  { id: 'incidencias', label: 'Centro de Incidencias', icon: Bug },
   { id: 'motor_ia', label: 'Motor IA', icon: Cpu },
   { id: 'redmine', label: 'Complementos', icon: Plug },
   { id: 'historial', label: 'Historial Runs', icon: History },

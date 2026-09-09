@@ -134,6 +134,7 @@ def sanitize_ai_report_payload(value: Any) -> Any:
                 "completed_via",
                 "engine_status",
                 "evidence_summary",
+                "case_steps",
                 "metrics",
                 "summary",
             )

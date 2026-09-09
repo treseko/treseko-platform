@@ -1,8 +1,9 @@
 import { executeWorkflowGraph, type WorkflowDefinition, type WorkflowTrace } from './ai/workflow.ts';
 import { compileBlockWorkflow } from './ai/block-workflow.ts';
 import { validateWorkflowRuntime } from './ai/agent-registry.ts';
-import { runLlmAgent, runReporterAgent, runRuleAgent, runScriptAgent, runValidatorAgent, runWebhookAgent } from './ai/custom-agents.ts';
+import { advanceValidatedGraphStep, runLlmAgent, runReporterAgent, runRuleAgent, runScriptAgent, runValidatorAgent, runWebhookAgent } from './ai/custom-agents.ts';
 import { interpretStepData } from './automation/context-data-interpreter.ts';
+import { graphRunResultFromMemory } from './ai/graph-runtime/graph-run-result.ts';
 
 export async function executeConfiguredWorkflow(context: any): Promise<any> {
   const { options, testId, task, expected, url, urlCandidate, manualSteps, qaSteps, ai, page, emit, emitAgent, navigateToResolvedBaseUrl, runQaSteps, runResult: initialRunResult, normalizeEngineUrl, firstStepUrl, performFinalAudit, workflowTimeoutMs } = context;
@@ -21,6 +22,9 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
         context: {
           task,
           expected,
+          // Graph-native adapters receive runtime services through the
+          // execution context. They are never serialized into workflow state.
+          browserPage: page,
           received_url: url,
           url_candidate: urlCandidate,
           manualSteps,
@@ -219,8 +223,11 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
           reason: (input.sharedMemory.detected_errors || []).join(' | ') || 'No hay estrategia de recuperacion automatica disponible',
           events: [],
         }),
-        Auditor: async () => {
-          const audit = await performFinalAudit();
+        Auditor: async (_node, input) => {
+          if (!runResult) {
+            runResult = graphRunResultFromMemory(input.sharedMemory);
+          }
+          const audit = await performFinalAudit(runResult);
           return {
             status: 'SUCCESS',
             confidence: audit.data.confidence,
@@ -238,6 +245,60 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
           confidence: 100,
           reason: 'Trazabilidad del workflow preparada',
           events: [],
+        }),
+        'qa-action-planner/v2': async (node, input) => runLlmAgent(ai, node, input),
+        'qa-step-validator/v2': async (node, input) => advanceValidatedGraphStep(
+          input,
+          await runValidatorAgent(node, input),
+        ),
+        'universal-llm/v1': async (node, input) => runLlmAgent(ai, node.prompt_template ? node : {
+          ...node,
+          prompt_template: node.universal_agent?.contract?.instructions?.user_instructions || '',
+        }, input),
+        'universal-rules/v1': async (node, input) => runRuleAgent(node, input),
+        'universal-validator/v1': async (node, input) => runValidatorAgent(node, input),
+        'universal-transform/v1': async (_node, input) => ({
+          status: 'SUCCESS', confidence: 100, reason: 'Transformacion universal aplicada', events: [],
+          sharedMemoryPatch: input.context.workflow_inputs || {},
+        }),
+        'universal-reporter/v1': async (node, input) => runReporterAgent(node, input),
+        'universal-http/v1': async (node, input) => runWebhookAgent(node, input),
+        'universal-script-sandbox/v1': async (node, input) => runScriptAgent(node, input),
+        'universal-browser/v1': async (_node, input) => {
+          await navigateToResolvedBaseUrl(input.sharedMemory.base_url, 'Context Resolver');
+          if (!runResult) {
+            runResult = await runQaSteps(page, ai, qaSteps, {
+              executionId: testId,
+              task,
+              ...(expected ? { expected } : {}),
+              maxAttempts: 2,
+              contextData: options.contextData || {},
+              emit,
+              logger: { log: emitAgent },
+            });
+          }
+          return {
+            status: runResult.errors.length ? 'FAILED' : 'SUCCESS',
+            confidence: runResult.errors.length ? 60 : 90,
+            reason: runResult.errors.length ? runResult.errors.join(' | ') : 'Acciones browser ejecutadas',
+            events: [],
+            sharedMemoryPatch: { qa_run_complete: true, visited_urls: runResult.visited_urls, detected_errors: runResult.errors },
+          };
+        },
+        'universal-human-approval/v1': async (node) => ({
+          status: 'BLOCKED', confidence: 100,
+          reason: `Aprobacion humana pendiente para ${node.name}`,
+          events: [{ type: 'human_approval_requested', node_id: node.id }],
+        }),
+        'universal-mcp/v1': async (node) => ({
+          status: 'BLOCKED', confidence: 100,
+          reason: `La herramienta MCP de ${node.name} no esta autorizada en esta instalacion`,
+          events: [{ type: 'mcp_tool_blocked', node_id: node.id }],
+        }),
+        'universal-a2a-disabled/v1': async (node) => ({
+          status: 'BLOCKED', confidence: 100,
+          reason: `A2A permanece deshabilitado para ${node.name} hasta configurar identidad y confianza remota`,
+          events: [{ type: 'a2a_disabled', node_id: node.id }],
         }),
         llm_agent: async (node, input) => runLlmAgent(ai, node, input),
         rule_agent: async (node, input) => runRuleAgent(node, input),
@@ -312,7 +373,10 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
     );
     workflowTraces = workflowResult.traces;
     if (!runResult) {
-      runResult = { steps: [], history: [], visited_urls: [], checkpoints: [], errors: workflowResult.lastOutput?.reason ? [workflowResult.lastOutput.reason] : ['Workflow finalizado sin ejecutar pasos'] };
+      runResult = graphRunResultFromMemory(
+        workflowResult.sharedMemory,
+        workflowResult.lastOutput?.reason || 'Workflow finalizado sin ejecutar pasos',
+      );
     }
   } else {
     await navigateToResolvedBaseUrl(urlCandidate, 'fallback sin workflow');

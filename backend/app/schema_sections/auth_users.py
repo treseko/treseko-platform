@@ -219,6 +219,22 @@ class UserProfileUpdate(BaseModel):
     nombre_completo: Optional[str] = Field(default=None, max_length=MAX_USER_NAME_LENGTH)
     display_name: Optional[str] = Field(default=None, max_length=80)
     avatar_provider: Optional[str] = Field(default=None, max_length=30)
+    personal_theme: Optional[str] = Field(default=None, max_length=MAX_PERSONAL_THEME_LENGTH)
+    profile_settings: Optional[Dict[str, Any]] = None
+
+    @field_validator("personal_theme")
+    @classmethod
+    def validate_personal_theme(cls, value: Optional[str]) -> Optional[str]:
+        return validate_personal_theme_id(value)
+
+    @field_validator("profile_settings")
+    @classmethod
+    def validate_profile_settings(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        return validate_preference_json_payload(
+            value,
+            max_bytes=MAX_PROFILE_SETTINGS_BYTES,
+            label="La configuracion de perfil",
+        )
 
 class UserPreferencesUpdate(BaseModel):
     personal_theme: Optional[str] = Field(default=None, max_length=MAX_PERSONAL_THEME_LENGTH)
@@ -255,7 +271,7 @@ class UserLanguageUpdate(BaseModel):
     @classmethod
     def validate_language(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"es", "en"}:
+        if normalized not in {"es", "en", "pt"}:
             raise ValueError("Idioma no soportado")
         return normalized
 
@@ -267,13 +283,13 @@ class Usuario(UsuarioBase):
     avatar_url: Optional[str] = None
     avatar_provider: str = "gravatar"
     profile_settings: Dict[str, Any] = {}
-    personal_theme: str = "system"
+    personal_theme: str = "light"
     project_theme_overrides: Dict[str, Any] = {}
 
     model_config = ConfigDict(from_attributes=True)
 
 class UserPreferences(BaseModel):
-    personal_theme: str = "system"
+    personal_theme: str = "light"
     profile_settings: Dict[str, Any] = {}
     project_theme_overrides: Dict[str, Any] = {}
 

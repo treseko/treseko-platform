@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createHistorialActions } from '../historialActions'
+import { useI18n } from '../../../i18n'
 
 type UseHistorialControllerParams = {
   activeTab: string
@@ -26,6 +27,7 @@ export function useHistorialController({
   loadProjectMetrics,
   setActiveTab,
 }: UseHistorialControllerParams) {
+  const { t } = useI18n()
   const [runHistory, setRunHistory] = useState(initialRunHistory)
   const [historialInitialFilters, setHistorialInitialFilters] = useState<Record<string, any>>({})
   const [pendingHistorialRunDetailId, setPendingHistorialRunDetailId] = useState('')
@@ -42,6 +44,7 @@ export function useHistorialController({
     setProjectSyncMessage,
     showFeedback,
     loadProjectMetrics,
+    t,
   })
 
   useEffect(() => {

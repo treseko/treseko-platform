@@ -2,6 +2,15 @@ from .repository_context import *
 from .core_settings_ai_workflow_helpers import get_configured_ai_provider_api_key
 from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload
+from ..services.api_evidence_policy import evidence_policy_marker, public_test_data_evidence_enabled
+from ..services.notifications import event_service as notification_event_service
+from ..services.ai_execution_lifecycle import can_accept_terminal_result, terminal_report_metadata
+
+
+def _chatbot_storage_payload(value, *, sanitize_output: bool):
+    if not isinstance(value, dict):
+        return value
+    return sanitize_ai_report_payload(value) if sanitize_output else value
 
 
 async def recover_ai_execution_from_engine_log(db: AsyncSession, ejecucion_id: UUID):
@@ -9,7 +18,7 @@ async def recover_ai_execution_from_engine_log(db: AsyncSession, ejecucion_id: U
     execution = await db.get(models.EjecucionCaso, ejecucion_id)
     if not execution:
         raise ValueError("Ejecucion no encontrada")
-    if execution.estado_resultado != models.EstadoResultado.EJECUTANDO_AI:
+    if not can_accept_terminal_result(execution.estado_resultado):
         raise ValueError("Solo se pueden recuperar ejecuciones IA que siguen en ejecucion")
     engine_url = ENGINE_URL.rstrip("/")
     headers = engine_internal_headers(current_correlation_id(str(ejecucion_id)))
@@ -63,30 +72,42 @@ async def complete_ai_engine_execution(
         raise ValueError("Ejecucion no encontrada")
 
     execution, case = row
+    is_chatbot = case.formato_prueba == models.FormatoPrueba.CONVERSACIONAL
     metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
     delivery_id = str(metadata.get("terminal_delivery_id") or "").strip()
     current_report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
-    if (
-        delivery_id
-        and current_report.get("report_complete") is True
-        and execution.estado_resultado != models.EstadoResultado.EJECUTANDO_AI
-    ):
-        # First terminal result wins. A repeated delivery is acknowledged without
-        # duplicating screenshots, traces or case transitions.
-        if current_report.get("terminal_delivery_id") == delivery_id:
-            return execution
+    if execution.estado_resultado != models.EstadoResultado.EJECUTANDO_AI:
+        # First terminal result wins. This also covers timeout/recovery and
+        # WebSocket finalization: a late callback is acknowledged without
+        # duplicating evidence or changing the verdict.
         return execution
     now = utc_now()
     final_status = payload.status
     execution.estado_resultado = final_status
-    execution.execution_mode = models.ExecutionMode.IA
+    requested_mode = (
+        metadata.get("execution_mode")
+        or (execution.ai_report or {}).get("execution_mode")
+        or (execution.ai_report or {}).get("chatbot_execution_mode")
+        or models.ExecutionMode.IA.value
+    )
+    try:
+        execution.execution_mode = models.ExecutionMode(str(requested_mode).upper())
+    except ValueError:
+        execution.execution_mode = models.ExecutionMode.IA
     execution.duracion_segundos = max(0, payload.duration_seconds or 0)
     execution.observaciones = payload.observations or payload.error_message or payload.logs
-    execution.fecha_ejecucion = now
+    # fecha_ejecucion is the real start timestamp. Keep it stable when the
+    # terminal callback arrives; legacy records without it get a safe fallback.
+    if execution.fecha_ejecucion is None:
+        execution.fecha_ejecucion = now
     ai_report = {**(execution.ai_report or {}), **(payload.ai_report or {})}
-    ai_report["report_complete"] = True
-    ai_report["report_delivery_status"] = "complete"
-    ai_report["completed_via"] = str(ai_report.get("completed_via") or "engine.callback")
+    if is_chatbot:
+        ai_report["execution_mode"] = execution.execution_mode.value
+    ai_report.update(terminal_report_metadata(
+        delivery_id=delivery_id,
+        completed_via=str(ai_report.get("completed_via") or "engine.callback"),
+        human_review_required=bool(ai_report.get("human_review_required", final_status != models.EstadoResultado.PASO)),
+    ))
     if delivery_id:
         ai_report["terminal_delivery_id"] = delivery_id
         ai_report["terminal_sequence"] = int(metadata.get("terminal_sequence") or 1)
@@ -96,7 +117,17 @@ async def complete_ai_engine_execution(
     from ..services.ai_execution_queue import mark_ai_execution_finished
     await mark_ai_execution_finished(db, ejecucion_id, final_status)
     evidence_policy = await config_service.get_evidence_sanitization_policy(db)
-    sanitize_output = bool(evidence_policy.get("sanitization_enabled", True))
+    public_chatbot_evidence = public_test_data_evidence_enabled(
+        case=case,
+        execution=execution,
+        config=metadata.get("chatbot_config_snapshot") if isinstance(metadata, dict) else None,
+        result=(payload.ai_report or {}).get("chatbot_resultado") if isinstance(payload.ai_report, dict) else None,
+    ) if is_chatbot else False
+    if is_chatbot:
+        execution.evidence_policy = evidence_policy_marker(public_chatbot_evidence)["evidence_policy"]
+    # Conversational evidence follows the same explicit opt-in used by manual
+    # execution. Other AI workflows keep their installation-level policy.
+    sanitize_output = (not public_chatbot_evidence) if is_chatbot else bool(evidence_policy.get("sanitization_enabled", True))
     report_summary = payload.metadata.get("ai_report_summary") if isinstance(payload.metadata, dict) else None
     if not isinstance(report_summary, dict):
         report_summary = {}
@@ -149,6 +180,13 @@ async def complete_ai_engine_execution(
             ai_report["repeatability_warning"] = True
             ai_report.setdefault("failure_category", "unstable_result")
             ai_report["human_review_required"] = True
+    if is_chatbot:
+        chatbot_result = ai_report.get("chatbot_resultado")
+        if isinstance(chatbot_result, dict):
+            execution.chatbot_resultado = _chatbot_storage_payload(chatbot_result, sanitize_output=sanitize_output)
+        snapshot = ai_report.get("chatbot_config_snapshot") or metadata.get("chatbot_config_snapshot")
+        if isinstance(snapshot, dict):
+            execution.chatbot_config_snapshot = _chatbot_storage_payload(snapshot, sanitize_output=sanitize_output)
     execution.ai_report = ai_report
     trace_items = []
     if isinstance(ai_report, dict):
@@ -268,7 +306,7 @@ async def complete_ai_engine_execution(
             if index == 0:
                 snapshot.comentarios = payload.observations or payload.error_message
                 snapshot.error_log = payload.logs
-    elif not snapshots:
+    elif not snapshots and not is_chatbot:
         snapshot = models.SnapshotPaso(
             ejecucion_caso_id=execution.id,
             numero_paso=0,
@@ -320,4 +358,20 @@ async def complete_ai_engine_execution(
 
     await db.commit()
     await db.refresh(execution)
+    if is_chatbot:
+        event_type = "chatbot.evaluation.completed" if final_status == models.EstadoResultado.PASO else "chatbot.evaluation.failed"
+        if execution.ai_human_review_required:
+            review_event_type = "chatbot.evaluation.review_required"
+        else:
+            review_event_type = None
+        run = await db.get(models.TestRun, execution.test_run_id)
+        payload_event = {
+            "execution": {"id": str(execution.id), "estado": final_status.value, "review_status": str(execution.ai_review_status.value if hasattr(execution.ai_review_status, 'value') else execution.ai_review_status or "")},
+            "caso": {"id": str(case.id), "codigo": case.codigo, "formato_prueba": "CONVERSACIONAL"},
+            "workflow": {"version": ai_report.get("workflow_version")},
+            "metrics": (execution.chatbot_resultado or {}).get("performance", {}),
+        }
+        await notification_event_service.emit_event(db=db, event_type=event_type, actor_user_id=execution.ejecutado_por, proyecto_id=run.proyecto_id if run else None, entity_type="execution", entity_id=execution.id, severity="info" if event_type.endswith("completed") else "warning", payload=payload_event, dedupe_key=f"{event_type}:{execution.id}")
+        if review_event_type:
+            await notification_event_service.emit_event(db=db, event_type=review_event_type, actor_user_id=execution.ejecutado_por, proyecto_id=run.proyecto_id if run else None, entity_type="execution", entity_id=execution.id, severity="warning", payload=payload_event, dedupe_key=f"{review_event_type}:{execution.id}")
     return execution

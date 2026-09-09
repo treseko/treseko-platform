@@ -1,44 +1,43 @@
 # Trazabilidad y generación asistida
 
-Treseko relaciona el origen funcional de una prueba con su resultado para que
-el equipo pueda responder qué requisito se cubre, qué caso lo valida y cuál fue
-la última evidencia disponible.
+Treseko relaciona el origen funcional con la ejecución para responder qué
+requisito se cubre, qué caso lo valida y qué evidencia existe.
 
 ```text
-Proyecto → Requisito → Historia → Caso → Ejecución → Evidencia
+Proyecto → Requisito → Historia → Caso → Ejecución → Evidencia → Bug/Informe
 ```
 
 ## Trabajar con requisitos e historias
 
 1. Abrí **Proyectos → Requisitos e Historias**.
-2. Registrá o actualizá el requisito y sus historias.
-3. Vinculá los casos que cubren cada historia.
-4. Consultá el historial cuando necesites revisar un cambio.
+2. Registrá requisito, historia y criterios de aceptación.
+3. Vinculá los casos.
+4. Consultá cobertura y vínculos.
+5. Cuando cambie una historia, revisá y confirmá los vínculos afectados.
 
-Cuando una historia cambia, Treseko puede marcar sus vínculos con casos para
-revisión. Confirmá que el caso sigue cubriendo el criterio esperado antes de
-considerar la cobertura como válida.
+La cobertura son relaciones registradas: no garantiza que el caso haya pasado
+ni que su evidencia esté completa. Las acciones de crear, editar, archivar,
+vincular y confirmar revisión se auditan cuando corresponde.
+
+## Formatos
+
+La trazabilidad no cambia el formato. Clásica mantiene pasos; API mantiene
+contrato y aserciones; conversacional mantiene endpoint, turnos y evaluación.
+`PERFORMANCE` es reservado y no debe rellenarse con otra estructura para forzar
+cobertura.
 
 ## Generar propuestas con IA
 
-La IA puede proponer historias desde requisitos y casos desde historias.
+La IA puede proponer historias desde requisitos y casos desde historias:
 
-1. Seleccioná el requisito o historia de origen.
-2. Definí el alcance y revisá los supuestos mostrados.
-3. Ejecutá la generación.
-4. Revisá cada propuesta y elegí cuáles guardar.
+1. seleccioná el origen;
+2. estimá alcance y revisá supuestos;
+3. ejecutá si tenés permiso, cuota y proveedor;
+4. revisá cada propuesta;
+5. confirmá solo lo que quieras guardar.
 
-La generación no publica historias automáticamente, no crea scripts y no
-ejecuta código arbitrario. Cada uso conserva su propio historial, versión y
-auditoría. Las cuotas y permisos se validan antes de iniciar el proceso.
+La generación no publica automáticamente, no crea scripts ni ejecuta código
+arbitrario. Conserva fuente, supuestos, versión, trazas y auditoría.
 
-## Ayuda rápida
-
-- Si no podés generar propuestas, revisá que tengas permiso, cuota disponible y
-  un proveedor de IA configurado.
-- Si un vínculo requiere revisión, no lo ignores: actualizá o confirmá el caso
-  asociado.
-- La falta de evidencia no equivale a cobertura aprobada.
-
-Consultá [Configuración del Motor IA](AI_ENGINE_CONFIG.md) para preparar el
-proveedor y los workflows disponibles.
+Consultá [Historial Runs](RUN_HISTORY_GUIDE.md), [Reportes](REPORTING_GUIDE.md)
+y [Configuración del Motor IA](AI_ENGINE_CONFIG.md).

@@ -1,7 +1,9 @@
 """Internal data helpers shared by the system router subdomains."""
 from __future__ import annotations
 
+import sys
 from typing import Any
+from collections.abc import Mapping
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +12,21 @@ from ... import models
 from ...services import config_service
 from ...services.edition.entitlement_provider import get_entitlement_provider
 from ...time_utils import utc_now
+
+
+def resolve_system_dependency(
+    name: str,
+    fallback: Any,
+    namespace: Mapping[str, Any],
+    defaults: Mapping[str, Any],
+    facade_module: str,
+) -> Any:
+    """Resolve a dependency patched on a split router or its public facade."""
+    local = namespace.get(name, fallback)
+    if local is not defaults.get(name, fallback):
+        return local
+    facade = sys.modules.get(facade_module)
+    return getattr(facade, name, fallback) if facade else fallback
 
 
 def request_client_ip(request: Any) -> str | None:

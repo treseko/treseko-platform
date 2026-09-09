@@ -1,5 +1,6 @@
 from .repository_context import *
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
+from sqlalchemy import update
 
 
 async def create_automation_job_for_execution(
@@ -101,7 +102,9 @@ async def create_automation_job_for_execution(
                 "snapshot_id": str(snapshot.id),
                 "number": snapshot.numero_paso,
                 "action": snapshot.accion_congelada,
-                "data": snapshot.datos_congelados,
+                # Keep the template for auditability, but execute the exact
+                # value resolved for this isolated case/run when available.
+                "data": snapshot.datos_resueltos if snapshot.datos_resueltos is not None else snapshot.datos_congelados,
                 "expected": snapshot.resultado_esperado_congelado,
             }
             for snapshot in snapshots
@@ -109,6 +112,8 @@ async def create_automation_job_for_execution(
     }
     payload = schemas.redact_automation_sensitive_value(payload)
     job = models.AutomationJob(
+        organizacion_id=project.organizacion_id,
+        proyecto_id=run.proyecto_id,
         test_run_id=run.id,
         ejecucion_id=execution.id,
         caso_id=case.id,
@@ -150,6 +155,7 @@ async def create_automation_job_for_execution(
     await db.commit()
     await db.refresh(job)
     return job
+
 
 async def create_automation_dry_run_job(
     db: AsyncSession,
@@ -209,6 +215,8 @@ async def create_automation_dry_run_job(
     job_payload = schemas.redact_automation_sensitive_value(job_payload)
     job = models.AutomationJob(
         job_type="DRY_RUN",
+        organizacion_id=project.organizacion_id,
+        proyecto_id=payload.proyecto_id,
         test_run_id=None,
         ejecucion_id=None,
         caso_id=None,
@@ -297,12 +305,124 @@ async def list_automation_jobs(
     result = await db.execute(query)
     return result.scalars().all()
 
+async def _mark_expired_job_entities(db: AsyncSession, job: models.AutomationJob, now) -> None:
+    """Move the persisted execution side of an exhausted lease to timeout."""
+    execution_ids = []
+    if job.ejecucion_id:
+        execution_ids = [job.ejecucion_id]
+    elif job.job_type == "API_EXECUTION" and job.test_run_id:
+        execution_ids = list((await db.execute(
+            select(models.EjecucionCaso.id).where(
+                models.EjecucionCaso.test_run_id == job.test_run_id,
+                models.EjecucionCaso.estado_resultado == models.EstadoResultado.SIN_CORRER,
+            )
+        )).scalars().all())
+
+    if not execution_ids:
+        return
+
+    executions = (await db.execute(
+        select(models.EjecucionCaso).where(models.EjecucionCaso.id.in_(execution_ids)).with_for_update()
+    )).scalars().all()
+    case_ids = [execution.caso_id for execution in executions]
+    for execution in executions:
+        execution.estado_resultado = models.EstadoResultado.FALLO
+        execution.observaciones = "El worker no renovó el lease y el job terminó por timeout."
+        execution.fecha_ejecucion = now
+
+    if case_ids:
+        cases = (await db.execute(
+            select(models.CasoPrueba).where(models.CasoPrueba.id.in_(case_ids)).with_for_update()
+        )).scalars().all()
+        for case in cases:
+            case.ultimo_resultado = models.EstadoResultado.FALLO.value
+            case.ultima_ejecucion_fecha = now
+
+    run_id = job.test_run_id or (executions[0].test_run_id if executions else None)
+    if run_id:
+        pending = await db.scalar(select(models.EjecucionCaso.id).where(
+            models.EjecucionCaso.test_run_id == run_id,
+            models.EjecucionCaso.estado_resultado == models.EstadoResultado.SIN_CORRER,
+        ).limit(1))
+        if pending is None:
+            run = await db.get(models.TestRun, run_id, with_for_update=True)
+            if run:
+                run.estado_run = models.EstadoRun.CERRADO
+                run.fecha_cierre = now
+
+
+async def recover_stale_automation_jobs(
+    db: AsyncSession,
+    *,
+    now=None,
+    limit: int = 100,
+) -> int:
+    """Recover worker jobs whose lease expired, under row locks.
+
+    AI_EXECUTION is intentionally not requeued here: it has a separate queue
+    and must require an explicit retry after an interruption.
+    """
+    now = now or utc_now()
+    jobs = (await db.execute(
+        select(models.AutomationJob).where(
+            models.AutomationJob.estado.in_((
+                models.AutomationJobStatus.CLAIMED,
+                models.AutomationJobStatus.RUNNING,
+            )),
+            models.AutomationJob.lease_expires_at.is_not(None),
+            models.AutomationJob.lease_expires_at <= now,
+        ).order_by(models.AutomationJob.lease_expires_at).with_for_update(skip_locked=True).limit(limit)
+    )).scalars().all()
+    recovered = 0
+    for job in jobs:
+        recovered += 1
+        exhausted = int(job.attempt_count or 0) >= max(1, int(job.max_attempts or 1))
+        previous_runner_id = job.runner_id
+        if not exhausted and job.job_type != "AI_EXECUTION":
+            job.estado = models.AutomationJobStatus.PENDING
+            job.runner_id = None
+            job.lease_token = None
+            job.lease_expires_at = None
+            job.fecha_claim = None
+            job.fecha_inicio = None
+            job.fecha_fin = None
+            job.error_message = "El lease del worker venció; el job volvió a la cola para un nuevo intento."
+            if previous_runner_id:
+                runner = await db.get(models.AutomationRunner, previous_runner_id, with_for_update=True)
+                if runner:
+                    runner.estado = "ONLINE"
+                    runner.ultimo_heartbeat = now
+            continue
+
+        job.estado = models.AutomationJobStatus.TIMEOUT
+        job.error_message = (
+            "El job terminó por timeout después de agotar sus intentos. "
+            "No se reintentó automáticamente una ejecución IA."
+            if job.job_type == "AI_EXECUTION"
+            else "El job terminó por timeout después de agotar sus intentos de worker."
+        )
+        job.fecha_fin = now
+        job.lease_token = None
+        job.lease_expires_at = None
+        await _mark_expired_job_entities(db, job, now)
+        if job.runner_id:
+            runner = await db.get(models.AutomationRunner, job.runner_id, with_for_update=True)
+            if runner:
+                runner.estado = "ONLINE"
+                runner.ultimo_heartbeat = now
+
+    if recovered:
+        await db.commit()
+    return recovered
+
 async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRunner):
+    await recover_stale_automation_jobs(db)
     result = await db.execute(
         select(models.AutomationJob)
         .filter(
             models.AutomationJob.estado == models.AutomationJobStatus.PENDING,
             models.AutomationJob.job_type != "AI_EXECUTION",
+            models.AutomationJob.organizacion_id == runner.organizacion_id,
         )
         .order_by(models.AutomationJob.fecha_creacion)
     )
@@ -313,14 +433,45 @@ async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRun
     return None
 
 async def claim_automation_job(db: AsyncSession, job: models.AutomationJob, runner: models.AutomationRunner):
-    if job.estado not in {models.AutomationJobStatus.PENDING, models.AutomationJobStatus.CLAIMED}:
-        raise ValueError("El job ya no esta disponible")
+    job_id = job.id
+    runner_organization_id = runner.organizacion_id
+    await recover_stale_automation_jobs(db)
+    if job.organizacion_id != runner.organizacion_id:
+        raise ValueError("El runner no tiene acceso a la solucion de este job")
     if not _runner_supports_job(runner, job):
         raise ValueError("El runner no es compatible con este job")
     now = utc_now()
-    job.runner_id = runner.id
-    job.estado = models.AutomationJobStatus.CLAIMED
-    job.fecha_claim = now
+    lease_token = secrets.token_urlsafe(48)
+    lease_expires_at = now + timedelta(seconds=max(60, int(job.timeout_seconds or 300)))
+    claim = await db.execute(
+        update(models.AutomationJob)
+        .where(
+            models.AutomationJob.id == job_id,
+            models.AutomationJob.estado == models.AutomationJobStatus.PENDING,
+            models.AutomationJob.runner_id.is_(None),
+            models.AutomationJob.organizacion_id == runner_organization_id,
+        )
+        .values(
+            runner_id=runner.id,
+            estado=models.AutomationJobStatus.CLAIMED,
+            fecha_claim=now,
+            lease_token=lease_token,
+            lease_expires_at=lease_expires_at,
+            attempt_count=models.AutomationJob.attempt_count + 1,
+        )
+        .returning(models.AutomationJob.id)
+    )
+    if claim.scalar_one_or_none() is None:
+        await db.rollback()
+        # The caller may still hold the pre-claim ORM instance in its identity
+        # map. Force a fresh read so concurrent-claim errors describe the
+        # committed owner/state instead of the stale PENDING snapshot.
+        current = await db.get(models.AutomationJob, job_id, populate_existing=True)
+        if current and current.organizacion_id != runner_organization_id:
+            raise ValueError("El runner no tiene acceso a la solucion de este job")
+        if current and current.estado == models.AutomationJobStatus.CLAIMED:
+            raise ValueError("El job ya fue reclamado y no puede reclamarse nuevamente")
+        raise ValueError("El job ya no esta pendiente y no puede reclamarse")
     runner.estado = "BUSY"
     runner.ultimo_heartbeat = now
     await db.commit()

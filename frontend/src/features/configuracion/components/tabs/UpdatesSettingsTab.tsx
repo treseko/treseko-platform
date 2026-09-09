@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Bot, Cpu, Database, DownloadCloud, Monitor, RefreshCw, Server, UploadCloud } from 'lucide-react'
 import {
@@ -16,7 +16,7 @@ import {
   syncPremiumSystemUpdate,
   type FetchWithAuth,
 } from '../../api/configuracionApi'
-import { announceUpdateMaintenance, clearUpdateMaintenanceSignal } from '../../updateMaintenance'
+import { announceUpdateMaintenance, clearUpdateMaintenanceSignal, isTerminalUpdateStatus } from '../../updateMaintenance'
 import { useI18n } from '../../../../i18n'
 import { UpdatesSettingsView } from './UpdatesSettingsView'
 
@@ -43,6 +43,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   const [restartingPrepared, setRestartingPrepared] = useState(false)
   const [reportingFailure, setReportingFailure] = useState(false)
   const [applyConfirmation, setApplyConfirmation] = useState(false)
+  const statusPollingRef = useRef(false)
 
   const load = async () => {
     setLoading(true)
@@ -125,7 +126,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       })
       const nextStatus = await fetchSystemUpdateStatus(fetchWithAuth, payload.task_id)
       setStatus(nextStatus)
-      if (nextStatus.status === 'restarting') announceUpdateMaintenance(undefined, nextStatus.pending_version)
+      if (nextStatus.status === 'restarting') announceUpdateMaintenance(undefined, nextStatus.pending_version, nextStatus.task_id)
       const historyPayload = await fetchSystemUpdateHistory(fetchWithAuth, 8).catch(() => ({ tasks: [] }))
       setHistory(historyPayload.tasks || [])
       showFeedback(
@@ -170,7 +171,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
     try {
       const payload = await restartPreparedSystemUpdate(fetchWithAuth, status.task_id)
       setStatus(payload)
-      announceUpdateMaintenance(undefined, payload.pending_version)
+      announceUpdateMaintenance(undefined, payload.pending_version, payload.task_id)
       showFeedback(t('configuracion.restartConfirmed'), t('configuracion.restartConfirmedMessage'), 'info')
     } catch (error: any) {
       showFeedback(t('configuracion.updatesTitle'), error?.message || t('configuracion.restartError'), 'danger')
@@ -198,32 +199,39 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   }, [])
 
   useEffect(() => {
-    if (!status?.task_id || !['queued', 'in_progress', 'restarting'].includes(status.status)) return undefined
+    if (!status?.task_id || !['queued', 'in_progress'].includes(status.status)) return undefined
     const timer = window.setInterval(async () => {
+      if (statusPollingRef.current) return
+      statusPollingRef.current = true
       try {
         const payload = await fetchSystemUpdateStatus(fetchWithAuth, status.task_id)
         setStatus(payload)
-        if (payload.status === 'restarting') announceUpdateMaintenance(undefined, payload.pending_version)
-        if (!['queued', 'in_progress', 'restarting'].includes(payload.status)) {
+        if (payload.status === 'restarting') announceUpdateMaintenance(undefined, payload.pending_version, payload.task_id)
+        if (
+          payload.task_id === status.task_id
+          && isTerminalUpdateStatus(payload.status, payload.stage)
+        ) {
           clearUpdateMaintenanceSignal()
           const historyPayload = await fetchSystemUpdateHistory(fetchWithAuth, 8).catch(() => ({ tasks: [] }))
           setHistory(historyPayload.tasks || [])
           void load()
         }
       } catch {
-        if (status.status === 'restarting') {
-          setStatus((prev: any) => prev ? { ...prev, message: t('configuracion.updateRestartingRetrying') } : prev)
-        }
+        setStatus((prev: any) => prev ? { ...prev, message: t('configuracion.updateRestartingRetrying') } : prev)
+      } finally {
+        statusPollingRef.current = false
       }
-    }, 2000)
+    }, 6000)
     return () => window.clearInterval(timer)
   }, [fetchWithAuth, status?.task_id, status?.status])
 
   const channelRows = channels?.channels || []
-  const premiumUpdatesAllowed = Boolean(
-    channelRows.some((channel: any) => channel.edition === 'premium' && channel.allowed)
-    || (latestUpdate?.edition === 'premium' && latestUpdate?.updates_enabled)
-  )
+  const premiumUpdatesAllowed = channels === null && latestUpdate === null
+    ? undefined
+    : Boolean(
+      channelRows.some((channel: any) => channel.edition === 'premium' && channel.allowed)
+      || (latestUpdate?.edition === 'premium' && latestUpdate?.updates_enabled)
+    )
   const isPremiumUpdateMode = premiumUpdatesAllowed && (latestUpdate?.edition !== 'community')
   const activeTask = status && status.status !== 'idle'
   const isPrepared = status?.stage === 'prepared'

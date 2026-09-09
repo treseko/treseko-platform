@@ -3,7 +3,7 @@ import { CheckCircle2, Edit, FileText, Layers, Link, MoreHorizontal, Plus, Searc
 import { PremiumGate } from '../premium/PremiumGate'
 import { formatDateTime, toDateTimeLocalInput } from '../../shared/utils/dateTime'
 import { firstUrlFromText } from '../../app/mappers'
-import { isBuildReadOnly } from '../../app/buildState'
+import { isBuildExecutable, isBuildReadOnly } from '../../app/buildState'
 
 export function ProjectComponentsTab({ context }: { context: any }) {
   const { t,
@@ -50,6 +50,9 @@ export function ProjectComponentsTab({ context }: { context: any }) {
     handleDeleteBuild,
     handleUpdateBuildContext,
     toDateTimeLocalInput } = context
+  const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
+  const activeProjectId = String(managingProjectId ?? '')
+  const activeComponentId = String(currentCompId ?? '')
   return (
 <div className="animate__animated animate__fadeIn h-100 d-flex flex-column project-components-panel project-components-shell">
                           <div className="responsive-page-toolbar d-flex justify-content-between align-items-center mb-4 flex-shrink-0">
@@ -58,7 +61,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                               <span className="text-muted small">{t('proyectos.architectureSubtitle')}</span>
                             </div>
                             {canEditProjectComponentsEffective && (
-                              <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1" onClick={() => {
+                              <Button data-onboarding-target="component-create" variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1" onClick={() => {
                                 setComponentForm({ id: '', name: '', description: '', techStack: '', variablesText: '' });
                                 setShowComponentModal(true);
                               }}>
@@ -75,7 +78,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                 <div className="p-3 border-bottom bg-white rounded-top-3">
                                   <div className="input-group input-group-sm">
                                     <span className="input-group-text bg-light border-end-0 text-muted"><Search size={14} /></span>
-                                    <Form.Control name="a11y-projectcomponentstabtsx-76" aria-label="Campo de formulario"
+                                    <Form.Control name="a11y-projectcomponentstabtsx-76" aria-label={t('common.formField')}
                                       type="text"
                                       placeholder={t('proyectos.searchComponent')}
                                       className="bg-light border-start-0 shadow-none ps-0"
@@ -87,20 +90,23 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                 <div className="flex-grow-1 overflow-auto p-2">
                                   <div className="d-flex flex-column gap-2">
                                     {componentsList
-                                      .filter(c => c.projectId === managingProjectId && c.name.toLowerCase().includes(componentSearchQuery.toLowerCase()))
+                                      .filter(c => sameId(c.projectId, activeProjectId) && c.name.toLowerCase().includes(componentSearchQuery.toLowerCase()))
                                       .map(comp => (
-                                      <div
+                                      <button
+                                        type="button"
                                         key={comp.id}
-                                        onClick={() => handleComponentChange(comp.id)}
-                                        className={`p-3 rounded-3 cursor-pointer transition-all border ${comp.id === currentCompId ? 'bg-white border-primary shadow-sm' : 'bg-transparent border-transparent hover-bg-white'}`}
+                                        onClick={() => handleComponentChange(String(comp.id))}
+                                        aria-pressed={sameId(comp.id, activeComponentId)}
+                                        data-component-id={comp.id}
+                                        className={`project-component-option p-3 rounded-3 cursor-pointer transition-all border ${sameId(comp.id, activeComponentId) ? 'bg-white border-primary shadow-sm' : 'bg-transparent border-transparent hover-bg-white'}`}
                                       >
                                         <div className="d-flex justify-content-between align-items-start mb-1">
                                           <div className="d-flex align-items-center gap-2">
-                                            <Layers size={16} className={comp.id === currentCompId ? 'text-primary' : 'text-muted'} />
-                                            <span className={`fw-bold ${comp.id === currentCompId ? 'text-primary' : 'text-dark'}`}>{comp.name}</span>
+                                            <Layers size={16} className={sameId(comp.id, activeComponentId) ? 'text-primary' : 'text-muted'} />
+                                            <span className={`fw-bold ${sameId(comp.id, activeComponentId) ? 'text-primary' : 'text-dark'}`}>{comp.name}</span>
                                           </div>
                                           <span className="badge bg-secondary bg-opacity-10 text-secondary border">
-                                            {buildsList.filter(b => b.projectId === managingProjectId && b.componentId === comp.id).length} builds
+                                            {t('proyectos.buildCount', { count: buildsList.filter(b => sameId(b.projectId, activeProjectId) && sameId(b.componentId, comp.id)).length })}
                                           </span>
                                         </div>
                                         {comp.techStack && (
@@ -113,9 +119,9 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                             {t('proyectos.varsCount', { count: Object.keys(comp.variables || {}).length })}
                                           </div>
                                         )}
-                                      </div>
+                                      </button>
                                     ))}
-                                    {componentsList.filter(c => c.projectId === managingProjectId).length === 0 && (
+                                    {componentsList.filter(c => sameId(c.projectId, activeProjectId)).length === 0 && (
                                       <div className="text-center p-4 text-muted small">
                                         <Layers size={24} className="mb-2 opacity-50"/>
                                         <p>{t('proyectos.noComponents')}</p>
@@ -128,7 +134,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
 
                             {/* PANEL DETALLE: Info del Componente y sus Builds */}
                             <Col md={8} className="h-100">
-                              {currentCompId && componentsList.find(c => c.id === currentCompId) ? (
+                              {activeComponentId && componentsList.find(c => sameId(c.id, activeComponentId)) ? (
                                 <Card className="border-0 shadow-sm h-100 d-flex flex-column bg-white project-build-card">
                                   {/* Cabecera del Detalle */}
                                   <Card.Header className="bg-white border-bottom p-4 flex-shrink-0 component-detail-header">
@@ -137,13 +143,13 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                         <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                           <Badge bg="primary" className="bg-opacity-10 text-primary border border-primary-subtle fw-bold">{t('proyectos.activeComponent')}</Badge>
                                         </div>
-                                        <h4 className="fw-bold text-dark m-0">{componentsList.find(c => c.id === currentCompId)?.name}</h4>
+                                        <h4 className="fw-bold text-dark m-0">{componentsList.find(c => sameId(c.id, activeComponentId))?.name}</h4>
                                         <span className="font-monospace text-muted x-small">ID: {currentCompId}</span>
                                       </div>
                                       {canEditProjectComponentsEffective && (
                                       <div className="d-flex gap-2">
                                         <Button variant="light" size="sm" className="border shadow-sm text-secondary hover-text-primary" onClick={() => {
-                                          const current = componentsList.find(c => c.id === currentCompId);
+                                          const current = componentsList.find(c => sameId(c.id, activeComponentId));
                                           if (current) {
                                             setComponentForm({
                                               id: current.id,
@@ -163,10 +169,10 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                       </div>
                                       )}
                                     </div>
-                                    <p className="text-muted small mb-2">{componentsList.find(c => c.id === currentCompId)?.description || t('proyectos.noDescription')}</p>
-                                    {Object.keys(componentsList.find(c => c.id === currentCompId)?.variables || {}).length > 0 && (
+                                    <p className="text-muted small mb-2">{componentsList.find(c => sameId(c.id, activeComponentId))?.description || t('proyectos.noDescription')}</p>
+                                    {Object.keys(componentsList.find(c => sameId(c.id, activeComponentId))?.variables || {}).length > 0 && (
                                       <div className="d-flex flex-wrap gap-1">
-                                        {Object.entries(componentsList.find(c => c.id === currentCompId)?.variables || {}).map(([key, value]) => (
+                                        {Object.entries(componentsList.find(c => sameId(c.id, activeComponentId))?.variables || {}).map(([key, value]) => (
                                           <Badge key={key} bg="light" text="dark" className="border font-monospace">
                                             {key}={String(value)}
                                           </Badge>
@@ -182,7 +188,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                         <Terminal size={18} /> {t('proyectos.buildHistory')}
                                       </h6>
                                       {canEditProjectBuildsEffective && (
-                                        <Form className="build-create-form build-create-compact bg-white p-2 rounded-3 shadow-sm border border-light-subtle w-100" onSubmit={handleCreateBuild}>
+                                <Form data-onboarding-target="build-create" className="build-create-form build-create-compact bg-white p-2 rounded-3 shadow-sm border border-light-subtle w-100" onSubmit={handleCreateBuild}>
                                           <div className="d-flex align-items-center gap-2 build-create-main">
                                             <Form.Control name="buildName" size="sm" placeholder={t('proyectos.buildPlaceholder')} className="shadow-none bg-white px-3 fw-bold" required />
                                             <Button type="button" variant="outline-secondary" size="sm" className="fw-bold px-3 rounded-pill text-nowrap d-flex align-items-center gap-1" onClick={() => setShowBuildCreateOptions(prev => !prev)}>
@@ -213,7 +219,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                     </div>
 
                                     <div className="d-flex flex-column gap-2">
-                                      {sortBuildsNewestFirst(buildsList.filter(b => b.projectId === managingProjectId && b.componentId === currentCompId)).map(build => {
+                                      {sortBuildsNewestFirst(buildsList.filter(b => sameId(b.projectId, activeProjectId) && sameId(b.componentId, activeComponentId))).map(build => {
                                         const buildLink = firstUrlFromText(build.changeContext)
                                         const windowState = buildWindowState(build)
                                         const isBuildExpanded = Boolean(expandedBuildDetails[build.id])
@@ -224,25 +230,32 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                         const previousReportCount = Math.max(0, reportItems.length - (latestReport ? 1 : 0))
                                         const latestReportStatusInfo = latestReportStatus(latestReport)
                                         const buildDisplayEndDate = build.endDate
-                                        const buildEndLabel = build.active ? t('proyectos.end') : t('proyectos.close')
+                                        const buildIsExecutable = isBuildExecutable(build)
+                                        const buildEndLabel = build.state === 'ACTIVA' ? t('proyectos.end') : t('proyectos.close')
                                         const buildStatusLabel = build.state === 'PREPARACION'
                                           ? t('proyectos.buildInPreparation')
-                                          : build.state === 'ACTIVA' || build.active
+                                          : build.state === 'ACTIVA' || (!build.state && build.active)
                                             ? t('proyectos.buildActive')
                                             : t('proyectos.buildHistoric')
+                                        const buildAvailabilityLabel = buildIsExecutable
+                                          ? t('proyectos.buildExecutable')
+                                          : t('proyectos.buildNotExecutable')
                                         const showWindowStatusBadge = windowState.label !== buildStatusLabel
                                         return (
-                                        <div key={build.id} className={`p-3 border rounded-3 shadow-sm transition-all project-build-item build-row-card ${build.active ? 'is-active' : ''} ${build.hidden ? 'is-hidden' : ''}`}>
+                                        <div key={build.id} className={`p-3 border rounded-3 shadow-sm transition-all project-build-item build-row-card ${buildIsExecutable ? 'is-active' : ''} ${build.hidden ? 'is-hidden' : ''}`}>
                                           <div className="d-flex justify-content-between align-items-start gap-3 project-build-item-main">
                                             <div className="d-flex align-items-start gap-3 flex-grow-1">
                                               <div className="bg-white border rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style={{ width: '32px', height: '32px' }}>
-                                                {build.active ? <CheckCircle2 size={18} className="text-success" /> : <Terminal size={16} className="text-muted" />}
+                                                {buildIsExecutable ? <CheckCircle2 size={18} className="text-success" /> : <Terminal size={16} className="text-muted" />}
                                               </div>
                                               <div className="flex-grow-1">
-                                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                                <div className="d-flex align-items-center gap-2 flex-wrap build-row-statuses">
                                                   <div className="fw-bold text-dark font-monospace app-small">{build.name}</div>
-                                                  <Badge bg={build.state === 'ACTIVA' || build.active ? 'success' : build.state === 'PREPARACION' ? 'warning' : 'light'} text={build.state === 'ACTIVA' || build.active || build.state === 'PREPARACION' ? undefined : 'secondary'} className={build.state === 'HISTORICA' || (!build.state && !build.active) ? 'border' : ''}>
-                                                    {buildStatusLabel}
+                                                  <Badge bg={build.state === 'ACTIVA' ? 'success' : build.state === 'PREPARACION' ? 'warning' : 'light'} text={build.state === 'ACTIVA' || build.state === 'PREPARACION' ? undefined : 'secondary'} className={build.state === 'HISTORICA' || !build.state ? 'border' : ''} title={t('proyectos.buildLifecycleHelp')}>
+                                                    {t('proyectos.buildStatusPrefix')}: {buildStatusLabel}
+                                                  </Badge>
+                                                  <Badge bg={buildIsExecutable ? 'success' : 'light'} text={buildIsExecutable ? undefined : 'secondary'} className={!buildIsExecutable ? 'border' : ''} title={t('proyectos.buildAvailabilityHelp')}>
+                                                    {t('proyectos.buildAvailabilityPrefix')}: {buildAvailabilityLabel}
                                                   </Badge>
                                                   {build.hidden && <Badge bg="light" text="secondary" className="border">{t('proyectos.hidden')}</Badge>}
                                                   {showWindowStatusBadge && <Badge bg={windowState.variant as any}>{windowState.label}</Badge>}
@@ -336,8 +349,8 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                       {build.hidden ? t('proyectos.showBuild') : t('proyectos.hideBuild')}
                                                     </Dropdown.Item>
                                                   )}
-                                                  {canEditProjectBuilds && !isBuildReadOnly(build) ? (
-                                                    build.active ? (
+                                                  {canEditProjectBuilds ? (
+                                                    buildIsExecutable ? (
                                                       <Dropdown.Item onClick={() => handleSetInactiveBuild(build.id)}>
                                                         {t('proyectos.deactivateBuild')}
                                                       </Dropdown.Item>
@@ -346,10 +359,6 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                         {t('proyectos.activateBuild')}
                                                       </Dropdown.Item>
                                                     )
-                                                  ) : canEditProjectBuilds ? (
-                                                    <Dropdown.Item disabled title="La build histórica se conserva en modo consulta.">
-                                                      {build.active ? t('proyectos.deactivateBuild') : t('proyectos.activateBuild')}
-                                                    </Dropdown.Item>
                                                   ) : null}
                                                   {canEditProjectBuilds && !isBuildReadOnly(build) && (
                                                     <>
@@ -360,8 +369,8 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                     </>
                                                   )}
                                                   {canEditProjectBuilds && isBuildReadOnly(build) && (
-                                                    <Dropdown.Item disabled title="La build histórica se conserva en modo consulta.">
-                                                      {t('proyectos.deleteBuild')}
+                                                    <Dropdown.Item disabled title={t('proyectos.historicalBuildReadOnly')}>
+                                                      {t('proyectos.removeBuild')}
                                                     </Dropdown.Item>
                                                   )}
                                                 </Dropdown.Menu>
@@ -387,7 +396,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                           )}
                                         </div>
                                       )})}
-                                      {buildsList.filter(b => b.projectId === managingProjectId && b.componentId === currentCompId).length === 0 && (
+                                    {buildsList.filter(b => sameId(b.projectId, activeProjectId) && sameId(b.componentId, activeComponentId)).length === 0 && (
                                         <div className="text-center py-5 text-muted bg-white rounded-3 border border-dashed">
                                           <Terminal size={24} className="mb-2 opacity-50"/>
                                           <p className="small mb-0">{t('proyectos.noBuilds')}</p>

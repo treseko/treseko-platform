@@ -92,6 +92,8 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
     setDatasetDrafts,
     handleDeleteEnvironmentDataset,
     updateDatasetDraft,
+    loadCasosFromBackend,
+    loadSuitesFromBackend,
     canReadTraceability,
     canEditTraceability,
     buildWriteEnabled,
@@ -112,13 +114,23 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
     handleSaveWikiPage,
     canReadProjectTickets,
     canEditProjectTicketsEffective,
+    canTransitionProjectTickets,
     loadProjectBugs,
     bugsLoading,
     createBugIssue,
     bugForm,
     setBugForm,
     bugIssues,
-    updateBugIssue } = context
+    updateBugIssue,
+    transitionTarget,
+    transitionForm,
+    setTransitionForm,
+    setTransitionTarget,
+    compatibleBuilds,
+    requestTransition,
+    confirmTransition,
+    quickTransitioningBugId,
+    isCorrected } = context
   return (
 <div className="project-admin-shell d-flex flex-column h-100 overflow-hidden">
 
@@ -184,7 +196,17 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                     <div className="animate__animated animate__fadeIn">
                       <h5 className="fw-bold text-dark mb-1">{t('proyectos.importExportCases')}</h5>
                       <p className="small text-muted mb-4">{t('proyectos.importExportHint')}</p>
-                      <CasePortabilityPanel fetchWithAuth={fetchWithAuth} showFeedback={showFeedback} canEdit={canUseCapability('plugins.provider.case_portability.importar_casos', 'edit')} initialProjectId={managingProjectId} embedded />
+                      <CasePortabilityPanel
+                        fetchWithAuth={fetchWithAuth}
+                        showFeedback={showFeedback}
+                        canEdit={canUseCapability('plugins.provider.case_portability.importar_casos', 'edit')}
+                        initialProjectId={managingProjectId}
+                        onImportCompleted={async (componentId) => {
+                          await loadSuitesFromBackend?.(managingProjectId, componentId)
+                          await loadCasosFromBackend?.(managingProjectId, componentsList, { buildId: '', silent: true })
+                        }}
+                        embedded
+                      />
                     </div>
                   )}
 
@@ -305,6 +327,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                     <ProjectTicketsTab context={{
                         t,
                         canEditProjectTicketsEffective,
+                        canTransitionProjectTickets,
                         loadProjectBugs,
                         bugsLoading,
                         createBugIssue,
@@ -315,6 +338,15 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                         buildsList,
                         bugIssues,
                         updateBugIssue,
+                        transitionTarget,
+                        transitionForm,
+                        setTransitionForm,
+                        setTransitionTarget,
+                        compatibleBuilds,
+                        requestTransition,
+                        confirmTransition,
+                        quickTransitioningBugId,
+                        isCorrected,
                     }} />
                   )}
 

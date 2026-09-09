@@ -37,6 +37,58 @@ export function createEnvironmentActions({
         .filter(([key]) => key)
     )
 
+  const parseJsonObject = (value: string, label: string) => {
+    const text = String(value || '').trim()
+    if (!text) return {}
+    try {
+      const parsed = JSON.parse(text)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label} debe ser un objeto JSON`)
+      return parsed
+    } catch (error: any) {
+      throw new Error(`${label}: JSON inválido (${error?.message || 'revisa el formato'})`)
+    }
+  }
+
+  const parseJsonProfiles = (value: string) => {
+    const text = String(value || '').trim()
+    if (!text) return []
+    try {
+      const parsed = JSON.parse(text)
+      if (!parsed || typeof parsed !== 'object') throw new Error('debe ser una lista u objeto JSON')
+      return parsed
+    } catch (error: any) {
+      throw new Error(`Perfiles Chatbot: JSON inválido (${error?.message || 'revisa el formato'})`)
+    }
+  }
+
+  const chatbotConfigFromForm = (formData: FormData) => {
+    const endpoint = String(formData.get('chatbotEndpoint') || '').trim()
+    const headers = parseJsonObject(String(formData.get('chatbotHeaders') || ''), 'Headers Chatbot')
+    const requestTemplate = parseJsonObject(String(formData.get('chatbotRequestTemplate') || ''), 'Plantilla Chatbot')
+    const responseMapping = parseJsonObject(String(formData.get('chatbotResponseMapping') || ''), 'Mapeo Chatbot')
+    const profileBindings = parseJsonObject(String(formData.get('chatbotProfileBindings') || ''), 'Bindings del perfil')
+    const profiles = parseJsonProfiles(String(formData.get('chatbotProfiles') || ''))
+    const defaultProfile = String(formData.get('chatbotDefaultProfile') || '').trim()
+    const hasConfig = Boolean(endpoint || Object.keys(headers).length || Object.keys(requestTemplate).length || Object.keys(responseMapping).length || Object.keys(profileBindings).length || (Array.isArray(profiles) ? profiles.length : Object.keys(profiles).length) || defaultProfile)
+    if (!hasConfig) return {}
+    return {
+      schema_version: 1,
+      connection: {
+        adapter: String(formData.get('chatbotAdapter') || 'http'),
+        endpoint,
+        method: String(formData.get('chatbotMethod') || 'POST'),
+        headers,
+        request_template: requestTemplate,
+        response_mapping: responseMapping,
+        timeout_ms: Number(formData.get('chatbotTimeout') || 30000),
+        retries: Number(formData.get('chatbotRetries') || 0),
+      },
+      profile_bindings: profileBindings,
+      profiles,
+      ...(defaultProfile ? { default_profile: defaultProfile } : {}),
+    }
+  }
+
   const loadEnvironmentsForProject = async (projectId: string) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return
     try {
@@ -67,6 +119,13 @@ export function createEnvironmentActions({
         .map(key => [key, String(formData.get(`env${key}`) || '').trim()])
         .filter(([, value]) => value)
     )
+    let chatbotConfig: Record<string, any>
+    try {
+      chatbotConfig = chatbotConfigFromForm(formData)
+    } catch (error: any) {
+      setProjectSyncMessage(error?.message || 'Configuración Chatbot inválida.')
+      return
+    }
     const data = {
       name: String(formData.get('envName') || '').trim(),
       url: envUrl,
@@ -76,7 +135,8 @@ export function createEnvironmentActions({
         ...(envUrl ? { BASE_URL: envUrl } : {}),
         ...fixedVariables,
         ...parseVariablesText(String(formData.get('envVariables') || ''))
-      }
+      },
+      configuracion_chatbot: chatbotConfig,
     }
     if (!data.name || !data.url || !managingProjectId) return
 
@@ -90,7 +150,8 @@ export function createEnvironmentActions({
             url: data.url,
             status: data.status,
             version: data.version,
-            variables: data.variables
+            variables: data.variables,
+            configuracion_chatbot: data.configuracion_chatbot
           })
         })
         if (!response.ok) {
@@ -105,7 +166,7 @@ export function createEnvironmentActions({
         return
       }
     } else {
-      setEnvironments([...environments, { id: `e${Date.now()}`, projectId: managingProjectId, ...data, lastPing: 'Justo ahora' }])
+      setEnvironments([...environments, { id: `e${Date.now()}`, projectId: managingProjectId, ...data, chatbotConfig: data.configuracion_chatbot, lastPing: 'Justo ahora' }])
       setProjectSyncMessage(t('proyectos.environmentCreatedLocal'))
     }
     target.reset()
@@ -143,12 +204,19 @@ export function createEnvironmentActions({
         ...(url ? { BASE_URL: url } : {}),
         ...parseVariablesText(String(formData.get('envVariables') || ''))
       }
+      let configuracion_chatbot: Record<string, any>
+      try {
+        configuracion_chatbot = chatbotConfigFromForm(formData)
+      } catch (error: any) {
+        setProjectSyncMessage(error?.message || 'Configuración Chatbot inválida.')
+        return
+      }
 
       if (projectsSource === 'backend') {
         try {
           const response = await fetchWithAuth(`${API_BASE}/entornos/${envId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ nombre: name, url, version, status, variables })
+            body: JSON.stringify({ nombre: name, url, version, status, variables, configuracion_chatbot })
           })
           if (!response.ok) {
             const error = await response.json().catch(() => null)
@@ -163,7 +231,7 @@ export function createEnvironmentActions({
         return
       }
 
-      setEnvironments(environments.map(env => env.id === envId ? { ...env, name, url, version, status, variables } : env))
+      setEnvironments(environments.map(env => env.id === envId ? { ...env, name, url, version, status, variables, chatbotConfig: configuracion_chatbot } : env))
       setProjectSyncMessage(t('proyectos.environmentUpdatedLocal'))
       return
     }

@@ -25,7 +25,7 @@ export function CaseImportPreview({
   <div>
     <div className="small fw-bold">{t("configuracion.importStructure")}</div>
     <div className="x-small text-muted">
-      {t("configuracion.selectedCases", { selected: selectedImportIds.length, total: preview.summary.total })}
+      {selectedImportIds.length} / {preview.summary.total} {t("configuracion.selectedCases")}
     </div>
   </div>
   <div className="d-flex gap-2">
@@ -188,16 +188,20 @@ aria-label={t("configuracion.selectSuiteAria", { path })}
                       bg={
                         outcome === "new"
                           ? "success"
-                          : outcome === "new_version"
-                            ? "warning"
-                            : "secondary"
+                          : outcome === "restore"
+                            ? "info"
+                            : outcome === "new_version"
+                              ? "warning"
+                              : "secondary"
                       }
                     >
                       {outcome === "new"
                         ? t("configuracion.new")
-                        : outcome === "new_version"
-                          ? t("configuracion.newVersion")
-                          : t("configuracion.noChanges")}
+                        : outcome === "restore"
+                          ? t("configuracion.restore")
+                          : outcome === "new_version"
+                            ? t("configuracion.newVersion")
+                            : t("configuracion.noChanges")}
                     </Badge>
                   </div>
                   {caseExpanded && (

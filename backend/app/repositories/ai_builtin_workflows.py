@@ -40,6 +40,7 @@ BUILTIN_WORKFLOW_SLUGS = (
     "test-execution",
     "story-generation",
     "test-case-generation",
+    "chatbot-evaluation",
 )
 
 
@@ -82,6 +83,7 @@ def load_builtin_workflow_source(slug: str) -> Dict[str, Any]:
         "test_execution",
         "story_generation",
         "test_case_generation",
+        "chatbot_evaluation",
     }:
         raise ValueError(f"El workflow builtin {slug} no declara un proposito valido.")
     if not isinstance(source.get("agents"), list) or not source["agents"]:
@@ -182,7 +184,20 @@ def _generation_contract(agent: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _agent_contract(agent: Dict[str, Any]) -> Dict[str, Any]:
-    if agent.get("legacy_agent_key"):
+    # Chatbot handlers are native deterministic/HTTP adapters even though the
+    # builtin catalog uses the universal-v2 envelope.  Their conversation,
+    # assertions and metrics belong to the execution memory namespace; using
+    # the generation namespace silently discarded the handler patch before the
+    # reporter could persist it.
+    if str(agent.get("key") or "").startswith("chatbot-"):
+        contract = _generation_contract(agent)
+        contract["memory"] = {
+            "read_namespaces": ["execution"],
+            "write_namespaces": ["execution"],
+            "retention": "execution",
+        }
+        contract["inputs"]["allowed_context_sources"] = ["execution", "shared_memory"]
+    elif agent.get("legacy_agent_key"):
         contract = _legacy_contract(
             str(agent["legacy_agent_key"]),
             name=str(agent.get("name") or agent["legacy_agent_key"]),
@@ -429,7 +444,7 @@ async def ensure_builtin_workflow_catalog(
         installed[slug] = await ensure_builtin_workflow(
             db,
             slug,
-            activate_if_missing=purpose in {"story_generation", "test_case_generation"},
+            activate_if_missing=purpose in {"story_generation", "test_case_generation", "chatbot_evaluation"},
             created_by=created_by,
         )
     return installed

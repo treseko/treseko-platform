@@ -2,6 +2,7 @@ import { Badge, Button } from 'react-bootstrap'
 import { Network } from 'lucide-react'
 import { useI18n } from '../../../../i18n'
 import type { AiWorkflow } from '../../types/configuracion'
+import { workflowStatusLabel } from './workflowStatusPresentation'
 
 type Props = {
   workflowDraft: AiWorkflow | null
@@ -52,7 +53,7 @@ export function WorkflowSummaryCard({
         </div>
         <div>
           <span className="workflow-summary-label">{t('configuracion.workflowStatus')}</span>
-          <Badge bg={workflowStatusColor(workflowDraft?.status)}>{workflowDraft?.status || 'DRAFT'}</Badge>
+          <Badge bg={workflowStatusColor(workflowDraft?.status)}>{workflowStatusLabel(workflowDraft?.status || 'DRAFT', t)}</Badge>
         </div>
         <div>
           <span className="workflow-summary-label">{t('configuracion.nodes')}</span>

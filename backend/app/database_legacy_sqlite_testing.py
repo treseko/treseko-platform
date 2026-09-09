@@ -110,6 +110,12 @@ async def migrate_testing_execution_schema(conn, get_columns, get_column_info, b
     if ejecucion_columns:
         if "ai_report" not in ejecucion_columns:
             await conn.execute(text("ALTER TABLE ejecuciones_casos ADD COLUMN ai_report JSON DEFAULT '{}'"))
+        if "evidence_policy" not in ejecucion_columns:
+            await conn.execute(text("ALTER TABLE ejecuciones_casos ADD COLUMN evidence_policy JSON DEFAULT '{}'"))
+        if "chatbot_config_snapshot" not in ejecucion_columns:
+            await conn.execute(text("ALTER TABLE ejecuciones_casos ADD COLUMN chatbot_config_snapshot JSON DEFAULT '{}'"))
+        if "chatbot_resultado" not in ejecucion_columns:
+            await conn.execute(text("ALTER TABLE ejecuciones_casos ADD COLUMN chatbot_resultado JSON DEFAULT '{}'"))
         if "ai_confidence" not in ejecucion_columns:
             await conn.execute(text("ALTER TABLE ejecuciones_casos ADD COLUMN ai_confidence INTEGER"))
         if "ai_consensus" not in ejecucion_columns:

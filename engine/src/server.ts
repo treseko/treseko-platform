@@ -16,6 +16,7 @@ import { shouldReuseCaseGenerationScenarios } from "./ai/case-generation-flow.ts
 import { traceEntry, traceRequestId } from "./test-trace.ts";
 import { OpenCodeDriver } from "./ai/opencode-driver.ts";
 import { ProviderRequestError } from "./ai/provider-adapters.ts";
+import { UpdateAdmission, registerUpdateAdmissionRoute, registerExternalAdmissionMiddleware } from "./update-admission.ts";
 import {
   ENGINE_LOCAL_EVIDENCE_ENABLED,
   ENGINE_NAME,
@@ -240,6 +241,7 @@ async function executeProviderHealth(req: express.Request, res: express.Response
   const model = payload?.model;
   const provider_api_key = payload?.provider_api_key;
   const max_retries = payload?.max_retries;
+  const probe_vision = payload?.probe_vision !== false;
   if (!provider || !model || !allowedEndpoint(llmEndpoint)) {
     return sendPublicError(req, res, 400, "Perfil IA inválido o endpoint no permitido", "INVALID_PROVIDER_PROFILE");
   }
@@ -263,12 +265,22 @@ async function executeProviderHealth(req: express.Request, res: express.Response
   if (!health.ok) {
     return sendProviderFailure(req, res, new ProviderRequestError("Proveedor IA no disponible", health.category || "provider_unavailable"));
   }
+  const vision = probe_vision
+    ? await client.checkVisionCapability()
+    : { status: 'unknown' as const, verified: false, attempts: [], reason: 'Prueba visual no solicitada.' };
   return res.status(200).json({
     status: health.ok ? "ok" : "error",
     provider: String(provider),
     model: String(model),
     ...(health.category ? { error: `Proveedor IA: ${health.category}` } : {}),
     ...(health.status ? { provider_status: health.status } : {}),
+    capabilities: {
+      text: true,
+      structured_json: true,
+      vision: vision.verified,
+      vision_status: vision.status,
+    },
+    vision_probe: vision,
   });
 }
 
@@ -334,6 +346,10 @@ function protectedStoryEndpoint(req: express.Request, res: express.Response) {
   }
   return true;
 }
+
+const updateAdmission = new UpdateAdmission();
+registerExternalAdmissionMiddleware(app, updateAdmission, protectedStoryEndpoint);
+registerUpdateAdmissionRoute(app, updateAdmission, protectedStoryEndpoint);
 
 app.get("/health", (req, res) => {
   res.json({
@@ -426,7 +442,7 @@ app.post("/provider-health", async (req, res) => {
 
 registerGenerationRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks, traceEntry, traceRequestId, ENGINE_INTERNAL_TOKEN });
 registerQualityDiagnosisRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks });
-registerRunRoutes(app, { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds });
+registerRunRoutes(app, { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission });
 io.on("connection", (socket) => {
   console.log("Client connected to Engine:", socket.id);
   traceEntry("ws_event", { action: "connection", socket_id: socket.id });

@@ -58,7 +58,7 @@ export function AutomationFunctionsModal({
     setLoading(true)
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/funciones/?component_id=${componentId || ''}&include_herencia=true`)
-      if (!response.ok) throw new Error(`Backend respondio ${response.status}`)
+      if (!response.ok) throw new Error(t('automatizacion.backendResponded', { status: response.status }))
       setFunctions(await response.json())
     } catch (error: any) {
       showFeedback(t('casos.functionsTitle'), error.message || t('casos.loadFunctionsError'), 'danger')
@@ -105,10 +105,10 @@ export function AutomationFunctionsModal({
     return `await ${fn.nombre}(${params});`
   }
 
-  const copyText = async (text: string, label = 'Copiado') => {
+  const copyText = async (text: string, label = t('automatizacion.copied')) => {
     try {
       await navigator.clipboard.writeText(text)
-      showFeedback(label, 'Texto copiado al portapapeles.', 'success')
+      showFeedback(label, t('automatizacion.copiedText'), 'success')
     } catch {
       showFeedback(label, text, 'info')
     }
@@ -116,7 +116,7 @@ export function AutomationFunctionsModal({
 
   const readErrorMessage = async (response: Response) => {
     const raw = await response.text().catch(() => '')
-    if (!raw) return `Backend respondio ${response.status}`
+    if (!raw) return t('automatizacion.backendResponded', { status: response.status })
     try {
       const parsed = JSON.parse(raw)
       return parsed?.detail || parsed?.message || raw
@@ -128,7 +128,7 @@ export function AutomationFunctionsModal({
   const saveFunction = async () => {
     if (!form.nombre.trim()) return
     if (form.scope === 'COMPONENTE' && !form.componente_id) {
-      setFormError('Selecciona un componente para esta funcion.')
+      setFormError(t('automatizacion.componentRequiredMessage'))
       return
     }
     setSaving(true)
@@ -160,7 +160,7 @@ export function AutomationFunctionsModal({
         showFeedback(t('casos.functionsTitle'), editing ? t('casos.functionUpdated') : t('casos.functionCreated'), 'success')
       await loadFunctions()
     } catch (error: any) {
-      const message = error?.message || 'Error de conexion al guardar la funcion.'
+      const message = error?.message || t('automatizacion.saveFunctionConnectionError')
       setFormError(message)
         showFeedback(t('casos.functionsTitle'), message, 'danger')
     } finally {
@@ -191,7 +191,7 @@ export function AutomationFunctionsModal({
         </Modal.Header>
         <Modal.Body>
           <div className="d-flex gap-2 justify-content-between align-items-center mb-3">
-            <Form.Control name="a11y-automationfunctionsmodaltsx-194" aria-label="Campo de formulario" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('casos.searchFunction')} />
+            <Form.Control name="a11y-automationfunctionsmodaltsx-194" aria-label={t('casos.searchFunction')} value={search} onChange={e => setSearch(e.target.value)} placeholder={t('casos.searchFunction')} />
             {canEdit && <Button className="d-flex align-items-center gap-2 text-nowrap" onClick={openCreate}><Plus size={16} /> {t('casos.newFunction')}</Button>}
           </div>
           {loading ? (
@@ -221,12 +221,12 @@ export function AutomationFunctionsModal({
                     <td><code className="small">{(fn.parametros || []).join(', ') || '-'}</code></td>
                     <td>
                       <div className="d-flex gap-1">
-                        <Button size="sm" variant="outline-primary" onClick={() => copyText(buildUsage(fn), 'Uso copiado')}><Copy size={14} /></Button>
+                        <Button size="sm" variant="outline-primary" aria-label={t('automatizacion.copyUsage')} onClick={() => copyText(buildUsage(fn), t('automatizacion.usageCopied'))}><Copy size={14} /></Button>
                         <Button size="sm" variant="outline-success" onClick={() => onInsertUsage(buildUsage(fn))}>{t('casos.insert')}</Button>
                         {canEdit && (
                           <>
-                            <Button size="sm" variant="outline-secondary" onClick={() => openEdit(fn)}><Edit2 size={14} /></Button>
-                            <Button size="sm" variant="outline-danger" onClick={() => setDeleteTarget(fn)}><Trash2 size={14} /></Button>
+                            <Button size="sm" variant="outline-secondary" aria-label={t('casos.editFunction')} onClick={() => openEdit(fn)}><Edit2 size={14} /></Button>
+                            <Button size="sm" variant="outline-danger" aria-label={t('casos.deleteFunction')} onClick={() => setDeleteTarget(fn)}><Trash2 size={14} /></Button>
                           </>
                         )}
                       </div>
@@ -251,15 +251,15 @@ export function AutomationFunctionsModal({
           <Row className="g-3">
             <Col md={6}>
               <Form.Label><RequiredLabel required>{t('casos.name')}</RequiredLabel></Form.Label>
-              <Form.Control name="a11y-automationfunctionsmodaltsx-254" aria-label="Campo de formulario" required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-254" aria-label={t('casos.name')} required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
             </Col>
             <Col md={6}>
               <Form.Label>{t('casos.functionDescription')}</Form.Label>
-              <Form.Control name="a11y-automationfunctionsmodaltsx-258" aria-label="Campo de formulario" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-258" aria-label={t('casos.functionDescription')} value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} />
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.framework')}</Form.Label>
-              <Form.Select name="a11y-automationfunctionsmodaltsx-262" aria-label="Campo de formulario" value={form.framework} onChange={e => setForm({ ...form, framework: e.target.value })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-262" aria-label={t('casos.framework')} value={form.framework} onChange={e => setForm({ ...form, framework: e.target.value })}>
                 <option value="playwright">Playwright</option>
                 <option value="cypress">Cypress</option>
                 <option value="selenium">Selenium</option>
@@ -268,14 +268,14 @@ export function AutomationFunctionsModal({
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.scope')}</Form.Label>
-              <Form.Select name="a11y-automationfunctionsmodaltsx-271" aria-label="Campo de formulario" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value, componente_id: e.target.value === 'PROYECTO' ? '' : componentId })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-271" aria-label={t('casos.scope')} value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value, componente_id: e.target.value === 'PROYECTO' ? '' : componentId })}>
                 <option value="COMPONENTE">{t('casos.componentScope')}</option>
                 <option value="PROYECTO">{t('casos.projectScope')}</option>
               </Form.Select>
             </Col>
             <Col md={4}>
               <Form.Label>{t('casos.componentScope')}</Form.Label>
-              <Form.Select name="a11y-automationfunctionsmodaltsx-278" aria-label="Campo de formulario" value={form.componente_id} disabled={form.scope !== 'COMPONENTE'} onChange={e => setForm({ ...form, componente_id: e.target.value })}>
+              <Form.Select name="a11y-automationfunctionsmodaltsx-278" aria-label={t('casos.componentScope')} value={form.componente_id} disabled={form.scope !== 'COMPONENTE'} onChange={e => setForm({ ...form, componente_id: e.target.value })}>
                 <option value="">{t('casos.selectComponent')}</option>
                 {componentsList.filter(c => c.projectId === projectId).map(component => (
                   <option key={component.id} value={component.id}>{component.name}</option>
@@ -284,11 +284,11 @@ export function AutomationFunctionsModal({
             </Col>
             <Col xs={12}>
               <Form.Label>{t('casos.parametersCommaSeparated')}</Form.Label>
-              <Form.Control name="a11y-automationfunctionsmodaltsx-287" aria-label="Campo de formulario" value={form.parametros} onChange={e => setForm({ ...form, parametros: e.target.value })} placeholder="page, variables, log" />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-287" aria-label={t('casos.parametersCommaSeparated')} value={form.parametros} onChange={e => setForm({ ...form, parametros: e.target.value })} placeholder={t('automatizacion.functionParametersPlaceholder')} />
             </Col>
             <Col xs={12}>
               <Form.Label><RequiredLabel required>{t('casos.code')}</RequiredLabel></Form.Label>
-              <Form.Control name="a11y-automationfunctionsmodaltsx-291" aria-label="Campo de formulario" required as="textarea" rows={12} className="font-monospace small" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} />
+              <Form.Control name="a11y-automationfunctionsmodaltsx-291" aria-label={t('casos.code')} required as="textarea" rows={12} className="font-monospace small" value={form.codigo} onChange={e => setForm({ ...form, codigo: e.target.value })} />
             </Col>
           </Row>
         </Modal.Body>

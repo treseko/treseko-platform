@@ -2,31 +2,34 @@
 
 <!-- Language: en -->
 
-**Run History** keeps project executions so you can compare results, review
-evidence and continue an investigation.
+**Run History** keeps executions and frozen data so you can compare results,
+review evidence and reconstruct an investigation.
 
 ## Find an execution
 
 1. Open **Run History**.
-2. Use **Advanced filters** to narrow by case, date, result, source, build or
-   other available criteria.
-3. Open **View details** for the execution you need to review.
+2. Filter by case, date, result, source, build, format or mode.
+3. Open **View details**.
+4. Confirm the project, build and component.
 
 ## What the detail shows
 
-The detail includes the run, build, component, environment, source and runner.
-It also shows included cases, steps, verdicts, observations, evidence and
-related bugs.
+It can include the run, build, component, environment, dataset, source, runner,
+format, mode, cases, steps, verdicts, notes, evidence and bugs. It can also
+show frozen dynamic variables and configuration, an API result or conversational
+transcript/configuration, and an AI report with confidence and human review.
 
-An AI execution may include traces or results specific to that mode; review
-them together with the evidence before closing a bug or approving a build.
+The frozen configuration explains what was executed; it is not the same as the
+current case configuration.
 
-## Use it during an investigation
+## How to investigate
 
-- Compare the result with the previous execution of the same case.
-- Open related bugs to verify their state.
-- Confirm that evidence belongs to the evaluated step and build.
-- Apply filters and reload the list when the context changes.
+1. Compare it with the previous execution.
+2. Identify whether the result is classic, API or conversational.
+3. Confirm that the evidence and variables belong to the case and build.
+4. Open or prepare the related bug.
+5. For AI, review traces, confidence and the human decision.
 
-History is for viewing; it does not replace case editing or bug management. For
-those tasks use [Test cases](TEST_CASES_GUIDE.md) and [Bug Tracker](BUG_TRACKER.md).
+History is for consultation. To edit, use [Cases](TEST_CASES_GUIDE.md); for
+defects, use [Bug Tracker](BUG_TRACKER.md). Prefer readable names, codes and
+context over UUIDs, payloads or resolved variables.

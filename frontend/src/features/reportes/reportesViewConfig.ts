@@ -11,6 +11,8 @@ export const REPORTES_VIEW_SECTIONS = [
   { id: 'kpis', label: 'kpiCards' },
   { id: 'temporal', label: 'temporalProgress' },
   { id: 'aiMetrics', label: 'aiMetrics' },
+  { id: 'formatMetrics', label: 'formatMetrics' },
+  { id: 'formatModeMatrix', label: 'formatModeMatrix' },
   { id: 'buildComparison', label: 'buildComparison' },
   { id: 'filters', label: 'detailFilters' },
   { id: 'bugTraceability', label: 'bugTraceability' },
@@ -96,17 +98,17 @@ export const REPORTES_VIEW_COLUMNS: Record<string, { label: string, columns: { i
 export const PROJECT_REPORT_SETTING_GROUPS = {
   executive: [
     { id: 'summary', label: 'executiveSummary', group: 'normal' }, { id: 'kpis', label: 'executiveKpis', group: 'normal' }, { id: 'risks', label: 'mainRisks', group: 'normal' },
-    { id: 'trend', label: 'simpleTrend', group: 'trend' }, { id: 'findings', label: 'topFindings', group: 'technical' },
+    { id: 'trend', label: 'simpleTrend', group: 'trend' }, { id: 'format_metrics', label: 'formatMetrics', group: 'technical' }, { id: 'findings', label: 'topFindings', group: 'technical' },
   ],
   development: [
-    { id: 'summary', label: 'technicalSummary', group: 'normal' }, { id: 'distribution', label: 'resultsDistribution', group: 'normal' },
-    { id: 'failures', label: 'diagnosableFailures', group: 'technical' }, { id: 'bugs', label: 'buildBugs', group: 'technical' },
-    { id: 'bug_details', label: 'completePublicBugSheets', group: 'technical' }, { id: 'bug_tracking', label: 'buildTracking', group: 'trend' },
-    { id: 'regressions', label: 'regressions', group: 'trend' }, { id: 'actions', label: 'recommendedActions', group: 'normal' },
+    { id: 'summary', label: 'versionResultsSummary', group: 'normal' }, { id: 'distribution', label: 'resultsDistribution', group: 'normal' },
+    { id: 'failures', label: 'unlinkedFailures', group: 'technical' }, { id: 'format_metrics', label: 'formatMetrics', group: 'technical' }, { id: 'bugs', label: 'newVersionBugs', group: 'normal' },
+    { id: 'bug_details', label: 'bugReproductionDetails', group: 'technical' }, { id: 'bug_tracking', label: 'pendingHistoricalBugs', group: 'trend' },
+    { id: 'corrected_bugs', label: 'verifiedBugFixes', group: 'normal' }, { id: 'actions', label: 'recommendedActions', group: 'normal' },
   ],
   internal: [
     { id: 'summary', label: 'internalSummaryKpis', group: 'normal' }, { id: 'distribution', label: 'resultsDistribution', group: 'normal' },
-    { id: 'integrity', label: 'snapshotIntegrity', group: 'technical' }, { id: 'temporal', label: 'temporalProgress', group: 'trend' },
+    { id: 'integrity', label: 'snapshotIntegrity', group: 'technical' }, { id: 'format_metrics', label: 'formatMetrics', group: 'technical' }, { id: 'temporal', label: 'temporalProgress', group: 'trend' },
     { id: 'traceability', label: 'bugTraceability', group: 'technical' }, { id: 'trend', label: 'buildTrend', group: 'trend' },
     { id: 'failures', label: 'diagnosableFailures', group: 'technical' }, { id: 'failed_steps', label: 'stepsWithIncident', group: 'technical' },
     { id: 'bugs', label: 'buildBugs', group: 'technical' }, { id: 'evidence', label: 'linkedEvidence', group: 'technical' },
@@ -128,8 +130,8 @@ export const PROJECT_REPORT_SECTION_GROUPS = [
 
 export const DEFAULT_PROJECT_REPORT_SETTINGS = {
   version: 'project-report-settings-v1',
-  executive: { sections: enabledRecord(PROJECT_REPORT_SETTING_GROUPS.executive) },
-  development: { sections: enabledRecord(PROJECT_REPORT_SETTING_GROUPS.development) },
+  executive: { sections: { ...enabledRecord(PROJECT_REPORT_SETTING_GROUPS.executive), format_metrics: false } },
+  development: { sections: { ...enabledRecord(PROJECT_REPORT_SETTING_GROUPS.development), distribution: false, format_metrics: false, regressions: true } },
   internal: { sections: enabledRecord(PROJECT_REPORT_SETTING_GROUPS.internal) },
 }
 
@@ -142,7 +144,7 @@ export const DEFAULT_REPORTES_VIEW: ReportesViewConfig = {
 
 export const REPORTES_VIEW_SUMMARY: ReportesViewConfig = {
   ...DEFAULT_REPORTES_VIEW,
-  sections: { ...enabledRecord(REPORTES_VIEW_SECTIONS), aiMetrics: false, buildComparison: false, filters: false, bugTraceability: false, bugs: false, failures: false, evidence: false, priority: false, trend: false, sharedHistory: false },
+  sections: { ...enabledRecord(REPORTES_VIEW_SECTIONS), aiMetrics: false, formatMetrics: false, formatModeMatrix: false, buildComparison: false, filters: false, bugTraceability: false, bugs: false, failures: false, evidence: false, priority: false, trend: false, sharedHistory: false },
   kpis: { ...enabledRecord(REPORTES_VIEW_KPIS), newBugs: false, recurrentBugs: false, failuresWithoutBug: false, bugsWithoutEvidence: false, blocksWithoutReason: false },
 }
 

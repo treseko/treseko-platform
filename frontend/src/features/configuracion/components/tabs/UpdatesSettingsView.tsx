@@ -3,6 +3,7 @@ import { Bot, Cpu, Database, DownloadCloud, Monitor, RefreshCw, Server, UploadCl
 
 export function UpdatesSettingsView({ options }: { options: any }) {
   const { t, loading, load, checkingCommunity, syncCommunity, checkingPremium, syncPremium, canApplyUpdates, latestUpdate, isPremiumUpdateMode, applyLatestUpdate, applyConfirmation, setApplyConfirmation, confirmApplyUpdate, status, activeTask, updateEvents, isPrepared, restartingPrepared, restartPreparedUpdate, rollingBack, rollbackPendingUpdate, reportingFailure, reportFailure, componentRows, findComponent, workers, primaryWorker, onlineWorkers, systemVersion, frontendVersion, history, statusVariant, channels, premiumUpdatesAllowed, applyingPremium, confirmationChannel, confirmationVersion } = options
+  const workerVersion = (worker: any) => worker?.version || worker?.capabilities?.component_version || worker?.capabilities?.worker_version || t('configuracion.updateWorkerNotActive')
   return (
     <div className="animate__animated animate__fadeIn">
       <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
@@ -29,7 +30,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
             </div>
           </div>
           <div className="row g-2">
-            {componentRows.map(item => {
+            {componentRows.filter((item: any) => item.id !== 'worker').map(item => {
               const Icon = item.icon
               return (
                 <div className="col-12 col-md-6 col-xl-3" key={item.id}>
@@ -49,7 +50,40 @@ export function UpdatesSettingsView({ options }: { options: any }) {
               )
             })}
           </div>
-          {!premiumUpdatesAllowed && (
+          <div className="mt-3">
+            <div className="fw-bold text-dark mb-2">{t('configuracion.systemMonitorRegisteredWorkers')}</div>
+            {workers.length === 0 ? (
+              <div className="border rounded-3 p-3 bg-light small text-muted">
+                {t('configuracion.updateNoWorkersRegistered')}
+              </div>
+            ) : (
+              <div className="row g-2">
+                {workers.map((worker: any, index: number) => (
+                  <div className="col-12 col-md-6 col-xl-4" key={`${worker.runner_id || 'worker'}-${worker.pid || 'no-pid'}-${worker.last_heartbeat || index}`}>
+                    <div className="border rounded-3 p-3 h-100 bg-light">
+                      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <div className="d-flex align-items-center gap-2 min-width-0">
+                          <Bot size={17} className="text-primary flex-shrink-0" />
+                          <div className="fw-bold text-dark text-truncate" title={worker.name || t('configuracion.updateComponentWorker')}>
+                            {worker.name || t('configuracion.updateComponentWorker')}
+                          </div>
+                        </div>
+                        <Badge bg={statusVariant(worker.status)}>{worker.status || t('configuracion.versionNotReported')}</Badge>
+                      </div>
+                      <div className="h6 fw-bold mb-1">{workerVersion(worker)}</div>
+                      <div className="x-small text-muted mb-1">
+                        {worker.type || 'LOCAL'} · {worker.runner_id ? worker.runner_id.slice(0, 8) : t('configuracion.systemMonitorNoData')}
+                      </div>
+                      <div className="x-small text-muted text-truncate" title={worker.hostname || ''}>
+                        {worker.hostname || t('configuracion.systemMonitorHostNotReported')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {premiumUpdatesAllowed === false && (
             <Alert variant={latestUpdate?.error ? 'warning' : 'light'} className="border small mt-3 mb-0">
               {latestUpdate?.error
                 ? t('configuracion.communityChannelError', { error: latestUpdate.error })
@@ -59,7 +93,13 @@ export function UpdatesSettingsView({ options }: { options: any }) {
         </Card.Body>
       </Card>
 
-      {!premiumUpdatesAllowed && (
+      {premiumUpdatesAllowed === undefined && (
+        <Alert variant="warning" className="border small mb-3">
+          {t('configuracion.updatesLoadError')}
+        </Alert>
+      )}
+
+      {premiumUpdatesAllowed === false && (
         <div className="row g-3">
           <div className="col-12 col-xl-5">
             <Card className="border-0 shadow-sm rounded-4 h-100">
@@ -133,7 +173,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
         </div>
       )}
 
-      {!premiumUpdatesAllowed && (
+      {premiumUpdatesAllowed === false && (
         <div className="row g-3 mt-1">
           <div className="col-12">
             <Card className="border-0 shadow-sm rounded-4">
@@ -230,7 +270,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
         </div>
       )}
 
-      {premiumUpdatesAllowed && (
+      {premiumUpdatesAllowed === true && (
         <div className="row g-3">
           <div className="col-12 col-xl-5">
             <Card className="border-0 shadow-sm rounded-4 h-100">

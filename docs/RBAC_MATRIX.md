@@ -1,26 +1,29 @@
 # Matriz de permisos por rol
 
-Esta matriz sirve como referencia al crear o revisar roles. Los permisos reales
-pueden ajustarse con roles personalizados desde **Configuración → Roles**.
+Es orientativa. La autorización real también depende de capability, nivel,
+scope de organización/proyecto y entitlement.
 
 | Acción | ADMIN | QA LEAD | TESTER | VIEWER |
 |---|---:|---:|---:|---:|
-| Consultar proyectos, casos, historial y reportes | Sí | Sí | Sí | Sí |
-| Crear y editar suites y casos | Sí | Sí | Sí | No |
-| Administrar proyectos, componentes, builds y ambientes | Sí | Sí | No | No |
-| Ejecutar pruebas manuales | Sí | Sí | Sí | No |
-| Adjuntar evidencias y reportar bugs | Sí | Sí | Sí | No |
-| Ejecutar automatización e IA autorizada | Sí | Sí | Según rol personalizado | No |
-| Configurar integraciones del proyecto | Sí | Sí | Según permiso | No |
-| Administrar usuarios, roles y preferencias globales | Sí | Según permiso | No | No |
+| Consultar proyectos, casos, runs y reportes permitidos | Sí | Sí | Sí | Sí |
+| Crear/editar suites y casos | Sí | Sí | Según capability | No |
+| Administrar proyectos, builds y ambientes | Sí | Sí | No | No |
+| Ejecutar pruebas manuales | Sí | Sí | Según capability | No |
+| Ejecutar automatización/API con worker aprobado | Sí | Sí | Según capability y scope | No |
+| Ejecutar evaluación IA/conversacional | Sí | Sí | Según capability y entitlement | No |
+| Adjuntar evidencia y reportar bugs | Sí | Sí | Según capability | No |
+| Triage y asignación de bugs/incidencias | Sí | Sí | Según capability | No |
+| Compartir reportes y crear snapshots | Sí | Según entitlement | Según permiso | No |
+| Configurar integraciones/plugins | Sí | Según permiso y entitlement | No por defecto | No |
+| Administrar usuarios, roles y licencia | Sí | Según permiso | No | No |
 
-## Cómo usar esta matriz
+## Aplicación
 
-1. Identificá las tareas reales de la persona o equipo.
-2. Elegí el rol base más cercano.
-3. Creá un rol personalizado si necesitás limitar o ampliar módulos.
-4. Probá el rol con una cuenta de prueba antes de asignarlo de forma masiva.
+1. Definí tarea.
+2. Elegí rol base.
+3. Ajustá capability, nivel y scope.
+4. Confirmá edición.
+5. Probá con cuenta de prueba.
 
-Los niveles **Sin acceso**, **Lector** y **Editor** determinan qué puede ver o
-modificar un rol en cada módulo. Consultá [Acceso, usuarios y permisos]
-(AUTH_RBAC_GUIDE.md) para el paso a paso de creación y asignación.
+Un Sí no autoriza fuera del proyecto u organización ni habilita Premium en
+Community. Consultá [AUTH_RBAC_GUIDE.md](AUTH_RBAC_GUIDE.md).

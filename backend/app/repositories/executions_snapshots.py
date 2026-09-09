@@ -3,6 +3,7 @@ from ..evidence_url_security import sanitize_evidence_url
 from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload
 from ..services.execution_output_sanitizer import sanitize_execution_snapshot_item
+from ..services.api_evidence_policy import public_test_data_evidence_enabled
 
 
 async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: bool | None = None):
@@ -51,6 +52,10 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
         caso = casos.get(ejec.caso_id)
         execution_mode = _execution_mode_value(ejec, caso, run.origen)
         execution_modes[_execution_mode_key(execution_mode)] += 1
+        formato_prueba = str(getattr(caso.formato_prueba, "value", caso.formato_prueba) or "CLASICA").upper() if caso else "CLASICA"
+        is_chatbot = formato_prueba == "CONVERSACIONAL"
+        public_evidence = public_test_data_evidence_enabled(environment=entorno, case=caso, execution=ejec)
+        effective_sanitize = bool(sanitize_output and not public_evidence)
         enriched_snapshots = snapshots_by_execution.get(ejec.id, [])
         ai_report = ejec.ai_report if isinstance(ejec.ai_report, dict) else {}
         is_ai_execution = execution_mode == models.ExecutionMode.IA.value or _has_ai_execution_data(ejec)
@@ -89,7 +94,9 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
                 ],
             }
         has_ai_report = bool(ai_report) and is_ai_execution
-        ai_report = sanitize_ai_report_payload(ai_report) if ai_report and sanitize_output else (ai_report or {})
+        # Chatbot reports intentionally retain the frozen QA contract and raw
+        # HTTP evidence. Access is still governed by the history capability.
+        ai_report = sanitize_ai_report_payload(ai_report) if ai_report and effective_sanitize and not is_chatbot else (ai_report or {})
         cases_detail.append({
             "id": str(ejec.id),
             "execution_id": str(ejec.id),
@@ -99,6 +106,8 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
             "titulo": caso.titulo if caso else "Caso no disponible",
             "case_type": _case_type_key(caso) if caso else "manual",
             "case_type_label": _case_type_label(caso),
+            "formato_prueba": formato_prueba,
+            "formato_prueba_label": "Chatbot" if is_chatbot else formato_prueba.title(),
             "descripcion": caso.descripcion if caso else None,
             "precondiciones": caso.precondiciones if caso else None,
             "postcondiciones": caso.postcondiciones if caso else None,
@@ -106,8 +115,10 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
             "estado": ejec.estado_resultado.value,
             "execution_mode": execution_mode,
             "execution_mode_label": _execution_mode_label(execution_mode),
+            "public_test_data": public_evidence,
+            "evidence_policy": {"public_test_data": public_evidence},
             "duracion_segundos": ejec.duracion_segundos,
-            "observaciones": sanitize_ai_report_payload(ejec.observaciones) if sanitize_output else ejec.observaciones,
+            "observaciones": sanitize_ai_report_payload(ejec.observaciones) if effective_sanitize and not is_chatbot else ejec.observaciones,
             "ai_report": ai_report,
             "has_ai_report": has_ai_report,
             "ai_confidence": ejec.ai_confidence or ai_report.get("confidence"),
@@ -116,8 +127,11 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
             "ai_error_code": _ai_error_code_from_report(ai_report, ejec.estado_resultado) if isinstance(ai_report, dict) else None,
             "ai_review_status": review_status,
             "ai_reviewed_at": ejec.ai_reviewed_at.isoformat() if ejec.ai_reviewed_at else None,
-            "ai_review_note": sanitize_ai_report_payload(ejec.ai_review_note) if sanitize_output else ejec.ai_review_note,
+            "ai_review_note": sanitize_ai_report_payload(ejec.ai_review_note) if effective_sanitize else ejec.ai_review_note,
             "ai_human_review_required": review_required,
+            "chatbot_config_snapshot": (ejec.chatbot_config_snapshot or {}) if is_chatbot else {},
+            "chatbot_resultado": (ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {}) if is_chatbot else {},
+            "chatbot_workflow_version": ((ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {}).get("workflow_version") if is_chatbot else None),
             "fecha_ejecucion": ejec.fecha_ejecucion.isoformat() if ejec.fecha_ejecucion else None,
             "snapshots": enriched_snapshots,
             "dataset_resuelto": (run.datasets_resueltos or {}).get(str(ejec.caso_id), []),
@@ -320,6 +334,11 @@ async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: in
         return snapshots
     run_result = await db.execute(select(models.TestRun).filter(models.TestRun.id == ejecucion.test_run_id))
     run = run_result.scalar_one_or_none()
+    case_result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == ejecucion.caso_id))
+    case = case_result.scalar_one_or_none()
+    environment = await db.get(models.Entorno, run.entorno_id) if run and run.entorno_id else None
+    public_evidence = public_test_data_evidence_enabled(environment=environment, case=case, execution=ejecucion)
+    effective_sanitize = bool(sanitize_output and not public_evidence)
     run_variables = {str(key): str(value) for key, value in ((run.variables_resueltas if run else {}) or {}).items()}
 
     steps_result = await db.execute(
@@ -345,7 +364,7 @@ async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: in
             "numero_paso": snapshot.numero_paso,
             "accion_congelada": snapshot.accion_congelada,
             "datos_congelados": snapshot.datos_congelados,
-            "datos_resueltos": _resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None,
+            "datos_resueltos": snapshot.datos_resueltos if snapshot.datos_resueltos is not None else (_resolve_placeholders(snapshot.datos_congelados or "", run_variables) if snapshot.datos_congelados else None),
             "resultado_esperado_congelado": snapshot.resultado_esperado_congelado,
             "estado_paso": snapshot.estado_paso,
             "comentarios": snapshot.comentarios,
@@ -372,19 +391,23 @@ async def get_snapshots_ejecucion(db: AsyncSession, ejecucion_id: UUID, skip: in
                 for link in links
                 if link.tipo == "EXPECTED_REFERENCE"
             ]
-        enriched.append(sanitize_execution_snapshot_item(item) if sanitize_output else item)
+        enriched.append(sanitize_execution_snapshot_item(item) if effective_sanitize else item)
     return enriched
 
-async def get_caso_execution_history(db: AsyncSession, caso_id: UUID, limit: int = 10, build_id: Optional[UUID] = None):
-    """Obtener historial de ejecuciones de un caso específico"""
+async def _get_caso_execution_history_version_ids(db: AsyncSession, caso_id: UUID):
+    """Resolve the logical case versions that belong to one history."""
     case_result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == caso_id))
     db_case = case_result.scalar_one_or_none()
     if not db_case:
-        return []
+        return None
     version_ids_result = await db.execute(
         select(models.CasoPrueba.id).filter(models.CasoPrueba.master_id == db_case.master_id)
     )
-    version_ids = list(version_ids_result.scalars().all())
+    return list(version_ids_result.scalars().all())
+
+
+def _build_caso_execution_history_query(version_ids, build_id: Optional[UUID] = None):
+    """Build the shared filtered query used by page and aggregate reads."""
     query = (
         select(models.EjecucionCaso)
         .join(models.TestRun, models.TestRun.id == models.EjecucionCaso.test_run_id)
@@ -393,9 +416,63 @@ async def get_caso_execution_history(db: AsyncSession, caso_id: UUID, limit: int
     )
     if build_id:
         query = query.filter(models.TestRun.build_id == build_id)
+    return query
+
+
+async def get_caso_execution_history(
+    db: AsyncSession,
+    caso_id: UUID,
+    limit: int = 10,
+    build_id: Optional[UUID] = None,
+    skip: int = 0,
+):
+    """Obtener una página del historial de ejecuciones de un caso."""
+    version_ids = await _get_caso_execution_history_version_ids(db, caso_id)
+    if not version_ids:
+        return []
+    query = _build_caso_execution_history_query(version_ids, build_id=build_id)
     result = await db.execute(
         query
         .order_by(models.EjecucionCaso.fecha_ejecucion.desc())
+        .offset(skip)
         .limit(limit)
     )
     return result.scalars().all()
+
+
+async def get_caso_execution_history_stats(
+    db: AsyncSession,
+    caso_id: UUID,
+    build_id: Optional[UUID] = None,
+):
+    """Return exact counts for the same scope as the history endpoint."""
+    version_ids = await _get_caso_execution_history_version_ids(db, caso_id)
+    counts = {status.value: 0 for status in models.EstadoResultado}
+    if not version_ids:
+        return {
+            "total": 0,
+            "passed": 0,
+            "failed": 0,
+            "blocked": 0,
+            "pending": 0,
+            "counts": counts,
+        }
+
+    query = _build_caso_execution_history_query(version_ids, build_id=build_id)
+    grouped_query = query.with_only_columns(
+        models.EjecucionCaso.estado_resultado,
+        func.count(models.EjecucionCaso.id),
+    ).group_by(models.EjecucionCaso.estado_resultado)
+    result = await db.execute(grouped_query)
+    for status, amount in result.all():
+        status_key = getattr(status, "value", str(status))
+        counts[status_key] = int(amount or 0)
+
+    return {
+        "total": sum(counts.values()),
+        "passed": counts.get(models.EstadoResultado.PASO.value, 0),
+        "failed": counts.get(models.EstadoResultado.FALLO.value, 0),
+        "blocked": counts.get(models.EstadoResultado.BLOQUEADO.value, 0),
+        "pending": counts.get(models.EstadoResultado.SIN_CORRER.value, 0),
+        "counts": counts,
+    }

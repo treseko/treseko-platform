@@ -16,6 +16,13 @@ class TipoPrueba(str, enum.Enum):
     AUTOMATIZADA = "AUTOMATIZADA"
     AUTOMATIZADA_AI = "AUTOMATIZADA_AI"
 
+class FormatoPrueba(str, enum.Enum):
+    """Estructura y propósito del caso, independiente de su ejecución."""
+    CLASICA = "CLASICA"
+    API = "API"
+    PERFORMANCE = "PERFORMANCE"
+    CONVERSACIONAL = "CONVERSACIONAL"
+
 class EstadoCaso(str, enum.Enum):
     ACTIVO = "ACTIVO"
     DEPRECADO = "DEPRECADO"

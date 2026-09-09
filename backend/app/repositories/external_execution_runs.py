@@ -2,7 +2,93 @@ from .repository_context import *
 from ..evidence_url_security import sanitize_evidence_url
 from ..services.error_sanitizer import sanitize_external_error
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
+from ..services.ai_report_sanitizer import sanitize_ai_report_payload
+from ..services.chatbot_config import normalize_chatbot_config
+from ..services.api_test_runner import sanitize_api_config
+from .external_api_execution import add_external_api_snapshots
 
+def _external_api_evidence(item: schemas.ExternalExecutionCase, case: models.CasoPrueba) -> dict | None:
+    """Normalize observed API evidence without allowing it to redefine expectations."""
+    is_api = getattr(case.formato_prueba, "value", case.formato_prueba) == "API"
+    if is_api and item.api is None:
+        raise ValueError(f"El caso API {item.case_code} debe incluir api en el reporte externo")
+    if not is_api and item.api is not None:
+        raise ValueError(f"El caso {item.case_code} no es API y no puede incluir evidencia api")
+    if item.api is None:
+        return None
+    raw = dict(item.api)
+    raw["schema_version"] = raw.get("schema_version") or "treseko.api-result/v1"
+    raw["execution_mode"] = "EXTERNA"
+    raw["status"] = raw.get("status") or {
+        "PASO": "PASSED",
+        "FALLO": "FAILED",
+        "BLOQUEADO": "BLOCKED",
+    }.get(item.status.value, item.status.value)
+    raw["steps"] = [step for step in (raw.get("steps") or []) if isinstance(step, dict)]
+    return sanitize_ai_report_payload(raw)
+
+def _external_chatbot_evidence(item: schemas.ExternalExecutionCase, case: models.CasoPrueba) -> dict | None:
+    """Build the persisted conversational evidence from an external report.
+
+    Observed data comes from the runner, but expected data always comes from
+    the case configuration stored in Treseko. This prevents a runner from
+    rewriting the criterion it is being evaluated against.
+    """
+    is_conversational = getattr(case.formato_prueba, "value", case.formato_prueba) == "CONVERSACIONAL"
+    if is_conversational and item.chatbot is None:
+        raise ValueError(f"El caso conversacional {item.case_code} debe incluir chatbot.turns en el reporte externo")
+    if is_conversational and item.chatbot is not None and item.steps:
+        raise ValueError(f"El caso conversacional {item.case_code} debe reportar turnos en chatbot.turns, no steps clásicos")
+    if not is_conversational and item.chatbot is not None:
+        raise ValueError(f"El caso {item.case_code} no es conversacional y no puede incluir evidencia chatbot")
+    if item.chatbot is None:
+        return None
+
+    config = normalize_chatbot_config(case.configuracion_chatbot if isinstance(case.configuracion_chatbot, dict) else {})
+    configured_turns = ((config.get("conversation") or {}).get("turns") or []) if isinstance(config, dict) else []
+    raw = item.chatbot.model_dump(mode="json")
+    canonical_turns = []
+    for position, turn in enumerate(raw.get("turns") or []):
+        observed = dict(turn) if isinstance(turn, dict) else {}
+        technical_index = position
+        configured = configured_turns[position] if position < len(configured_turns) and isinstance(configured_turns[position], dict) else {}
+        expected = configured.get("expected") if isinstance(configured.get("expected"), dict) else {}
+        observed["index"] = position + 1
+        observed["technical_index"] = technical_index
+        observed["expected"] = expected
+        observed["status"] = str(observed.get("status") or "").upper()
+        canonical_turns.append(observed)
+
+    result = dict(raw)
+    result["schema_version"] = 1
+    result["protocol"] = raw.get("protocol") or "treseko.chatbot/v1"
+    result["conversation_strategy"] = raw.get("conversation_strategy") or "external_api"
+    result["execution_mode"] = "EXTERNA"
+    result["status"] = item.status.value
+    result["turns"] = canonical_turns
+    if not result.get("session_id"):
+        first_request = canonical_turns[0].get("request") if canonical_turns and isinstance(canonical_turns[0].get("request"), dict) else {}
+        request_body = first_request.get("body") if isinstance(first_request, dict) else {}
+        if isinstance(request_body, dict) and request_body.get("session_id"):
+            result["session_id"] = str(request_body["session_id"])
+    result["assertions"] = [
+        assertion
+        for turn in canonical_turns
+        for assertion in (turn.get("assertions") if isinstance(turn.get("assertions"), list) else [])
+    ]
+    result["http_errors"] = raw.get("http_errors") or [
+        {"technical_index": turn.get("technical_index"), "status_code": turn.get("statusCode") or turn.get("status_code")}
+        for turn in canonical_turns
+        if int(turn.get("statusCode") or turn.get("status_code") or 0) >= 400
+    ]
+    performance = dict(raw.get("performance") or {})
+    latencies = [int(turn.get("latencyMs") or turn.get("latency_ms") or 0) for turn in canonical_turns]
+    performance["turn_count"] = len(canonical_turns)
+    performance["total_latency_ms"] = int(performance.get("total_latency_ms") or sum(latencies))
+    performance["p95_latency_ms"] = int(performance.get("p95_latency_ms") or (sorted(latencies)[min(len(latencies) - 1, max(0, int(len(latencies) * .95) - 1))] if latencies else 0))
+    performance["http_error_count"] = int(performance.get("http_error_count") or len([turn for turn in canonical_turns if int(turn.get("statusCode") or turn.get("status_code") or 0) >= 400]))
+    result["performance"] = performance
+    return sanitize_ai_report_payload(result)
 
 def _sanitize_external_execution_text(value: Optional[str], *, max_len: int) -> Optional[str]:
     if value is None or not str(value).strip():
@@ -129,6 +215,9 @@ async def record_external_execution_report(
             raise ValueError(f"Estado invalido en caso {item.case_code}, paso {invalid_step.number}.")
 
         case = cases_by_code[item.case_code]
+        chatbot_evidence = _external_chatbot_evidence(item, case)
+        api_evidence = _external_api_evidence(item, case)
+        observed_api_or_chatbot = api_evidence or chatbot_evidence or {}
 
         original_steps_result = await db.execute(
             select(models.PasoPrueba)
@@ -176,12 +265,25 @@ async def record_external_execution_report(
         if execution:
             await db.execute(delete(models.SnapshotPaso).where(models.SnapshotPaso.ejecucion_caso_id == execution.id))
             execution.estado_resultado = item.status
-            execution.duracion_segundos = max(0, item.duration_seconds or 0)
+            execution.duracion_segundos = max(
+                0,
+                item.duration_seconds or round(
+                    float((observed_api_or_chatbot.get("duration_ms") or observed_api_or_chatbot.get("performance", {}).get("total_latency_ms", 0)) or 0) / 1000
+                ),
+            )
             execution.observaciones = item_observations
             execution.fecha_ejecucion = now
             execution.ejecutado_por = user.id
             execution.version_ejecutada = case.version
             execution.execution_mode = models.ExecutionMode.EXTERNA
+            if chatbot_evidence is not None:
+                execution.chatbot_config_snapshot = sanitize_ai_report_payload(
+                    normalize_chatbot_config(case.configuracion_chatbot if isinstance(case.configuracion_chatbot, dict) else {})
+                )
+                execution.chatbot_resultado = chatbot_evidence
+            if api_evidence is not None:
+                execution.api_config_snapshot = sanitize_api_config(case.configuracion_api if isinstance(case.configuracion_api, dict) else {})
+                execution.api_resultado = api_evidence
         else:
             execution = models.EjecucionCaso(
                 test_run_id=run.id,
@@ -190,16 +292,66 @@ async def record_external_execution_report(
                 estado_resultado=item.status,
                 execution_mode=models.ExecutionMode.EXTERNA,
                 ejecutado_por=user.id,
-                duracion_segundos=max(0, item.duration_seconds or 0),
+                duracion_segundos=max(
+                    0,
+                    item.duration_seconds or round(
+                        float((observed_api_or_chatbot.get("duration_ms") or observed_api_or_chatbot.get("performance", {}).get("total_latency_ms", 0)) or 0) / 1000
+                    ),
+                ),
                 observaciones=item_observations,
                 fecha_ejecucion=now,
+                chatbot_config_snapshot=(
+                    sanitize_ai_report_payload(normalize_chatbot_config(case.configuracion_chatbot or {}))
+                    if chatbot_evidence is not None else {}
+                ),
+                chatbot_resultado=chatbot_evidence or {},
+                api_config_snapshot=(
+                    sanitize_api_config(case.configuracion_api if isinstance(case.configuracion_api, dict) else {})
+                    if api_evidence is not None else {}
+                ),
+                api_resultado=api_evidence or {},
             )
             db.add(execution)
             await db.flush()
 
         external_steps = {step.number: step for step in item.steps}
 
-        if original_steps:
+        if chatbot_evidence is not None:
+            configured_turns = (
+                (normalize_chatbot_config(case.configuracion_chatbot or {}).get("conversation") or {}).get("turns") or []
+            )
+            for position, turn in enumerate(chatbot_evidence.get("turns") or []):
+                configured = configured_turns[position] if position < len(configured_turns) and isinstance(configured_turns[position], dict) else {}
+                expected = configured.get("expected") if isinstance(configured.get("expected"), dict) else {}
+                response_text = str(turn.get("responseText") or turn.get("response_text") or "")
+                assertions = turn.get("assertions") if isinstance(turn.get("assertions"), list) else []
+                comments = response_text
+                if assertions:
+                    comments = f"{comments}\nAserciones: {json.dumps(assertions, ensure_ascii=False, default=str)}".strip()
+                db.add(models.SnapshotPaso(
+                    ejecucion_caso_id=execution.id,
+                    numero_paso=position + 1,
+                    accion_congelada=str(turn.get("message") or "Mensaje conversacional"),
+                    resultado_esperado_congelado=json.dumps(expected, ensure_ascii=False, default=str) if expected else "Configuración conversacional",
+                    estado_paso=(
+                        models.EstadoResultado.PASO
+                        if turn.get("status") == "PASSED"
+                        else models.EstadoResultado.BLOQUEADO
+                        if turn.get("status") == "BLOCKED"
+                        else models.EstadoResultado.FALLO
+                    ),
+                    comentarios=comments[:4000] if comments else None,
+                    evidencia_url=sanitize_evidence_url(turn.get("evidence_url")) or item_evidence_url,
+                    error_log=_sanitize_external_execution_text(turn.get("error"), max_len=12000),
+                ))
+        elif api_evidence is not None:
+            add_external_api_snapshots(
+                db,
+                execution_id=execution.id,
+                case_config=case.configuracion_api,
+                api_evidence=api_evidence,
+            )
+        elif original_steps:
             for original in original_steps:
                 reported = external_steps.get(original.numero_paso)
                 reported_observations = _sanitize_external_execution_text(reported.observations, max_len=4000) if reported else None
@@ -233,7 +385,7 @@ async def record_external_execution_report(
                 error_log=_sanitize_external_execution_text(reported.error_log, max_len=12000),
             ))
 
-        if not original_steps and not item.steps:
+        if not original_steps and not item.steps and chatbot_evidence is None and api_evidence is None:
             db.add(models.SnapshotPaso(
                 ejecucion_caso_id=execution.id,
                 numero_paso=1,

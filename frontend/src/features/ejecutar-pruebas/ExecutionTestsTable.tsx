@@ -1,5 +1,6 @@
 import { Badge, Button, Form, Table } from "react-bootstrap";
 import { CheckCircle2, ChevronRight, PlayCircle, RefreshCw, Search, User } from "lucide-react";
+import { executionPriorityLabel, executionStatusLabel } from './executionPresentation';
 
 const getTrend = (test: any) => {
   if (!test.history || test.history.length < 2) return null;
@@ -38,19 +39,19 @@ export function ExecutionTestsTable({ options }: { options: any }) {
           {t('ejecutarPruebas.code')}
         </th>
         <th className="border-0" style={{ width: "300px" }}>
-          Nombre
+          {t('ejecutarPruebas.executionName')}
         </th>
         <th className="border-0" style={{ width: "80px" }}>
-          Prior.
+          {t('ejecutarPruebas.priorityHigh')}
         </th>
         <th className="border-0" style={{ width: "80px" }}>
-          Criti.
+          {t('ejecutarPruebas.priorityCritical')}
         </th>
         <th
           className="border-0"
           style={{ width: "55px", textAlign: "center" }}
         >
-          Pasos
+          {t('ejecutarPruebas.steps')}
         </th>
         <th className="border-0" style={{ width: "120px" }}>
           {t('ejecutarPruebas.lastResult')}
@@ -59,7 +60,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
           className="border-0"
           style={{ width: "90px", textAlign: "center" }}
         >
-          Tendencia
+          {t('ejecutarPruebas.trend')}
         </th>
         <th className="border-0" style={{ width: "140px" }}>
           {t('ejecutarPruebas.lastExecution')}
@@ -68,7 +69,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
           className="border-0 text-end pe-3"
           style={{ width: "150px" }}
         >
-          Acciones
+          {t('ejecutarPruebas.actions')}
         </th>
       </tr>
     </thead>
@@ -149,7 +150,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                 text={test.priority === "MEDIA" ? "dark" : undefined}
                 className="x-small"
               >
-                {test.priority || "—"}
+                {executionPriorityLabel(test.priority, t)}
               </Badge>
             </td>
             <td>
@@ -166,7 +167,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                 }
                 className="border x-small"
               >
-                {test.criticality || "—"}
+                {executionPriorityLabel(test.criticality, t)}
               </Badge>
             </td>
             <td className="text-center">
@@ -191,17 +192,17 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                     : test.lastResult === "FALLO" ||
                         test.lastResult === "FALLIDO"
                       ? t('ejecutarPruebas.failedResult')
-                      : test.lastResult}
+                      : executionStatusLabel(test.lastResult, t)}
                   {test.lastExecutedVersion
                     ? ` · v${test.lastExecutedVersion}`
                     : ""}
                 </Badge>
               ) : isResultHydrating ? (
                 <span className="text-muted x-small">
-                  Cargando...
+                  {t('common.loading')}
                 </span>
               ) : (
-                <span className="text-muted x-small">Sin correr</span>
+                <span className="text-muted x-small">{t('ejecutarPruebas.pending')}</span>
               )}
             </td>
             <td className="text-center">
@@ -215,7 +216,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                       width: "24px",
                       height: "24px",
                       borderRadius: "50%",
-                      background: "#e8f5e9",
+                      background: "var(--app-status-success-bg)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -245,7 +246,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                       width: "24px",
                       height: "24px",
                       borderRadius: "50%",
-                      background: "#ffebee",
+                      background: "var(--app-status-danger-bg)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -275,7 +276,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                       width: "24px",
                       height: "24px",
                       borderRadius: "50%",
-                      background: "#f8f9fa",
+                      background: "var(--app-status-neutral-bg)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -285,7 +286,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
                       style={{
                         width: "10px",
                         height: "2px",
-                        background: "#6c757d",
+                        background: "var(--app-muted)",
                       }}
                     />
                   </div>
@@ -358,7 +359,7 @@ export function ExecutionTestsTable({ options }: { options: any }) {
               size={24}
               className="mb-2 opacity-50 d-block mx-auto animate-pulse"
             />
-            Cargando pruebas del proyecto...
+            {t('ejecutarPruebas.loadingTests')}
           </td>
         </tr>
       )}

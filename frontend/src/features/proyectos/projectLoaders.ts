@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { API_BASE } from '../../app/constants'
 import { mapBackendBuildToItem, mapBackendComponentToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
+import { isBuildExecutable } from '../../app/buildState'
 
 type CreateProjectLoadersParams = {
   projectsSource: 'local' | 'backend'
@@ -30,7 +31,9 @@ export function createProjectLoaders({
   setCurrentBuildId,
   setProjectSyncMessage
 }: CreateProjectLoadersParams) {
-  const loadComponentsForProject = async (projectId: string) => {
+  const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
+
+  const loadComponentsForProject = async (projectId: string, preferredComponentId = currentCompId) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return []
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/componentes/`)
@@ -45,17 +48,6 @@ export function createProjectLoaders({
         ...prev.filter(component => component.projectId !== projectId),
         ...mapped
       ])
-      if (mapped.length > 0) {
-        const selectedComponentId = mapped.some((component: any) => component.id === currentCompId)
-          ? currentCompId
-          : mapped[0].id
-        setCurrentCompId(selectedComponentId)
-        setNewTestComponent(selectedComponentId)
-      } else {
-        setCurrentCompId('')
-        setNewTestComponent('')
-        setCurrentBuildId('')
-      }
       return mapped
     } catch (error: any) {
       setProjectSyncMessage(`No se pudieron cargar componentes: ${error.message}.`)
@@ -125,8 +117,8 @@ export function createProjectLoaders({
         ...prev.filter(build => build.projectId !== projectId),
         ...mapped
       ])
-      const projectComponentList = projectComponents.filter((component: any) => component.projectId === projectId)
-      const componentId = projectComponentList.some((component: any) => component.id === componentOverride)
+      const projectComponentList = projectComponents.filter((component: any) => sameId(component.projectId, projectId))
+      const componentId = projectComponentList.some((component: any) => sameId(component.id, componentOverride))
         ? componentOverride
         : projectComponentList[0]?.id || ''
       if (componentId && componentId !== currentCompId) {
@@ -135,9 +127,9 @@ export function createProjectLoaders({
       }
       // Hidden builds remain in state so they can be shown again from the
       // project screen and selected from the header's hidden-build group.
-      const componentBuilds = mapped.filter((build: any) => build.componentId === componentId)
-      const selectedBuild = componentBuilds.find((build: any) => build.id === preferredBuildId)
-        || componentBuilds.find((build: any) => build.active)
+      const componentBuilds = mapped.filter((build: any) => sameId(build.componentId, componentId))
+      const selectedBuild = componentBuilds.find((build: any) => sameId(build.id, preferredBuildId))
+        || componentBuilds.find((build: any) => isBuildExecutable(build))
         || componentBuilds[0]
       setCurrentBuildId(selectedBuild?.id || '')
       await loadBuildCaseIdsForProject(projectId, mapped.map((build: any) => build.id))

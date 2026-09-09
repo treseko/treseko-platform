@@ -1,6 +1,14 @@
 # Guía de automatización
 
-**Automatización** centraliza workers, funciones reutilizables y códigos de integración para el proyecto seleccionado.
+**Automatización** centraliza workers, funciones reutilizables y códigos de
+integración para el proyecto seleccionado.
+
+Hay dos caminos distintos:
+
+- El **Automation Worker unificado** ejecuta trabajos preparados por Treseko,
+  incluidos casos clásicos y casos API declarativos.
+- La **API externa** recibe resultados de un runner ejecutado fuera de Treseko.
+  No inicia trabajos ni es otro worker.
 
 ## Requisitos
 
@@ -26,3 +34,10 @@ En **Biblioteca de Funciones Automatizadas** podés crear funciones compartidas 
 La sección también ofrece el contexto necesario para conectar un runner o servicio externo. La API se autentica con una API key creada desde **Configuración → Preferencias → API keys de automatización externa**.
 
 Seguí la [guía de automatización externa](API_USAGE_GUIDE.md) para crear la key y reportar los resultados de manera segura.
+
+## Evidencia y snapshots
+
+Los trabajos automatizados se ejecutan con una definición congelada de caso,
+build, ambiente, dataset y variables. En API se conserva el resultado
+`treseko.api-result/v1`, con límites de tiempo/tamaño y variables sensibles
+separadas de la evidencia visible.

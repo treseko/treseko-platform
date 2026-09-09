@@ -12,6 +12,11 @@ export async function fetchAiWorkflows(fetchWithAuth: FetchWithAuth) {
   return readJsonOrTextError(response)
 }
 
+export async function fetchAiWorkflowRuntimeManifest(fetchWithAuth: FetchWithAuth) {
+  const response = await fetchWithAuth(`${API_BASE}/workflow-runtime-manifest`)
+  return readJsonOrTextError(response)
+}
+
 export async function fetchWorkflowVersions(fetchWithAuth: FetchWithAuth, workflowId: string) {
   const response = await fetchWithAuth(`${API_BASE}/ai-workflows/${workflowId}/versions`)
   return readJsonOrTextError(response)
@@ -49,6 +54,8 @@ export async function updateAiWorkflow(fetchWithAuth: FetchWithAuth, workflow: A
       status: workflow.status,
       is_default: Boolean(workflow.is_default),
       workflow_format: workflow.workflow_format || 'legacy_v1',
+      workflow_purpose: workflow.workflow_purpose || 'test_execution',
+      decision_policy_json: workflow.decision_policy_json || {},
       nodes: workflow.nodes,
       edges: workflow.edges,
     }),
@@ -127,6 +134,11 @@ export async function copyAiWorkflowAsBlocks(fetchWithAuth: FetchWithAuth, workf
 
 export async function copyAiWorkflowAsUniversal(fetchWithAuth: FetchWithAuth, workflowId: string) {
   const response = await fetchWithAuth(`${API_BASE}/ai-workflows/${workflowId}/copy-as-universal`, { method: 'POST' })
+  return readJsonOrTextError(response)
+}
+
+export async function copyAiWorkflowAsUniversalV3(fetchWithAuth: FetchWithAuth, workflowId: string) {
+  const response = await fetchWithAuth(`${API_BASE}/ai-workflows/${workflowId}/copy-as-universal-v3`, { method: 'POST' })
   return readJsonOrTextError(response)
 }
 

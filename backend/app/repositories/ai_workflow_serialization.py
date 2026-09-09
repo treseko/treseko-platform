@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from .repository_context import *
 
 def _node_payload(node: models.AiWorkflowNode, include_versions: bool = True) -> Dict[str, Any]:
@@ -13,6 +15,7 @@ def _node_payload(node: models.AiWorkflowNode, include_versions: bool = True) ->
         "locked": bool(node.locked),
         "prompt_template": node.prompt_template or "",
         "config_json": node.config_json or {},
+        "input_mapping": (node.config_json or {}).get("input_mapping") or {},
         "position_x": node.position_x or 0,
         "position_y": node.position_y or 0,
         "retry_policy": node.retry_policy or {},
@@ -34,11 +37,18 @@ def _node_payload(node: models.AiWorkflowNode, include_versions: bool = True) ->
             for version in sorted(node.prompt_versions or [], key=lambda item: item.version)
         ]
     if node.universal_agent_version:
+        contract = deepcopy(node.universal_agent_version.contract_json or {})
+        runtime_adapter = (node.config_json or {}).get("runtime_adapter")
+        if isinstance(runtime_adapter, str) and runtime_adapter.strip():
+            contract["implementation"] = {
+                **(contract.get("implementation") or {}),
+                "native_adapter": runtime_adapter.strip(),
+            }
         payload["universal_agent"] = {
             "version_id": str(node.universal_agent_version.id),
             "version": node.universal_agent_version.version,
             "status": node.universal_agent_version.status,
-            "contract": node.universal_agent_version.contract_json or {},
+            "contract": contract,
             "contract_hash": node.universal_agent_version.contract_hash,
         }
     return payload
@@ -118,6 +128,19 @@ def _legacy_agent_workflow_from_definition(definition: Optional[Dict[str, Any]])
             "config": node.get("config_json") or {} if node else {},
         })
     return legacy
+
+
+def runtime_agent_workflow(config: Dict[str, Any], definition: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Resolve the policy that is allowed to reach the engine.
+
+    A workflow definition is the source of truth whenever one is available.
+    The legacy setting remains a compatibility fallback for old executions
+    that do not have a workflow definition.
+    """
+    if definition and definition.get("nodes"):
+        return _legacy_agent_workflow_from_definition(definition)
+    configured = config.get("agent_workflow") if isinstance(config, dict) else None
+    return configured if isinstance(configured, list) and configured else DEFAULT_AI_AGENT_WORKFLOW
 
 
 async def _load_workflow(db: AsyncSession, workflow_id: UUID) -> Optional[models.AiWorkflow]:

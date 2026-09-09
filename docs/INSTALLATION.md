@@ -1,30 +1,56 @@
 # Instalar Treseko Community
 
-Usá esta guía para elegir la forma de instalación y verificar que Treseko
-quede listo para el primer inicio de sesión. Para producción, Docker Compose es
-el camino recomendado.
+Usá los instaladores incluidos. Generan compose.production.env y secretos
+locales. El paquete también incluye ejemplos `.env.production.example`; no
+contienen secretos reales.
 
 ## Requisitos
 
 - Docker 24+ y Docker Compose v2.
-- 2 CPU y 4 GB de RAM como base para una instalacion pequena.
-- Un dominio o IP local para acceder al frontend.
-- Un `SECRET_KEY` fuerte de 64 caracteres o mas.
-- Una password propia para PostgreSQL.
+- 2 CPU y 4 GB de RAM como base.
+- Puerto libre, por defecto 9095.
+- Almacenamiento para PostgreSQL, evidencias y backups.
+- Host Linux para instalación remota por SSH.
 
-## Instalacion rapida con Docker
+## Instalador local
 
-### Opción A: probar en local
+También se incluye un instalador gráfico multiplataforma. Abre una ventana,
+comprueba Docker y Compose, valida el puerto, ejecuta la instalación mostrando
+el progreso y permite abrir Treseko al finalizar:
 
-Para probar Treseko en tu propia maquina con Docker:
+```bash
+python3 installer/treseko_installer.py
+```
 
-Desde Linux/macOS:
+En Windows PowerShell:
+
+```powershell
+py installer\treseko_installer.py
+```
+
+El instalador gráfico requiere Python 3 y Tkinter; en Ubuntu minimal instalá
+`python3-tk` antes de abrirlo.
+
+Si se abre desde `Descargas` sin el paquete completo, consulta el último
+release estable de `treseko/treseko-platform` en GitHub, descarga el núcleo por
+HTTPS, valida sus archivos principales y continúa con la instalación. No
+descarga código desde URLs configurables por el usuario.
+
+Si el release incluye una versión más nueva del instalador gráfico, la versión
+descargada reemplaza el proceso actual en el siguiente paso. Los servicios
+nuevos deben estar declarados en Compose o en los scripts del release para que
+formen parte de la instalación.
+
+La interfaz usa el instalador Bash en Ubuntu/macOS y el instalador PowerShell
+en Windows. En Apple Silicon se requiere Docker Desktop para Apple Silicon.
+La modalidad gráfica actual instala el entorno Docker; no instala servicios
+nativos de Windows o macOS.
 
 ```bash
 scripts/install_local_treseko.sh --http-port 9095
 ```
 
-Desde Windows PowerShell:
+En PowerShell:
 
 ```powershell
 .\scripts\install_local_treseko.ps1 -HttpPort 9095
@@ -36,138 +62,144 @@ Con datos demo:
 scripts/install_local_treseko.sh --with-demo
 ```
 
-Para recrear el entorno local desde cero:
+Genera secretos en .treseko-local/secrets, crea compose.production.env,
+ejecuta migraciones, crea el usuario inicial y levanta frontend, backend y
+Engine. El worker no se asigna automáticamente: requiere profile automation,
+inicio del proceso y aprobación en Automatización → Workers.
+
+### Actualizar una instalación existente
+
+Usá `--update` (o `-Update` en PowerShell) desde el mismo paquete o desde una
+release compatible. El archivo `compose.production.env`, los secretos y los
+volúmenes existentes son la fuente de verdad: el script los reutiliza sin
+reescribirlos ni ejecutar `seed_admin`. Solo construye imágenes, ejecuta el
+migrador y vuelve a levantar los servicios.
 
 ```bash
-scripts/install_local_treseko.sh --reset --with-demo
+scripts/install_local_treseko.sh --update
 ```
 
-El instalador local:
+```powershell
+.\scripts\install_local_treseko.ps1 -Update
+```
 
-- genera secretos fuertes en `.treseko-local/secrets`;
-- crea `compose.production.env`;
-- levanta PostgreSQL, Redis, backend, engine y frontend;
-- ejecuta migraciones;
-- crea el usuario inicial `admin@qa.local`;
-- devuelve una contraseña temporal para el primer login.
+La actualización falla si no existe `compose.production.env`. No combines
+`--update` con `--with-demo`.
 
-### Opción B: instalación automática por SSH
+### Desinstalación conservadora
 
-Si tienes un servidor Linux accesible por SSH, puedes instalar Treseko desde tu equipo sin ejecutar cada paso manualmente.
+Para detener y quitar contenedores y redes sin perder la base de datos, las
+evidencias, los backups ni los secretos locales:
 
-Desde Linux:
+```bash
+scripts/install_local_treseko.sh --uninstall
+```
+
+```powershell
+.\scripts\install_local_treseko.ps1 -Uninstall
+```
+
+Este flujo usa `docker compose down --remove-orphans`, sin `-v`, y conserva
+`compose.production.env` y `.treseko-local/`.
+
+### Eliminación total (destructiva)
+
+Solo si querés borrar los volúmenes y la configuración local de este checkout,
+usá ambas opciones explícitas. La confirmación adicional evita una purga no
+interactiva accidental:
+
+```bash
+scripts/install_local_treseko.sh --uninstall --purge-data --confirm-purge
+```
+
+```powershell
+.\scripts\install_local_treseko.ps1 -Uninstall -PurgeData -ConfirmPurge
+```
+
+La purga ejecuta `down -v --remove-orphans` y elimina únicamente
+`compose.production.env` y `.treseko-local/` debajo de la raíz del repositorio.
+No borres volúmenes manualmente sin un backup verificado.
+
+El alias legado `--reset` también es destructivo y exige `--confirm-reset`; no
+se acepta sin esa confirmación explícita.
+
+## Instalador remoto
+
+Este instalador no es recomendado para producción mientras transporte secretos
+en argumentos de SSH. Usalo solo en entornos de prueba o aceptá el riesgo y
+preferí la instalación manual con secretos por archivo. No expongas el comando
+completo en historiales, auditorías ni diagnósticos del host.
 
 ```bash
 scripts/install_remote_treseko.sh usuario@servidor --http-port 9095
 ```
 
-Desde Windows PowerShell:
-
 ```powershell
 .\scripts\install_remote_treseko.ps1 usuario@servidor -HttpPort 9095
 ```
 
-El instalador:
+El destino debe ser Linux con SSH. Se generan secretos, se ejecutan migraciones
+y se muestra URL, usuario inicial y contraseña temporal. Guardala y cambiala en
+el primer login.
 
-- sube este repositorio al servidor;
-- instala Docker si falta y el servidor usa Ubuntu/Debian con `apt`;
-- genera secretos fuertes para base de datos y backend;
-- ejecuta migraciones;
-- crea el usuario inicial `admin@qa.local`;
-- devuelve una contraseña temporal para el primer login.
+## Instalación manual
 
-Al finalizar veras algo similar a:
-
-```text
-URL:
-  http://servidor:9095
-
-Usuario inicial:
-  admin@qa.local
-
-Contraseña temporal:
-  ********
-```
-
-Guarda esa contraseña en el momento. Treseko pedira cambiarla en el primer login.
-
-> Nota: Windows se usa como equipo cliente para lanzar la instalacion por SSH. El servidor destino debe ser Linux.
-
-### Opción C: instalación manual con Docker
+Creá compose.production.env y secretos fuera de Git:
 
 ```bash
-cp .env.production.example compose.production.env
+umask 077
+mkdir -p secrets
+openssl rand -base64 48 > secrets/db-password
+printf '%s\n' 'postgresql+asyncpg://treseko:REEMPLAZAR@db:5432/treseko' > secrets/database-url
+openssl rand -base64 64 > secrets/secret-key
+openssl rand -base64 64 > secrets/ai-credentials-master-key
+openssl rand -base64 64 > secrets/ai-engine-internal-token
 ```
 
-Edita `compose.production.env` y completa las rutas a archivos de secretos:
+Reemplazá REEMPLAZAR por la misma contraseña de db-password. El entorno solo
+contiene rutas:
 
 ```dotenv
 APP_ENV=production
 TRESEKO_HTTP_PORT=9095
-TRESEKO_DB_PASSWORD_FILE=/ruta/segura/db-password
-TRESEKO_DATABASE_URL_FILE=/ruta/segura/database-url
-TRESEKO_SECRET_KEY_FILE=/ruta/segura/secret-key
+TRESEKO_DB_PASSWORD_FILE=/ruta/secrets/db-password
+TRESEKO_DATABASE_URL_FILE=/ruta/secrets/database-url
+TRESEKO_SECRET_KEY_FILE=/ruta/secrets/secret-key
+TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE=/ruta/secrets/ai-credentials-master-key
+TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE=/ruta/secrets/ai-engine-internal-token
 DB_USER=treseko
 DB_NAME=treseko
 ```
 
-Los archivos deben contener:
-
-- `db-password`: password de PostgreSQL.
-- `database-url`: `postgresql+asyncpg://treseko:<DB_PASSWORD>@db:5432/treseko`.
-- `secret-key`: clave aleatoria fuerte de 64 caracteres o mas.
-
-Valida la configuracion:
+Validá y levantá:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env config
-```
-
-Levanta la base y Redis:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d db redis
-```
-
-Ejecuta migraciones:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm migrator
-```
-
-Crea el primer administrador:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm --entrypoint python backend /app/seed_admin.py
-```
-
-Levanta la aplicacion:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
 ```
 
-Abre Treseko desde el navegador en el puerto configurado para el frontend.
+El seed de administrador puede solicitar la contraseña. No la expongas en logs.
 
-## Instalacion limpia
-
-Una instalación productiva limpia no crea soluciones, proyectos, builds ni datos
-demo. Después del primer inicio de sesión, creá la primera solución desde la
-interfaz.
-
-## Datos demo
-
-Los datos demo solo son para desarrollo o presentaciones:
+## Profiles opcionales
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm --entrypoint python backend /app/seed_demo_showcase.py
+docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile automation up -d automation-worker
 ```
 
-No ejecutes el seed demo en un ambiente productivo real.
+Community admite un solo worker. Agregar workers requiere la
+capability/entitlement Premium. El profile `plugins` está declarado en el
+Compose, pero este snapshot público no contiene el contexto de build de
+`plugin-runner`; no lo habilites ni lo consideres operativo desde este paquete.
 
-## Guias extendidas
+## Primer inicio
 
-- Docker detallado: `docs/DOCKER_GUIDE.md`
-- Linux bare-metal: `docs/LINUX_SETUP.md`
-- Seguridad: `SECURITY.md`
-- Arquitectura: `docs/ARCHITECTURE.md`
+1. Iniciá sesión y cambiá la contraseña temporal.
+2. Creá solución, proyecto y componente.
+3. Vinculá y aprobá el worker si usarás automatización.
+4. Ejecutá una prueba y verificá run y evidencia.
+
+No ejecutes seed demo en producción. Ver también [Docker](DOCKER_GUIDE.md),
+[Linux](LINUX_SETUP.md), [Arquitectura](ARCHITECTURE.md) y [RBAC](AUTH_RBAC_GUIDE.md).

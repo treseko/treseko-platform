@@ -260,6 +260,7 @@ UpdateService.rollback = _updater_operations.rollback
 
 from . import updater_lifecycle as _updater_lifecycle
 UpdateService._run_apply = _updater_lifecycle._run_apply
+UpdateService._run_coordinated_apply = _updater_lifecycle._run_coordinated_apply
 UpdateService._with_step_timeout = _updater_lifecycle._with_step_timeout
 UpdateService._normalize_manifest = _updater_lifecycle._normalize_manifest
 UpdateService._preflight_update = _updater_lifecycle._preflight_update

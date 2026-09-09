@@ -2,44 +2,44 @@
 
 <!-- Language: en -->
 
-Treseko links the functional origin of a test to its result so the team can
-answer which requirement is covered, which case validates it and what the most
-recent evidence is.
+Treseko relates the functional origin to the execution so the team can answer
+which requirement is covered, which case validates it and what evidence exists.
 
 ```text
-Project → Requirement → Story → Case → Execution → Evidence
+Project → Requirement → Story → Case → Execution → Evidence → Bug/Report
 ```
 
 ## Work with requirements and stories
 
 1. Open **Projects → Requirements and Stories**.
-2. Record or update the requirement and its stories.
-3. Link the cases that cover each story.
-4. Review history when you need to investigate a change.
+2. Record the requirement, story and acceptance criteria.
+3. Link the cases.
+4. Review coverage and links.
+5. When a story changes, review and confirm the affected links.
 
-When a story changes, Treseko can mark its case links for review. Confirm that
-the case still covers the expected criterion before considering coverage valid.
+Coverage consists of recorded relationships: it does not guarantee that the
+case passed or that its evidence is complete. Creating, editing, archiving,
+linking and confirming a review are audited when applicable.
+
+## Formats
+
+Traceability does not change the format. Classic keeps steps; API keeps the
+contract and assertions; conversational keeps the endpoint, turns and
+evaluation. `PERFORMANCE` is reserved and must not be filled with another
+structure to force coverage.
 
 ## Generate proposals with AI
 
-AI can propose stories from requirements and cases from stories.
+AI can propose stories from requirements and cases from stories:
 
-1. Select the source requirement or story.
-2. Define the scope and review the displayed assumptions.
-3. Run the generation.
-4. Review each proposal and choose which ones to save.
+1. select the source;
+2. estimate the scope and review assumptions;
+3. run it if you have permission, quota and a provider;
+4. review each proposal;
+5. confirm only what you want to save.
 
-Generation does not automatically publish stories, create scripts or execute
-arbitrary code. Each use keeps its own history, version and audit. Quotas and
-permissions are checked before the process starts.
+Generation does not automatically publish, create scripts or execute arbitrary
+code. It preserves the source, assumptions, version, traces and audit.
 
-## Quick help
-
-- If you cannot generate proposals, check your permission, available quota and
-  configured AI provider.
-- If a link requires review, do not ignore it: update or confirm the linked
-  case.
-- Missing evidence is not the same as approved coverage.
-
-See [AI Engine configuration](AI_ENGINE_CONFIG.md) to prepare the provider and
-available workflows.
+See [Run history](RUN_HISTORY_GUIDE.md), [Reports](REPORTING_GUIDE.md) and
+[AI Engine configuration](AI_ENGINE_CONFIG.md).

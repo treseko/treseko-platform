@@ -2,42 +2,37 @@
 
 <!-- Language: en -->
 
-Email notifications are available with the corresponding Premium
-capability. They allow informing important events inside the platform and
-by email: assigned bugs, state changes, execution failures or blocks,
-AI reviews and quality events.
+Notifications can appear in the internal inbox and, when the installation
+allows it, be sent by email. They include bug, state, execution, evidence, AI
+review and quality events.
 
 ## Configure email as an administrator
 
-1. Confirm that the license includes **Notifications and email**.
-2. Open **Settings → Email**.
-2. Complete the SMTP server, port, sender and required credentials.
-3. Save the configuration.
-4. Send a test email before enabling notifications for the team.
+1. Open **Settings → Email**.
+2. Complete the SMTP server, port, sender and credentials.
+3. Save.
+4. Send a test email.
+5. Enable rules after confirming delivery.
 
-The SMTP password is protected and will not be shown again in the interface. If
-you change it at the email provider, also update it in Treseko and repeat the
-test.
+The SMTP password is not shown again. If it changes, update it and repeat the
+test. Do not put credentials in templates or screenshots.
 
-## Manage rules and templates
+## Rules, templates and preferences
 
-In the same section you can enable or disable rules, choose recipients and
-adjust the templates. Review each rule before enabling it to avoid
-unnecessary notifications.
+Depending on your permissions, you can enable rules, manage and preview
+templates, control preferences, review the inbox and mark messages as read.
+Daily, weekly or monthly digests may also exist. Templates should use readable
+links and names, without secrets or unnecessary payloads.
 
-Personal preferences allow each person to control the alerts they
-receive inside the platform when that option is enabled.
+## Delivery and audit
 
-## Review deliveries
+Events and deliveries let you review whether a notification was created,
+processed, sent or failed. If it does not arrive:
 
-Deliveries are recorded for audit. From **Settings → Audit** you
-can review what was attempted to send, to whom and with what result. If a
-delivery fails, fix the SMTP configuration or the destination before
-retrying it.
+1. send an SMTP test;
+2. review the recipient, rule and preference;
+3. check the delivery status;
+4. correct the cause and retry only after resolving it.
 
-## Quick help
-
-- If an email does not arrive, first send an SMTP test.
-- Review the active rules and the destination preferences.
-- Verify the SMTP server allows connections from the Treseko host.
-- Do not put SMTP passwords in templates, notes or screenshots.
+The inbox and email are different channels: a failed email does not remove the
+internal event. External recipients must respect the allowed scope.

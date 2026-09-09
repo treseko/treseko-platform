@@ -23,6 +23,7 @@ from .services.error_contract import (
 )
 from .services.installation_telemetry import send_installation_ping_once
 from .services import audit_context
+from .services.update_backend_lifecycle import install_backend_startup
 
 
 def _configure_logging() -> None:
@@ -432,7 +433,7 @@ def _mount_router_flat(router):
 def create_app():
     global _configured
     if not _configured:
-        app.on_event("startup")(startup_initialize_database)
+        install_backend_startup(app, startup_initialize_database)
         _mount_router_flat(api_router)
         _register_legacy_routes()
         _configured = True

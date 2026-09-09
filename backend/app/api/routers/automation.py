@@ -284,7 +284,10 @@ async def automation_runner_heartbeat(
 ):
     if runner.id != runner_id:
         raise HTTPException(status_code=403, detail="El token no pertenece a este runner")
-    updated = await crud.update_runner_heartbeat(db, runner, payload)
+    try:
+        updated = await crud.update_runner_heartbeat(db, runner, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     await _publish_worker_status_for_runner(db, updated)
     if str(payload.estado or "").upper() == "OFFLINE":
         await notification_event_service.emit_event(
@@ -308,21 +311,68 @@ async def get_next_automation_job(
 ):
     return await crud.get_next_automation_job(db, runner)
 
-@router.post("/automation-jobs/{job_id}/claim", response_model=schemas.AutomationJob)
+@router.post("/automation-jobs/{job_id}/claim", response_model=schemas.AutomationWorkerJobClaim)
 async def claim_automation_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),
     runner: models.AutomationRunner = Depends(get_current_automation_runner),
+    x_claim_intent: Optional[UUID] = Header(default=None),
 ):
     job = await crud.get_automation_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
     try:
-        claimed = await crud.claim_automation_job(db, job, runner)
+        if x_claim_intent is None:
+            claimed = await crud.claim_automation_job(db, job, runner)
+        else:
+            from ...repositories import automation_claim_intents as intents
+            await crud.recover_stale_automation_jobs(db)
+            claimed = await intents.claim(db, runner, x_claim_intent, job_id)
+            await db.commit()
+            if claimed is None:
+                raise HTTPException(status_code=409, detail="Intento de claim cerrado o no disponible")
+            await db.refresh(claimed)
         await _publish_automation_job_event(db, "automation.job.updated", claimed, runner=runner)
-        return claimed
+        # The normal AutomationJob serializer redacts payloads for every UI
+        # and list endpoint.  This worker-only schema is built after ownership
+        # is established and receives the decrypted payload exactly once for
+        # the runner that owns the claim.
+        claim_data = {
+            "id": claimed.id,
+            "job_type": claimed.job_type,
+            "test_run_id": claimed.test_run_id,
+            "ejecucion_id": claimed.ejecucion_id,
+            "caso_id": claimed.caso_id,
+            "build_id": claimed.build_id,
+            "runner_id": claimed.runner_id,
+            "estado": claimed.estado,
+            "required_framework": claimed.required_framework,
+            "required_language": claimed.required_language,
+            "required_runtime": claimed.required_runtime,
+            "timeout_seconds": claimed.timeout_seconds,
+            "payload_congelado": (
+                crud.decrypt_api_worker_payload(claimed)
+                if claimed.job_type == "API_EXECUTION"
+                else (claimed.payload_congelado or {})
+            ),
+            "logs": claimed.logs,
+            "error_message": claimed.error_message,
+            "metadata_resultado": claimed.metadata_resultado or {},
+            "fecha_creacion": claimed.fecha_creacion,
+            "fecha_claim": claimed.fecha_claim,
+            "fecha_inicio": claimed.fecha_inicio,
+            "fecha_fin": claimed.fecha_fin,
+            "lease_token": claimed.lease_token,
+            "lease_expires_at": claimed.lease_expires_at,
+            "attempt_count": claimed.attempt_count,
+            "max_attempts": claimed.max_attempts,
+        }
+        return schemas.AutomationWorkerJobClaim.model_validate(claim_data)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        detail = str(exc)
+        if "solucion" in detail.lower():
+            raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(status_code=409, detail=detail)
 
 @router.post("/automation-jobs/{job_id}/result", response_model=schemas.AutomationJob)
 async def report_automation_job_result(
@@ -338,8 +388,10 @@ async def report_automation_job_result(
         raise HTTPException(status_code=409, detail="El job debe ser reclamado antes de reportar resultados")
     if job.runner_id != runner.id:
         raise HTTPException(status_code=403, detail="Este job fue tomado por otro runner")
+    if job.organizacion_id != runner.organizacion_id:
+        raise HTTPException(status_code=403, detail="El runner no tiene acceso a la solucion de este job")
     try:
-        updated = await crud.complete_automation_job(db, job, payload)
+        updated = await crud.complete_automation_job(db, job, payload, runner=runner)
         event_map = {
             models.AutomationJobStatus.PASSED: "automation.job.completed",
             models.AutomationJobStatus.FAILED: "automation.job.failed",
@@ -383,6 +435,8 @@ async def report_automation_job_result(
             job.estado = models.AutomationJobStatus.ERROR
             job.error_message = detail
             job.fecha_fin = utc_now()
+            job.lease_token = None
+            job.lease_expires_at = None
             if job.runner:
                 job.runner.estado = "ONLINE"
                 job.runner.ultimo_heartbeat = utc_now()
@@ -395,6 +449,10 @@ async def report_automation_job_result(
                 runner=runner,
                 extra_payload={"error": detail, "reason": "inactive_build"},
             )
+            raise HTTPException(status_code=409, detail=detail)
+        if "solucion" in detail.lower() or "otro runner" in detail.lower():
+            raise HTTPException(status_code=403, detail=detail)
+        if any(word in detail.lower() for word in ("lease", "resultado distinto", "ya tiene un resultado")):
             raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
 
@@ -483,6 +541,23 @@ async def get_automation_job(
     ):
         raise HTTPException(status_code=403, detail="No tienes acceso a esta prueba temporal")
     return job
+
+
+@router.post("/automation-jobs/{job_id}/claim-intents/{attempt_id}/reconcile")
+async def reconcile_automation_claim(
+    job_id: UUID, attempt_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    runner: models.AutomationRunner = Depends(get_current_automation_runner),
+):
+    from ...repositories import automation_claim_intents as intents
+    await crud.recover_stale_automation_jobs(db)
+    try:
+        decision = await intents.reconcile(db, runner, attempt_id, job_id)
+        await db.commit()
+    except ValueError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="El intento corresponde a otro job")
+    return {"schema": 1, "job_id": str(job_id), "attempt_id": str(attempt_id), "decision": decision}
 
 
 router.export_symbols = {"get_current_automation_runner": get_current_automation_runner}

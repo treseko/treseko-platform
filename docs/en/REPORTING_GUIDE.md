@@ -2,57 +2,51 @@
 
 <!-- Language: en -->
 
-This section turns executions, bugs, evidence and active-build traceability
-into a quality tracking view.
+Reports and Metrics summarizes executions, bugs, evidence and traceability for
+the selected context. It helps decide and communicate results without replacing
+the technical history.
 
 ## Read the report
 
-1. Select the project, component and build.
+1. Select the solution, project, component and build.
 2. Open **Reports and Metrics**.
-3. First review traceability coverage, build health and the result summary.
-4. Apply filters to limit the analysis by suite, priority, state, owner, mode
-   or evidence.
+3. Review coverage, health, results and risks.
+4. Filter by suite, priority, state, owner, mode, format or evidence.
+5. Open the case, bug or run from the table to investigate.
 
-Filters affect the visible detail tables and metrics. If data is not shown,
-verify the selected context before concluding that it is missing.
+`formato_prueba` distinguishes `CLASICA`, `API`, `CONVERSACIONAL` and the
+reserved `PERFORMANCE` format; the execution mode is reported separately. An
+empty metric may indicate missing scope or evidence.
 
-## Configure the view
+## View, refresh and share
 
-Use **Configure view** to reorder, show or hide blocks. Cards can adapt to the
-available space; after resizing them, check that tables and metrics remain
-readable.
+Use **Configure view** if you have permission. The Development preset
+prioritizes failures, blocked results, bugs and actions; full detail remains
+available.
+
+After new executions, refresh before analyzing. When you select **Share**,
+Treseko creates a new snapshot when it detects new data. The link points to that
+snapshot rather than a mutable historical query; existing snapshots are not
+rewritten.
+
+## Report types
+
+- **Executive:** KPIs, risks, trends and main findings.
+- **Development:** failures, blocked results, new bugs, pending historical
+  bugs, reproduction cards and recommended actions.
+- **Internal:** complete technical inventory of the snapshot.
+
+Defect links point to **Bug Tracker** or **Incident Center** according to the
+destination. Project, build, environment, dataset, case and BUG/TC codes are
+the main reference; UUIDs remain internal relationships.
 
 ## Quality Intelligence
 
-When the project has this block enabled, it summarizes signals calculated from
-already recorded executions:
+When enabled, it summarizes stability, flakiness, technical fingerprints,
+assisted diagnoses and an explainable risk snapshot. Diagnoses are reviewable
+drafts: they do not confirm root cause, change executions or create bugs
+automatically. With new data, rebuild signals before evaluating risk; assisted
+decisions require human review and an audited reason.
 
-- health and stability for each case, including a *flaky* signal when
-  comparable results alternate;
-- failures grouped by a technical fingerprint, so the same issue can be
-  investigated without opening duplicate diagnoses;
-- assisted diagnoses that separate facts, hypotheses, evidence and unknowns;
-  they are drafts, can be edited by creating a new auditable version, and
-  require human review before a bug is created; and
-- an explainable release-risk snapshot, which neither changes the build state
-  nor approves the build automatically.
-
-You can recalculate the signals after new executions. If there are new
-executions or evidence, the analysis becomes stale: rebuild it before creating
-diagnoses, evaluating risk, or accepting risk. Risk flakiness uses only the
-selected build observations and, when available, compares the last accepted
-build as context. Accepting risk requires a reason and is audited. If
-executions, coverage or evidence are missing, the correct outcome can be
-**Human review**. Impact-based regression selection does not replace the
-complete suite until a traceable change source exists.
-
-## Common actions
-
-- Refresh data after an execution.
-- Open a case, bug or execution from a table to investigate.
-- Use traceability coverage to find requirements or stories without linked
-  cases.
-- Export or share reports only when the capability is enabled.
-
-The [Traceability](TRACEABILITY.md) guide explains how to fix incomplete links
-between requirements, stories and cases.
+Consult [Traceability](TRACEABILITY.md), [Run History](RUN_HISTORY_GUIDE.md)
+and [Attachments and evidence](ATTACHMENTS_EVIDENCE.md).

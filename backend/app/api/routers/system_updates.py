@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sys
 from datetime import timedelta
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
@@ -12,6 +11,7 @@ from pydantic import ValidationError
 
 from ...database import get_db
 from ... import access_control, auth, crud, models, schemas
+from ...services.update_installation_mode import InstallationModeError
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...content_type_validation import content_matches_declared_type
@@ -54,33 +54,24 @@ from .system_support import (
     database_schema_revision as _database_schema_revision,
     first_run_state as _first_run_state,
     request_client_ip as _request_client_ip,
+    resolve_system_dependency as _resolve_system_dependency,
 )
 
 
 
 updates_router = APIRouter(tags=["system"])
 UPDATE_MANIFEST_CACHE_SETTING_KEY = "treseko_update_manifest_cache"
-_SYSTEM_DEPENDENCY_DEFAULTS = {
-    name: globals()[name]
-    for name in (
-        "get_entitlement_provider",
-        "get_update_service",
-        "validate_update_manifest",
-        "prepare_update_download_grant_request",
-        "fetch_latest_premium_update_manifest",
-        "request_premium_download_grant",
-        "get_installed_license",
+_SYSTEM_DEPENDENCY_DEFAULTS = {name: globals()[name] for name in (
+    "get_entitlement_provider", "get_update_service", "validate_update_manifest",
+    "prepare_update_download_grant_request", "fetch_latest_premium_update_manifest",
+    "request_premium_download_grant", "get_installed_license",
+)}
+
+
+def _system_dependency(name: str, fallback):
+    return _resolve_system_dependency(
+        name, fallback, globals(), _SYSTEM_DEPENDENCY_DEFAULTS, f"{__package__}.system"
     )
-}
-
-
-def _system_dependency(name: str, fallback: Any) -> Any:
-    """Keep the split router compatible with the public system-router facade."""
-    local = globals().get(name, fallback)
-    if local is not _SYSTEM_DEPENDENCY_DEFAULTS.get(name, fallback):
-        return local
-    facade = sys.modules.get(f"{__package__}.system")
-    return getattr(facade, name, fallback) if facade else fallback
 
 @updates_router.get("/system/updates/channels", response_model=schemas.SystemUpdateChannelsResponse)
 async def read_system_update_channels(
@@ -420,6 +411,8 @@ async def apply_system_update(
     if channel == "community":
         channel = configured_community_update_channel()
     manifest = payload.manifest
+    original_manifest = dict(manifest) if isinstance(manifest, dict) else None
+    download_manifest = original_manifest
     if payload.confirmation != "APPLY_UPDATE":
         raise HTTPException(status_code=400, detail="Confirma la actualizacion con APPLY_UPDATE.")
     if channel in COMMUNITY_UPDATE_CHANNELS and manifest is None:
@@ -427,6 +420,7 @@ async def apply_system_update(
         if not check_result.get("available"):
             raise HTTPException(status_code=400, detail="No hay actualizacion Community disponible.")
         manifest = check_result.get("manifest") or check_result
+        original_manifest = dict(manifest)
     if channel in PREMIUM_UPDATE_CHANNELS:
         state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         if manifest is None:
@@ -434,6 +428,7 @@ async def apply_system_update(
             manifest = entry.get("manifest") if entry else None
             if not manifest:
                 raise HTTPException(status_code=400, detail="No hay manifest Premium sincronizado. Busca actualizaciones antes de aplicar.")
+        original_manifest = dict(manifest)
         try:
             grant_result = await _system_dependency(
                 "request_premium_download_grant", request_premium_download_grant
@@ -446,7 +441,10 @@ async def apply_system_update(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except PremiumVerificationError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        manifest = grant_result["manifest"]
+        # The grant response may replace package_url with a temporary signed
+        # URL. Keep the signed catalog manifest immutable for the host bridge;
+        # only the downloader receives the resolved grant manifest.
+        download_manifest = dict(grant_result["manifest"])
     elif channel in COMMUNITY_UPDATE_CHANNELS:
         state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         try:
@@ -463,13 +461,16 @@ async def apply_system_update(
     try:
         task_id = await _system_dependency("get_update_service", get_update_service)().apply_update(
             channel=channel,
-            manifest=manifest,
+            manifest=original_manifest or manifest,
+            download_manifest=download_manifest or manifest,
             force=payload.force,
             initiated_by_user_id=str(current_user.id),
             initiated_by_email=current_user.email,
             initiated_from_ip=_request_client_ip(request),
             apply_confirmation=payload.confirmation,
         )
+    except InstallationModeError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await crud.create_audit_log(

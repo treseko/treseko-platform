@@ -4,10 +4,18 @@ Este documento define el contrato Premium para que runners externos, como
 Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al
 sistema. Confirmá que la licencia incluya la API externa antes de integrarla.
 
-El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero adaptado a la jerarquia real del sistema:
+El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero
+adaptado a la jerarquía y los formatos disponibles en Treseko 1.0.3:
 
-```text
-solucion -> proyecto -> componente -> build -> caso -> pasos
+```mermaid
+flowchart LR
+  S[Solución] --> P[Proyecto]
+  P --> C[Componente]
+  C --> B[Build]
+  B --> TC[Caso]
+  TC --> CL[CLÁSICA: pasos]
+  TC --> API[API: requests y aserciones]
+  TC --> CHAT[CONVERSACIONAL: turnos y evaluación]
 ```
 
 ## Qué hace esta integración
@@ -25,7 +33,7 @@ Cada entidad debe tener un código corto externo.
 Ejemplos validos:
 
 ```text
-Solucion:   SOL-a8f31c22
+Solución:   SOL-a8f31c22
 Proyecto:   PRJ-b91e02aa
 Componente: CMP-77ac10ff
 Build:      BLD-3f91ad44
@@ -37,7 +45,7 @@ Usá estos criterios al configurar el runner:
 - `SOL-xxxxxxxx`, `PRJ-xxxxxxxx`, `CMP-xxxxxxxx`, `BLD-xxxxxxxx`.
 - El sufijo debe generarse aleatoriamente o con un identificador compacto no semantico.
 - No usar nombres como `BLD-1-5-0-RC`, porque el nombre visible puede cambiar.
-- Los códigos deben ser ?nicos dentro de su alcance natural.
+- Los códigos deben ser únicos dentro de su alcance natural.
 
 Alcance sugerido:
 
@@ -85,10 +93,13 @@ La API key:
 - se guarda hasheada en base de datos.
 - no reemplaza ni requiere un login por API.
 
+El modelo actual no define una fecha de expiración automática para estas claves.
+Revocá una clave manualmente cuando deje de usarse o se exponga.
+
 ## Endpoint principal
 
 ```http
-POST /api/external/executions/report
+POST /external/executions/report
 Authorization: Bearer treseko_xxxxxxxxxxxxxxxxx
 Content-Type: application/json
 ```
@@ -151,6 +162,11 @@ Este endpoint permite reportar uno o varios casos en una sola llamada.
 | `overwrite` | No | Si `true`, permite actualizar el resultado del mismo caso dentro del mismo `external_run_id`. |
 | `cases` | Si | Lista de casos a reportar. |
 
+Límites del request: `cases` admite entre 1 y 500 elementos; los códigos de
+solución, proyecto, componente, build y caso admiten hasta 80 caracteres;
+`external_run_id` admite hasta 120 y `environment` hasta 80. `overwrite` es un
+booleano estricto y por defecto vale `true`.
+
 ## Campos por caso
 
 | Campo | Requerido | Descripción |
@@ -163,6 +179,10 @@ Este endpoint permite reportar uno o varios casos en una sola llamada.
 | `external_case_run_id` | No | ID del test en el framework externo. |
 | `steps` | No | Lista opcional de pasos ejecutados. |
 
+`observations` admite hasta 4000 caracteres, `duration_seconds` va de 0 a
+604800, `evidence_url` admite hasta 1000 y `external_case_run_id` hasta 120.
+Un caso puede incluir como máximo 250 pasos.
+
 ## Campos por paso
 
 | Campo | Requerido | Descripción |
@@ -172,6 +192,90 @@ Este endpoint permite reportar uno o varios casos en una sola llamada.
 | `observations` | No | Observacion del paso. |
 | `evidence_url` | No | Evidencia puntual del paso. |
 | `error_log` | No | Log técnico del error. |
+
+`number` debe estar entre 1 y 1000. Las observaciones admiten hasta 4000
+caracteres, la URL hasta 1000 y `error_log` hasta 12000.
+
+## Evidencia API y conversacional
+
+La forma de `cases[].api` o `cases[].chatbot` debe coincidir con el
+`formato_prueba` del caso guardado. No se pueden enviar ambos campos en el
+mismo caso.
+
+Para un caso `API`, enviá `api` como un objeto JSON de evidencia observada. Se
+acepta la evidencia canónica producida por Treseko, por ejemplo:
+
+```json
+{
+  "schema_version": "treseko.api-result/v1",
+  "status": "PASSED",
+  "duration_ms": 184,
+  "steps": [
+    {
+      "index": 1,
+      "status": "PASSED",
+      "request": {"method": "GET", "url": "https://api.example.test/health"},
+      "response": {"status_code": 200},
+      "assertions": [
+        {"status": "PASSED", "source": "response.status", "expected": 200, "actual": 200}
+      ]
+    }
+  ],
+  "variables_extracted": [],
+  "variables_used": {},
+  "errors": [],
+  "evidence_policy": {"public_test_data": false}
+}
+```
+
+Treseko no usa la evidencia externa para reemplazar la configuración esperada
+del caso. El objeto `api` debe pesar como máximo 512 KiB después de serializarse
+como JSON; los valores sensibles se sanean antes de persistirlos.
+
+Para un caso `CONVERSACIONAL`, enviá `chatbot` con al menos un turno:
+
+```json
+{
+  "schema_version": 1,
+  "protocol": "treseko.chatbot/v1",
+  "conversation_strategy": "external_api",
+  "session_id": "session-ci-001",
+  "turns": [
+    {
+      "status": "PASSED",
+      "request": {"body": {"message": "Hola"}},
+      "response": {"text": "Hola, ¿en qué puedo ayudarte?"},
+      "latencyMs": 184,
+      "assertions": [{"passed": true, "rule": "must_include", "expected": "Hola"}]
+    }
+  ],
+  "performance": {"total_latency_ms": 184},
+  "conversation": [],
+  "assertions": [],
+  "security_findings": [],
+  "memory_checks": [],
+  "tools": [],
+  "http_errors": [],
+  "metadata": {},
+  "profile": {},
+  "variables": {},
+  "human_evaluation": {},
+  "judge": {}
+}
+```
+
+Cada turno debe tener `status` `PASSED`, `FAILED` o `BLOCKED`. `turns` admite
+entre 1 y 250 turnos; si se informa `technical_index`, debe ser zero-based,
+entero y consecutivo. Cada turno admite hasta 256 KiB y el objeto `chatbot`
+completo hasta 512 KiB. Las listas `conversation` y `assertions` admiten 500
+elementos; `security_findings` 100; `memory_checks`, `tools` y `http_errors`
+250. `protocol` y `conversation_strategy` admiten 80 caracteres,
+`session_id` 255, `status` 30 y `error_code` 120.
+
+El estado final del caso debe ser coherente con la evidencia: un caso `PASO`
+solo puede contener pasos o turnos exitosos; un caso `FALLO` debe contener al
+menos un fallo; y un caso `BLOQUEADO`, al menos un bloqueo. En un caso
+conversacional no uses `steps` clásicos.
 
 ## Respuesta exitosa
 
@@ -202,37 +306,23 @@ Este endpoint permite reportar uno o varios casos en una sola llamada.
 }
 ```
 
-## Respuesta con errores parciales
+## Procesamiento atómico y errores
 
-El endpoint debe poder procesar los casos validos y rechazar los invalidos.
+El endpoint valida el request completo antes de guardar. No procesa una parte
+del lote: si falta un caso, no está asignado a la build, la build está inactiva,
+hay una evidencia incompatible con el formato o existe un duplicado con
+`overwrite=false`, rechaza toda la solicitud y no guarda sus casos.
 
-```json
-{
-  "run_id": "3d1c0d79-73af-4c8b-a3d9-5e8b7b0f2c10",
-  "external_run_id": "pytest-2026-06-20-001",
-  "processed": 1,
-  "rejected": 1,
-  "results": [
-    {
-      "case_code": "TC-0005",
-      "status": "saved",
-      "execution_id": "7d20f8bc-6fb4-40f7-8a36-8e8f56755829",
-      "final_status": "FALLO"
-    },
-    {
-      "case_code": "TC-9999",
-      "status": "rejected",
-      "error": "Caso no existe o no esta asignado a la build indicada."
-    }
-  ]
-}
-```
+Una respuesta HTTP 200 contiene únicamente resultados `saved`, con
+`rejected: 0`. Los errores de autenticación, permisos, validación o reglas de
+negocio se devuelven como error HTTP (por ejemplo, 400, 401 o 403) con un
+`correlation_id`; en esos casos no uses `processed` como confirmación parcial.
 
 ## Qué valida Treseko
 
 Antes de guardar un reporte, Treseko valida:
 
-1. API key valida, activa y no expirada.
+1. API key valida y activa.
 2. Usuario activo.
 3. Usuario con permiso para ejecutar pruebas.
 4. `solution_code` existe.
@@ -255,7 +345,7 @@ Recomendacion:
 - Si no existe, crear un `TestRun` de origen `EXTERNAL_API`.
 - Si existe para la misma build, reutilizarlo.
 - Si llega el mismo caso con `overwrite=true`, actualizar la ejecucion previa de ese caso dentro del mismo run.
-- Si llega el mismo caso con `overwrite=false`, rechazar ese caso como duplicado dentro del mismo run.
+- Si llega el mismo caso con `overwrite=false`, rechazar toda la solicitud como duplicada; no se guarda una parte del lote.
 
 ## Estados
 
@@ -264,7 +354,7 @@ Recomendacion:
 | `PASO` | `PASO` |
 | `FALLO` | `FALLO` |
 | `BLOQUEADO` | `BLOQUEADO` |
-| `SIN_CORRER` | `SIN_CORRER`, solo valido en pasos si se acepta payload parcial |
+| `SIN_CORRER` | `SIN_CORRER`, válido únicamente como estado de un paso. |
 
 No se recomienda aceptar abreviaturas tipo `p`, `f`, `b` en el contrato principal. Si se quiere compatibilidad estilo TestLink, podria agregarse un modo opcional de normalizacion.
 

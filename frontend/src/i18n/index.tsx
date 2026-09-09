@@ -18,7 +18,7 @@ function resolveMessage(catalog: TranslationCatalog, key: TranslationKey) {
   return catalog[moduleName]?.[messageKey] ?? fallbackCatalog[moduleName]?.[messageKey] ?? key
 }
 
-function interpolate(message: string, params?: Record<string, string | number>) {
+export function interpolate(message: string, params?: Record<string, string | number>) {
   if (!params) return message
   return message.replace(/\{(\w+)\}/g, (match, name: string) => (
     params[name] === undefined ? match : String(params[name])
@@ -38,6 +38,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     void loadCatalog(locale)
       .then((loadedCatalog) => {
         if (!cancelled) setCatalog(loadedCatalog)
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog(fallbackCatalog)
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)

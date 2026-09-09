@@ -6,20 +6,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
 
-PROJECT_READ_ONLY_ROLES = {
-    "GUEST",
-    "INVITADO",
-    "LECTOR",
-    "READ_ONLY",
-    "READONLY",
-    "SOLO_LECTURA",
-    "VIEWER",
+PROJECT_WRITE_ROLES = {
+    "OWNER",
+    "ADMIN",
+    "MEMBER",
+    "QA_LEAD",
+    "TESTER",
+}
+
+# Organization memberships fail closed for write operations. Historical
+# MEMBER values keep edit access, while unknown spellings never inherit it.
+ORGANIZATION_WRITE_ROLES = {
+    "OWNER",
+    "ADMIN",
+    "MEMBER",
+    "QA_LEAD",
+    "TESTER",
 }
 
 
 def is_build_active(build: models.Build) -> bool:
     """A build is writable/executable only when both lifecycle fields agree."""
-    return build.activo is True and build.estado == "ACTIVA"
+    return bool(build and build.activo is True and build.estado == "ACTIVA")
 
 
 def _forbidden():
@@ -41,8 +49,16 @@ def _project_role_allows_level(role: str | None, level: str) -> bool:
     requested_level = (level or "read").strip().lower()
     if requested_level == "read":
         return True
-    normalized_role = (role or "MEMBER").strip().upper().replace("-", "_").replace(" ", "_")
-    return normalized_role not in PROJECT_READ_ONLY_ROLES
+    normalized_role = (role or "").strip().upper().replace("-", "_").replace(" ", "_")
+    return normalized_role in PROJECT_WRITE_ROLES
+
+
+def _organization_role_allows_level(role: str | None, level: str) -> bool:
+    requested_level = (level or "read").strip().lower()
+    if requested_level == "read":
+        return True
+    normalized_role = (role or "").strip().upper().replace("-", "_").replace(" ", "_")
+    return normalized_role in ORGANIZATION_WRITE_ROLES
 
 
 async def require_organization_access(
@@ -64,12 +80,13 @@ async def require_organization_access(
         return db_org
 
     result = await db.execute(
-        select(models.OrganizacionMiembro.id).filter(
+        select(models.OrganizacionMiembro.rol_cliente).filter(
             models.OrganizacionMiembro.organizacion_id == organizacion_id,
             models.OrganizacionMiembro.usuario_id == user.id,
         )
     )
-    if result.scalar_one_or_none():
+    organization_role = result.scalar_one_or_none()
+    if organization_role is not None and _organization_role_allows_level(organization_role, level):
         return db_org
     _forbidden()
 

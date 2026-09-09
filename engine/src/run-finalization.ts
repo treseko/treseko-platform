@@ -3,7 +3,7 @@ import { normalizeAuditDecision, resolveAuditConsensus, type AuditEvidenceBundle
 import { ENGINE_LOCAL_EVIDENCE_ENABLED, ENGINE_NAME, ENGINE_VERSION } from './runtime-config.ts';
 
 export async function finalizeSuccessfulRun(context: any): Promise<any> {
-  const { runResult, qaSteps, report, emitAgent, emit, browser, opencode, testId, startedAt, ai, task, suite,
+  const { runResult, qaSteps, report, emitAgent, emit, browser, opencode, testId, startedAt, ai, task, expected, suite,
     validation, auditEvidence, visualAuditUsed, finalScreenshot, timeline, workflowTraces, options, maxSteps,
     workflowTimeoutMs, resultSteps, url, flushAndCloseBackendWs } = context;
 
@@ -43,7 +43,7 @@ export async function finalizeSuccessfulRun(context: any): Promise<any> {
   emitAgent('SYSTEM', 'SUCCESS', `Test ${testId} finalizado.`);
   const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
   const finalStatus = consensusDecision.final_status;
-  const aiReport = buildAiReport({ task, testId, suite, model: ai.model, status: finalStatus, durationSeconds,
+  const aiReport = buildAiReport({ task, expected, testId, suite, model: ai.model, status: finalStatus, durationSeconds,
     validation, auditDecision: validation, consensusDecision, auditEvidence: auditEvidence as AuditEvidenceBundle,
     visualAuditUsed, runResult, resultSteps, errors: runResult.errors, startedAt, url,
     finalScreenshotBase64: finalScreenshot?.toString('base64'), timeline, workflowTraces,
@@ -71,7 +71,7 @@ export async function finalizeSuccessfulRun(context: any): Promise<any> {
 
 export async function finalizeFailedRun(context: any): Promise<any> {
   const { error, safeExecutionError, emitAgent, emit, report, browser, opencode, testId, startedAt, task, suite,
-    ai, resultSteps, timeline, options, maxSteps, workflowTimeoutMs, url, flushAndCloseBackendWs } = context;
+    expected, ai, resultSteps, timeline, options, maxSteps, workflowTimeoutMs, url, flushAndCloseBackendWs } = context;
   const safeError = safeExecutionError(error);
   emitAgent('SYSTEM', 'ERROR', `Error en ${testId}: ${safeError}`);
   emit('status', { agent: 'SYSTEM', level: 'ERROR', message: 'El Engine no pudo completar la ejecución.', error_code: 'ENGINE_EXECUTION_FAILED' });
@@ -88,7 +88,7 @@ export async function finalizeFailedRun(context: any): Promise<any> {
       passed_steps: 0, failed_steps: 1, conclusive_assertions: 0, failed_assertions: 0, screenshot_count: finalScreenshot ? 1 : 0,
       full_contract_steps: 0, partial_contract_steps: 0, semantic_audit_steps: 0 } };
   const catchConsensus = resolveAuditConsensus(catchEvidence, catchAuditDecision);
-  const errorReport = buildAiReport({ task, testId, suite, model: ai.model, status: 'FALLO', durationSeconds,
+  const errorReport = buildAiReport({ task, expected, testId, suite, model: ai.model, status: 'FALLO', durationSeconds,
     validation: catchAuditDecision, auditDecision: catchAuditDecision, consensusDecision: catchConsensus, auditEvidence: catchEvidence,
     visualAuditUsed: false, resultSteps, errors: [safeError], startedAt, url, finalScreenshotBase64: finalScreenshot,
     timeline, workflowTraces: [], parameters: { maxSteps, timeout_seconds: Math.round(workflowTimeoutMs / 1000),

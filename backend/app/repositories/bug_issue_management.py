@@ -1,5 +1,34 @@
 from .repository_context import *
+from sqlalchemy import exists
+from ..services.conversational_bug_context import infer_bug_is_conversational
+from .bug_context_filters import apply_bug_context_filter, mark_legacy_chatbot_items
+from ..services.chatbot_turns import find_executed_turn
 
+BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
+
+def _summarize_bug_items(bugs):
+    def count_by(field):
+        data: Dict[str, int] = {}
+        for bug in bugs:
+            key = str(getattr(bug, field, None) or "N/D")
+            data[key] = data.get(key, 0) + 1
+        return data
+    open_bugs = [bug for bug in bugs if bug.estado not in BUG_CLOSED_STATES]
+    return {
+        "total": len(bugs),
+        "abiertos": len(open_bugs),
+        "criticos": len([bug for bug in open_bugs if bug.severidad in {"CRITICA", "ALTA"}]),
+        "bloquean_release": len([bug for bug in open_bugs if bug.bloquea_release]),
+        "listos_retest": len([bug for bug in open_bugs if bug.estado == "LISTO_PARA_RETEST"]),
+        "cerrados": len([bug for bug in bugs if bug.estado in BUG_CLOSED_STATES]),
+        "vinculados_externos": len([bug for bug in bugs if bug.external_issue_id or bug.external_links]),
+        "sin_evidencia": len([bug for bug in bugs if not bug.attachments and not (bug.metadata_json or {}).get("legacy_evidence_url")]),
+        "sin_asignado": len([bug for bug in open_bugs if not bug.asignado_a]),
+        "by_estado": count_by("estado"),
+        "by_severidad": count_by("severidad"),
+        "by_prioridad": count_by("prioridad"),
+        "by_origen": count_by("origen"),
+    }
 
 def _apply_bug_filters(query, filters: Dict[str, Any]):
     if filters.get("q"):
@@ -12,12 +41,31 @@ def _apply_bug_filters(query, filters: Dict[str, Any]):
             models.BugIssue.error_tecnico.ilike(like),
         ))
     for field in [
-        "estado", "severidad", "prioridad", "componente_id", "build_id", "caso_id",
+        "estado", "severidad", "prioridad", "componente_id", "caso_id",
         "ejecucion_id", "snapshot_id", "asignado_a", "creado_por", "external_provider",
-        "origen",
+        "origen", "chatbot_finding_type",
     ]:
         if filters.get(field) is not None:
-            query = query.filter(getattr(models.BugIssue, field) == filters[field])
+            value = filters[field]
+            if field in {"tipo_contexto", "chatbot_finding_type"}:
+                value = str(value).strip().upper()
+            query = query.filter(getattr(models.BugIssue, field) == value)
+    if filters.get("build_id") is not None:
+        build_id = filters["build_id"]
+        if str(filters.get("build_scope") or "").lower() == "historical":
+            history_match = exists().where(
+                models.BugStatusHistory.bug_id == models.BugIssue.id,
+                models.BugStatusHistory.build_id == build_id,
+            )
+            query = query.filter(or_(
+                models.BugIssue.build_id == build_id,
+                models.BugIssue.resolved_build_id == build_id,
+                history_match,
+            ))
+        else:
+            query = query.filter(models.BugIssue.build_id == build_id)
+    if filters.get("tipo_contexto") is not None:
+        query = apply_bug_context_filter(query, filters["tipo_contexto"])
     if filters.get("has_external") is not None:
         if filters["has_external"]:
             query = query.filter(or_(models.BugIssue.external_issue_id.isnot(None), models.BugIssue.external_provider.isnot(None)))
@@ -28,8 +76,6 @@ def _apply_bug_filters(query, filters: Dict[str, Any]):
     if filters.get("hasta"):
         query = query.filter(models.BugIssue.created_at <= ensure_utc(filters["hasta"]))
     return query
-
-
 async def list_project_bugs(db: AsyncSession, proyecto_id: UUID, **filters):
     skip = int(filters.pop("skip", 0) or 0)
     limit = min(max(int(filters.pop("limit", 50) or 50), 1), 200)
@@ -40,9 +86,80 @@ async def list_project_bugs(db: AsyncSession, proyecto_id: UUID, **filters):
     result = await db.execute(
         filtered.options(*_bug_options()).order_by(models.BugIssue.created_at.desc()).offset(skip).limit(limit)
     )
-    return {"items": result.scalars().unique().all(), "total": total, "skip": skip, "limit": limit}
+    items = await mark_legacy_chatbot_items(db, result.scalars().unique().all())
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
-async def list_related_bugs_for_case(db: AsyncSession, caso_id: UUID, include_closed: bool = True):
+async def list_incident_center(
+    db: AsyncSession,
+    *,
+    proyecto_id: Optional[UUID] = None,
+    organizacion_id: Optional[UUID] = None,
+    allowed_project_ids: Optional[List[UUID]] = None,
+    **filters,
+):
+    """List and summarize BugIssue records for the development work view.
+
+    The endpoint deliberately uses the existing BugIssue filters and model
+    relationships.  ``allowed_project_ids`` is supplied by the API layer for
+    non-admin users, so an omitted project filter never broadens visibility.
+    """
+    skip = int(filters.pop("skip", 0) or 0)
+    limit = min(max(int(filters.pop("limit", 50) or 50), 1), 200)
+    query = select(models.BugIssue)
+    if organizacion_id is not None:
+        query = query.join(models.Proyecto, models.Proyecto.id == models.BugIssue.proyecto_id)
+        query = query.filter(models.Proyecto.organizacion_id == organizacion_id)
+    if proyecto_id is not None:
+        query = query.filter(models.BugIssue.proyecto_id == proyecto_id)
+    elif allowed_project_ids is not None:
+        # The solution filter is only an additional boundary. It must never
+        # replace the user's project-level scope.
+        query = query.filter(models.BugIssue.proyecto_id.in_(allowed_project_ids))
+    filtered = _apply_bug_filters(query, filters)
+    count_result = await db.execute(select(func.count()).select_from(filtered.subquery()))
+    total = int(count_result.scalar() or 0)
+    summary_query = filtered.options(
+        selectinload(models.BugIssue.attachments),
+        selectinload(models.BugIssue.external_links),
+    )
+    summary_bugs = (await db.execute(summary_query)).scalars().unique().all()
+    summary = _summarize_bug_items(summary_bugs)
+    result = await db.execute(
+        filtered.options(*_bug_options())
+        .order_by(models.BugIssue.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    items = await mark_legacy_chatbot_items(db, result.scalars().unique().all())
+    return {"items": items, "total": total, "skip": skip, "limit": limit, "summary": summary}
+
+
+async def list_incident_center_export(
+    db: AsyncSession,
+    *,
+    proyecto_id: Optional[UUID] = None,
+    organizacion_id: Optional[UUID] = None,
+    allowed_project_ids: Optional[List[UUID]] = None,
+    **filters,
+):
+    """Return the complete filtered incident set for an authorized export."""
+    query = select(models.BugIssue)
+    if organizacion_id is not None:
+        query = query.join(models.Proyecto, models.Proyecto.id == models.BugIssue.proyecto_id)
+        query = query.filter(models.Proyecto.organizacion_id == organizacion_id)
+    if proyecto_id is not None:
+        query = query.filter(models.BugIssue.proyecto_id == proyecto_id)
+    elif allowed_project_ids is not None:
+        query = query.filter(models.BugIssue.proyecto_id.in_(allowed_project_ids))
+    filtered = _apply_bug_filters(query, filters)
+    result = await db.execute(
+        filtered.options(*_bug_options())
+        .order_by(models.BugIssue.created_at.desc())
+    )
+    return await mark_legacy_chatbot_items(db, result.scalars().unique().all())
+
+
+async def list_related_bugs_for_case(db: AsyncSession, caso_id: UUID, include_closed: bool = True, tipo_contexto: Optional[str] = None):
     case = (
         await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.id == caso_id))
     ).scalar_one_or_none()
@@ -65,6 +182,8 @@ async def list_related_bugs_for_case(db: AsyncSession, caso_id: UUID, include_cl
     )
     if not include_closed:
         query = query.filter(models.BugIssue.estado.notin_(BUG_CLOSED_STATES))
+    if tipo_contexto:
+        query = apply_bug_context_filter(query, tipo_contexto)
     result = await db.execute(
         query.order_by(
             models.BugIssue.estado.in_(BUG_CLOSED_STATES).asc(),
@@ -72,9 +191,9 @@ async def list_related_bugs_for_case(db: AsyncSession, caso_id: UUID, include_cl
             models.BugIssue.created_at.desc(),
         )
     )
-    return result.scalars().unique().all()
-
-
+    # Keep related-bug responses consistent with the project listing. This
+    # also classifies legacy Chatbot bugs without mutating the stored record.
+    return await mark_legacy_chatbot_items(db, result.scalars().unique().all())
 async def _next_bug_code(db: AsyncSession) -> str:
     result = await db.execute(
         select(models.BugIssue.codigo).filter(models.BugIssue.codigo.like("BUG-%"))
@@ -85,9 +204,13 @@ async def _next_bug_code(db: AsyncSession) -> str:
         if match:
             max_number = max(max_number, int(match.group(1)))
     return f"BUG-{max_number + 1}"
-
-
-async def create_bug_issue(db: AsyncSession, payload: schemas.BugIssueCreate, created_by: Optional[UUID], from_failure: bool = False):
+async def create_bug_issue(
+    db: AsyncSession,
+    payload: schemas.BugIssueCreate,
+    created_by: Optional[UUID],
+    from_failure: bool = False,
+    commit: bool = True,
+):
     data = _bug_payload_dict(payload)
     data["severidad"] = str(data.get("severidad") or "MEDIA").upper()
     data["prioridad"] = str(data.get("prioridad") or "P2").upper()
@@ -119,6 +242,8 @@ async def create_bug_issue(db: AsyncSession, payload: schemas.BugIssueCreate, cr
             proyecto_id=data["proyecto_id"],
             ejecucion_id=data.get("ejecucion_id"),
             snapshot_id=data.get("snapshot_id"),
+            chatbot_turn_index=data.get("chatbot_turn_index"),
+            chatbot_finding_type=data.get("chatbot_finding_type"),
             dedupe_hash=data.get("dedupe_hash"),
         )
         if existing:
@@ -137,16 +262,17 @@ async def create_bug_issue(db: AsyncSession, payload: schemas.BugIssueCreate, cr
         user_id=created_by,
         source="created_from_failure" if from_failure else "created_manual",
     )
-    await db.commit()
+    if commit:
+        await db.commit()
     return await get_bug_issue(db, bug.id)
-
-
 async def find_existing_failure_bug(
     db: AsyncSession,
     *,
     proyecto_id: UUID,
     ejecucion_id: Optional[UUID] = None,
     snapshot_id: Optional[UUID] = None,
+    chatbot_turn_index: Optional[int] = None,
+    chatbot_finding_type: Optional[str] = None,
     dedupe_hash: Optional[str] = None,
 ):
     query = select(models.BugIssue).options(*_bug_options()).filter(models.BugIssue.proyecto_id == proyecto_id)
@@ -158,11 +284,16 @@ async def find_existing_failure_bug(
         query = query.filter(models.BugIssue.dedupe_hash == dedupe_hash)
     else:
         return None
+    if ejecucion_id is not None:
+        if chatbot_turn_index is None:
+            query = query.filter(models.BugIssue.chatbot_turn_index.is_(None))
+        else:
+            query = query.filter(models.BugIssue.chatbot_turn_index == chatbot_turn_index)
+        if chatbot_finding_type is not None:
+            query = query.filter(models.BugIssue.chatbot_finding_type == str(chatbot_finding_type).upper())
     query = query.filter(models.BugIssue.estado.notin_(BUG_CLOSED_STATES)).order_by(models.BugIssue.created_at.desc())
     result = await db.execute(query)
     return result.scalars().unique().first()
-
-
 async def get_bug_issue(db: AsyncSession, bug_id: UUID):
     result = await db.execute(
         select(models.BugIssue)
@@ -170,16 +301,27 @@ async def get_bug_issue(db: AsyncSession, bug_id: UUID):
         .filter(models.BugIssue.id == bug_id)
     )
     return result.scalar_one_or_none()
-
-
 async def update_bug_issue(db: AsyncSession, bug_id: UUID, payload: schemas.BugIssueUpdate):
     bug = await get_bug_issue(db, bug_id)
     if not bug:
         return None
-    requested_status = payload.model_dump(exclude_unset=True).get("estado")
+    updates = payload.model_dump(exclude_unset=True)
+    if await infer_bug_is_conversational(db, bug):
+        management_fields = {
+            "comentario", "titulo", "severidad", "prioridad", "criticidad",
+            "impacto_negocio", "frecuencia", "asignado_a", "notas_qa",
+            "bloquea_release", "bloquea_caso", "resolucion", "motivo_cierre",
+        }
+        forbidden = sorted(set(updates) - management_fields)
+        if forbidden:
+            raise ValueError(
+                "Los datos automáticos de un bug conversacional son de solo lectura: "
+                + ", ".join(forbidden)
+            )
+    requested_status = updates.get("estado")
     if requested_status is not None and str(requested_status).upper() != str(bug.estado).upper():
         raise ValueError("Usa la transición de estado para conservar el historial del bug.")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    for field, value in updates.items():
         if isinstance(value, str) and field in {"estado", "severidad", "prioridad", "criticidad"}:
             value = value.upper()
         setattr(bug, field, value)
@@ -189,12 +331,8 @@ async def update_bug_issue(db: AsyncSession, bug_id: UUID, payload: schemas.BugI
     bug.updated_at = utc_now()
     await db.commit()
     return await get_bug_issue(db, bug_id)
-
-
 BUG_CORRECTED_STATES = {"RESUELTO", "CERRADO"}
 BUG_ADMIN_CLOSED_STATES = {"DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
-
-
 async def _validate_resolution_build(db: AsyncSession, bug, build_id: UUID, *, allow_inactive: bool = False):
     build = (
         await db.execute(select(models.Build).filter(models.Build.id == build_id))
@@ -206,8 +344,6 @@ async def _validate_resolution_build(db: AsyncSession, bug, build_id: UUID, *, a
     if not allow_inactive and not access_control.is_build_active(build):
         raise ValueError("La build de corrección está inactiva.")
     return build
-
-
 def _add_bug_status_history(db: AsyncSession, bug, old_status: Optional[str], *, build_id=None, user_id=None, source="manual"):
     db.add(models.BugStatusHistory(
         bug_id=bug.id,
@@ -221,7 +357,6 @@ def _add_bug_status_history(db: AsyncSession, bug, old_status: Optional[str], *,
         source=source,
         occurred_at=utc_now(),
     ))
-
 
 async def transition_bug_issue(
     db: AsyncSession,
@@ -286,8 +421,6 @@ async def transition_bug_issue(
     bug.updated_at = utc_now()
     await db.commit()
     return await get_bug_issue(db, bug_id)
-
-
 async def list_bug_status_history(db: AsyncSession, bug_id: UUID):
     result = await db.execute(
         select(models.BugStatusHistory)
@@ -296,7 +429,6 @@ async def list_bug_status_history(db: AsyncSession, bug_id: UUID):
         .order_by(models.BugStatusHistory.occurred_at.desc())
     )
     return result.scalars().all()
-
 async def link_bug_to_execution(
     db: AsyncSession,
     bug_id: UUID,
@@ -332,8 +464,25 @@ async def link_bug_to_execution(
     ).scalar_one_or_none()
     if not bug_case or bug_case.master_id != executed_case.master_id:
         raise ValueError("El bug no pertenece al mismo caso lógico de la ejecución.")
+    bug_is_chatbot = str(getattr(bug, "tipo_contexto", "CLASICO") or "CLASICO").upper() == "CONVERSACIONAL"
+    execution_is_chatbot = str(getattr(executed_case.formato_prueba, "value", executed_case.formato_prueba) or "").upper() == "CONVERSACIONAL"
+    if bug_is_chatbot != execution_is_chatbot:
+        raise ValueError("No se puede mezclar un bug clásico con una ejecución Chatbot, ni viceversa.")
+    if bug_is_chatbot and bug.chatbot_turn_index is not None and payload.chatbot_turn_index != bug.chatbot_turn_index:
+        raise ValueError("El seguimiento debe conservar el turno técnico del bug conversacional original.")
+    if bug_is_chatbot and bug.chatbot_finding_type and payload.chatbot_finding_type:
+        if str(payload.chatbot_finding_type).upper() != str(bug.chatbot_finding_type).upper():
+            raise ValueError("El seguimiento debe conservar la categoría del hallazgo conversacional original.")
     if execution.estado_resultado not in {models.EstadoResultado.FALLO, models.EstadoResultado.BLOQUEADO}:
         raise ValueError("Solo se puede registrar seguimiento sobre una ejecución fallida o bloqueada.")
+
+    is_chatbot = execution_is_chatbot
+    chatbot_turn = None
+    if is_chatbot and payload.chatbot_turn_index is not None:
+        chatbot_result = execution.chatbot_resultado if isinstance(execution.chatbot_resultado, dict) else {}
+        chatbot_turn = find_executed_turn(chatbot_result.get("turns") or [], payload.chatbot_turn_index)
+        if chatbot_turn is None:
+            raise ValueError("El turno Chatbot indicado no existe en la ejecución.")
 
     snapshot = None
     if payload.snapshot_id:
@@ -380,6 +529,10 @@ async def link_bug_to_execution(
             context_lines.append(f"Error: {snapshot.error_log}")
     elif execution.observaciones:
         context_lines.append(f"Observación: {execution.observaciones}")
+    if chatbot_turn is not None:
+        context_lines.append(f"Turno Chatbot: {payload.chatbot_turn_index + 1}")
+        context_lines.append(f"Hallazgo: {payload.chatbot_finding_type or 'turn_failure'}")
+        context_lines.append(f"Latencia: {chatbot_turn.get('latencyMs') or chatbot_turn.get('latency_ms') or 0} ms")
     if payload.comentario:
         context_lines.append(f"Comentario QA: {payload.comentario}")
 
@@ -410,6 +563,8 @@ async def link_bug_to_execution(
         "test_run_id": str(run.id),
         "ejecucion_id": str(execution.id),
         "snapshot_id": str(snapshot.id) if snapshot else None,
+        "chatbot_turn_index": payload.chatbot_turn_index,
+        "chatbot_finding_type": payload.chatbot_finding_type,
         "build_id": str(run.build_id) if run.build_id else None,
         "build_name": build.nombre if build else None,
         "build_code": build.codigo if build else None,
@@ -423,7 +578,7 @@ async def link_bug_to_execution(
         "linked_by": str(user_id) if user_id else None,
     }
     already_recorded = any(
-        item.get("ejecucion_id") == occurrence["ejecucion_id"] and item.get("snapshot_id") == occurrence["snapshot_id"]
+        item.get("ejecucion_id") == occurrence["ejecucion_id"] and item.get("snapshot_id") == occurrence["snapshot_id"] and item.get("chatbot_turn_index") == occurrence["chatbot_turn_index"]
         for item in occurrences
     )
     if already_recorded:

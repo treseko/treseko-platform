@@ -118,10 +118,19 @@ def get_or_create_instance_id() -> str:
     configured = str(os.getenv(INSTANCE_ID_ENV) or "").strip()
     if configured:
         return configured
-    path = Path(os.getenv(INSTANCE_ID_FILE_ENV) or Path.home() / ".treseko" / "instance_id")
+    legacy_path = Path.home() / ".treseko" / "instance_id"
+    configured_path = str(os.getenv(INSTANCE_ID_FILE_ENV) or "").strip()
+    path = Path(configured_path) if configured_path else Path(os.getenv("UPDATES_DIR") or "/data/updates") / "instance_id"
     if path.exists():
         value = path.read_text(encoding="utf-8").strip()
         if value:
+            return value
+    if path != legacy_path and legacy_path.exists():
+        value = legacy_path.read_text(encoding="utf-8").strip()
+        if value:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{value}\n", encoding="utf-8")
+            path.chmod(0o600)
             return value
     path.parent.mkdir(parents=True, exist_ok=True)
     value = f"inst_{uuid.uuid4().hex}"

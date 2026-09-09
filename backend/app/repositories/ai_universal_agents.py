@@ -49,7 +49,7 @@ def _capability(key: str, *, risk: str = "low", permissions: Optional[List[str]]
 
 CAPABILITY_CATALOG: Dict[str, Dict[str, Any]] = {
     item["key"]: item for item in [
-        _capability("context.read_case"), _capability("context.read_variables"), _capability("context.resolve_url"), _capability("context.transform"),
+        _capability("context.read_case"), _capability("context.read_variables"), _capability("context.resolve_url"), _capability("context.transform"), _capability("workflow.invoke"),
         _capability("memory.read"), _capability("memory.write"), _capability("memory.namespace_read"), _capability("memory.namespace_write"),
         _capability("browser.navigate", risk="high", browser=True), _capability("browser.observe", browser=True),
         _capability("browser.execute_safe_action", risk="high", browser=True), _capability("browser.wait", browser=True), _capability("browser.extract", browser=True),
@@ -170,8 +170,12 @@ def validate_universal_agent_contract(contract: Dict[str, Any]) -> Dict[str, Any
         raise ValueError("El agente debe usar universal-agent-runtime/v1.")
     adapter = str(implementation.get("native_adapter") or "")
     allowed_adapters = {item["adapter"] for item in LEGACY_AGENT_ADAPTERS.values()} | {
+        "qa-context-resolver/v2", "qa-pre-execution-analyst/v2", "qa-browser-observer/v2",
+        "qa-action-planner/v2", "qa-security-guard/v2", "qa-browser-action-executor/v2",
+        "qa-step-validator/v2", "qa-recovery-strategist/v2", "qa-final-auditor/v2",
+        "qa-execution-reporter/v2",
         "universal-llm/v1", "universal-rules/v1", "universal-transform/v1", "universal-human-approval/v1",
-        "universal-browser/v1", "universal-validator/v1", "universal-http/v1", "universal-mcp/v1", "universal-reporter/v1",
+        "universal-browser/v1", "universal-validator/v1", "universal-http/v1", "universal-mcp/v1", "universal-reporter/v1", "universal-subworkflow/v1",
         "universal-script-sandbox/v1", "universal-a2a-disabled/v1",
     }
     if adapter not in allowed_adapters:
@@ -380,8 +384,8 @@ async def export_universal_workflow_package(db: AsyncSession, workflow_id: UUID)
     from .ai_workflow_serialization import _edge_payload, _node_payload, _workflow_payload
 
     workflow = await get_ai_workflow(db, workflow_id)
-    if workflow.workflow_format != "universal_v2":
-        raise ValueError("Solo los workflows universal_v2 se pueden exportar como paquete portable.")
+    if workflow.workflow_format not in {"universal_v2", "universal_v3"}:
+        raise ValueError("Solo los workflows universales V2/V3 se pueden exportar como paquete portable.")
     agents: Dict[str, Dict[str, Any]] = {}
     for node in workflow.nodes:
         version = node.universal_agent_version
@@ -406,7 +410,7 @@ async def export_universal_workflow_package(db: AsyncSession, workflow_id: UUID)
         "package_format": UNIVERSAL_WORKFLOW_PACKAGE_FORMAT,
         "name": workflow.name,
         "version": str(workflow.version),
-        "workflow_format": "universal_v2",
+        "workflow_format": workflow.workflow_format,
         "agent_contract": UNIVERSAL_AGENT_CONTRACT_VERSION,
         "integrity": {"sha256": hashlib.sha256(workflow_json).hexdigest()},
     }
@@ -414,8 +418,8 @@ async def export_universal_workflow_package(db: AsyncSession, workflow_id: UUID)
         "manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
         "workflow.json": workflow_json,
         "fixtures/README.md": b"Fixtures are intentionally empty; executions and evidence are not exported.\n",
-        "tests/workflow.contract.test.json": json.dumps({"format": "universal_v2", "nodes": len(workflow.nodes)}).encode("utf-8"),
-        "README.md": f"# {workflow.name}\n\nWorkflow portable Treseko Universal v2.\n".encode("utf-8"),
+        "tests/workflow.contract.test.json": json.dumps({"format": workflow.workflow_format, "nodes": len(workflow.nodes)}).encode("utf-8"),
+        "README.md": f"# {workflow.name}\n\nWorkflow portable Treseko {workflow.workflow_format}.\n".encode("utf-8"),
     }
     for version_id, item in agents.items():
         if item["mode"] == "embedded":
@@ -446,12 +450,13 @@ async def import_universal_workflow_package(
     except (KeyError, json.JSONDecodeError) as exc:
         raise ValueError("El paquete no contiene manifest.json y workflow.json validos.") from exc
     raw_workflow = graph.get("workflow") if isinstance(graph, dict) else None
-    if manifest.get("package_format") != UNIVERSAL_WORKFLOW_PACKAGE_FORMAT or manifest.get("workflow_format") != "universal_v2":
+    package_workflow_format = str(manifest.get("workflow_format") or "")
+    if manifest.get("package_format") != UNIVERSAL_WORKFLOW_PACKAGE_FORMAT or package_workflow_format not in {"universal_v2", "universal_v3"}:
         raise ValueError("El paquete no contiene un workflow universal compatible.")
     if manifest.get("integrity", {}).get("sha256") != hashlib.sha256(files["workflow.json"]).hexdigest():
         raise ValueError("El hash de integridad del workflow no coincide.")
-    if not isinstance(raw_workflow, dict) or raw_workflow.get("workflow_format") != "universal_v2":
-        raise ValueError("El workflow portable no tiene un grafo universal_v2 valido.")
+    if not isinstance(raw_workflow, dict) or raw_workflow.get("workflow_format") != package_workflow_format:
+        raise ValueError("El workflow portable no tiene un grafo universal compatible con su manifest.")
     manifest_purpose = manifest.get("workflow_purpose")
     if manifest_purpose and manifest_purpose != raw_workflow.get("workflow_purpose"):
         raise ValueError("El proposito del manifest no coincide con el workflow.")

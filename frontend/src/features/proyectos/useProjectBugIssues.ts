@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from '../../app/constants'
+import { useBugTransitions } from '../bugs/useBugTransitions'
 
 export function useProjectBugIssues(options: any) {
-  const { managingProjectId, projectInnerTab, fetchWithAuth, showFeedback, t } = options
+  const { managingProjectId, projectInnerTab, fetchWithAuth, showFeedback, t, buildsList = [] } = options
   const [bugIssues, setBugIssues] = useState<any[]>([])
   const [bugsLoading, setBugsLoading] = useState(false)
   const [bugForm, setBugForm] = useState({ titulo: '', descripcion: '', severidad: 'MEDIA', prioridad: 'MEDIA', componente_id: '', build_id: '' })
@@ -19,6 +20,19 @@ export function useProjectBugIssues(options: any) {
     } finally { setBugsLoading(false) }
   }
   useEffect(() => { if (projectInnerTab === 'tickets') loadProjectBugs() }, [projectInnerTab, managingProjectId])
+  const projectBuilds = buildsList.filter((build: any) => build.projectId === managingProjectId)
+  const transitionController = useBugTransitions({
+    buildsList: projectBuilds,
+    currentBuildId: projectBuilds.find((build: any) => build.activo !== false && !build.hidden)?.id || '',
+    selectedBug: null,
+    fetchWithAuth,
+    showFeedback,
+    setBugs: setBugIssues,
+    setSelectedBug: () => undefined,
+    hydrateDetailEditState: () => undefined,
+    loadBugs: loadProjectBugs,
+    t,
+  })
   const createBugIssue = async (event: any) => {
     event.preventDefault()
     if (!bugForm.titulo.trim() || !managingProjectId) return
@@ -37,5 +51,14 @@ export function useProjectBugIssues(options: any) {
       await loadProjectBugs()
     } catch (error: any) { showFeedback?.(t('proyectos.couldNotUpdate'), error?.message || t('proyectos.checkPermissions'), 'danger') }
   }
-  return { bugIssues, bugsLoading, bugForm, setBugForm, loadProjectBugs, createBugIssue, updateBugIssue }
+  return {
+    bugIssues,
+    bugsLoading,
+    bugForm,
+    setBugForm,
+    loadProjectBugs,
+    createBugIssue,
+    updateBugIssue,
+    ...transitionController,
+  }
 }

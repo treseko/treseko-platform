@@ -1,0 +1,38 @@
+{
+  "catalog_version": "treseko.builtin-workflow/v1",
+  "slug": "chatbot-evaluation",
+  "workflow": {
+    "name": "Evaluación de Chatbot",
+    "version": 1,
+    "workflow_format": "universal_v2",
+    "workflow_purpose": "chatbot_evaluation",
+    "decision_policy_json": {
+      "catalog_key": "chatbot-evaluation",
+      "catalog_version": "1.0.0",
+      "compatibility_evidence": "generic-http-multiturn-v1"
+    }
+  },
+  "agents": [
+    {"ref": "context", "key": "chatbot-context-agent", "name": "Contexto Chatbot", "description": "Resuelve endpoint, variables y contrato de la conversación.", "category": "context", "objective": "Validar y preparar el contexto de ejecución del chatbot."},
+    {"ref": "http", "key": "chatbot-http-agent", "name": "Conversación HTTP", "description": "Envía los turnos al endpoint HTTP y conserva la sesión.", "category": "integration", "objective": "Ejecutar una conversación multi-turno contra el sistema bajo prueba."},
+    {"ref": "assertions", "key": "chatbot-assertions-agent", "name": "Validaciones Chatbot", "description": "Evalúa aserciones determinísticas sobre cada respuesta.", "category": "validation", "objective": "Comprobar contratos, textos, rutas JSON y estados HTTP."},
+    {"ref": "security", "key": "chatbot-security-agent", "name": "Seguridad Chatbot", "description": "Revisa fugas y respuestas prohibidas configuradas por el caso.", "category": "security", "objective": "Detectar respuestas que incumplen las reglas de seguridad."},
+    {"ref": "judge", "key": "chatbot-judge-agent", "name": "Juez semántico", "description": "Evalúa intención, coherencia y criterios semánticos usando el modelo IA.", "category": "evaluation", "objective": "Evaluar la calidad conversacional con una rúbrica reproducible."},
+    {"ref": "reporter", "key": "chatbot-reporter-agent", "name": "Reporte Chatbot", "description": "Consolida transcripción, evidencias y métricas.", "category": "reporting", "objective": "Generar el resultado completo y trazable de la evaluación."}
+  ],
+  "nodes": [
+    {"key": "context", "type": "chatbot_context_agent", "name": "Contexto Chatbot", "agent_key": "CHATBOT_CONTEXT_AGENT", "agent_ref": "context", "prompt_template": "Valida el contrato de ejecución del chatbot y resuelve endpoint y variables.", "position_x": 80, "position_y": 120, "timeout_sec": 30},
+    {"key": "http", "type": "chatbot_http_agent", "name": "Conversación HTTP", "agent_key": "CHATBOT_HTTP_AGENT", "agent_ref": "http", "prompt_template": "Ejecuta los turnos configurados contra el endpoint HTTP.", "position_x": 320, "position_y": 120, "timeout_sec": 900, "retry_policy": {"max_retries": 2}},
+    {"key": "assertions", "type": "chatbot_assertions_agent", "name": "Validaciones Chatbot", "agent_key": "CHATBOT_ASSERTIONS_AGENT", "agent_ref": "assertions", "prompt_template": "Evalúa todas las validaciones determinísticas del caso.", "position_x": 560, "position_y": 120, "timeout_sec": 60},
+    {"key": "security", "type": "chatbot_security_agent", "name": "Seguridad Chatbot", "agent_key": "CHATBOT_SECURITY_AGENT", "agent_ref": "security", "prompt_template": "Revisa reglas de seguridad sobre las respuestas recibidas.", "position_x": 800, "position_y": 120, "timeout_sec": 60},
+    {"key": "judge", "type": "chatbot_judge_agent", "name": "Juez semántico", "agent_key": "CHATBOT_JUDGE_AGENT", "agent_ref": "judge", "prompt_template": "Evalúa la conversación según la rúbrica configurada.", "position_x": 1040, "position_y": 120, "timeout_sec": 180},
+    {"key": "reporter", "type": "chatbot_reporter_agent", "name": "Reporte Chatbot", "agent_key": "CHATBOT_REPORTER_AGENT", "agent_ref": "reporter", "prompt_template": "Consolida el reporte final de la evaluación.", "position_x": 1280, "position_y": 120, "timeout_sec": 60}
+  ],
+  "edges": [
+    {"source": "context", "target": "http", "condition_type": "on_success", "priority": 10, "max_passes": 1},
+    {"source": "http", "target": "assertions", "condition_type": "always", "priority": 10, "max_passes": 1},
+    {"source": "assertions", "target": "security", "condition_type": "always", "priority": 10, "max_passes": 1},
+    {"source": "security", "target": "judge", "condition_type": "always", "priority": 10, "max_passes": 1},
+    {"source": "judge", "target": "reporter", "condition_type": "always", "priority": 10, "max_passes": 1}
+  ]
+}

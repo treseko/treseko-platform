@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Text, Integer, Float, ForeignKey, Enum, JSON, UniqueConstraint, Index
+from sqlalchemy import Column, String, Boolean, Text, Integer, Float, ForeignKey, Enum, JSON, UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -85,6 +85,12 @@ class AutomationJob(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type = Column(String(30), default="EXECUTION", nullable=False, index=True)
+    # Immutable routing scope.  The worker is solution-scoped, while a single
+    # solution may contain any number of projects.  These columns are kept
+    # directly on the queue row so a later change to a run/build/case cannot
+    # redirect an already-created job.
+    organizacion_id = Column(UUID(as_uuid=True), ForeignKey("organizaciones.id", ondelete="RESTRICT"), nullable=True, index=True)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="RESTRICT"), nullable=True, index=True)
     test_run_id = Column(UUID(as_uuid=True), ForeignKey("test_runs.id", ondelete="CASCADE"), nullable=True, index=True)
     ejecucion_id = Column(UUID(as_uuid=True), ForeignKey("ejecuciones_casos.id", ondelete="CASCADE"), nullable=True, index=True)
     caso_id = Column(UUID(as_uuid=True), ForeignKey("casos_prueba.id", ondelete="RESTRICT"), nullable=True, index=True)
@@ -104,9 +110,44 @@ class AutomationJob(Base):
     fecha_claim = Column(UTCDateTime(), nullable=True)
     fecha_inicio = Column(UTCDateTime(), nullable=True)
     fecha_fin = Column(UTCDateTime(), nullable=True)
+    lease_token = Column(String(200), nullable=True)
+    lease_expires_at = Column(UTCDateTime(), nullable=True, index=True)
+    attempt_count = Column(Integer, default=0, server_default="0", nullable=False)
+    max_attempts = Column(Integer, default=3, server_default="3", nullable=False)
+    result_event_id = Column(String(200), nullable=True)
+    result_fingerprint = Column(String(64), nullable=True)
 
     test_run = relationship("TestRun")
     ejecucion = relationship("EjecucionCaso", back_populates="automation_jobs")
     caso = relationship("CasoPrueba")
     build = relationship("Build")
+    organizacion = relationship("Organizacion")
+    proyecto = relationship("Proyecto")
     runner = relationship("AutomationRunner", back_populates="jobs")
+
+
+class AutomationClaimIntent(Base):
+    """Durable identity/tombstone for a runner's claim attempt.
+
+    IDs deliberately have no cascading foreign keys: deleting a job/runner
+    must not reopen an already closed request to a delayed network delivery.
+    Authorization and scope are enforced by the future transaction service.
+    """
+    __tablename__ = "automation_claim_intents"
+    __table_args__ = (
+        CheckConstraint("state IN ('OPEN', 'CLAIMED', 'CLOSED')", name="ck_claim_intent_state"),
+        CheckConstraint(
+            "(state = 'CLOSED' AND closed_at IS NOT NULL) OR "
+            "(state != 'CLOSED' AND closed_at IS NULL)", name="ck_claim_intent_closed_at"),
+        CheckConstraint(
+            "state != 'CLAIMED' OR lease_fingerprint IS NOT NULL",
+            name="ck_claim_intent_claimed_lease"),
+    )
+    runner_id = Column(UUID(as_uuid=True), primary_key=True)
+    attempt_id = Column(UUID(as_uuid=True), primary_key=True)
+    job_id = Column(UUID(as_uuid=True), nullable=False)
+    state = Column(String(10), nullable=False, server_default="OPEN")
+    # Hash only; the ledger is not another store of reusable lease credentials.
+    lease_fingerprint = Column(String(64), nullable=True)
+    created_at = Column(UTCDateTime(), nullable=False, server_default=func.now())
+    closed_at = Column(UTCDateTime(), nullable=True)

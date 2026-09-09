@@ -1,4 +1,7 @@
 import { formatDateTime } from '../../shared/utils/dateTime'
+import { normalizeCaseFormat } from './caseFormat'
+
+export { normalizeCaseFormat }
 
 export const formatDatasetForInput = (dataset: any) => {
   if (!Array.isArray(dataset)) return dataset || ''
@@ -141,6 +144,10 @@ export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], 
     title: caso.titulo,
     status: 'none',
     type: backendTestTypeToEditor(caso.tipo_prueba),
+    format: caso.formato_prueba || 'CLASICA',
+    configuracion_chatbot: caso.configuracion_chatbot || {},
+    configuracion_api: caso.configuracion_api || {},
+    apiConfig: caso.configuracion_api || {},
     component: componentName || (componentId ? 'Componente no encontrado' : 'Sin componente asignado'),
     componentId,
     description: caso.descripcion || '',
@@ -164,13 +171,15 @@ export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], 
     lastExecutedBy: null,
     lastExecutedAt: null,
     lastExecutedVersion: null,
-    history: []
+    history: [],
+    historyTotal: 0,
+    historyStats: null,
   }
 }
 
 export const mergeCasesById = (baseCases: any[], extraCases: any[]) => {
   const merged = new Map(baseCases.map(test => [test.id, test]))
-  const preserveIfMissing = ['stepsCount', 'lastResult', 'lastExecutedAt', 'lastExecutedBy', 'lastExecutedVersion', 'history']
+  const preserveIfMissing = ['stepsCount', 'lastResult', 'lastExecutedAt', 'lastExecutedBy', 'lastExecutedVersion', 'history', 'historyTotal', 'historyStats']
   const mergeCase = (existing: any, incoming: any) => {
     if (!existing) return incoming
     const next = { ...existing, ...incoming }

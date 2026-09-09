@@ -22,7 +22,7 @@ export function normalizeInternalReportBugLinks(html: string, origin?: string): 
 
     try {
       const url = new URL(href, currentOrigin);
-      if (url.searchParams.get("tab") !== "bugs" || !url.searchParams.get("bug_id")) return;
+      if (!["bugs", "incidencias"].includes(url.searchParams.get("tab") || "") || !url.searchParams.get("bug_id")) return;
       const sameApplicationHost = url.hostname === currentUrl.hostname
         || (isLoopback(url.hostname) && isLoopback(currentUrl.hostname));
       const markedInternalReportLink = anchor.classList.contains("report-action-link");

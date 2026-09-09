@@ -45,6 +45,14 @@ const EXTERNAL_ISSUE_PROVIDERS = [
 const externalIssueLabel = (bug: any) => bug?.external_issue_id
   ? `${EXTERNAL_ISSUE_PROVIDERS.find(item => item.id === bug.external_provider)?.label || bug.external_provider || 'Externo'} #${bug.external_issue_id}`
   : ''
+type BugDisplayType = 'CLASICO' | 'API' | 'CONVERSACIONAL'
+const bugDisplayType = (bug: any, hasApiContext = false): BugDisplayType => {
+  const contextType = String(bug?.tipo_contexto || '').trim().toUpperCase()
+  const testFormat = String(bug?.formato_prueba || bug?.metadata_json?.format || '').trim().toUpperCase()
+  if (contextType === 'CONVERSACIONAL') return 'CONVERSACIONAL'
+  if (contextType === 'API' || testFormat === 'API' || hasApiContext) return 'API'
+  return 'CLASICO'
+}
 const compactUnique = (items: string[]) => Array.from(new Set(items.map(item => String(item || '').trim()).filter(Boolean)))
 const bugBuildOriginLabel = (bug: any) => (
   bug?.metadata_json?.build_name ||
@@ -88,7 +96,7 @@ const apiErrorMessage = async (response: Response) => {
 
 export {
   EXTERNAL_ISSUE_PROVIDERS, bugBuildOriginLabel, bugComponentLabel, bugOccurrenceBuilds, bugStatusHelp,
-  compactUnique,
+  bugDisplayType, compactUnique,
   bugTraceLabel, closedStates, externalIssueLabel, priorityOptions, severityOptions, severityVariant, statusOptions,
   apiErrorMessage,
 }

@@ -1,6 +1,23 @@
 import type { BrowserObservation, QAEngineStep, StructuredHistoryItem } from '../automation/action-types.ts';
 import { runtimeManifestFor } from './agent-runtime-manifest.ts';
 import { finalizeUniversalAgentExecution, prepareUniversalAgentExecution, universalEnvelopeFor } from './universal-agent.ts';
+import {
+  resolveAuthoritativeWorkflowHandler,
+} from './graph-runtime/authoritative-handler-resolver.ts';
+import { compileWorkflowSnapshot } from './graph-runtime/compiler.ts';
+import type { CompiledWorkflowPlan } from './graph-runtime/contracts.ts';
+import { applyNodeInputMapping, applyNodeOutputMapping, valueAtPath } from './graph-runtime/workflow-mapping.ts';
+import {
+  compiledNodeTimeoutMs,
+  executeGraphNativeHandler,
+  outputPortFor,
+  runtimeNodeFromCompiled,
+  selectCompiledV3Edge,
+} from './graph-runtime/v3-runtime.ts';
+import { conditionMatches, startNode } from './graph-runtime/workflow-routing.ts';
+import { graphDispatchEnabled, isGraphAuthoritativeV3, isUniversalWorkflow, workflowFormat } from './graph-runtime/workflow-mode.ts';
+import { resolveLegacyNodeTimeoutMs, withTimeout } from './graph-runtime/workflow-timeout.ts';
+import { deterministicPlannerAction } from './custom-agents.ts';
 
 export type AgentStatus = 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'SKIPPED';
 export type NodeRunStatus = 'PENDING' | 'SKIPPED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'RETRYING' | 'BLOCKED';
@@ -44,6 +61,11 @@ export type WorkflowNode = {
   timeout_sec?: number;
   model_override?: string | null;
   temperature_override?: number | null;
+  /** Optional declarative mapping from workflow input paths to node inputs. */
+  input_mapping?: Record<string, string>;
+  output_mapping?: Record<string, string>;
+  output_ports?: Array<string | { id?: string; key?: string; name?: string }>;
+  terminal_ports?: string[];
   universal_agent_version_id?: string | null;
   universal_agent?: {
     version_id: string;
@@ -74,7 +96,11 @@ export type WorkflowDefinition = {
     status?: string;
     is_default?: boolean;
     workflow_format?: 'legacy_v1' | 'block_v2' | string;
+    workflow_purpose?: string;
+    decision_policy_json?: Record<string, any>;
     source_workflow_id?: string | null;
+    /** Explicit opt-in for persisted graph dispatch. Legacy remains the default. */
+    runtime_mode?: 'legacy' | 'graph_compat' | 'graph_native' | 'shadow_compare' | string;
   };
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
@@ -109,34 +135,73 @@ const TERMINAL_TYPES = new Set(['Reporter', 'End']);
 
 function mergePatch(base: Record<string, any>, patch?: Record<string, any>): Record<string, any> {
   if (!patch || typeof patch !== 'object') return base;
-  return { ...base, ...patch };
+  return {
+    ...base,
+    ...patch,
+    ...(patch.graph_node_outputs && typeof patch.graph_node_outputs === 'object' ? {
+      graph_node_outputs: { ...(base.graph_node_outputs || {}), ...patch.graph_node_outputs },
+    } : {}),
+    ...(patch.retry_count && typeof patch.retry_count === 'object' ? {
+      retry_count: { ...(base.retry_count || {}), ...patch.retry_count },
+    } : {}),
+  };
 }
 
-function valueAtPath(source: any, path: string): any {
-  return String(path || '').split('.').filter(Boolean).reduce((current, part) => current?.[part], source);
+const MAX_SUBWORKFLOW_DEPTH = 5;
+
+function nestedWorkflowResultStatus(status: WorkflowRunStatus): AgentStatus {
+  if (status === 'PASSED') return 'SUCCESS';
+  if (status === 'BLOCKED' || status === 'TIMEOUT') return 'BLOCKED';
+  return 'FAILED';
 }
 
-function startNode(definition: WorkflowDefinition): WorkflowNode | undefined {
-  const targets = new Set(definition.edges.map((edge) => String(edge.target_node_id)));
-  return definition.nodes.find((node) => node.enabled !== false && !targets.has(String(node.id)))
-    || definition.nodes.find((node) => node.enabled !== false);
+function isWorkflowDefinition(value: any): value is WorkflowDefinition {
+  return Boolean(value && typeof value === 'object' && value.workflow && Array.isArray(value.nodes) && Array.isArray(value.edges));
 }
 
-function conditionMatches(edge: WorkflowEdge, output: AgentOutput, sharedMemory: Record<string, any>, retryCount: number): boolean {
-  const condition = String(edge.condition_type || 'always').toLowerCase();
-  const outputPort = String(output.decision?.universal_result?.route?.outputPort || output.decision?.route?.outputPort || '').toLowerCase();
-  if (condition === 'output_port' || condition === 'decision_is') {
-    const expected = String(edge.condition_json?.value || edge.condition_json?.output_port || edge.source_handle || '').toLowerCase();
-    return Boolean(expected) && outputPort === expected;
+async function executeNestedWorkflow(
+  node: WorkflowNode,
+  input: AgentInput,
+  handlers: Record<string, WorkflowHandler>,
+  options: { timeoutMs?: number; emitTrace?: (trace: WorkflowTrace) => void },
+): Promise<AgentOutput> {
+  const child = node.config_json?.subworkflow_definition;
+  const depth = Number(input.sharedMemory.__workflow_depth || 0);
+  if (!isWorkflowDefinition(child)) {
+    return { status: 'BLOCKED', confidence: 100, reason: `El subworkflow ${node.name} no tiene una definicion valida`, events: [] };
   }
-  if (condition === 'always') return true;
-  if (condition === 'on_success') return output.status === 'SUCCESS';
-  if (condition === 'on_failed') return output.status === 'FAILED';
-  if (condition === 'on_blocked') return output.status === 'BLOCKED';
-  if (condition === 'on_rejected') return output.status === 'FAILED' || output.decision?.approved === false || output.decision?.rejected === true;
-  if (condition === 'confidence_lt') return Number(output.confidence || 0) < Number(edge.condition_json?.value ?? edge.condition_json?.threshold ?? 70);
-  if (condition === 'retry_count_lt') return retryCount < Number(edge.condition_json?.max ?? edge.condition_json?.value ?? 1);
-  return false;
+  if (depth >= MAX_SUBWORKFLOW_DEPTH) {
+    return { status: 'BLOCKED', confidence: 100, reason: `Profundidad maxima de subworkflows alcanzada en ${node.name}`, events: [] };
+  }
+  if (child.nodes.length > 100 || child.edges.length > 300) {
+    return { status: 'BLOCKED', confidence: 100, reason: `El subworkflow ${child.workflow.name || child.workflow.id} supera los limites del motor`, events: [] };
+  }
+  if (child.workflow.workflow_format !== 'universal_v2') {
+    return { status: 'BLOCKED', confidence: 100, reason: 'El subworkflow debe usar el formato universal_v2', events: [] };
+  }
+  try {
+    child.nodes.filter((childNode) => childNode.enabled !== false).forEach((childNode) => universalEnvelopeFor(childNode));
+  } catch (error: any) {
+    return { status: 'BLOCKED', confidence: 100, reason: `Contrato universal invalido en subworkflow: ${error?.message || error}`, events: [] };
+  }
+  const nested = await executeWorkflowGraph(
+    child,
+    {
+      ...input,
+      context: { ...input.context, parent_workflow_node: node.id },
+      sharedMemory: { ...input.sharedMemory, __workflow_depth: depth + 1 },
+    },
+    handlers,
+    options,
+  );
+  return {
+    status: nestedWorkflowResultStatus(nested.status),
+    confidence: nested.lastOutput?.confidence ?? (nested.status === 'PASSED' ? 100 : 60),
+    reason: nested.lastOutput?.reason || `Subworkflow ${child.workflow.name || child.workflow.id} finalizado como ${nested.status}`,
+    decision: { subworkflow: { id: child.workflow.id, workflow_version: child.workflow.version, status: nested.status } },
+    events: [{ type: 'subworkflow_completed', node_id: node.id, workflow_id: child.workflow.id, workflow_version: child.workflow.version, status: nested.status }],
+    sharedMemoryPatch: nested.sharedMemory,
+  };
 }
 
 export async function executeWorkflowGraph(
@@ -145,6 +210,22 @@ export async function executeWorkflowGraph(
   handlers: Record<string, WorkflowHandler>,
   options: { timeoutMs?: number; emitTrace?: (trace: WorkflowTrace) => void } = {},
 ): Promise<WorkflowExecutionResult> {
+  let compiledV3: CompiledWorkflowPlan | undefined;
+  if (isGraphAuthoritativeV3(definition)) {
+    const compilation = compileWorkflowSnapshot(definition as any, {
+      allow_legacy_fallback: false,
+      global_max_timeout_ms: options.timeoutMs,
+      global_max_attempts: 10,
+    });
+    if (!compilation.ok || !compilation.plan) {
+      const reason = compilation.issues.filter((issue) => issue.severity === 'error').map((issue) => `${issue.code}: ${issue.message}`).join(' | ');
+      return {
+        status: 'BLOCKED', sharedMemory: baseInput.sharedMemory || {}, history: baseInput.history || [], traces: [],
+        lastOutput: { status: 'BLOCKED', reason: `Workflow universal_v3 invalido: ${reason}`, events: [], decision: { graph_runtime_error_code: 'V3_COMPILE_FAILED', compile_issues: compilation.issues } },
+      };
+    }
+    compiledV3 = compilation.plan;
+  }
   const nodesById = new Map(definition.nodes.map((node) => [String(node.id), node]));
   const outgoing = new Map<string, WorkflowEdge[]>();
   for (const edge of definition.edges) {
@@ -156,7 +237,9 @@ export async function executeWorkflowGraph(
     list.sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
   }
 
-  let current = startNode(definition);
+  let current = compiledV3
+    ? nodesById.get(compiledV3.entry_node_id)
+    : startNode(definition);
   let status: WorkflowRunStatus = 'RUNNING';
   let sharedMemory: Record<string, any> = {
     base_url: '',
@@ -182,36 +265,111 @@ export async function executeWorkflowGraph(
       status = 'TIMEOUT';
       break;
     }
-    if (current.enabled === false) {
+    const compiledNode = compiledV3?.nodes[String(current.id)];
+    const runtimeNode = compiledNode ? runtimeNodeFromCompiled(current, compiledNode) : current;
+    if (runtimeNode.enabled === false) {
       lastOutput = { status: 'SKIPPED', reason: 'Nodo deshabilitado', events: [] };
     } else {
-      nodePasses[current.id] = (nodePasses[current.id] || 0) + 1;
+      nodePasses[runtimeNode.id] = (nodePasses[runtimeNode.id] || 0) + 1;
       let input: AgentInput = {
         ...baseInput,
+        context: {
+          ...baseInput.context,
+          workflow_format: workflowFormat(definition),
+        },
         history,
         sharedMemory,
       };
       const traceStarted = new Date();
-      const universalEnvelope = definition.workflow?.workflow_format === 'universal_v2' ? universalEnvelopeFor(current) : null;
+      const universalEnvelope = isUniversalWorkflow(definition) ? universalEnvelopeFor(runtimeNode) : null;
       let universalError: string | null = null;
-      if (definition.workflow?.workflow_format === 'universal_v2') {
+      if (isUniversalWorkflow(definition)) {
         try {
-          input = prepareUniversalAgentExecution(current, input).input;
+          input = prepareUniversalAgentExecution(runtimeNode, input).input;
         } catch (error: any) {
           universalError = error?.message || String(error);
         }
       }
-      const handler = handlers[current.type] || handlers[current.agent_key] || handlers.default;
-      const timeout = resolveNodeTimeoutMs(current, options.timeoutMs, startedAt);
+      input = applyNodeInputMapping(runtimeNode, input);
+      const universalAdapter = String(universalEnvelope?.contract.implementation?.native_adapter || '');
+      let handler: WorkflowHandler | undefined;
+      let dispatchError: string | null = null;
+      if (graphDispatchEnabled(definition)) {
+        try {
+          // In graph modes the persisted native_adapter is authoritative. The
+          // visual type and legacy agent_key are only aliases registered by
+          // the runtime, never an override for the graph contract.
+          handler = resolveAuthoritativeWorkflowHandler(runtimeNode, handlers, compiledNode ? {
+            requiredAdapter: compiledNode.native_adapter,
+            requireV3Atomic: true,
+          } : {});
+        } catch (error: any) {
+          dispatchError = error?.message || String(error);
+        }
+      } else {
+        // Compatibility path for historical snapshots that predate the graph
+        // runtime. This is intentionally unchanged until a workflow is
+        // explicitly migrated and published in a graph mode.
+        handler = handlers[runtimeNode.type] || handlers[runtimeNode.agent_key] || handlers[universalAdapter] || handlers.default;
+      }
+      const isSubworkflow = universalAdapter === 'universal-subworkflow/v1';
+      const timeout = compiledNode
+        ? compiledNodeTimeoutMs(compiledNode, options.timeoutMs, startedAt)
+        : resolveLegacyNodeTimeoutMs(runtimeNode, options.timeoutMs, startedAt);
       let output: AgentOutput = universalError
         ? { status: 'BLOCKED', reason: `Contrato universal invalido: ${universalError}`, events: [] }
-        : handler
-        ? await withTimeout(handler(current, input), timeout, {
+        : dispatchError
+        ? { status: 'BLOCKED', reason: `Despacho del grafo invalido: ${dispatchError}`, events: [], decision: {
+            graph_runtime_error: dispatchError,
+            graph_runtime_error_code: dispatchError.includes('native_adapter')
+              ? 'MISSING_NATIVE_ADAPTER'
+              : dispatchError.includes('not registered')
+              ? 'UNKNOWN_RUNTIME_ADAPTER'
+              : 'WORKFLOW_HANDLER_RESOLUTION_FAILED',
+          } }
+        : isSubworkflow
+        ? await withTimeout(executeNestedWorkflow(runtimeNode, input, handlers, options), timeout, {
             status: 'BLOCKED',
-            reason: `Timeout del nodo ${current.name}`,
+            reason: `Timeout del nodo ${runtimeNode.name}`,
             events: [],
           })
-        : { status: 'SKIPPED', reason: `Sin handler para ${current.type}`, events: [] };
+        : handler && compiledNode
+        ? await executeGraphNativeHandler(runtimeNode, compiledNode, input, handler, timeout)
+        : handler
+        ? await withTimeout(handler(runtimeNode, input), timeout, {
+            status: 'BLOCKED',
+            reason: `Timeout del nodo ${runtimeNode.name}`,
+            events: [],
+          })
+        : { status: 'SKIPPED', reason: `Sin handler para ${runtimeNode.type}`, events: [] };
+      output = applyNodeOutputMapping(runtimeNode, output);
+      if (
+        workflowFormat(definition) === 'universal_v3'
+        && universalAdapter === 'qa-action-planner/v2'
+      ) {
+        const currentStep = Number(sharedMemory.current_step || 1);
+        const configuredSteps = Array.isArray(input.context.qaSteps)
+          ? input.context.qaSteps
+          : Array.isArray(input.context.manualSteps)
+            ? input.context.manualSteps
+            : [];
+        const step = configuredSteps.find((candidate: any) => Number(candidate?.number ?? candidate?.numero_paso) === currentStep);
+        const fallbackAction = deterministicPlannerAction(step)
+          || (currentStep === 1 && typeof sharedMemory.base_url === 'string' && sharedMemory.base_url
+            ? { type: 'navigate', url: sharedMemory.base_url, step_number: currentStep, reason: 'Navegacion resuelta por Context Resolver.' }
+            : undefined);
+        if (fallbackAction) {
+          output = {
+            ...output,
+            decision: {
+              ...(output.decision || {}),
+              proposed_action: fallbackAction,
+              metrics: { ...(output.decision?.metrics || {}), implementation: 'v3-graph-structured-step-contract' },
+            },
+            sharedMemoryPatch: { ...(output.sharedMemoryPatch || {}), planned_action: fallbackAction },
+          };
+        }
+      }
       if (universalEnvelope) output = finalizeUniversalAgentExecution(universalEnvelope, output);
       lastOutput = output;
       sharedMemory = mergePatch(sharedMemory, output.sharedMemoryPatch);
@@ -247,7 +405,8 @@ export async function executeWorkflowGraph(
             editable_strategy: runtimeManifestFor(current.agent_key)?.editableStrategy,
           } : {}),
           ...(universalEnvelope ? {
-            workflow_format: 'universal_v2',
+            workflow_format: workflowFormat(definition),
+            ...(compiledV3 ? { graph_plan_hash: compiledV3.plan_hash, graph_runtime_mode: compiledV3.runtime_mode } : {}),
             universal_agent_version_id: universalEnvelope.version_id,
             universal_agent_version: universalEnvelope.version,
             universal_agent_key: universalEnvelope.contract.key,
@@ -263,7 +422,7 @@ export async function executeWorkflowGraph(
       options.emitTrace?.(trace);
     }
 
-    if (TERMINAL_TYPES.has(current.type)) {
+    if ((compiledV3 && compiledNode?.terminal_ports.includes(outputPortFor(lastOutput))) || (!compiledV3 && TERMINAL_TYPES.has(current.type))) {
       status = lastOutput?.status === 'SUCCESS' || lastOutput?.status === 'SKIPPED'
         ? 'PASSED'
         : lastOutput?.status === 'BLOCKED'
@@ -271,28 +430,75 @@ export async function executeWorkflowGraph(
           : 'FAILED';
       break;
     }
-    if (lastOutput?.next && definition.workflow?.workflow_format !== 'universal_v2') {
+    if (lastOutput?.next && !isUniversalWorkflow(definition)) {
       current = nodesById.get(String(lastOutput.next));
       continue;
     }
     const currentNodeId = current.id;
+    if (compiledV3) {
+      let nextCompiledEdge;
+      try {
+        nextCompiledEdge = selectCompiledV3Edge({
+          plan: compiledV3,
+          nodeId: currentNodeId,
+          output: lastOutput,
+          state: sharedMemory,
+          edgePasses,
+          retryCount: Number(sharedMemory.retry_count?.[currentNodeId] || nodePasses[currentNodeId] || 0),
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        lastOutput = {
+          status: 'BLOCKED',
+          reason: `Seleccion de conexion V3 bloqueada: ${reason}`,
+          events: [],
+          decision: { graph_runtime_error_code: 'AMBIGUOUS_EDGE_MATCH', graph_runtime_error: reason },
+        };
+        history.push({ ts: new Date().toISOString(), node_id: currentNodeId, status: 'BLOCKED', reason });
+        status = 'BLOCKED';
+        break;
+      }
+      if (!nextCompiledEdge) {
+        status = lastOutput?.status === 'SUCCESS' ? 'PASSED' : lastOutput?.status === 'BLOCKED' ? 'BLOCKED' : 'FAILED';
+        break;
+      }
+      edgePasses[nextCompiledEdge.id] = (edgePasses[nextCompiledEdge.id] || 0) + 1;
+      if (nextCompiledEdge.data_mapping.length) {
+        const targetInputs: Record<string, Record<string, any>> = { ...(sharedMemory.universal_inputs || {}) };
+        const currentInputs: Record<string, any> = { ...(targetInputs[nextCompiledEdge.target_node_id] || {}) };
+        const source = {
+          outputs: lastOutput?.decision?.universal_result?.outputs || lastOutput?.decision?.outputs || {},
+          memory: sharedMemory,
+        };
+        for (const mapping of nextCompiledEdge.data_mapping) {
+          if (mapping.target.startsWith('inputs.')) currentInputs[mapping.target.slice('inputs.'.length)] = valueAtPath(source, mapping.source);
+        }
+        targetInputs[nextCompiledEdge.target_node_id] = currentInputs;
+        sharedMemory = { ...sharedMemory, universal_inputs: targetInputs };
+      }
+      current = nodesById.get(nextCompiledEdge.target_node_id);
+      continue;
+    }
     const nextEdge = (outgoing.get(currentNodeId) || []).find((edge) => {
       edgePasses[edge.id] = edgePasses[edge.id] || 0;
       if (edgePasses[edge.id] >= Number(edge.max_passes || 1)) return false;
       const retryCount = Number(sharedMemory.retry_count?.[currentNodeId] || nodePasses[currentNodeId] || 0);
-      if (definition.workflow?.workflow_format === 'universal_v2') {
-        const port = String(lastOutput?.decision?.universal_result?.route?.outputPort || '').toLowerCase();
+      if (isUniversalWorkflow(definition)) {
+        const port = outputPortFor(lastOutput);
         const sourceHandle = String(edge.source_handle || '').toLowerCase();
-        if (sourceHandle && port && sourceHandle !== port) return false;
+        // A typed connection must never become a catch-all edge when an agent
+        // omits its route. This keeps the visual port contract equivalent to
+        // the runtime selection contract.
+        if (sourceHandle && sourceHandle !== port) return false;
       }
-      return conditionMatches(edge, lastOutput || { status: 'SKIPPED', events: [] }, sharedMemory, retryCount);
+      return conditionMatches(edge, lastOutput || { status: 'SKIPPED', events: [] }, retryCount);
     });
     if (!nextEdge) {
       status = lastOutput?.status === 'SUCCESS' ? 'PASSED' : lastOutput?.status === 'BLOCKED' ? 'BLOCKED' : 'FAILED';
       break;
     }
     edgePasses[nextEdge.id] += 1;
-    if (definition.workflow?.workflow_format === 'universal_v2' && Array.isArray(nextEdge.data_mapping_json) && nextEdge.data_mapping_json.length) {
+    if (isUniversalWorkflow(definition) && Array.isArray(nextEdge.data_mapping_json) && nextEdge.data_mapping_json.length) {
       const targetInputs: Record<string, Record<string, any>> = { ...(sharedMemory.universal_inputs || {}) };
       const currentInputs: Record<string, any> = { ...(targetInputs[String(nextEdge.target_node_id)] || {}) };
       const source = {
@@ -311,32 +517,4 @@ export async function executeWorkflowGraph(
   }
 
   return { status, sharedMemory, history, traces, lastOutput };
-}
-
-function resolveNodeTimeoutMs(node: WorkflowNode, workflowTimeoutMs: number | undefined, workflowStartedAt: number): number {
-  const remainingWorkflowMs = Number(workflowTimeoutMs || 0) > 0
-    ? Math.max(1000, Number(workflowTimeoutMs) - (Date.now() - workflowStartedAt))
-    : 0;
-  const configuredTimeoutMs = Math.max(1, Number(node.timeout_sec || 60)) * 1000;
-  const type = String(node.type || '').toLowerCase();
-
-  // The Executor runs the whole QA step runner. A fixed 60s cap is too short for
-  // valid slow tests and for large-context local models, so let the global
-  // execution timeout govern it unless the node has an explicit larger value.
-  if ((type === 'executor' || type === 'browser_action_agent' || type === 'contextresolver' || type === 'auditor') && configuredTimeoutMs <= 60000 && remainingWorkflowMs > 0) {
-    return remainingWorkflowMs;
-  }
-
-  if (remainingWorkflowMs > 0) {
-    return Math.min(configuredTimeoutMs, remainingWorkflowMs);
-  }
-  return configuredTimeoutMs;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeout: number, fallback: T): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), timeout);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
 }

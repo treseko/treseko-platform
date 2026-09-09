@@ -1,20 +1,48 @@
 # Guía de Inventario
 
-Inventario registra los activos y endpoints que intervienen en las pruebas: equipos, navegadores, dispositivos, servicios, cuentas de prueba u otros recursos del proyecto.
+Inventario registra activos y endpoints que ayudan a describir o reproducir un
+entorno. No reemplaza Ambientes, Datasets ni la configuración ejecutable del
+caso.
 
-## Organizar el inventario
+## Qué podés registrar
 
-1. Abrí **Inventario** con el proyecto correcto seleccionado.
-2. Creá las carpetas o categorías que representen tu entorno.
-3. Agregá cada activo con un nombre identificable, tipo y estado.
-4. Completá los datos técnicos y endpoints solo cuando sean útiles para ejecutar o reproducir una prueba.
-5. Guardá y revisá que el activo quede en la categoría correcta.
+Un activo puede ser servidor, computadora, navegador, dispositivo, servicio,
+API, base de datos, contenedor, nodo de ejecución u otro recurso. Según el
+tipo, podés completar naturaleza, estado, criticidad, responsable, ubicación,
+sistema operativo, fabricante, modelo, serie, asset tag, activo padre,
+endpoints y metadatos personalizados.
 
-## Buenas prácticas
+## Crear o actualizar un activo
 
-- No guardes secretos ni contraseñas reales en notas o endpoints.
-- Usá nombres estables, por ejemplo `QA Chrome Windows` o `API staging`.
-- Actualizá el estado de un activo cuando ya no esté disponible.
-- Eliminá solo los activos que no tengan valor histórico ni referencias activas.
+1. Abrí **Inventario** con el proyecto correcto.
+2. Elegí una categoría.
+3. Seleccioná **Nuevo activo** o abrí uno existente.
+4. Completá nombre, tipo, estado y datos útiles.
+5. Agregá endpoints con tipo, valor, puerto, protocolo y principal cuando
+   corresponda.
+6. Guardá y verificá categoría y relación padre-hijo.
 
-El inventario complementa ambientes y datasets del proyecto. Usá [Guía de proyectos](PROJECTS_GUIDE.md) para definir esos elementos antes de asociarlos a los casos.
+Un endpoint documentado no habilita por sí mismo una conexión. Los casos `API`
+y `CONVERSACIONAL` resuelven su contrato desde ambiente, dataset y caso.
+
+## Inventario, ambientes y datasets
+
+| Elemento | Responde a | Uso |
+|---|---|---|
+| Inventario | ¿Qué recurso existe? | Identificar activos y endpoints. |
+| Ambiente | ¿Dónde se ejecuta? | Resolver destino y configuración. |
+| Dataset | ¿Con qué datos? | Proveer valores preparados. |
+
+No guardes contraseñas, tokens ni secretos reales en notas, metadatos o
+endpoints.
+
+## Buenas prácticas y permisos
+
+- Usá nombres estables, como `QA Chrome Windows` o `API staging`.
+- Mantené estado, responsable y endpoint principal actualizados.
+- No borres activos con referencias activas o valor histórico.
+- La edición y eliminación dependen de tus permisos y relaciones existentes.
+- `PERFORMANCE` es reservado; no uses Inventario para simular un ejecutor de
+  carga no documentado.
+
+Para preparar el contexto, consultá [Guía de proyectos](PROJECTS_GUIDE.md).

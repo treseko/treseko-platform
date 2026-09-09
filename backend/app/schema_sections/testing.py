@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from .auth import validate_preference_json_payload
 from .attachments import PasoAttachment as PasoAttachmentSchema
+from ..services.chatbot_config import normalize_chatbot_config
 from ..models import (
     AiReviewStatus,
     AutomationJobStatus,
@@ -19,6 +20,7 @@ from ..models import (
     Prioridad,
     Rol,
     TipoPrueba,
+    FormatoPrueba,
 )
 
 MAX_SUITE_NAME_LENGTH = 160
@@ -36,6 +38,7 @@ MAX_TEST_CASE_FRAMEWORK_LENGTH = 80
 MAX_TEST_CASE_STEPS = 500
 MAX_TEST_STEP_TEXT_LENGTH = 12000
 MAX_TEST_STEP_METADATA_BYTES = 32 * 1024
+MAX_CHATBOT_CONFIG_BYTES = 256 * 1024
 
 
 def validate_test_case_dataset(value: Optional[List[Dict[str, str]]]) -> Optional[List[Dict[str, str]]]:
@@ -56,6 +59,22 @@ def validate_test_step_metadata(value: Optional[dict]) -> Optional[dict]:
         max_bytes=MAX_TEST_STEP_METADATA_BYTES,
         label="test step metadata",
     )
+
+
+def validate_chatbot_config(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return {}
+    bounded = validate_preference_json_payload(
+        value,
+        max_bytes=MAX_CHATBOT_CONFIG_BYTES,
+        label="chatbot configuration",
+    ) or {}
+    normalized = normalize_chatbot_config(bounded)
+    return validate_preference_json_payload(
+        normalized,
+        max_bytes=MAX_CHATBOT_CONFIG_BYTES,
+        label="normalized chatbot configuration",
+    ) or {}
 
 
 class SuiteBase(BaseModel):
@@ -144,10 +163,13 @@ class CasoPruebaBase(BaseModel):
     prioridad: Prioridad
     criticidad: Criticidad = Criticidad.MEDIA
     tipo_prueba: TipoPrueba
+    formato_prueba: FormatoPrueba = FormatoPrueba.CLASICA
     estado_caso: EstadoCaso = EstadoCaso.ACTIVO
     suite_id: Optional[UUID] = None
     componente_id: Optional[UUID] = None
     dataset: List[Dict[str, str]] = Field(default_factory=list, max_length=MAX_TEST_CASE_DATASET_ITEMS)
+    configuracion_chatbot: Dict[str, Any] = Field(default_factory=dict)
+    configuracion_api: Dict[str, Any] = Field(default_factory=dict)
     etiquetas: List[str] = Field(default_factory=list, max_length=MAX_TEST_CASE_TAGS)
     script_automatizado: Optional[str] = Field(default=None, max_length=MAX_TEST_CASE_SCRIPT_LENGTH)
     framework: Optional[str] = Field(default=None, max_length=MAX_TEST_CASE_FRAMEWORK_LENGTH)
@@ -156,6 +178,33 @@ class CasoPruebaBase(BaseModel):
     @classmethod
     def validate_dataset(cls, value):
         return validate_test_case_dataset(value) or []
+
+    @field_validator("configuracion_chatbot", mode="before")
+    @classmethod
+    def validate_chatbot_configuration(cls, value):
+        return validate_chatbot_config(value)
+
+    @field_validator("configuracion_api", mode="before")
+    @classmethod
+    def validate_api_configuration(cls, value):
+        bounded = validate_preference_json_payload(
+            value or {}, max_bytes=256 * 1024, label="api test configuration"
+        ) or {}
+        schema_version = bounded.get("schema_version")
+        if schema_version not in {None, "treseko.api-test/v1", "treseko.api-test/v2"}:
+            raise ValueError("schema_version de API no compatible")
+        if bounded.get("request") is not None and not isinstance(bounded.get("request"), dict):
+            raise ValueError("request de API debe ser un objeto")
+        steps = bounded.get("steps")
+        if steps is not None and (not isinstance(steps, list) or len(steps) > MAX_TEST_CASE_STEPS):
+            raise ValueError("steps de API debe ser una lista acotada")
+        return {"schema_version": schema_version or "treseko.api-test/v1", **bounded} if bounded else {}
+
+    @field_validator("formato_prueba", mode="before")
+    @classmethod
+    def normalize_legacy_case_format(cls, value):
+        # Packages and clients from the first 1.0.3 build used FUNCIONAL.
+        return FormatoPrueba.CLASICA.value if str(value or "").upper() == "FUNCIONAL" else value
 
     @field_validator("etiquetas", mode="before")
     @classmethod
@@ -239,10 +288,15 @@ class CasoVersion(BaseModel):
     prioridad: Prioridad
     criticidad: Criticidad = Criticidad.MEDIA
     tipo_prueba: TipoPrueba
+    formato_prueba: FormatoPrueba = FormatoPrueba.CLASICA
     estado_caso: EstadoCaso
     suite_id: Optional[UUID] = None
     componente_id: Optional[UUID] = None
     dataset: List[Dict[str, str]] = Field(default_factory=list)
+    configuracion_chatbot: Dict[str, Any] = Field(default_factory=dict)
+    configuracion_api: Dict[str, Any] = Field(default_factory=dict)
+    script_automatizado: Optional[str] = None
+    framework: Optional[str] = None
     etiquetas: List[str] = Field(default_factory=list)
     pasos: List[PasoVersion] = Field(default_factory=list)
     creado_por: UUID

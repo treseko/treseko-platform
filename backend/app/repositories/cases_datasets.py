@@ -1,7 +1,8 @@
 import copy
 
 from .repository_context import *
-from .suites_cases import clone_case_traceability
+from .dataset_variables import native_environment_variables
+from .suites_cases import clone_case_traceability, update_caso_metadata_versioned
 
 
 class CaseArchiveConflict(ValueError):
@@ -71,8 +72,11 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
         prioridad=original.prioridad,
         criticidad=original.criticidad,
         tipo_prueba=original.tipo_prueba,
+        formato_prueba=original.formato_prueba,
         estado_caso=original.estado_caso,
         dataset=copy.deepcopy(original.dataset),
+        configuracion_chatbot=copy.deepcopy(original.configuracion_chatbot or {}),
+        configuracion_api=copy.deepcopy(original.configuracion_api or {}),
         etiquetas=copy.deepcopy(original.etiquetas or []),
         script_automatizado=original.script_automatizado,
         framework=original.framework,
@@ -207,25 +211,30 @@ async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.
                 + (f" ({build_names}). Retírala de esa build antes de archivarla." if build_names else ".")
             )
 
-    for field, value in update_data.items():
-        setattr(db_caso, field, value)
+    updated = db_caso
+    if update_data:
+        updated = await update_caso_metadata_versioned(
+            db=db,
+            caso_id=caso_id,
+            update=schemas.CasoPruebaUpdateMetadata(**update_data),
+        )
 
     if estado_caso is not None:
         master_wide_states = {models.EstadoCaso.ARCHIVADO, models.EstadoCaso.ACTIVO}
-        if estado_caso in master_wide_states or db_caso.estado_caso == models.EstadoCaso.ARCHIVADO:
+        if estado_caso in master_wide_states or updated.estado_caso == models.EstadoCaso.ARCHIVADO:
             versions_result = await db.execute(
                 select(models.CasoPrueba).filter(
-                    models.CasoPrueba.master_id == db_caso.master_id,
+                    models.CasoPrueba.master_id == updated.master_id,
                     *_visible_case_filter()
                 )
             )
             for version in versions_result.scalars().all():
                 version.estado_caso = estado_caso
         else:
-            db_caso.estado_caso = estado_caso
+            updated.estado_caso = estado_caso
     await db.commit()
-    await db.refresh(db_caso)
-    return db_caso
+    await db.refresh(updated)
+    return updated
 
 async def move_caso(db: AsyncSession, caso_id: UUID, suite_id: UUID):
     db_caso = await get_caso(db, caso_id)
@@ -246,10 +255,11 @@ async def move_caso(db: AsyncSession, caso_id: UUID, suite_id: UUID):
         raise ValueError("No se puede mover un caso a una suite de otro componente")
     if not db_caso.componente_id and target_suite.componente_id:
         raise ValueError("No se puede mover un caso sin componente a una suite con componente")
-    db_caso.suite_id = suite_id
-    await db.commit()
-    await db.refresh(db_caso)
-    return db_caso
+    return await update_caso_metadata_versioned(
+        db=db,
+        caso_id=caso_id,
+        update=schemas.CasoPruebaUpdateMetadata(suite_id=suite_id),
+    )
 
 def _normalize_dataset(dataset: Any) -> List[Dict[str, str]]:
     if not dataset:
@@ -299,6 +309,7 @@ def _case_variable_aliases(case_variables: Dict[str, str]) -> Dict[str, str]:
     aliases.update({f"CASE.{key}": value for key, value in (case_variables or {}).items()})
     return aliases
 
+
 async def resolve_case_dataset(
     db: AsyncSession,
     caso_id: UUID,
@@ -328,19 +339,15 @@ async def resolve_case_dataset(
     dataset_variables = {}
     component_variables = {}
     if entorno:
-        native_env = {
-            "ENV.ID": str(entorno.id),
-            "ENV.NAME": entorno.nombre or "",
-            "ENV.BASE_URL": entorno.url or "",
-            "ENV.URL": entorno.url or "",
-            "ENV.VERSION": entorno.version or "",
-            "ENV.STATUS": entorno.status or "",
-        }
+        native_env = native_environment_variables(entorno)
         raw_env_variables = {str(key): str(value) for key, value in (entorno.variables or {}).items()}
         env_variables = {
             **raw_env_variables,
             **{f"ENV.{key}": value for key, value in raw_env_variables.items()},
         }
+        for key, value in raw_env_variables.items():
+            if key.lower() == "url":
+                env_variables["ENV.URL"] = value
         if dataset_id:
             dataset_result = await db.execute(
                 select(models.EntornoDataset).filter(
@@ -425,6 +432,7 @@ async def resolve_case_dataset(
         "dataset_ambiente": environment_dataset_resuelto,
         "dataset_caso_resuelto": dataset_resuelto,
         "variables_ambiente": {**native_env, **env_variables},
+        "configuracion_chatbot_ambiente": entorno.configuracion_chatbot if entorno else {},
         "variables_componente": component_variables,
         "variables_configuradas": {},
         "variables_resueltas": variables_resueltas,

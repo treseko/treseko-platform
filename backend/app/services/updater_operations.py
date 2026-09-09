@@ -1,5 +1,6 @@
 from .updater import *
 from .updater import _utc_iso, _pg_dump_url
+from .update_installation_mode import require as require_installation_mode
 
 async def check_community_update(self, channel: str | None = None, *, force_refresh: bool = False) -> dict[str, Any]:
     channel = channel if channel in COMMUNITY_UPDATE_CHANNELS else configured_community_update_channel()
@@ -125,8 +126,13 @@ async def apply_update(
     initiated_by_email: str | None = None,
     initiated_from_ip: str | None = None,
     apply_confirmation: str | None = None,
+    download_manifest: dict[str, Any] | None = None,
 ) -> str:
     manifest = manifest or {}
+    mode = require_installation_mode("request")
+    if mode == "coordinated":
+        from .update_host_bridge_client import CoordinatedBridgeSettings
+        CoordinatedBridgeSettings.from_environment()
     self.validate_update_request(channel=channel, manifest=manifest)
     async with self._lock:
         requested_version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()
@@ -174,7 +180,9 @@ async def apply_update(
             persist=False,
         )
         self._persist_history()
-        self._running_task = asyncio.create_task(self._run_apply(task_id, manifest, force))
+        self._running_task = asyncio.create_task(
+            self._run_apply(task_id, manifest, force, download_manifest=download_manifest)
+        )
         return task_id
 
 def validate_update_request(self, *, channel: str, manifest: dict[str, Any] | None) -> dict[str, Any]:
@@ -198,6 +206,20 @@ def validate_update_request(self, *, channel: str, manifest: dict[str, Any] | No
 async def get_update_status(self, task_id: str | None = None) -> dict[str, Any]:
     requested_id = task_id or self._latest_task_id
     if requested_id and requested_id in self._tasks:
+        if require_installation_mode("status") == "coordinated":
+            from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeSettings
+            state = self._tasks[requested_id]
+            try:
+                report = CoordinatedBridgeClient(CoordinatedBridgeSettings.from_environment()).read_report(requested_id)
+            except Exception:
+                report = None
+            if report:
+                if report.get("status") == "complete":
+                    state.status, state.stage, state.progress_pct = "done", "applied", 100
+                    state.completed_at = state.completed_at or _utc_iso()
+                elif report.get("status") in {"prepared", "prepare_pending", "apply_pending", "apply_uncertain"}:
+                    state.status, state.stage = "in_progress", report["status"]
+                    state.progress_pct = 100 if report["status"] == "prepared" else min(state.progress_pct, 99)
         return self._tasks[requested_id].as_dict()
     return UpdateTaskState(task_id="", status="idle", channel="").as_dict()
 
@@ -212,8 +234,30 @@ async def get_update_history(self, limit: int = 20) -> list[dict[str, Any]]:
 
 async def restart_prepared_update(self, task_id: str) -> dict[str, Any]:
     state = self._tasks.get(task_id)
+    if (state and require_installation_mode("request") == "coordinated"
+            and state.stage != "prepared"):
+        from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeSettings
+        try:
+            report = CoordinatedBridgeClient(CoordinatedBridgeSettings.from_environment()).read_report(task_id)
+        except Exception:
+            report = None
+        if report and report.get("status") == "prepared":
+            state.status, state.stage, state.progress_pct = "in_progress", "prepared", 100
     if not state or state.stage != "prepared":
         raise ValueError("No hay una actualizacion preparada para reiniciar.")
+    if require_installation_mode("request") == "coordinated":
+        from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeSettings
+        manifest = CoordinatedBridgeClient(CoordinatedBridgeSettings.from_environment()).load_manifest(task_id)
+        if not isinstance(manifest, dict):
+            raise ValueError("No hay manifest coordinado fijado para reiniciar.")
+        client = CoordinatedBridgeClient(CoordinatedBridgeSettings.from_environment())
+        client.submit_apply(task_id, manifest)
+        state.status = "in_progress"
+        state.stage = "apply_pending"
+        state.progress_pct = 95
+        state.message = "Aplicacion coordinada enviada al host."
+        self._persist_history()
+        return state.as_dict()
     if not ENABLE_SELF_UPDATE_APPLY:
         raise ValueError("La aplicacion automatica esta deshabilitada por configuracion.")
     state.status = "restarting"
@@ -249,6 +293,16 @@ async def rollback(
     requested_id = task_id or self._latest_task_id
     if not requested_id or requested_id not in self._tasks:
         raise ValueError("No existe una tarea de actualizacion para revertir.")
+    if require_installation_mode("request") == "coordinated":
+        raise ValueError("rollback_owned_by_host_coordinator")
+    if restore_database:
+        if confirmation != "RESTORE_DATABASE":
+            raise ValueError("Para restaurar la base de datos confirma con RESTORE_DATABASE.")
+        state = self._tasks[requested_id]
+        if not state.backup_path:
+            raise ValueError("La tarea no tiene backup de base de datos para restaurar.")
+        if not Path(state.backup_path).exists():
+            raise ValueError("El backup de base de datos ya no existe en disco.")
     state = self._tasks[requested_id]
     state.rollback_by_user_id = requested_by_user_id
     state.rollback_by_email = requested_by_email
@@ -273,13 +327,7 @@ async def rollback(
         flag_file.unlink()
     restored_database = False
     if restore_database:
-        if confirmation != "RESTORE_DATABASE":
-            raise ValueError("Para restaurar la base de datos confirma con RESTORE_DATABASE.")
-        if not state.backup_path:
-            raise ValueError("La tarea no tiene backup de base de datos para restaurar.")
         db_backup_path = Path(state.backup_path)
-        if not db_backup_path.exists():
-            raise ValueError("El backup de base de datos ya no existe en disco.")
         await self._restore_database_backup(db_backup_path, requested_id)
         restored_database = True
     restored_code = False

@@ -1,4 +1,5 @@
 import { SuiteTree } from '../../SuiteTree'
+import type { CaseFormat } from './caseFormat'
 
 type AuthoringSuiteTreeViewProps = {
   suites: any[]
@@ -11,7 +12,7 @@ type AuthoringSuiteTreeViewProps = {
   testSearchQuery: string
   selectSuiteTarget: (suiteId: string) => void
   setExpandedSuites: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void
-  openCreateCaseInSuite: (suiteId: string) => void
+  openCreateCaseInSuite: (suiteId: string, format?: CaseFormat) => void
   openCreateSuiteModal: (parentId?: string | null) => void
   openEditSuiteModal: (suiteId: string) => void
   openCloneSuiteModal: (suite: any) => void

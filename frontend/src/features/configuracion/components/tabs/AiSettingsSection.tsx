@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, Form, Button } from 'react-bootstrap'
 import { Save } from 'lucide-react'
 import { AiAgentPromptModal } from './AiAgentPromptModal'
@@ -16,6 +16,8 @@ import { useWorkflowRuntimeTraces } from '../../hooks/useWorkflowRuntimeTraces'
 import { useWorkflowVersions } from '../../hooks/useWorkflowVersions'
 import type { AiWorkflow } from '../../types/configuracion'
 import { agentActionOptions, capabilityVariant, formatWorkflowDate, workflowStatusColor } from '../../mappers/configuracionMappers'
+import { canEditWorkflowDraft, resolveWorkflowActionPermissions } from '../../workflowPermissions'
+import { chooseWorkflowForEditor, readWorkflowEditorSelection, rememberWorkflowEditorSelection } from '../../workflowSelection'
 
 type AiSettingsSectionProps = {
   configTab: string
@@ -30,6 +32,7 @@ type AiSettingsSectionProps = {
   saveAiEngineConfig: (config: any) => void
   fetchWithAuth: any
   showFeedback: any
+  confirmAction: (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
   t: (key: any, params?: any) => string
   onOpenIaScheduler?: (...args: any[]) => void
   setActiveTab: (tab: string) => void
@@ -48,6 +51,7 @@ export function AiSettingsSection({
   saveAiEngineConfig,
   fetchWithAuth,
   showFeedback,
+  confirmAction,
   t,
   onOpenIaScheduler,
   setActiveTab,
@@ -58,6 +62,9 @@ export function AiSettingsSection({
   const [workflowLoading, setWorkflowLoading] = useState(false)
   const [workflowLoadError, setWorkflowLoadError] = useState('')
   const [workflowJsonError, setWorkflowJsonError] = useState('')
+  const workflowPermissions = resolveWorkflowActionPermissions(canAccessCapability)
+  const canEditAi = canAccessCapability('configuracion.pruebas_ia', 'edit')
+    || canAccessCapability('motor_ia.configuracion', 'edit')
   const {
     setFlowNodes,
     setFlowEdges,
@@ -87,16 +94,18 @@ export function AiSettingsSection({
     setWorkflowDraft,
     setAiWorkflows,
   })
-  const activeWorkflows = useMemo(() => aiWorkflows.filter(workflow => workflow.status === 'ACTIVE'), [aiWorkflows])
   const loadAiWorkflows = async () => {
-    if (!canAccessModule('motor_ia', 'read') && !canAccessModule('configuracion', 'read')) return
+    if (!workflowPermissions.view && !canAccessModule('motor_ia', 'read') && !canAccessModule('configuracion', 'read')) return
     setWorkflowLoading(true)
     try {
       setWorkflowLoadError('')
       const workflows = await fetchAiWorkflows(fetchWithAuth)
       setAiWorkflows(workflows)
-      const activeId = aiEngineConfig.active_workflow_id || workflows.find((item: AiWorkflow) => item.status === 'ACTIVE')?.id || workflows[0]?.id
-      const selected = workflows.find((item: AiWorkflow) => item.id === activeId) || workflows[0] || null
+      const selected = chooseWorkflowForEditor(
+        workflows,
+        readWorkflowEditorSelection(),
+        aiEngineConfig.active_workflow_id,
+      )
       setWorkflowDraft(selected)
       syncFlowFromWorkflow(selected)
       if (selected?.id) loadWorkflowVersions(selected.id)
@@ -131,6 +140,7 @@ export function AiSettingsSection({
     syncFlowFromWorkflow,
     loadAiWorkflows,
     showFeedback,
+    confirmAction,
     t,
   })
 
@@ -145,15 +155,14 @@ export function AiSettingsSection({
   }, [configTab, hasAiEngineAccess])
 
   const selectWorkflow = (workflow: AiWorkflow) => {
+    rememberWorkflowEditorSelection(workflow.id)
     setWorkflowDraft(workflow)
     setSelectedWorkflowElement(null)
     syncFlowFromWorkflow(workflow)
     loadWorkflowVersions(workflow.id)
   }
 
-  const canEditAi = canAccessCapability('configuracion.pruebas_ia', 'edit')
-    || canAccessCapability('motor_ia.configuracion', 'edit')
-    || canAccessCapability('motor_ia.workflow_drafts', 'edit')
+  const canEditWorkflow = canEditWorkflowDraft(workflowDraft?.status, workflowPermissions)
   const {
     graphSaveState,
     undoAction: workflowUndoAction,
@@ -184,7 +193,7 @@ export function AiSettingsSection({
     onWorkflowConnect,
   } = useWorkflowLocalEdits({
     workflowDraft,
-    canEditAi,
+    canEditAi: canEditWorkflow,
     autoLayoutEnabled,
     setWorkflowDraft,
     setAiWorkflows,
@@ -209,6 +218,7 @@ export function AiSettingsSection({
     postWorkflowAction,
     copyWorkflowAsBlocks,
     copyWorkflowAsUniversal,
+    copyWorkflowAsUniversalV3,
     exportUniversalWorkflow,
     importUniversalWorkflow,
     createUniversalAgent,
@@ -216,7 +226,7 @@ export function AiSettingsSection({
     fetchWithAuth,
     workflowDraft,
     aiWorkflows,
-    canEditAi,
+    canEditAi: canEditWorkflow,
     onOpenIaScheduler,
     setWorkflowDraft,
     setAiWorkflows,
@@ -330,13 +340,17 @@ export function AiSettingsSection({
                     graphSaveState={graphSaveState}
                     workflowUndoAction={workflowUndoAction}
                     undoLastGraphOperation={undoLastGraphOperation}
-                    canEditAi={canEditAi}
+                    canEditAi={canEditWorkflow}
+                    workflowPermissions={workflowPermissions}
+                    fetchWithAuth={fetchWithAuth}
                     onOpenIaScheduler={onOpenIaScheduler}
                     autoLayoutEnabled={autoLayoutEnabled}
                     workflowStatusColor={workflowStatusColor}
                     saveWorkflowDraft={saveWorkflowDraft}
                     validateWorkflow={validateWorkflow}
                     publishWorkflowVersion={publishWorkflowVersion}
+                    workflowVersions={workflowVersions}
+                    activateWorkflowVersion={activateWorkflowVersion}
                     executeCurrentWorkflow={executeCurrentWorkflow}
                     switchToAutoLayoutMode={switchToAutoLayoutMode}
                     switchToManualMode={switchToManualMode}
@@ -348,6 +362,7 @@ export function AiSettingsSection({
                     postWorkflowAction={postWorkflowAction}
                     copyWorkflowAsBlocks={copyWorkflowAsBlocks}
                     copyWorkflowAsUniversal={copyWorkflowAsUniversal}
+                    copyWorkflowAsUniversalV3={copyWorkflowAsUniversalV3}
                     exportUniversalWorkflow={exportUniversalWorkflow}
                     importUniversalWorkflow={importUniversalWorkflow}
                     createUniversalAgent={createUniversalAgent}
@@ -358,7 +373,7 @@ export function AiSettingsSection({
                     refitWorkflow={refitWorkflow}
                     workflowLoadError={workflowLoadError}
                     agentPresetsError={agentPresetsError}
-                    activeWorkflows={aiWorkflows}
+                    workflows={aiWorkflows}
                     agentPresets={agentPresets}
                     selectWorkflow={selectWorkflow}
                     createWorkflow={createWorkflow}

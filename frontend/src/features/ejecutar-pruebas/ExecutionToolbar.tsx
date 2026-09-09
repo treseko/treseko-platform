@@ -24,10 +24,8 @@ export function ExecutionToolbar({ options }: { options: any }) {
             </h6>
             <div className="d-flex gap-2 align-items-center">
               <span
-                className="badge rounded-pill"
+                className="badge rounded-pill bg-light text-dark border"
                 style={{
-                  background: "#e9ecef",
-                  color: "#495057",
                   fontSize: "var(--app-font-size-meta)",
                 }}
               >

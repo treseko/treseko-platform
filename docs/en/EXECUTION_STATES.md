@@ -2,43 +2,60 @@
 
 <!-- Language: en -->
 
-States show the result of a test, each step and a complete execution. Use them
-to decide what to review, repeat or report.
+Treseko uses different states for a case or step, the complete `run` and the
+worker jobs. Do not mix them when interpreting history or a report.
+
+## Format and modality
+
+`formato_prueba` describes the structure: `CLASICA`, `API`, `CONVERSACIONAL` or
+`PERFORMANCE`. `tipo_prueba` describes the modality: `MANUAL`, `AUTOMATIZADA` or
+`AUTOMATIZADA_AI`. In addition, each execution records an operating mode:
+`MANUAL`, `IA`, `AUTOMATIZADA` or `EXTERNA`.
+
+A conversational case is not automatically an AI test. `PERFORMANCE` is
+reserved and has no documented load executor.
 
 ## Case or step states
 
 | State | Meaning | What to do |
 |---|---|---|
-| Not run | No result has been recorded yet. | Run the test when it is ready. |
-| Passed | The observed result matches what was expected. | Save the result and continue. |
-| Failed | The behavior does not match what was expected. | Add observations and evidence; report a bug when appropriate. |
-| Blocked | The case could not be validated because of a dependency or impediment. | Explain the reason and link or create a bug when applicable. |
-| Pending | The step remains open during a manual execution. | Select the result before finishing. |
+| Not run | No result has been recorded yet. | Run it when the context is ready. |
+| Passed | It matches what was expected. | Keep the evidence and continue. |
+| Failed | It does not match what was expected. | Record the observed result, notes and evidence. |
+| Blocked | A dependency prevented validation. | Explain the block and track it. |
+| AI running | An AI evaluation is in progress. | Wait for completion or review its state. |
 
-A case is **Passed** only when all required steps have been validated
-successfully. A failure or block remains visible in history and reports.
+For API tests, status, headers, body and assertions are evaluated. For
+conversational tests, turns, responses, expectations and evaluation are kept.
 
 ## Run states
 
 | State | Use |
 |---|---|
-| Open | The execution is in progress and accepts results. |
-| Closed | Results were saved and the run was completed. |
-| Canceled | The execution stopped before completion. |
+| Open | It was created and accepts results. |
+| In progress | Cases or steps are being executed. |
+| Closed | It was finalized and persisted. |
 
-## Record a manual result
+## Automated job states
 
-1. Open **Execute Tests** and select the case.
-2. Review the action, data and expected result for each step.
-3. Choose the verdict and add an observation if it helps explain the result.
-4. Attach evidence when necessary.
-5. Finish and save the result.
+Worker jobs can be `PENDING`, `CLAIMED`, `RUNNING`, `PASSED`, `FAILED`,
+`BLOCKED`, `ERROR`, `TIMEOUT`, `CANCELLED` or `BLOCKED_BY_RUNNER`. They are
+technical queue states and do not replace the functional result. The unified
+worker also runs declarative API tests; there is no separate API worker.
 
-## Quick help
+## AI review and manual result
 
-- Use **Failed** when the system responded incorrectly.
-- Use **Blocked** when an external condition prevents testing, such as a down
-  environment or unavailable credential.
-- Do not replace a failure with a block to hide it: reports distinguish both
-  cases.
-- To investigate an earlier result, open **Run History** or the case history.
+An AI execution may require human review. Review confidence, consensus, report
+and review state before deciding. A diagnosis does not confirm root cause or
+create a bug automatically.
+
+To record a result manually:
+
+1. Open **Run Tests** and select the case.
+2. Confirm the build, environment and dataset.
+3. Use the console for the case format.
+4. Choose the result, note and evidence.
+5. Finish and verify it in [Run history](RUN_HISTORY_GUIDE.md).
+
+Use **Blocked** for a real dependency, not to hide a failure. See [Attachments
+and evidence](ATTACHMENTS_EVIDENCE.md).

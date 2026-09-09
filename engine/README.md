@@ -1,6 +1,9 @@
 # Treseko Engine
 
-Motor de ejecucion IA/Playwright de Treseko. Recibe tareas desde el backend, ejecuta pasos automatizados o asistidos por IA, emite progreso por WebSocket y devuelve resultados, capturas y `ai_report` al proyecto principal.
+Motor de ejecución IA/Playwright de Treseko. Recibe tareas desde el backend,
+ejecuta pasos automatizados o asistidos por IA, emite progreso por WebSocket y
+devuelve resultados, capturas y `ai_report` al proyecto principal. No es el
+Automation Worker y no reclama trabajos de la cola de workers.
 
 ## Conexion con Treseko
 
@@ -19,8 +22,10 @@ El proceso que se vincula desde `Automatizacion > Workers` es `automation-worker
 
 ## Version
 
-La version del componente se lee desde `VERSION`, `TRESEKO_VERSION` o `package.json`. Debe mantenerse alineada con la version del producto Treseko, por ejemplo `1.0.0`.
 
+La versión del componente se lee desde `VERSION`, `TRESEKO_VERSION` o
+`package.json`. Debe mantenerse alineada con la versión del producto Treseko,
+por ejemplo `1.0.3`.
 ## Evidencia local
 
 Por defecto el engine no guarda reportes HTML ni screenshots locales. La evidencia operativa se envia al backend y queda asociada al run/caso dentro de Treseko.
@@ -42,3 +47,11 @@ QA_TEST_TRACE_ENABLED=true
 ```
 
 Ese modo puede contener datos sensibles y debe usarse solo para diagnostico controlado.
+
+## Workflows y límites
+
+El engine recibe un workflow y un snapshot preparados por el backend. Entre
+los workflows distribuibles se encuentra `chatbot-evaluation.v1`, destinado a
+casos `CONVERSACIONAL`; la disponibilidad de un proveedor o modelo no
+certifica por sí sola todas las modalidades API o Chatbot. Los resultados
+deben revisarse en Treseko y no implican aprobación humana automática.

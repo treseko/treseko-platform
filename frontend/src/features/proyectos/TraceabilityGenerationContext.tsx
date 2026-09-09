@@ -2,7 +2,7 @@ import { Button, Form } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, Eye } from 'lucide-react'
 
 export function TraceabilityGenerationContext({ options }: { options: any }) {
-  const { generationStep, generationContextExpanded, setGenerationContextExpanded, tx, generationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationBusy, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, locale } = options
+  const { generationStep, generationContextExpanded, setGenerationContextExpanded, tx, t, generationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationBusy, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, locale } = options
   return (
     <>
               {generationStep === "context" && (
@@ -38,7 +38,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                   <div className="p-3 d-flex flex-column gap-3">
                     <Form.Group>
                       <Form.Label>{tx("optionalInstructions")}</Form.Label>
-                      <Form.Control name="a11y-traceabilitygenerationcontexttsx-41" aria-label="Campo de formulario"
+                      <Form.Control name="a11y-traceabilitygenerationcontexttsx-41" aria-label={t('proyectos.optionalInstructions')}
                         as="textarea"
                         rows={3}
                         disabled={Boolean(generationRun)}
@@ -53,7 +53,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                       <Form.Label>{tx("contextComponents")}</Form.Label>
                       <div className="d-flex flex-wrap gap-3">
                         {projectComponents.map((component) => (
-                          <Form.Check name="a11y-traceabilitygenerationcontexttsx-56" aria-label="Campo de formulario"
+                          <Form.Check name="a11y-traceabilitygenerationcontexttsx-56" aria-label={`${t('proyectos.contextComponents')}: ${component.name}`}
                             key={component.id}
                             type="checkbox"
                             disabled={Boolean(generationRun)}
@@ -80,7 +80,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                           style={{ maxHeight: "160px", overflowY: "auto" }}
                         >
                           {generationWiki.map((page) => (
-                            <Form.Check name="a11y-traceabilitygenerationcontexttsx-83" aria-label="Campo de formulario"
+                            <Form.Check name="a11y-traceabilitygenerationcontexttsx-83" aria-label={`${t('proyectos.optionalWiki')}: ${page.titulo}`}
                               key={page.id}
                               type="checkbox"
                               disabled={Boolean(generationRun)}
@@ -99,7 +99,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                         </div>
                       ) : (
                         <div className="small text-muted">
-                          No hay páginas Wiki disponibles.
+                          {t('proyectos.noWikiPages')}
                         </div>
                       )}
                     </Form.Group>
@@ -163,7 +163,7 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                             <Form.Label className="small mb-1">
                               {index + 1}. {question}
                             </Form.Label>
-                            <Form.Control name="a11y-traceabilitygenerationcontexttsx-166" aria-label="Campo de formulario"
+                            <Form.Control name="a11y-traceabilitygenerationcontexttsx-166" aria-label={`${t('proyectos.answerContext')} ${index + 1}`}
                               as="textarea"
                               rows={2}
                               value={generationQuestionAnswers[question] || ""}

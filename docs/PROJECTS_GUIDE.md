@@ -1,122 +1,102 @@
 # Guía de proyectos
 
-Un proyecto reúne el trabajo de QA de un producto o iniciativa: sus
-componentes, builds, ambientes, casos, ejecuciones, evidencias y trazabilidad.
-Esta guía propone un orden para configurarlo y dejarlo listo para trabajar.
+Un proyecto reúne componentes, builds, ambientes, datasets, suites, casos,
+ejecuciones, evidencias y trazabilidad.
+
+```text
+Solución → Proyecto → Componentes → Builds → Ambientes/Datasets → Casos
+```
 
 ## Antes de crear un proyecto
 
-Verificá que estés trabajando dentro de la **Solución** correcta. La solución
-agrupa los proyectos de una organización o cliente. Si necesitás crear o
-administrar soluciones, pedí acceso a **Configuración → Clientes / Soluciones**.
-
-También necesitás permisos de edición en Proyectos. Si no aparece la opción de
-crear o editar, un administrador debe revisar tu rol.
+Verificá que estés dentro de la **Solución** correcta. La solución agrupa
+proyectos relacionados. Si no ves la acción para crear o editar, necesitás que
+un administrador revise tu rol y permisos.
 
 ## 1. Crear el proyecto
 
 1. Abrí **Proyectos**.
-2. Escribí el nombre en **Nuevo proyecto**.
-3. Seleccioná **Crear**.
-4. Abrí el proyecto recién creado.
-5. Entrá a **Configuración y equipo** para completar su descripción, estado y
-   responsables.
+2. Elegí **Nuevo proyecto**.
+3. Completá un nombre legible y una descripción si corresponde.
+4. Seleccioná **Crear**.
+5. Abrí **Configuración y equipo** para completar estado, responsables e
+   identidad visual.
 
-Usá un nombre que identifique el producto o iniciativa. Evitá crear un proyecto
-por cada build: las builds se administran dentro del proyecto.
+No crees un proyecto por cada build: las builds representan entregas dentro del
+mismo proyecto y permiten comparar resultados sin perder historial.
 
 ## 2. Configuración y equipo
 
-En **Configuración y equipo** podés actualizar el nombre, la descripción, el
-estado y las personas que participan del proyecto.
-
-- Usá **Activo** mientras el equipo trabaja normalmente.
-- Usá **En QA** cuando el foco esté en validar una entrega.
-- Usá **Bloqueado**, **En pausa** o **Mantenimiento** para comunicar una
-  condición operativa especial.
-- Usá **Cerrado** o **Archivado** al finalizar, sin perder el historial.
-
-Definí responsables que puedan mantener componentes, builds y alcance de
-ejecución. Consultá [Estados de proyecto](PROJECT_STATUS_RESTRICTIONS.md) para
-elegir el estado adecuado.
+En **Configuración y equipo** podés mantener nombre, descripción, estado, logo
+o identidad visual y miembros. El rol global no equivale automáticamente a
+todas las capacidades del proyecto; el acceso efectivo depende también del
+permiso específico. Si necesitás revisar el modelo de acceso, pedí a un
+administrador que confirme tu rol y capacidades.
 
 ## 3. Componentes y builds
 
-Abrí **Componentes y Builds** para separar las partes del producto y las
-entregas que vas a validar.
+1. En **Componentes y Builds**, creá componentes como `Frontend`, `API` o
+   `Aplicación móvil`.
+2. Creá una build con un nombre o versión identificable.
+3. Definí el alcance de build-caso.
+4. Activá la build cuando esté lista para validar.
 
-1. Creá los componentes, por ejemplo `Frontend`, `API` o `Aplicación móvil`.
-2. Dentro de cada componente, creá una build con una versión o nombre legible.
-3. Definí el alcance de la build: los casos que se podrán ejecutar y reportar.
-4. Activá la build cuando esté lista para validación.
-
-Una build es el contexto de una entrega. Asigná solo los casos que correspondan
-a esa versión; así los resultados, bugs y reportes conservan un alcance claro.
+Una build histórica conserva su contexto para consulta y comparación. No la
+trates como activa: sus casos, configuración, trazabilidad y ejecución no deben
+modificarse desde ese contexto.
 
 ## 4. Ambientes y datasets
 
-En **Ambientes y Datasets** registrá dónde se ejecutarán las pruebas y con qué
-datos.
+Un **ambiente** define dónde se conecta la prueba y un **dataset** define los
+datos preparados. Evitá secretos reales.
 
-- Un ambiente identifica el destino, por ejemplo `QA`, `Staging` o Producción
-  controlada.
-- Un dataset describe la información preparada para una ejecución, por ejemplo
-  cuentas de prueba, catálogo o condiciones iniciales.
+- clásica usa pasos, datos y resultados esperados;
+- `API` usa contrato declarativo y aserciones;
+- `CONVERSACIONAL` usa endpoint, perfil, variables, turnos, expectativas,
+  memoria, herramientas y evaluación;
+- `PERFORMANCE` es reservado: no asumas un ejecutor de carga ni copies la
+  configuración de API o Chatbot.
 
-Seleccioná el ambiente y dataset al ejecutar una prueba. No cargues contraseñas
-reales ni secretos en los datos visibles del proyecto.
+Consultá [Casos de prueba](TEST_CASES_GUIDE.md) y [Ejecución](TEST_EXECUTION_GUIDE.md).
 
 ## 5. Requisitos e historias
 
-Abrí **Requisitos e Historias** para mantener la relación entre el objetivo
-funcional y los casos de prueba.
+1. Abrí **Requisitos e Historias**.
+2. Registrá requisitos, historias y criterios de aceptación.
+3. Vinculá los casos que cubren cada historia.
+4. Revisá y confirmá los vínculos cuando una historia cambie.
 
-1. Registrá el requisito.
-2. Agregá las historias y criterios de aceptación.
-3. Vinculá los casos que verifican cada historia.
-4. Revisá los vínculos cuando cambie una historia.
-
-Podés usar IA para proponer historias o casos, pero revisá y seleccioná las
-propuestas antes de guardarlas. Consultá [Trazabilidad y generación asistida]
-(TRACEABILITY.md) para conocer el flujo completo.
+La IA propone contenido: no publica automáticamente historias, casos ni
+scripts. Consultá [Trazabilidad y generación asistida](TRACEABILITY.md).
 
 ## 6. Wiki, tickets e incidencias
 
-- En **Wiki / Documentación**, creá páginas Markdown para acuerdos, guías del
-  proyecto, decisiones y enlaces útiles. Cada página conserva historial.
-- En **Tickets e Incidencias**, registrá o vinculá incidencias del proyecto
-  cuando tengas la integración y permisos habilitados.
-
-No uses la Wiki para guardar API keys, contraseñas o secretos. Para defectos
-detectados durante una ejecución, preferí [Bug Tracker](BUG_TRACKER.md), que
-conserva el contexto QA completo.
+Usá **Wiki / Documentación** para acuerdos y decisiones, nunca para secretos.
+Usá [Bug Tracker](BUG_TRACKER.md) para defectos detectados durante pruebas y
+el [Centro de Incidencias](INCIDENT_CENTER_GUIDE.md) para el seguimiento
+operativo centralizado. Las integraciones externas dependen de la instalación y
+permisos; no crean tickets externos por defecto.
 
 ## 7. Importar y exportar casos
 
-Abrí **Importar / Exportar** para incorporar suites y casos, descargar un
-respaldo `.tcases` o revertir un lote reciente dentro de la ventana disponible.
-
-Antes de una importación masiva, exportá un respaldo y revisá la vista previa.
-Consultá [Importar y exportar suites y casos](CASE_PORTABILITY.md) para el
-paso a paso y los formatos compatibles.
+Antes de importar, exportá un respaldo y revisá la vista previa. Consultá
+[Compatibilidad de importadores](CASE_IMPORT_COMPATIBILITY.md) y las
+instrucciones de respaldo disponibles en tu instalación.
 
 ## Orden recomendado para empezar
 
 ```text
 Solución → Proyecto → Equipo → Componentes → Builds → Ambientes/Datasets
-→ Suites y casos → Alcance de build → Ejecución → Reportes
+→ Suites y casos → Alcance de build → Ejecución → Historial → Reportes
 ```
-
-No necesitás completar todas las subsecciones el primer día. Empezá con un
-proyecto, un componente, una build activa y un conjunto pequeño de casos; luego
-ampliá ambientes, trazabilidad, documentación e integraciones según el equipo.
 
 ## Ayuda rápida
 
 | Situación | Qué revisar |
 |---|---|
-| No puedo crear un proyecto o una build | Tu rol y el estado de la solución/proyecto. |
-| Un caso no aparece al ejecutar | Que esté activo y dentro del alcance de la build seleccionada. |
-| No veo una subsección | Los permisos de Proyectos, trazabilidad, Wiki o integraciones. |
-| Una historia cambió | Revisá los vínculos con casos antes de confiar en su cobertura. |
-| Necesito mover casos a otro proyecto | Exportalos como `.tcases` e importalos desde el proyecto destino. |
+| No puedo crear o editar | Rol, permiso y estado del proyecto. |
+| Una build no aparece | Que esté activa y el caso esté dentro de su alcance. |
+| Un caso no aparece | Estado, suite, build y filtros. |
+| Una build histórica no permite editar | Es un contexto de consulta. |
+| Una historia cambió | Revisá y confirmá sus vínculos. |
+| Necesito mover casos | Exportá `.tcases`, revisá advertencias e importá en destino. |

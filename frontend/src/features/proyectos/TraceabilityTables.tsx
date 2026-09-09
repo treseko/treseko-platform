@@ -1,15 +1,16 @@
 import { Badge, Button, Card, Col, Collapse, Dropdown, Form, Row, Table } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, ExternalLink, Eye, FilePlus2, FileText, History, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Sparkles } from 'lucide-react'
+import { priorityLabel, requirementStateLabel, storyStateLabel } from './traceabilityPresentation'
 
 export function TraceabilityTables({ options }: { options: any }) {
-  const { t, tx, archiveVisibility, setArchiveVisibility, load, loading, requirementStateFilter, setRequirementStateFilter, priorityFilter, setPriorityFilter, canEdit, openRequirement, visibleRequirements, storiesForRequirement, projectComponents, ReviewPendingIcon, openDetails, openGeneration, openStory, openHistory, setArchived, storiesExpanded, setStoriesExpanded, stories, visibleStories, storySearch, setStorySearch, requirements, storyRequirementFilter, setStoryRequirementFilter, storyStateFilter, setStoryStateFilter, requirementById, formatDateTime, changeStoryState, onCreateCaseFromStory, setCaseGenerationStory } = options
+  const { t, archiveVisibility, setArchiveVisibility, load, loading, requirementStateFilter, setRequirementStateFilter, priorityFilter, setPriorityFilter, canEdit, openRequirement, visibleRequirements, storiesForRequirement, projectComponents, ReviewPendingIcon, openDetails, openGeneration, openStory, openHistory, setArchived, storiesExpanded, setStoriesExpanded, stories, visibleStories, storySearch, setStorySearch, requirements, storyRequirementFilter, setStoryRequirementFilter, storyStateFilter, setStoryStateFilter, requirementById, formatDateTime, changeStoryState, onCreateCaseFromStory, setCaseGenerationStory } = options
   return (
     <>
       <div className="responsive-page-toolbar traceability-toolbar mb-4 flex-shrink-0">
         <div>
           <h5 className="fw-bold text-dark m-0">{t('proyectos.tabRequirements')}</h5>
           <span className="text-muted small">
-            {tx("coverageSubtitle")}
+            {t('proyectos.traceabilityCoverageSubtitle')}
           </span>
         </div>
         <div className="traceability-toolbar-actions">
@@ -21,32 +22,32 @@ export function TraceabilityTables({ options }: { options: any }) {
               setArchiveVisibility(visibility);
               void load(true, visibility);
             }}
-            aria-label={tx("showArchived")}
+            aria-label={t('proyectos.traceabilityShowArchived')}
           >
-            <option value="active">{tx("active")}</option>
-            <option value="archived">{tx("archived")}</option>
-            <option value="all">{tx("all")}</option>
+            <option value="active">{t('proyectos.traceabilityActive')}</option>
+            <option value="archived">{t('proyectos.traceabilityArchived')}</option>
+            <option value="all">{t('proyectos.traceabilityAll')}</option>
           </Form.Select>
           <Form.Select
             size="sm"
             value={requirementStateFilter}
             onChange={(event) => setRequirementStateFilter(event.target.value)}
-            aria-label={tx("states")}
+            aria-label={t('proyectos.traceabilityStates')}
           >
-            <option value="">{tx("states")}</option>
+            <option value="">{t('proyectos.traceabilityStates')}</option>
             {["BORRADOR", "ACTIVO", "EN_REVISION", "CUMPLIDO", "ARCHIVADO"].map((item) => (
-              <option key={item}>{item}</option>
+              <option key={item} value={item}>{requirementStateLabel(t, item)}</option>
             ))}
           </Form.Select>
           <Form.Select
             size="sm"
             value={priorityFilter}
             onChange={(event) => setPriorityFilter(event.target.value)}
-            aria-label={tx("priorities")}
+            aria-label={t('proyectos.traceabilityPriorities')}
           >
-            <option value="">{tx("priorities")}</option>
+            <option value="">{t('proyectos.traceabilityPriorities')}</option>
             {["ALTA", "MEDIA", "BAJA"].map((item) => (
-              <option key={item}>{item}</option>
+              <option key={item} value={item}>{priorityLabel(t, item)}</option>
             ))}
           </Form.Select>
           <Button
@@ -67,7 +68,7 @@ export function TraceabilityTables({ options }: { options: any }) {
               className="fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1"
               onClick={() => openRequirement()}
             >
-              <Plus size={15} /> {tx("requirement")}
+              <Plus size={15} /> {t('proyectos.traceabilityRequirement')}
             </Button>
           )}
         </div>
@@ -76,11 +77,11 @@ export function TraceabilityTables({ options }: { options: any }) {
         <Table responsive hover className="align-middle mb-0">
           <thead className="bg-light">
             <tr>
-              <th>{tx("requirement")}</th>
-              <th>{tx("state")}</th>
-              <th>{tx("components")}</th>
-              <th>{tx("storiesCoverage")}</th>
-              <th className="text-end">{tx("actions")}</th>
+              <th>{t('proyectos.traceabilityRequirement')}</th>
+              <th>{t('proyectos.traceabilityStates')}</th>
+              <th>{t('proyectos.traceabilityComponents')}</th>
+              <th>{t('proyectos.traceabilityStoriesCoverage')}</th>
+              <th className="text-end">{t('proyectos.traceabilityActions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -102,7 +103,7 @@ export function TraceabilityTables({ options }: { options: any }) {
                         <ExternalLink size={12} className="me-1" />
                         {requirement.external_reference ||
                           requirement.external_provider ||
-                          tx("externalReference")}
+                          t('proyectos.traceabilityExternalReference')}
                       </a>
                     )}
                   </td>
@@ -114,7 +115,7 @@ export function TraceabilityTables({ options }: { options: any }) {
                           : "secondary"
                       }
                     >
-                      {requirement.estado}
+                      {requirementStateLabel(t, requirement.estado)}
                     </Badge>
                   </td>
                   <td className="small">
@@ -122,13 +123,15 @@ export function TraceabilityTables({ options }: { options: any }) {
                       .map(
                         (id: string) =>
                           projectComponents.find((item) => item.id === id)
-                            ?.name || tx("noComponent"),
+                            ?.name || t('proyectos.traceabilityNoComponent'),
                       )
-                      .join(", ") || tx("noComponentDefined")}
+                      .join(", ") || t('proyectos.traceabilityNoComponentDefined')}
                   </td>
                   <td>
                     <div className="small fw-semibold">
-                      {relatedStories.length} {relatedStories.length === 1 ? tx("story") : tx("stories")}
+                      {relatedStories.length === 1
+                        ? t('proyectos.traceabilityStoryCountOne', { count: relatedStories.length })
+                        : t('proyectos.traceabilityStoryCountMany', { count: relatedStories.length })}
                     </div>
                     {relatedStories.slice(0, 2).map((story) => (
                       <div
@@ -147,7 +150,7 @@ export function TraceabilityTables({ options }: { options: any }) {
                         </Badge>
                         <span>{story.titulo}</span>
                         <span className="text-muted">
-                          {story.case_count} casos
+                          {t('proyectos.traceabilityCaseCount', { count: story.case_count })}
                         </span>
                         {story.requiere_revision_count > 0 && (
                           <ReviewPendingIcon count={story.requiere_revision_count} tooltipId={`requirement-story-${story.id}-pending`} />
@@ -161,23 +164,26 @@ export function TraceabilityTables({ options }: { options: any }) {
                         className="p-0 small text-decoration-none"
                         onClick={() => openDetails("requirement", requirement)}
                       >
-                        {tx("view")} {relatedStories.length - 2} {relatedStories.length - 2 === 1 ? tx("moreStory") : tx("moreStories")}
+                        {t('proyectos.traceabilityView')} {relatedStories.length - 2}{' '}
+                        {relatedStories.length - 2 === 1
+                          ? t('proyectos.traceabilityMoreStory')
+                          : t('proyectos.traceabilityMoreStories')}
                       </Button>
                     )}
                   </td>
                   <td className="text-end">
                     <Dropdown align="end" drop="down" className="traceability-actions-menu">
-                      <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`${tx("actions")} ${requirement.codigo}`} title={tx("actions")}>
+                      <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`${t('proyectos.traceabilityActions')} ${requirement.codigo}`} title={t('proyectos.traceabilityActions')}>
                         <MoreHorizontal size={15} />
                       </Dropdown.Toggle>
                       <Dropdown.Menu className="traceability-actions-dropdown" popperConfig={{ strategy: "fixed", modifiers: [{ name: "flip", enabled: false }] }}>
-                        <Dropdown.Item onClick={() => openDetails("requirement", requirement)}><Eye size={14} className="me-2" />{tx("viewRequirement")}</Dropdown.Item>
-                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openGeneration(requirement)}><Sparkles size={14} className="me-2" />{tx("generateWithAi")}</Dropdown.Item>}
-                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openStory(undefined, requirement.id)}><FilePlus2 size={14} className="me-2" />{tx("createStory")}</Dropdown.Item>}
+                        <Dropdown.Item onClick={() => openDetails("requirement", requirement)}><Eye size={14} className="me-2" />{t('proyectos.traceabilityViewRequirement')}</Dropdown.Item>
+                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openGeneration(requirement)}><Sparkles size={14} className="me-2" />{t('proyectos.traceabilityGenerateWithAi')}</Dropdown.Item>}
+                        {canEdit && !requirement.archivado && <Dropdown.Item onClick={() => openStory(undefined, requirement.id)}><FilePlus2 size={14} className="me-2" />{t('proyectos.traceabilityCreateStory')}</Dropdown.Item>}
                         <Dropdown.Item onClick={() => openHistory(requirement, "requisitos")}><History size={14} className="me-2" />{t('proyectos.history')}</Dropdown.Item>
-                        {canEdit && <Dropdown.Item onClick={() => openRequirement(requirement)}><Pencil size={14} className="me-2" />{tx("editRequirement")}</Dropdown.Item>}
+                        {canEdit && <Dropdown.Item onClick={() => openRequirement(requirement)}><Pencil size={14} className="me-2" />{t('proyectos.traceabilityEditRequirement')}</Dropdown.Item>}
                         {canEdit && <Dropdown.Divider />}
-                        {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(requirement, "requisitos", !requirement.archivado)}>{requirement.archivado ? tx("restoreRequirement") : tx("archiveRequirement")}</Dropdown.Item>}
+                        {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(requirement, "requisitos", !requirement.archivado)}>{requirement.archivado ? t('proyectos.traceabilityRestoreRequirement') : t('proyectos.traceabilityArchiveRequirement')}</Dropdown.Item>}
                       </Dropdown.Menu>
                     </Dropdown>
                   </td>
@@ -187,7 +193,7 @@ export function TraceabilityTables({ options }: { options: any }) {
             {!loading && visibleRequirements.length === 0 && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
-                  {tx("noRequirements")}
+                  {t('proyectos.traceabilityNoRequirements')}
                 </td>
               </tr>
             )}
@@ -202,10 +208,10 @@ export function TraceabilityTables({ options }: { options: any }) {
               size="sm"
               className="border"
               title={
-                storiesExpanded ? tx("collapseStories") : tx("expandStories")
+                storiesExpanded ? t('proyectos.traceabilityCollapseStories') : t('proyectos.traceabilityExpandStories')
               }
               aria-label={
-                storiesExpanded ? tx("collapseStories") : tx("expandStories")
+                storiesExpanded ? t('proyectos.traceabilityCollapseStories') : t('proyectos.traceabilityExpandStories')
               }
               aria-expanded={storiesExpanded}
               onClick={() => setStoriesExpanded((value) => !value)}
@@ -217,12 +223,12 @@ export function TraceabilityTables({ options }: { options: any }) {
               )}
             </Button>
             <h6 className="fw-bold mb-0">
-              {tx("stories")} <Badge bg="secondary">{stories.length}</Badge>
+              {t('proyectos.traceabilityStories')} <Badge bg="secondary">{stories.length}</Badge>
             </h6>
           </div>
           {storiesExpanded && (
             <span className="small text-muted">
-              {visibleStories.length} {tx("visible")}
+              {t('proyectos.traceabilityVisibleCount', { count: visibleStories.length })}
             </span>
           )}
         </Card.Header>
@@ -236,10 +242,10 @@ export function TraceabilityTables({ options }: { options: any }) {
                       size={15}
                       className="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted"
                     />
-                    <Form.Control name="a11y-traceabilitytablestsx-239" aria-label="Campo de formulario"
+                    <Form.Control name="a11y-traceabilitytablestsx-239" aria-label={t('common.formField')}
                       size="sm"
                       className="ps-4"
-                      placeholder={tx("searchStories")}
+                      placeholder={t('proyectos.traceabilitySearchStories')}
                       value={storySearch}
                       onChange={(event) => setStorySearch(event.target.value)}
                     />
@@ -252,9 +258,9 @@ export function TraceabilityTables({ options }: { options: any }) {
                     onChange={(event) =>
                       setStoryRequirementFilter(event.target.value)
                     }
-                    aria-label={tx("allRequirements")}
+                    aria-label={t('proyectos.traceabilityAllRequirements')}
                   >
-                    <option value="">{tx("allRequirements")}</option>
+                    <option value="">{t('proyectos.traceabilityAllRequirements')}</option>
                     {requirements.map((requirement) => (
                       <option key={requirement.id} value={requirement.id}>
                         {requirement.codigo} - {requirement.titulo}
@@ -269,12 +275,12 @@ export function TraceabilityTables({ options }: { options: any }) {
                     onChange={(event) =>
                       setStoryStateFilter(event.target.value)
                     }
-                    aria-label={tx("allStates")}
+                    aria-label={t('proyectos.traceabilityAllStates')}
                   >
-                    <option value="">{tx("allStates")}</option>
+                    <option value="">{t('proyectos.traceabilityAllStates')}</option>
                     {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA", "ARCHIVADA"].map(
                       (state) => (
-                        <option key={state}>{state}</option>
+                        <option key={state} value={state}>{storyStateLabel(t, state)}</option>
                       ),
                     )}
                   </Form.Select>
@@ -284,12 +290,12 @@ export function TraceabilityTables({ options }: { options: any }) {
             <Table responsive size="sm" className="align-middle mb-0">
               <thead>
                 <tr>
-                  <th>{tx("story")}</th>
-                  <th>{tx("created")}</th>
-                  <th>{tx("requirement")}</th>
-                  <th>{tx("state")}</th>
-                  <th>{tx("cases")}</th>
-                  <th className="text-end">{tx("actions")}</th>
+                  <th>{t('proyectos.traceabilityStory')}</th>
+                  <th>{t('proyectos.traceabilityCreated')}</th>
+                  <th>{t('proyectos.traceabilityRequirement')}</th>
+                  <th>{t('proyectos.traceabilityStates')}</th>
+                  <th>{t('proyectos.traceabilityCases')}</th>
+                  <th className="text-end">{t('proyectos.traceabilityActions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -327,11 +333,11 @@ export function TraceabilityTables({ options }: { options: any }) {
                             size="sm"
                             value={story.estado}
                             onChange={(event) => void changeStoryState(story, event.target.value)}
-                            aria-label={`${tx("state")} ${story.codigo}`}
+                            aria-label={`${t('proyectos.traceabilityStates')} ${story.codigo}`}
                           >
-                            {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA"].map((state) => <option key={state} value={state}>{state.replaceAll("_", " ")}</option>)}
+                            {["BORRADOR", "LISTA_PARA_QA", "EN_PRUEBA", "ACEPTADA"].map((state) => <option key={state} value={state}>{storyStateLabel(t, state)}</option>)}
                           </Form.Select>
-                        ) : <Badge bg="secondary">{story.estado}</Badge>}
+                        ) : <Badge bg="secondary">{storyStateLabel(t, story.estado)}</Badge>}
                       </td>
                       <td>
                         {story.case_count}{" "}
@@ -341,15 +347,15 @@ export function TraceabilityTables({ options }: { options: any }) {
                       </td>
                       <td className="text-end">
                         <Dropdown align="end" drop="down" className="traceability-actions-menu">
-                          <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`${tx("actions")} ${story.codigo}`} title={tx("actions")}><MoreHorizontal size={15} /></Dropdown.Toggle>
+                          <Dropdown.Toggle variant="light" size="sm" className="border" aria-label={`${t('proyectos.traceabilityActions')} ${story.codigo}`} title={t('proyectos.traceabilityActions')}><MoreHorizontal size={15} /></Dropdown.Toggle>
                           <Dropdown.Menu className="traceability-actions-dropdown" popperConfig={{ strategy: "fixed", modifiers: [{ name: "flip", enabled: false }] }}>
-                            <Dropdown.Item onClick={() => openDetails("story", story)}><Eye size={14} className="me-2" />{tx("viewStory")}</Dropdown.Item>
-                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => onCreateCaseFromStory(story, requirement)}><FilePlus2 size={14} className="me-2" />{tx("createCase")}</Dropdown.Item>}
-                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => setCaseGenerationStory(story)}><Sparkles size={14} className="me-2" />{tx("generateWithAi")}</Dropdown.Item>}
+                            <Dropdown.Item onClick={() => openDetails("story", story)}><Eye size={14} className="me-2" />{t('proyectos.traceabilityViewStory')}</Dropdown.Item>
+                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => onCreateCaseFromStory(story, requirement)}><FilePlus2 size={14} className="me-2" />{t('proyectos.traceabilityCreateCase')}</Dropdown.Item>}
+                            {canEdit && !story.archivado && <Dropdown.Item onClick={() => setCaseGenerationStory(story)}><Sparkles size={14} className="me-2" />{t('proyectos.traceabilityGenerateWithAi')}</Dropdown.Item>}
                             <Dropdown.Item onClick={() => openHistory(story, "historias")}><History size={14} className="me-2" />{t('proyectos.history')}</Dropdown.Item>
-                            {canEdit && <Dropdown.Item onClick={() => openStory(story)}><Pencil size={14} className="me-2" />{tx("editStory")}</Dropdown.Item>}
+                            {canEdit && <Dropdown.Item onClick={() => openStory(story)}><Pencil size={14} className="me-2" />{t('proyectos.traceabilityEditStory')}</Dropdown.Item>}
                             {canEdit && <Dropdown.Divider />}
-                            {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(story, "historias", !story.archivado)}>{story.archivado ? tx("restoreStory") : tx("archiveStory")}</Dropdown.Item>}
+                            {canEdit && <Dropdown.Item className="text-danger" onClick={() => setArchived(story, "historias", !story.archivado)}>{story.archivado ? t('proyectos.traceabilityRestoreStory') : t('proyectos.traceabilityArchiveStory')}</Dropdown.Item>}
                           </Dropdown.Menu>
                         </Dropdown>
                       </td>
@@ -359,7 +365,7 @@ export function TraceabilityTables({ options }: { options: any }) {
                 {visibleStories.length === 0 && (
                   <tr>
                     <td colSpan={6} className="text-center text-muted py-3">
-                      {tx("noStories")}
+                      {t('proyectos.traceabilityNoStories')}
                     </td>
                   </tr>
                 )}

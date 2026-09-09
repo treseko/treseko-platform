@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ['es', 'en'] as const
+export const SUPPORTED_LOCALES = ['es', 'en', 'pt'] as const
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number]
 export type TranslationModule = Record<string, string>

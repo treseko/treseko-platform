@@ -3,8 +3,11 @@ import type { Locale } from './types'
 
 export const LOCALE_STORAGE_KEY = 'treseko.ui.locale'
 
-function normalizeLocale(value: string | null | undefined): Locale {
-  return value?.toLowerCase().startsWith('en') ? 'en' : fallbackLocale
+export function normalizeLocale(value: string | null | undefined): Locale {
+  const normalized = value?.trim().toLowerCase().replaceAll('_', '-')
+  if (normalized?.startsWith('en')) return 'en'
+  if (normalized === 'pt' || normalized?.startsWith('pt-')) return 'pt'
+  return fallbackLocale
 }
 
 export function getInitialLocale(storage: Pick<Storage, 'getItem'> | undefined = typeof localStorage === 'undefined' ? undefined : localStorage): Locale {

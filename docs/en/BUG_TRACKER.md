@@ -2,55 +2,45 @@
 
 <!-- Language: en -->
 
-Bug Tracker lets you record, follow and close defects without losing the link
-with the case, the execution, the step and the evidence where they were detected.
+Bug Tracker records defects and preserves the link with the case, execution,
+build, component and evidence. The Incident Center is a separate operational
+view; see [its guide](INCIDENT_CENTER_GUIDE.md).
 
 ## Create a bug from an execution
 
-This is the recommended way when a step fails or is blocked:
-
-1. During the execution, mark the step as **Failed** or **Blocked**.
-2. Record the obtained result and attach the available evidence.
+1. Mark the result as **Failed** or **Blocked**.
+2. Save the obtained result, observations and evidence.
 3. Select **Prepare internal bug** or **Report internal bug**.
-4. Review the title, severity, priority, description and preloaded context.
-5. Save the bug.
+4. Review the title, priority, severity and context.
+5. Save and confirm the source link.
 
-The bug keeps the origin case, build, component, execution and step. You do
-not need to copy that data manually.
+The context respects the format: classic preserves steps; API preserves the
+request, status, headers, body, assertions and permitted variables;
+conversational preserves the endpoint, turns, expected/obtained result,
+latency, evaluation and traces. `PERFORMANCE` is reserved and must not be
+turned into another bug class.
 
 ## Create and manage a bug manually
 
-Open **Bug Tracker** and select **Add new bug** if the defect does not come
-from a recorded execution. Fill in a clear title, the observed problem,
-the expected result, the priority and the severity.
+From **Bug Tracker → Add new bug**, fill in the title, problem, expected result,
+priority, severity and context. According to your permissions, you can assign a
+responsible person, comment, attach evidence, change the state, record the fix
+build, open API/conversational context and generate an external summary.
 
-From the bug detail you can:
+Two different defects in the same case remain separate records. Search for an
+existing bug before creating another one.
 
-- assign a responsible person;
-- add comments and evidence;
-- change the state as the fix progresses;
-- indicate the build where it was fixed;
-- prepare a summary for an external tracker;
-- record an external link explicitly.
+## States, retest and external tools
 
-## States and retest
+Use **Ready for retest** and then **In retest** when a fix needs verification.
+Record the detection build, fix build and resolution.
 
-When closing a bug, Treseko asks for the fix build and a resolution. If
-the fix must be verified, use **Ready for retest** and then **In retest**.
-This preserves both the build where the problem was detected and the build where
-the fix was applied.
-
-## Link external tools
-
-Treseko does not create external tickets automatically. You can generate a summary
-to copy and paste into Redmine, Jira, GitHub Issues or another tool and
-store the external identifier or link in the bug. Each link is recorded
-independently to avoid two bugs sharing a ticket by mistake.
+Treseko does not create external tickets automatically. You can copy a summary
+for Jira, Redmine or GitHub Issues and explicitly save its URL or identifier.
 
 ## Quick help
 
-- Report a new bug for a different defect, even if it happens in the same case.
-- If the defect already exists, update that bug instead of creating a duplicate.
 - Attach evidence before reporting when it helps reproduce the problem.
-- If you cannot create or edit a bug, ask an administrator for Bug Tracker
+- Prefer readable codes, names and context; do not use UUIDs as the summary.
+- If you cannot create or edit a bug, request Bug Tracker or Incident Center
   permissions.

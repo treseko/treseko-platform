@@ -49,7 +49,7 @@ export function useAppPresentationRuntime(options: any): any {
   };
   const handleLoggedUserPreferencesUpdated = (preferences: any) => {
     setLoggedUser((prev: any) => {
-      const next = { ...prev, personalTheme: preferences.personal_theme || prev.personalTheme, profileSettings: preferences.profile_settings || prev.profileSettings, projectThemeOverrides: preferences.project_theme_overrides || prev.projectThemeOverrides };
+      const next = { ...prev, personalTheme: preferences.personal_theme || prev.personalTheme, profileSettings: preferences.profile_settings || prev.profileSettings, projectThemeOverrides: preferences.project_theme_overrides ?? {} };
       localStorage.setItem("qa_session_user", JSON.stringify(next));
       return next;
     });

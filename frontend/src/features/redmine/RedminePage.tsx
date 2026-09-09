@@ -10,6 +10,8 @@ type ExtensionInstance = {
   id: string
   enabled: boolean
   status: string
+  proyecto_id?: string | null
+  organizacion_id?: string | null
 }
 
 type ExtensionItem = {
@@ -24,6 +26,7 @@ type ExtensionItem = {
   premium_required?: boolean
   installed: boolean
   instance?: ExtensionInstance | null
+  instances?: ExtensionInstance[]
 }
 
 type RedminePageProps = {
@@ -36,6 +39,8 @@ type RedminePageProps = {
   currentProjectRedmineBugs?: any[]
   currentProjectCases?: any[]
   redmineUrl?: string
+  currentProjectId?: string | null
+  currentOrgId?: string | null
 }
 
 const KIND_LABEL: Record<ExtensionKind, string> = {
@@ -96,6 +101,8 @@ export function RedminePage({
   hasSystemFeature,
   setActiveTab,
   setConfigTab,
+  currentProjectId,
+  currentOrgId,
 }: RedminePageProps) {
   const { t } = useI18n()
   const [items, setItems] = useState<ExtensionItem[]>([])
@@ -115,7 +122,17 @@ export function RedminePage({
       const response = await fetchWithAuth(`${API_BASE}/extensions/catalog`)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data?.detail || t('redmine.catalogError'))
-      setItems(data.items || [])
+      setItems((data.items || []).map((item: ExtensionItem) => {
+        const scopedInstance = item.instances?.find(instance => String(instance.proyecto_id) === String(currentProjectId))
+          || item.instances?.find(instance => !instance.proyecto_id && String(instance.organizacion_id) === String(currentOrgId))
+          || item.instances?.find(instance => !instance.proyecto_id && !instance.organizacion_id)
+          || null
+        return {
+          ...item,
+          installed: Boolean(item.builtin || scopedInstance),
+          instance: scopedInstance,
+        }
+      }))
     } catch (err: any) {
       showFeedback(t('redmine.title'), err?.message || t('redmine.catalogError'), 'danger')
     } finally {
@@ -126,7 +143,7 @@ export function RedminePage({
   useEffect(() => {
     loadCatalog()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [currentOrgId, currentProjectId])
 
   const openInstalledSettings = () => {
     setConfigTab?.('integrations')

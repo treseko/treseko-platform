@@ -25,6 +25,8 @@ from .extensions_catalog import (
     assert_feature as _assert_feature, audit_events as _audit_events, catalog_response as _catalog_response,
     instance_summary as _instance_summary, load_instance as _load_instance, manifest_by_id as _manifest_by_id,
     public_config as _public_config, required_capability as _required_capability,
+    require_instance_scope_access as _require_instance_scope_access,
+    require_installation_scope_access as _require_installation_scope_access,
 )
 
 
@@ -69,16 +71,26 @@ async def install_extension(
     kind = str(manifest.get("kind"))
     _assert_capability(current_user, _required_capability(kind, "install"), "edit")
     await _assert_feature(db, kind)
+    await _require_installation_scope_access(
+        db,
+        current_user,
+        organizacion_id=payload.organizacion_id,
+        proyecto_id=payload.proyecto_id,
+    )
     result = await db.execute(
         select(models.IntegrationInstance).filter(
             models.IntegrationInstance.provider_id == provider_id,
             models.IntegrationInstance.scope_key == installation_scope_key(
                 organizacion_id=payload.organizacion_id, proyecto_id=payload.proyecto_id,
             ),
+            models.IntegrationInstance.organizacion_id == payload.organizacion_id,
+            models.IntegrationInstance.proyecto_id == payload.proyecto_id,
         )
         .order_by(models.IntegrationInstance.created_at.desc())
     )
     instance = result.scalars().first()
+    if instance:
+        await _require_instance_scope_access(db, current_user, instance, "edit")
     if not instance:
         instance = models.IntegrationInstance(
             provider_id=provider_id,
@@ -107,6 +119,12 @@ async def install_paired_official_store_release(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.instalar", "edit")
+    await _require_installation_scope_access(
+        db,
+        current_user,
+        organizacion_id=payload.organizacion_id,
+        proyecto_id=payload.proyecto_id,
+    )
     state = await get_entitlement_provider().get_state(db)
     try:
         manifest, artifact = await download_paired_release(
@@ -166,7 +184,7 @@ async def invoke_official_store_plugin(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.habilitar", "edit")
-    instance = await _load_instance(db, instance_id)
+    instance = await _load_instance(db, current_user, instance_id, "edit")
     manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
     if not instance.enabled or manifest.get("plugin_id") != "com.treseko.junit-importer":
         raise HTTPException(status_code=409, detail="El plugin oficial no está habilitado para invocarse")
@@ -204,8 +222,8 @@ async def uninstall_official_store_plugin(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     """Remove a locally installed official plugin without erasing its audit trail."""
-    _assert_capability(current_user, "plugins.instalar", "edit")
-    instance = await _load_instance(db, instance_id)
+    _assert_capability(current_user, "plugins.desinstalar", "edit")
+    instance = await _load_instance(db, current_user, instance_id, "edit")
     if not ((instance.config_json or {}).get("_treseko_store") or {}):
         raise HTTPException(status_code=409, detail="Solo los plugins instalados desde la tienda oficial se desinstalan por esta ruta")
     store_manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
@@ -226,6 +244,7 @@ async def read_official_store_plugin_audit(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.auditoria", "read")
+    await _load_instance(db, current_user, instance_id, "read")
     rows = (await db.execute(
         select(models.AuditLog).where(
             models.AuditLog.recurso == "plugin_installation",
@@ -252,7 +271,7 @@ async def update_extension(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
-    instance = await _load_instance(db, instance_id)
+    instance = await _load_instance(db, current_user, instance_id, "edit")
     manifest = _manifest_by_id(instance.provider_id)
     if not manifest:
         raise HTTPException(status_code=404, detail="Complemento no registrado")
@@ -283,7 +302,7 @@ async def configure_extension_secrets(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
-    instance = await _load_instance(db, instance_id)
+    instance = await _load_instance(db, current_user, instance_id, "edit")
     manifest = _manifest_by_id(instance.provider_id)
     if not manifest:
         raise HTTPException(status_code=404, detail="Complemento no registrado")
@@ -322,7 +341,7 @@ async def configure_extension_secrets(
     await db.refresh(instance)
     if (instance.config_json or {}).get("_treseko_store"):
         await create_audit_log(db, current_user.id, "plugin.secrets_configured", "plugin_installation", instance.id, {"plugin_id": instance.provider_id, "manifest": audit_manifest_snapshot(((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {})})
-    return _instance_summary(instance, kind)
+    return _instance_summary(instance, kind, include_secret_presence=True)
 
 
 @router.post("/extensions/{instance_id}/enable", response_model=schemas.ExtensionInstanceSummary)
@@ -349,7 +368,7 @@ async def _set_extension_enabled(
     instance_id: UUID,
     enabled: bool,
 ) -> schemas.ExtensionInstanceSummary:
-    instance = await _load_instance(db, instance_id)
+    instance = await _load_instance(db, current_user, instance_id, "edit")
     manifest = _manifest_by_id(instance.provider_id)
     if not manifest:
         raise HTTPException(status_code=404, detail="Complemento no registrado")
@@ -388,7 +407,7 @@ async def test_extension(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
-    instance = await _load_instance(db, instance_id)
+    instance = await _load_instance(db, current_user, instance_id, "read")
     manifest = _manifest_by_id(instance.provider_id)
     if not manifest:
         raise HTTPException(status_code=404, detail="Complemento no registrado")

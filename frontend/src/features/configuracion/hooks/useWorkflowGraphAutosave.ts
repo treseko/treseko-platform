@@ -183,7 +183,7 @@ export function useWorkflowGraphAutosave({
         nodes: workflow.nodes.some(item => item.id === node.id) ? workflow.nodes : [...workflow.nodes, node],
         edges: [...workflow.edges, ...edges.filter(edge => !workflow.edges.some(item => item.id === edge.id))],
       }),
-      undoLabel: `Deshacer eliminación de ${node.name}`,
+      undoLabel: t('configuracion.workflowUndo'),
     }
     const queued = enqueue(operation)
     if (queued) registerUndo(operation)
@@ -199,7 +199,7 @@ export function useWorkflowGraphAutosave({
       type: 'delete-edge',
       apply: workflow => ({ ...workflow, edges: workflow.edges.filter(item => item.id !== edgeId) }),
       undo: workflow => workflow.edges.some(item => item.id === edge.id) ? workflow : { ...workflow, edges: [...workflow.edges, edge] },
-      undoLabel: 'Deshacer eliminación de conexión',
+      undoLabel: t('configuracion.workflowUndo'),
     }
     const queued = enqueue(operation)
     if (queued) registerUndo(operation)

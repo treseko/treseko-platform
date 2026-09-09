@@ -30,7 +30,7 @@ type CreateManualExecutionActionsParams = {
   redmineDecisionByExecution: Record<string, 'reported' | 'deferred'>
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   loadExecutionDetails: (runId: string, caseId: string) => Promise<any>
-  loadCasoExecutionHistory: (caseId: string, buildId?: string) => Promise<any[]>
+  loadCasoExecutionHistory: (caseId: string, buildId?: string) => Promise<any[] & { total?: number; stats?: any }>
   loadCasosFromBackend: (projectId: string, knownComponents?: any[], options?: any) => Promise<void>
   loadBuildCases: (buildId: string) => Promise<string[]>
   loadBuildCaseExecutionStatus: (buildId: string, caseIds: string[]) => Promise<any>
@@ -111,6 +111,7 @@ export function createManualExecutionActions({
 }: CreateManualExecutionActionsParams) {
   const terminalExecutionStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
   const normalizeExecutionStatus = (status: unknown) => String(status || 'SIN_CORRER').toUpperCase()
+  const sameCaseId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
 
   const markCurrentRunCaseAsCompleted = (caseId: string | undefined, status: string | undefined) => {
     if (!caseId || !status || typeof setCurrentExecutionRun !== 'function') return
@@ -126,18 +127,85 @@ export function createManualExecutionActions({
     })
   }
 
+  const markCaseAsCompletedLocally = (caseId: string | undefined, status: string | undefined) => {
+    if (!caseId || !status) return
+    const executedAt = formatDateTime(new Date().toISOString())
+    setSelectedTest((previous: any) => sameCaseId(previous?.id, caseId)
+      ? { ...previous, lastResult: status, lastExecutedAt: previous.lastExecutedAt || executedAt }
+      : previous)
+    setCasosList(previous => previous.map(test => sameCaseId(test.id, caseId)
+      ? { ...test, lastResult: status, lastExecutedAt: test.lastExecutedAt || executedAt }
+      : test))
+  }
+
+  // Optional synchronization hook for consoles that persist their result
+  // through a specialized endpoint (currently Chatbot manual). The classic
+  // console keeps its existing completion flow and does not call this hook.
+  const syncExecutionCaseStatus = async (caseId: string, status: string, result?: any) => {
+    markCaseAsCompletedLocally(caseId, status)
+    markCurrentRunCaseAsCompleted(caseId, status)
+    // Chatbot passes the logical case id here, while currentExecutionCase.id
+    // is the execution-row id. The specialized sync must not compare those
+    // different identifiers or the console will keep showing SIN_CORRER.
+    setCurrentExecutionCase(previous => previous
+      ? {
+          ...previous,
+          estado_resultado: status,
+          ...(result ? { chatbot_resultado: result } : {}),
+          observaciones: previous.observaciones || `Evaluación manual Chatbot finalizada: ${status}.`,
+        }
+      : previous)
+
+    // Chatbot manual finaliza por un endpoint especializado y no pasa por la
+    // ruta clásica que ya recarga el historial. Refrescarlo aquí mantiene el
+    // contador y las estadísticas sincronizados sin cambiar el flujo clásico.
+    const history = await loadCasoExecutionHistory(caseId, currentBuildId)
+    const latestHistory = history[0]
+    const historyPatch = {
+      history,
+      historyTotal: history.total ?? history.length,
+      historyStats: history.stats || null,
+      ...(latestHistory ? {
+        lastResult: latestHistory.status,
+        lastExecutedAt: latestHistory.date,
+        lastExecutedBy: latestHistory.executedBy,
+        lastExecutedVersion: latestHistory.versionExecuted,
+      } : {}),
+    }
+    if (currentBuildId && isValidUUID(currentBuildId)) {
+      setBuildCaseResultHistoryByBuild(previous => ({
+        ...previous,
+        [currentBuildId]: {
+          ...(previous[currentBuildId] || {}),
+          [caseId]: history,
+        },
+      }))
+    }
+    setSelectedTest(previous => sameCaseId(previous?.id, caseId) ? { ...previous, ...historyPatch } : previous)
+    setCasosList(previous => previous.map(test => sameCaseId(test.id, caseId) ? { ...test, ...historyPatch } : test))
+  }
+
   const isBatchCompleted = (completedCaseId?: string, completedStatus?: string) => {
     if (!currentExecutionRun?.id || activeExecutionTests.length === 0) return false
     const statuses = currentExecutionRun.execution_statuses_by_case_id || {}
+    const normalizedCompletedCaseId = completedCaseId ? String(completedCaseId) : null
     return activeExecutionTests.every(test => {
-      const status = test.id === completedCaseId && completedStatus
+      const status = normalizedCompletedCaseId && String(test.id) === normalizedCompletedCaseId && completedStatus
         ? completedStatus
         : statuses[test.id]
       return terminalExecutionStatuses.has(normalizeExecutionStatus(status))
     })
   }
 
-  const advanceToNextTest = async (completedCaseId?: string, completedStatus?: string) => {
+  const advanceToNextTest = async (
+    completedCaseId?: string,
+    completedStatus?: string,
+    options: { preferPending?: boolean } = {},
+  ) => {
+    // Reflejar el resultado en la lista antes de cargar historial, detalles y
+    // estados remotos. Así Chatbot tiene la misma actualización inmediata que
+    // la consola clásica; las recargas posteriores solo sincronizan datos.
+    markCaseAsCompletedLocally(completedCaseId, completedStatus)
     markCurrentRunCaseAsCompleted(completedCaseId, completedStatus)
 
     if (isBatchCompleted(completedCaseId, completedStatus)) {
@@ -146,9 +214,25 @@ export function createManualExecutionActions({
       return
     }
 
-    const currentIndex = activeExecutionTests.findIndex(t => t.id === selectedTest?.id)
-    if (currentIndex !== -1 && currentIndex < activeExecutionTests.length - 1) {
-      const nextTest = activeExecutionTests[currentIndex + 1]
+    const currentIndex = activeExecutionTests.findIndex(t => sameCaseId(t.id, selectedTest?.id))
+    let nextTest: any = null
+    if (options.preferPending && currentIndex !== -1) {
+      const statuses = currentExecutionRun?.execution_statuses_by_case_id || {}
+      for (let offset = 1; offset <= activeExecutionTests.length; offset += 1) {
+        const candidate = activeExecutionTests[(currentIndex + offset) % activeExecutionTests.length]
+        const candidateStatus = sameCaseId(candidate?.id, completedCaseId) && completedStatus
+          ? completedStatus
+          : statuses[candidate?.id]
+        if (!terminalExecutionStatuses.has(normalizeExecutionStatus(candidateStatus))) {
+          nextTest = candidate
+          break
+        }
+      }
+    } else if (currentIndex !== -1 && currentIndex < activeExecutionTests.length - 1) {
+      nextTest = activeExecutionTests[currentIndex + 1]
+    }
+
+    if (nextTest) {
       const historial = await loadCasoExecutionHistory(nextTest.id)
       const latestHistory = historial[0]
       const hydratedNextTest = latestHistory
@@ -158,9 +242,11 @@ export function createManualExecutionActions({
             lastExecutedAt: latestHistory.date,
             lastExecutedBy: latestHistory.executedBy,
             lastExecutedVersion: latestHistory.versionExecuted,
-            history: historial
+            history: historial,
+            historyTotal: historial.total ?? historial.length,
+            historyStats: historial.stats || null,
           }
-        : { ...nextTest, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history: historial }
+        : { ...nextTest, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history: historial, historyTotal: historial.total ?? historial.length, historyStats: historial.stats || null }
 
       // No limpiar el caso visible antes de cargar el siguiente. Durante ese
       // intervalo la consola pintaba SIN_CORRER aunque el caso anterior ya
@@ -222,7 +308,9 @@ export function createManualExecutionActions({
       lastExecutedAt: executedAt,
       lastExecutedBy: executedBy,
       lastExecutedVersion: executedVersion,
-      history: refreshedHistory
+      history: refreshedHistory,
+      historyTotal: refreshedHistory.total ?? refreshedHistory.length,
+      historyStats: refreshedHistory.stats || null,
     } : prev)
     setCasosList(prev => prev.map(c => c.id === selectedTest.id ? {
       ...c,
@@ -230,7 +318,9 @@ export function createManualExecutionActions({
       lastExecutedAt: executedAt,
       lastExecutedBy: executedBy,
       lastExecutedVersion: executedVersion,
-      history: refreshedHistory
+      history: refreshedHistory,
+      historyTotal: refreshedHistory.total ?? refreshedHistory.length,
+      historyStats: refreshedHistory.stats || null,
     } : c))
     const projectId = managingProjectId || currentProjectId
     if (projectId && isValidUUID(projectId)) {
@@ -372,6 +462,7 @@ export function createManualExecutionActions({
 
   return {
     advanceToNextTest,
+    syncExecutionCaseStatus,
     deferRedmineReportAndContinue,
     openRedmineReportFromPrompt,
     handleCompleteCase,

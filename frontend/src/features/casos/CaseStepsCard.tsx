@@ -1,6 +1,8 @@
 import { Button, Card, Form } from "react-bootstrap";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, LayoutList, Plus, Trash2 } from "lucide-react";
 import { EvidenceUpload } from "../../EvidenceUpload";
+import { VariableReferenceHints } from "./VariableReferenceHints";
+import { DynamicVariablePicker } from "./DynamicVariablePicker";
 
 type Props = { context: any };
 
@@ -8,8 +10,19 @@ export function CaseStepsCard({ context }: Props) {
   const {
     t, collapsedSections, setCollapsedSections, canEditSteps, addStepInput, newTestSteps,
     handleStepInputChange, attachmentConfig, updateStepAttachments, moveStepInput,
-    duplicateStepInput, removeStepInput, canEditAttachments,
+    duplicateStepInput, removeStepInput, canEditAttachments, projectEnvironments,
+    selectedDryRunEnvironment, selectedDryRunDataset, componentsList, newTestComponent,
+    newTestData,
+    fetchWithAuth,
   } = context;
+  const variableContext = {
+    environments: projectEnvironments,
+    selectedEnvironment: selectedDryRunEnvironment,
+    selectedDataset: selectedDryRunDataset,
+    component: componentsList?.find((item: any) => String(item.id) === String(newTestComponent)),
+    caseData: newTestData,
+    t
+  };
   return (
     <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
       <div
@@ -71,6 +84,8 @@ export function CaseStepsCard({ context }: Props) {
             </div>
             <div className="d-flex flex-column">
               <Form.Control name="a11y-casestepscardtsx-73" aria-label="Campo de formulario" as="textarea" rows={2} placeholder="Variables a inyectar" value={step.data} onChange={(e) => handleStepInputChange(idx, 'data', e.target.value)} className="border-light-subtle shadow-none font-monospace small text-primary mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
+              <VariableReferenceHints value={step.data} {...variableContext} />
+              {canEditSteps && <DynamicVariablePicker value={step.data} onChange={(value) => handleStepInputChange(idx, 'data', value)} fetchWithAuth={fetchWithAuth} />}
             </div>
             <div className="d-flex flex-column">
               <Form.Control name="a11y-casestepscardtsx-76" aria-label="Campo de formulario" required as="textarea" rows={2} placeholder={t('casos.validationCriteriaPlaceholder')} value={step.expected} onChange={(e) => handleStepInputChange(idx, 'expected', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />

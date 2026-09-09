@@ -1,8 +1,56 @@
 from fastapi import APIRouter
+from typing import Any
 from ...services.edition.entitlement_service import require_feature
 from ...main_context import *
+from ...services.ai_workflow_runtime_manifest import load_workflow_runtime_manifest, validate_workflow_runtime_adapters, workflow_runtime_adapters
+from ...services.ai_workflow_graph_contract import validate_graph_contract
 
 router = APIRouter(tags=["Motor IA"])
+
+@router.get("/workflow-runtime-manifest", operation_id="get_ai_workflow_runtime_manifest", dependencies=[Depends(require_feature("ai.engine"))])
+async def get_ai_workflow_runtime_manifest(
+    current_user: models.Usuario = Depends(auth.check_capability("motor_ia.workflow_view", "read")),
+):
+    return load_workflow_runtime_manifest()
+
+
+@router.post("/workflow-preflight-v2", operation_id="preflight_ai_workflow_v2", dependencies=[Depends(require_feature("ai.engine"))])
+async def preflight_ai_workflow_v2(
+    payload: dict[str, Any],
+    current_user: models.Usuario = Depends(auth.check_capability("motor_ia.workflow_view", "read")),
+):
+    known = workflow_runtime_adapters().keys()
+    issues = [
+        {"severity": issue.severity, "code": issue.code, "message": issue.message, "path": issue.path, "node_id": issue.node_id, "edge_id": issue.edge_id}
+        for issue in validate_graph_contract(payload, known_adapters=known)
+    ]
+    for error in validate_workflow_runtime_adapters(payload):
+        issues.append({"severity": "error", **error})
+    return {"valid": not any(item.get("severity") == "error" for item in issues), "errors": issues}
+
+@router.post("/workflow-preflight-v3", operation_id="preflight_ai_workflow_v3", dependencies=[Depends(require_feature("ai.engine"))])
+async def preflight_ai_workflow_v3(
+    payload: dict[str, Any],
+    current_user: models.Usuario = Depends(auth.check_capability("motor_ia.workflow_view", "read")),
+):
+    workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else {}
+    issues = [
+        {"severity": issue.severity, "code": issue.code, "message": issue.message, "path": issue.path, "node_id": issue.node_id, "edge_id": issue.edge_id}
+        for issue in validate_graph_contract(payload, known_adapters=workflow_runtime_adapters().keys())
+    ]
+    if workflow.get("workflow_format") != "universal_v3":
+        issues.append({"severity": "error", "code": "V3_FORMAT_REQUIRED", "message": "El preflight V3 requiere workflow_format=universal_v3."})
+    manifest = workflow_runtime_adapters()
+    for node in payload.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        contract = ((node.get("universal_agent") or {}).get("contract") or {})
+        adapter = (node.get("config_json") or {}).get("runtime_adapter") or (contract.get("implementation") or {}).get("native_adapter")
+        if adapter in manifest and manifest[adapter].get("atomic") is not True:
+            issues.append({"severity": "error", "code": "V3_ATOMIC_ADAPTER_REQUIRED", "message": f"El adaptador {adapter} no es atomico.", "node_id": node.get("id")})
+    for error in validate_workflow_runtime_adapters(payload):
+        issues.append({"severity": "error", **error})
+    return {"valid": not any(item.get("severity") == "error" for item in issues), "errors": issues}
 
 @router.get("/ai-workflows/", response_model=List[schemas.AiWorkflowResponse], dependencies=[Depends(require_feature("ai.engine"))])
 async def list_ai_workflows(
@@ -215,6 +263,17 @@ async def copy_ai_workflow_as_universal(
 ):
     try:
         return await crud.copy_ai_workflow_as_universal(db, workflow_id, current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post("/ai-workflows/{workflow_id}/copy-as-universal-v3", response_model=schemas.AiWorkflowResponse, dependencies=[Depends(require_feature("ai.engine"))])
+async def copy_ai_workflow_as_universal_v3(
+    workflow_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("motor_ia.workflow_drafts", "edit")),
+):
+    try:
+        return await crud.copy_ai_workflow_as_universal_v3(db, workflow_id, current_user.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

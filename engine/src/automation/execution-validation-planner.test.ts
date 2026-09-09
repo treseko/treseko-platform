@@ -39,6 +39,37 @@ test('plans entered input data as an element value, not visible page text', () =
   }]);
 });
 
+test('uses the explicit value field instead of the complete selector contract', () => {
+  const plan = planStep({
+    number: 2,
+    action: 'Escribir el usuario estandar en Username.',
+    data: 'selector=[data-test="username"]; value=standard_user',
+    expected: 'El campo Username contiene standard_user.',
+  });
+  assert.deepEqual(plan.assertions, [{
+    type: 'element_value',
+    source: 'El campo Username contiene standard_user.',
+    target: 'username',
+    expected: 'standard_user',
+  }]);
+});
+
+test('plans a conventional checkout field from its explicit selector contract', () => {
+  const plan = planStep({
+    number: 9,
+    action: 'Completar Last Name.',
+    data: 'selector=[data-test="lastName"]; value=QA',
+    expected: 'El campo Last Name contiene QA.',
+  });
+  assert.equal(plan.mode, 'dom');
+  assert.deepEqual(plan.assertions, [{
+    type: 'element_value',
+    source: 'El campo Last Name contiene QA.',
+    target: 'last name',
+    expected: 'QA',
+  }]);
+});
+
 test('does not turn a credential error message into an input value assertion', () => {
   const plan = planStep({
     number: 4,

@@ -26,6 +26,11 @@ class BugIssue(Base):
     entorno_id = Column(UUID(as_uuid=True), ForeignKey("entornos.id", ondelete="SET NULL"), nullable=True, index=True)
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("entorno_datasets.id", ondelete="SET NULL"), nullable=True, index=True)
     numero_paso = Column(Integer, nullable=True)
+    # Chatbot evaluations do not have traditional step snapshots.  Keep the
+    # turn identity explicit so execution-level and turn-level bugs can live
+    # side by side and be deduplicated independently.
+    chatbot_turn_index = Column(Integer, nullable=True, index=True)
+    chatbot_finding_type = Column(String(50), nullable=True, index=True)
     execution_mode = Column(String(30), nullable=True)
     case_code = Column(String(30), nullable=True)
     build_code = Column(String(30), nullable=True)
@@ -62,6 +67,10 @@ class BugIssue(Base):
     asignado_a = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
     creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
     origen = Column(String(30), default="manual", nullable=False)
+    # Explicitly separates the classic bug workflow from the structured
+    # conversational evidence workflow.  Existing rows are backfilled as
+    # CLASICO by the migration.
+    tipo_contexto = Column(String(20), default="CLASICO", server_default="CLASICO", nullable=False, index=True)
     external_provider = Column(String(50), nullable=True)
     external_issue_id = Column(String(120), nullable=True)
     external_issue_url = Column(Text, nullable=True)
@@ -98,6 +107,7 @@ class BugIssue(Base):
     attachments = relationship("BugAttachment", back_populates="bug", cascade="all, delete-orphan")
     external_links = relationship("ExternalIssueLink", back_populates="bug", cascade="all, delete-orphan")
     status_history = relationship("BugStatusHistory", back_populates="bug", cascade="all, delete-orphan", order_by="BugStatusHistory.occurred_at")
+    conversational_context = relationship("BugConversationalContext", back_populates="bug", uselist=False, cascade="all, delete-orphan")
 
     @property
     def resolved_build_name(self):
@@ -106,6 +116,36 @@ class BugIssue(Base):
     @property
     def resolved_build_code(self):
         return self.resolved_build.codigo if self.resolved_build else None
+
+    @property
+    def build_name(self):
+        return self.build.nombre if self.build else None
+
+    @property
+    def case_title(self):
+        return self.caso.titulo if self.caso else None
+
+    @property
+    def component_name(self):
+        return self.componente.nombre if self.componente else None
+
+
+class BugConversationalContext(Base):
+    __tablename__ = "bug_conversational_context"
+
+    bug_id = Column(UUID(as_uuid=True), ForeignKey("bug_issues.id", ondelete="CASCADE"), primary_key=True)
+    schema_version = Column(Integer, nullable=False, default=1, server_default="1")
+    case_snapshot = Column(JSON, nullable=False, default=dict, server_default="{}")
+    execution_snapshot = Column(JSON, nullable=False, default=dict, server_default="{}")
+    conversation_turns = Column(JSON, nullable=False, default=list, server_default="[]")
+    evaluation = Column(JSON, nullable=False, default=dict, server_default="{}")
+    technical_evidence = Column(JSON, nullable=False, default=dict, server_default="{}")
+    evidence_refs = Column(JSON, nullable=False, default=list, server_default="[]")
+    evidence_sha256 = Column(String(64), nullable=True, index=True)
+    created_at = Column(UTCDateTime(), server_default=func.now(), nullable=False)
+    updated_at = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    bug = relationship("BugIssue", back_populates="conversational_context")
 
 
 class BugStatusHistory(Base):

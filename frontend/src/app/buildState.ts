@@ -3,6 +3,11 @@ export type BuildLike = {
   state?: string
 }
 
+/** A build is executable only when lifecycle and availability agree. */
+export function isBuildExecutable(build?: BuildLike | null): boolean {
+  return build?.active === true && build.state === 'ACTIVA'
+}
+
 /** Historical builds are inspectable but immutable; preparation builds remain editable until activation. */
 export function isBuildReadOnly(build?: BuildLike | null): boolean {
   if (!build) return false

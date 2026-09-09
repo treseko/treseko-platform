@@ -8,8 +8,10 @@ import {
   formatElapsed,
   formatLogTime,
   formatMetrics,
+  getLatestQueueItem,
   getStatusMeta,
   logClass,
+  MAX_STORED_IA_LOGS,
   makeLog,
   normalizeEngineStatus,
   normalizeLog,
@@ -24,6 +26,8 @@ import type {
   IaRunStatus,
 } from './motorIaTypes'
 
+const FINAL_IA_STATUSES = ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT', 'SKIPPED', 'CANCELLED', 'REQUIERE_REVISION', 'STREAM_CERRADO']
+
 export function useMotorIaMonitorState({ options }: { options: any }) {
   const { currentProjectId, t, fetchWithAuth, showFeedback, canViewStatus, iaStatus, iaLogs, setIaLogs, currentProjectIaQueue, iaExecutionStreams, setIaExecutionStreams, setIaQueue, currentProjectCases } = options
   const [health, setHealth] = useState<AiEngineHealthState | null>(null)
@@ -31,6 +35,9 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
   const [clockTick, setClockTick] = useState(0)
   const [lastHealthCheckedAt, setLastHealthCheckedAt] = useState('')
   const [healthRefreshError, setHealthRefreshError] = useState('')
+  const [aiHistory, setAiHistory] = useState<any[]>([])
+  const [aiHistoryLoading, setAiHistoryLoading] = useState(false)
+  const [aiHistoryError, setAiHistoryError] = useState('')
   const [hiddenQueueItems, setHiddenQueueItems] = useState<Set<string>>(() => new Set())
   const [showQueueHelp, setShowQueueHelp] = useState(true)
   const [reportState, setReportState] = useState<{ show: boolean; loading: boolean; error: string; report: any | null }>({
@@ -43,7 +50,10 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
   const shouldAutoScrollRef = useRef(true)
 
   const pushLog = (level: IaLogLevel, message: string, extra: Partial<IaLogEntry> = {}) => {
-    setIaLogs((prev: Array<IaLogEntry | string>) => [...prev, makeLog(level, message, extra)])
+    setIaLogs((prev: Array<IaLogEntry | string>) => [
+      ...prev.slice(-(MAX_STORED_IA_LOGS - 1)),
+      makeLog(level, message, extra),
+    ])
   }
 
   const updateStream = (executionId: string, patch: Partial<IaExecutionStream>) => {
@@ -75,6 +85,11 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
     consoleRef.current.scrollTop = consoleRef.current.scrollHeight
   }, [iaLogs.length])
 
+  useEffect(() => {
+    if (iaLogs.length <= MAX_STORED_IA_LOGS) return
+    setIaLogs((previous: Array<IaLogEntry | string>) => previous.slice(-MAX_STORED_IA_LOGS))
+  }, [iaLogs.length, setIaLogs])
+
   // The operational monitor is server-backed. Every authorized project member
   // sees the same queue after refresh; this replaces the launcher's local-only
   // list as the source of truth.
@@ -88,6 +103,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
         const items = await response.json()
         if (cancelled || !Array.isArray(items)) return
         setIaExecutionStreams(items.map((item: any) => ({
+          jobId: item.job_id,
           executionId: item.execution_id,
           caseId: item.case_id,
           runId: item.run_id,
@@ -110,7 +126,29 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
     const interval = window.setInterval(() => void loadSharedQueue(), 2500)
     return () => { cancelled = true; window.clearInterval(interval) }
   }, [canViewStatus, currentProjectId, fetchWithAuth, setIaExecutionStreams])
-
+  const loadAiHistory = useCallback(async () => {
+    if (!currentProjectId || !canViewStatus) return
+    setAiHistoryLoading(true)
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/ai-engine/history?proyecto_id=${encodeURIComponent(currentProjectId)}&limit=100`)
+      if (!response.ok) throw new Error(t('motorIa.historyLoadError', { status: response.status }))
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        setAiHistory(data)
+        setAiHistoryError('')
+      }
+    } catch (error: any) {
+      setAiHistoryError(error?.message || t('motorIa.historyLoadFailed'))
+    } finally {
+      setAiHistoryLoading(false)
+    }
+  }, [canViewStatus, currentProjectId, fetchWithAuth, t])
+  useEffect(() => {
+    if (!currentProjectId || !canViewStatus) return
+    void loadAiHistory()
+    const timer = window.setInterval(() => void loadAiHistory(), 10000)
+    return () => window.clearInterval(timer)
+  }, [canViewStatus, currentProjectId, loadAiHistory])
   useEffect(() => {
     const activeStreams = iaExecutionStreams.filter(stream => ['EN_ESPERA', 'EN_EJECUCION'].includes(stream.status || ''))
     if (!activeStreams.length) return
@@ -125,7 +163,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
           status: stream.status || 'EN_ESPERA',
           lastMessage: t('motorIa.streamConnected'),
         })
-        pushLog('ws', `Conectado a ${stream.caseCode ? `${stream.caseCode} ` : ''}${stream.caseTitle || stream.executionId}`, {
+        pushLog('ws', t('motorIa.connectedTo', { target: `${stream.caseCode ? `${stream.caseCode} ` : ''}${stream.caseTitle || stream.executionId}` }), {
           executionId: stream.executionId,
           caseCode: stream.caseCode,
         })
@@ -152,7 +190,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
           updateStream(stream.executionId, {
             status: nextStatus,
             startedAt: stream.startedAt || ts,
-            endedAt: ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR'].includes(nextStatus) && isFinalEvent ? ts : undefined,
+            endedAt: FINAL_IA_STATUSES.includes(nextStatus) && isFinalEvent ? ts : undefined,
             lastMessage: text,
             lastStep: step || stream.lastStep,
               confidence: data.confidence ?? data.metadata?.confidence ?? stream.confidence,
@@ -160,13 +198,13 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
             humanReviewRequired: data.human_review_required ?? stream.humanReviewRequired,
           })
           setIaLogs((prev: Array<IaLogEntry | string>) => [
-            ...prev,
+            ...prev.slice(-(MAX_STORED_IA_LOGS - 1)),
             {
               ts,
               level: data.level?.toLowerCase?.() === 'error' ? 'error' : data.level?.toLowerCase?.() === 'warn' ? 'warn' : isStepResult ? (nextStatus === 'ERROR' || nextStatus === 'FALLO' ? 'error' : 'engine') : 'engine',
               source: eventType || 'ENGINE',
               agent,
-              message: `${step ? `Paso ${step}: ` : ''}${data.status ? `[${data.status}] ` : ''}${text}`,
+              message: `${step ? `${t('motorIa.stepLabel', { value: step })}: ` : ''}${data.status ? `[${data.status}] ` : ''}${text}`,
               executionId: stream.executionId,
               caseCode: stream.caseCode,
               step,
@@ -188,22 +226,11 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
           })
         }
       }
-      ws.onerror = () => {
-        updateStream(stream.executionId, {
-          status: 'ERROR',
-          endedAt: nowIso(),
-            lastMessage: t('motorIa.websocketNoResponse'),
-        })
-        pushLog('error', t('motorIa.websocketError', { execution: stream.caseCode || stream.executionId }), {
-          executionId: stream.executionId,
-          caseCode: stream.caseCode,
-        })
-      }
       ws.onclose = () => {
         const closedAt = nowIso()
         setIaExecutionStreams((prev: IaExecutionStream[]) => prev.map(current => {
           if (current.executionId !== stream.executionId) return current
-          const finalStatus = current.status && ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR'].includes(current.status)
+          const finalStatus = current.status && FINAL_IA_STATUSES.includes(current.status)
           return {
             ...current,
             status: finalStatus ? current.status : 'STREAM_CERRADO',
@@ -223,12 +250,12 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
 
   useEffect(() => {
     const activeStreams = iaExecutionStreams.filter(stream => (
-      stream.runId && !['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'].includes(String(stream.status || '').toUpperCase())
+      stream.runId && !FINAL_IA_STATUSES.includes(String(stream.status || '').toUpperCase())
     ))
     if (!activeStreams.length) return
 
     let cancelled = false
-    const finalStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
+    const finalStatuses = new Set(FINAL_IA_STATUSES)
     const pollExecutions = async () => {
       const runIds = [...new Set(activeStreams.map(stream => stream.runId).filter(Boolean))]
       for (const runId of runIds) {
@@ -243,7 +270,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
             if (!current?.estado_resultado) return stream
             const nextStatus = normalizeEngineStatus(current.estado_resultado)
             const isFinal = finalStatuses.has(String(current.estado_resultado).toUpperCase())
-            const nextMessage = current.observaciones || `Estado actualizado: ${current.estado_resultado}`
+            const nextMessage = current.observaciones || t('motorIa.statusUpdated', { status: current.estado_resultado })
             if (
               stream.status === nextStatus
               && stream.lastMessage === nextMessage
@@ -322,7 +349,17 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
           : t('motorIa.reportLoadError', { status: response.status })))
       }
       const data = await response.json()
-      setReportState({ show: true, loading: false, error: '', report: data })
+      let runtimeTraces: any[] = []
+      try {
+        const tracesResponse = await fetchWithAuth(`${API_BASE}/ai-engine/executions/${executionId}/traces`)
+        if (tracesResponse.ok) {
+          const traces = await tracesResponse.json()
+          runtimeTraces = Array.isArray(traces) ? traces : []
+        }
+      } catch {
+        // The report remains usable if the optional detailed trace endpoint is unavailable.
+      }
+      setReportState({ show: true, loading: false, error: '', report: { ...data, runtime_traces: runtimeTraces } })
     } catch (error: any) {
       setReportState({ show: true, loading: false, error: error.message || t('motorIa.reportLoadFailed'), report: null })
     }
@@ -354,6 +391,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
     const streamItems: IaQueueItem[] = iaExecutionStreams.map(stream => {
       const test = byCaseId.get(stream.caseId)
       return {
+        jobId: stream.jobId,
         caseId: stream.caseId,
         executionId: stream.executionId,
         runId: stream.runId,
@@ -389,12 +427,13 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
     return [...streamItems, ...waitingItems]
   }, [clockTick, currentProjectCases, currentProjectIaQueue, iaExecutionStreams, t])
 
-  const getQueueItemKey = (item: Pick<IaQueueItem, 'executionId' | 'caseId'>) => item.executionId || `waiting:${item.caseId}`
-  const finalQueueStatuses = useMemo(() => new Set<IaRunStatus>(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'STREAM_CERRADO']), [])
+  const getQueueItemKey = (item: Pick<IaQueueItem, 'jobId' | 'executionId' | 'caseId'>) => item.jobId || item.executionId || `waiting:${item.caseId}`
+  const finalQueueStatuses = useMemo(() => new Set<IaRunStatus>(FINAL_IA_STATUSES as IaRunStatus[]), [])
   const visibleQueueItems = useMemo(
     () => queueItems.filter(item => !hiddenQueueItems.has(getQueueItemKey(item))),
     [hiddenQueueItems, queueItems]
   )
+  const latestQueueItem = useMemo(() => getLatestQueueItem(queueItems), [queueItems])
   const hiddenFinishedCount = queueItems.length - visibleQueueItems.length
   const finishedQueueItemsCount = visibleQueueItems.filter(item => finalQueueStatuses.has(item.status)).length
   const runningCount = visibleQueueItems.filter(item => item.status === 'EN_EJECUCION').length
@@ -451,7 +490,11 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
       ? t('motorIa.healthDegraded')
       : healthStatus === 'checking'
         ? t('motorIa.healthChecking')
-        : healthStatus.toUpperCase()
+        : healthStatus === 'error'
+          ? t('motorIa.healthError')
+          : healthStatus === 'unknown'
+            ? t('motorIa.healthUnknown')
+            : healthStatus.toUpperCase()
 
-  return { health, checking, lastHealthCheckedAt, healthRefreshError, showQueueHelp, setShowQueueHelp, reportState, setReportState, consoleRef, shouldAutoScrollRef, checkHealth, openAiReport, markAiReportReviewed, enginePayload, directEnginePayload, iaStatus, iaExecutionStreams, queueItems, visibleQueueItems, finishedQueueItemsCount, hiddenFinishedCount, runningCount, hideFinishedQueueItems, clearHiddenQueueItems, hideQueueItem, logs, formatTime, formatElapsed, formatLogTime, formatConsoleMessage, formatMetrics, agentDisplayName, statusMeta: getStatusMeta(t), currentProjectIaQueue, liveActivity, engineProcessOnline, llmOnline, healthStatus, healthBadgeVariant, healthLabel, setHiddenQueueItems, makeLog, agentClass, logClass }
+  return { health, checking, lastHealthCheckedAt, healthRefreshError, aiHistory, aiHistoryLoading, aiHistoryError, loadAiHistory, showQueueHelp, setShowQueueHelp, reportState, setReportState, consoleRef, shouldAutoScrollRef, checkHealth, openAiReport, markAiReportReviewed, enginePayload, directEnginePayload, iaStatus, iaExecutionStreams, queueItems, visibleQueueItems, latestQueueItem, finishedQueueItemsCount, hiddenFinishedCount, runningCount, hideFinishedQueueItems, clearHiddenQueueItems, hideQueueItem, logs, formatTime, formatElapsed, formatLogTime, formatConsoleMessage, formatMetrics, agentDisplayName, statusMeta: getStatusMeta(t), currentProjectIaQueue, liveActivity, engineProcessOnline, llmOnline, healthStatus, healthBadgeVariant, healthLabel, setHiddenQueueItems, makeLog, agentClass, logClass }
 }

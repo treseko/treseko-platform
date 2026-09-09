@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Card, Col, Row, Spinner, Table } from 'react-boot
 import { Code, Copy } from 'lucide-react'
 import { useI18n } from '../../../i18n'
 import { API_BASE } from '../../../app/constants'
+import { createBugLocalizedLabels } from '../../bugs/bugPresentation'
 
 type AutomationCodesPanelProps = {
   organizations: any[]
@@ -38,6 +39,7 @@ export function AutomationCodesPanel({
   copyToClipboard,
 }: AutomationCodesPanelProps) {
   const { t } = useI18n()
+  const bugLabels = createBugLocalizedLabels(t)
   const [backendCases, setBackendCases] = useState<any[]>([])
   const [backendCasesTotal, setBackendCasesTotal] = useState(0)
   const [backendCasesLoading, setBackendCasesLoading] = useState(false)
@@ -80,7 +82,7 @@ export function AutomationCodesPanel({
         if (cancelled) return
         setBackendCases([])
         setBackendCasesTotal(0)
-        setBackendCasesError(error?.message || 'No se pudieron cargar casos del contexto.')
+        setBackendCasesError(error?.message || t('automatizacion.noCases'))
       } finally {
         if (!cancelled) setBackendCasesLoading(false)
       }
@@ -145,7 +147,7 @@ export function AutomationCodesPanel({
             {t('automatizacion.externalCodesDescription')} <code>POST /external/executions/report</code>.
           </p>
         </div>
-        <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => copyToClipboard(samplePayload, 'Payload ejemplo')}>
+        <Button variant="outline-primary" size="sm" className="fw-bold" onClick={() => copyToClipboard(samplePayload, t('automatizacion.copiedPayload'))}>
           <Copy size={14} className="me-1" /> {t('automatizacion.copyJson')}
         </Button>
       </div>
@@ -163,8 +165,8 @@ export function AutomationCodesPanel({
               <div className="x-small fw-bold text-muted text-uppercase mb-1">{row.label}</div>
               <div className="small text-dark text-truncate mb-2" title={row.name}>{row.name}</div>
               <div className="d-flex align-items-center gap-2">
-                <code className={`small flex-grow-1 ${row.value ? 'text-primary' : 'text-muted'}`}>{row.value || 'No disponible'}</code>
-                <Button variant="link" size="sm" className="p-0" disabled={!row.value} title={`Copiar ${row.label}`} onClick={() => copyToClipboard(row.value, row.label)}>
+                <code className={`small flex-grow-1 ${row.value ? 'text-primary' : 'text-muted'}`}>{row.value || t('automatizacion.noValue')}</code>
+                <Button variant="link" size="sm" className="p-0" disabled={!row.value} title={t('automatizacion.copyValue', { label: row.label })} onClick={() => copyToClipboard(row.value, row.label)}>
                   <Copy size={14} />
                 </Button>
               </div>
@@ -174,8 +176,8 @@ export function AutomationCodesPanel({
       </Row>
 
       <div className="d-flex justify-content-between align-items-center mb-2">
-        <span className="small fw-bold text-dark">Casos del contexto actual</span>
-        <Badge bg="primary">{visibleCasesTotal} caso(s)</Badge>
+        <span className="small fw-bold text-dark">{t('automatizacion.contextCases')}</span>
+        <Badge bg="primary">{visibleCasesTotal} {visibleCasesTotal === 1 ? t('automatizacion.caseSingular') : t('automatizacion.casePlural')}</Badge>
       </div>
       {backendCasesError && <Alert variant="warning" className="small py-2">{backendCasesError}</Alert>}
       <Table hover size="sm" className="mb-3 align-middle">
@@ -185,7 +187,7 @@ export function AutomationCodesPanel({
             <th>{t('automatizacion.caseTitleCol')}</th>
             <th>{t('automatizacion.caseComponentCol')}</th>
             <th>{t('automatizacion.casePriorityCol')}</th>
-            <th className="text-end">Copiar</th>
+            <th className="text-end">{t('automatizacion.copy')}</th>
           </tr>
         </thead>
         <tbody>
@@ -197,9 +199,9 @@ export function AutomationCodesPanel({
               <td><code className="small text-primary">{getCaseCode(test)}</code></td>
               <td className="small fw-semibold text-dark">{getCaseTitle(test)}</td>
               <td className="small text-muted">{displayComponentName(test)}</td>
-              <td><Badge bg={getCasePriority(test) === 'ALTA' ? 'danger' : getCasePriority(test) === 'MEDIA' ? 'warning' : 'secondary'}>{getCasePriority(test)}</Badge></td>
+              <td><Badge bg={getCasePriority(test) === 'ALTA' ? 'danger' : getCasePriority(test) === 'MEDIA' ? 'warning' : 'secondary'}>{bugLabels.priority(getCasePriority(test))}</Badge></td>
               <td className="text-end">
-                <Button variant="link" size="sm" className="p-0" onClick={() => copyToClipboard(getCaseCode(test), 'case_code')}>
+                <Button variant="link" size="sm" className="p-0" aria-label={t('automatizacion.copyCaseCode')} title={t('automatizacion.copyCaseCode')} onClick={() => copyToClipboard(getCaseCode(test), 'case_code')}>
                   <Copy size={14} />
                 </Button>
               </td>

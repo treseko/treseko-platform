@@ -133,6 +133,136 @@ function compactany(trace: any): Record<string, any> {
   };
 }
 
+const AI_REPORT_DELIVERY_BUDGET_BYTES = 240 * 1024;
+
+function serializedBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+
+function selectWorkflowPayloadFields(value: any, keys: string[]): Record<string, any> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const selected: Record<string, any> = {};
+  for (const key of keys) {
+    if (value[key] !== undefined) selected[key] = compactWorkflowValue(value[key]);
+  }
+  return Object.keys(selected).length ? selected : undefined;
+}
+
+function compactTraceForDelivery(trace: Record<string, any>): Record<string, any> {
+  const input = selectWorkflowPayloadFields(trace.input_json, [
+    'executionId', 'caseId', 'current_step', 'step_number', 'attempt', 'objective',
+  ]);
+  const output = selectWorkflowPayloadFields(trace.output_json, [
+    'status', 'confidence', 'reason', 'message', 'output_port', 'reason_code',
+    'implementation', 'planned_action', 'action', 'decision', 'events',
+  ]);
+  return {
+    ts: trace.ts,
+    workflow_id: trace.workflow_id,
+    workflow_version: trace.workflow_version,
+    node_id: trace.node_id,
+    node_name: trace.node_name,
+    node_type: trace.node_type,
+    status: trace.status,
+    started_at: trace.started_at,
+    ended_at: trace.ended_at,
+    ...(input ? { input_json: input } : {}),
+    ...(output ? { output_json: output } : {}),
+    metrics_json: trace.metrics_json,
+  };
+}
+
+function compactConversationForDelivery(item: Record<string, any>): Record<string, any> {
+  return {
+    ts: item.ts,
+    level: item.level,
+    agent: item.agent,
+    node_id: item.node_id,
+    node_type: item.node_type,
+    status: item.status,
+    message: typeof item.message === 'string' ? item.message.slice(0, 1000) : item.message,
+    reason: typeof item.reason === 'string' ? item.reason.slice(0, 1500) : item.reason,
+    confidence: item.confidence,
+    metrics: item.metrics,
+    started_at: item.started_at,
+    ended_at: item.ended_at,
+  };
+}
+
+function compactTimelineForDelivery(item: AgentTimelineEvent): AgentTimelineEvent {
+  return {
+    ts: item.ts,
+    level: item.level,
+    agent: item.agent,
+    message: String(item.message || '').slice(0, 1200),
+    step: item.step,
+    attempt: item.attempt,
+    action: compactWorkflowValue(item.action, 2),
+    reason: item.reason?.slice(0, 1000),
+    confidence: item.confidence,
+    metrics: item.metrics,
+    prompt_excerpt: item.prompt_excerpt?.slice(0, 500),
+    raw_response_excerpt: item.raw_response_excerpt?.slice(0, 500),
+    validation: compactWorkflowValue(item.validation, 2),
+    execution: compactWorkflowValue(item.execution, 2),
+  };
+}
+
+/**
+ * Keeps the durable report below the backend contract limit without dropping
+ * case steps, evidence, audit decisions or terminal status. Workflow inputs
+ * and outputs are summarized because the same runtime state is otherwise
+ * repeated in traces, conversation and timeline.
+ */
+function compactAiReportForDelivery(report: Record<string, any>): Record<string, any> {
+  const originalBytes = serializedBytes(report);
+  const compacted: Record<string, any> = {
+    ...report,
+    workflow_traces: (report.workflow_traces || []).map(compactTraceForDelivery),
+    agent_conversation: (report.agent_conversation || []).map(compactConversationForDelivery),
+  };
+  if (serializedBytes(compacted) <= AI_REPORT_DELIVERY_BUDGET_BYTES) {
+    return originalBytes === serializedBytes(compacted)
+      ? compacted
+      : { ...compacted, report_compaction: { applied: true, original_bytes: originalBytes } };
+  }
+
+  const reduced: Record<string, any> = {
+    ...compacted,
+    timeline: (compacted.timeline || []).map(compactTimelineForDelivery),
+    workflow_traces: (compacted.workflow_traces || []).map((trace: Record<string, any>) => ({
+      ...trace,
+      input_json: selectWorkflowPayloadFields(trace.input_json, ['current_step', 'step_number', 'attempt']),
+      output_json: selectWorkflowPayloadFields(trace.output_json, [
+        'status', 'confidence', 'reason', 'output_port', 'reason_code', 'implementation', 'planned_action', 'action',
+      ]),
+    })),
+    report_compaction: { applied: true, original_bytes: originalBytes, level: 'reduced_runtime_duplicates' },
+  };
+  if (serializedBytes(reduced) <= AI_REPORT_DELIVERY_BUDGET_BYTES) return reduced;
+
+  // Last-resort protection for unusually verbose providers. Detailed case
+  // steps and evidence remain intact; only duplicate workflow telemetry is
+  // bounded. Full traces remain available in Engine logs and monitoring.
+  return {
+    ...reduced,
+    timeline: (reduced.timeline || []).slice(-80),
+    workflow_traces: (reduced.workflow_traces || []).map((trace: Record<string, any>) => ({
+      ts: trace.ts,
+      node_id: trace.node_id,
+      node_name: trace.node_name,
+      node_type: trace.node_type,
+      status: trace.status,
+      started_at: trace.started_at,
+      ended_at: trace.ended_at,
+      output_json: selectWorkflowPayloadFields(trace.output_json, ['status', 'confidence', 'reason', 'output_port', 'reason_code']),
+      metrics_json: trace.metrics_json,
+    })),
+    agent_conversation: (reduced.agent_conversation || []).slice(-80),
+    report_compaction: { applied: true, original_bytes: originalBytes, level: 'bounded_runtime_telemetry' },
+  };
+}
+
 function failureCategory(status: string, errors: string[], failedAssertions = 0): string | undefined {
   if (status === 'PASO') return undefined;
   if (failedAssertions > 0) return 'assertion_failed';
@@ -145,6 +275,7 @@ function failureCategory(status: string, errors: string[], failedAssertions = 0)
 
 function buildAiReport(args: {
   task: string;
+  expected?: string;
   testId: string;
   suite: string;
   model: string;
@@ -207,6 +338,7 @@ function buildAiReport(args: {
     condition: edge?.condition,
   }));
   const compactTraces = (args.workflowTraces || []).map(compactany);
+  const evidenceStepsByNumber = new Map<number, any>((args.auditEvidence.steps || []).map((step: any) => [Number(step.number), step]));
   const workflowConversation = compactTraces.map((trace) => ({
     ts: trace.ts || trace.started_at,
     level: trace.status === 'FAILED' ? 'ERROR' : trace.status === 'BLOCKED' ? 'WARN' : 'INFO',
@@ -217,6 +349,8 @@ function buildAiReport(args: {
     message: `${trace.node_name || trace.node_type || 'Nodo workflow'}: ${trace.status}`,
     reason: trace.output_json?.reason,
     confidence: trace.output_json?.confidence,
+    input_json: trace.input_json,
+    output_json: trace.output_json,
     metrics: trace.metrics_json,
     started_at: trace.started_at,
     ended_at: trace.ended_at,
@@ -231,10 +365,12 @@ function buildAiReport(args: {
         }
       : null,
   };
-  return {
+  const report = {
     schema_version: 1,
     decision_contract_version: 3,
     execution_id: args.testId,
+    objective: args.task,
+    expected_result: args.expected || undefined,
     suite: args.suite,
     summary: args.consensusDecision.reason,
     status: args.status,
@@ -293,6 +429,9 @@ function buildAiReport(args: {
     steps: (args.runResult?.steps || []).map((step: any) => ({
       number: step.number,
       status: step.status,
+      action: evidenceStepsByNumber.get(Number(step.number))?.action || step.action,
+      data: evidenceStepsByNumber.get(Number(step.number))?.data || step.data,
+      expected_result: evidenceStepsByNumber.get(Number(step.number))?.expected_result || args.expected || undefined,
       observations: step.observations,
       confidence: step.confidence ?? averageConfidence(step.history.map((item: any) => item.action?.confidence)),
       failure_category: step.failure_category,
@@ -307,7 +446,8 @@ function buildAiReport(args: {
       per_step: args.resultSteps.filter((step: any) => Boolean(step.screenshot_base64)).map((step) => step.number),
     },
   };
+  return compactAiReportForDelivery(report);
 }
 
-export { buildAiReport };
+export { AI_REPORT_DELIVERY_BUDGET_BYTES, buildAiReport, compactAiReportForDelivery };
 export type { AgentTimelineEvent };

@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ModuleId } from './types'
 import { allSidebarItems } from './navigationModel'
 import { navigationFromCurrentUri, readWorkspacePreferences, saveWorkspacePreferences, uriForWorkspaceState } from './workspacePreferences'
 
 export function useWorkspaceNavigation(options: any) {
+  const bugLinkDestination = useRef(new URLSearchParams(window.location.search).get('tab') === 'incidencias' ? 'incidencias' : 'bugs')
   const {
     isAuthenticated, loggedUser, workspacePreferencesHydrated, setWorkspacePreferencesHydrated,
     workspacePreferencesHydratedRef, workspaceNavigationInitializedRef, workspaceNavigationPathRef,
@@ -73,10 +74,12 @@ export function useWorkspaceNavigation(options: any) {
   useEffect(() => {
     const urlBugId = new URLSearchParams(window.location.search).get('bug_id') || ''
     const targetBugId = urlBugId || deepLinkBugId
-    if (!targetBugId) return
+    if (!targetBugId) { bugLinkDestination.current = 'bugs'; return }
     if (targetBugId !== deepLinkBugId) setDeepLinkBugId(targetBugId)
     if (!isAuthenticated || !workspacePreferencesHydrated) return
-    if (!canAccessCapability('bugs.ver', 'read')) {
+    const destination = urlBugId ? (new URLSearchParams(window.location.search).get('tab') === 'incidencias' ? 'incidencias' : 'bugs') : bugLinkDestination.current
+    bugLinkDestination.current = destination
+    if (!canAccessCapability(destination === 'incidencias' ? 'incidencias.ver' : 'bugs.ver', 'read')) {
       if (deepLinkPermissionNoticeRef.current !== targetBugId) {
         deepLinkPermissionNoticeRef.current = targetBugId
         showFeedback('Sin permiso', 'No tienes permiso para ver el detalle de bugs.', 'warning')
@@ -84,7 +87,7 @@ export function useWorkspaceNavigation(options: any) {
       consumeDeepLinkBug()
       return
     }
-    setActiveTab('bugs')
+    setActiveTab(destination)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, workspacePreferencesHydrated, deepLinkBugId, loggedUser.id, loggedUser.email])
 

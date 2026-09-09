@@ -111,6 +111,13 @@ RBAC_CAPABILITIES = [
         ],
     },
     {
+        "module": "incidencias",
+        "module_label": "Centro de Incidencias",
+        "capabilities": [
+            {"id": "incidencias.ver", "label": "Ver centro de incidencias"},
+        ],
+    },
+    {
         "module": "motor_ia",
         "module_label": "Motor IA",
         "capabilities": [

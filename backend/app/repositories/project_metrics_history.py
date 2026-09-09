@@ -18,7 +18,10 @@ async def build_project_history(context):
     result_historico = await db.execute(
         select(models.Build).filter(
             models.Build.proyecto_id == proyecto_id,
-            models.Build.componente_id == build.componente_id
+            models.Build.componente_id == build.componente_id,
+            # Solo las builds disponibles forman parte de la tendencia.
+            # PREPARACION es un borrador futuro y no debe distorsionar las métricas.
+            models.Build.estado.in_(("ACTIVA", "HISTORICA")),
         ).order_by(
             # La build seleccionada siempre debe ser la referencia actual.
             # Algunas builds creadas/importadas no tienen fecha_inicio y
@@ -42,6 +45,8 @@ async def build_project_history(context):
             historico.append({
                 "build_id": str(b.id),
                 "build_name": b.nombre,
+                "estado": b.estado,
+                "activo": b.activo,
                 "total_asignados": 0,
                 "ejecutados": 0,
                 "cobertura_porcentaje": 0.0,
@@ -67,6 +72,8 @@ async def build_project_history(context):
             historico.append({
                 "build_id": str(b.id),
                 "build_name": b.nombre,
+                "estado": b.estado,
+                "activo": b.activo,
                 "total_asignados": 0,
                 "ejecutados": 0,
                 "cobertura_porcentaje": 0.0,
@@ -120,6 +127,8 @@ async def build_project_history(context):
         historico.append({
             "build_id": str(b.id),
             "build_name": b.nombre,
+            "estado": b.estado,
+            "activo": b.activo,
             "total_asignados": len(b_assigned_master_ids),
             "ejecutados": len(b_caso_estado),
             "cobertura_porcentaje": _safe_percent(len(b_caso_estado), len(b_assigned_master_ids)),

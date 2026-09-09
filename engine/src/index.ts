@@ -27,6 +27,7 @@ import type { AgentTimelineEvent as ReportTimelineEvent } from './run-report-bui
 import { createProgressChannel } from './progress-channel.ts';
 import { finalizeFailedRun, finalizeSuccessfulRun } from './run-finalization.ts';
 import { executeConfiguredWorkflow } from './workflow-executor.ts';
+import { runChatbotEvaluation } from './chatbot-evaluator.ts';
 
 dotenv.config({ override: false });
 
@@ -93,6 +94,7 @@ type EngineRunResult = {
   final_result?: string;
   final_screenshot_base64?: string | undefined;
   ai_report?: Record<string, any>;
+  chatbot_resultado?: Record<string, any>;
 };
 
 type AgentTimelineEvent = ReportTimelineEvent;
@@ -214,6 +216,10 @@ export async function runTask(
   const ai = new AIClient({
     ...(options.aiConfig || {}),
     ...(options.agentWorkflow ? { agentWorkflow: options.agentWorkflow } : {}),
+    // LM Studio models may emit a long reasoning channel before the JSON
+    // contract. Disable that path for workflow decisions so the bounded
+    // completion contains the structured result the evaluator expects.
+    disableThinking: String(options.aiConfig?.provider || '').toLowerCase().replace(/_/g, '-') === 'lm-studio',
     ...(opencode ? { agentDriver: opencode, agentRunId: testId } : {}),
   });
   const report = createRunReport(task, testId, suite, manualSteps);
@@ -277,6 +283,35 @@ export async function runTask(
     }
     const urlCandidate = normalizeEngineUrl(url) || firstStepUrl(qaSteps);
 
+    if (options.contextData?.chatbot) {
+      emitAgent('CHATBOT', 'INFO', 'Iniciando evaluación Chatbot con el workflow IA seleccionado.');
+      const chatbotResult = await runChatbotEvaluation({
+        ai,
+        executionId: testId,
+        caseId: options.caseId || testId,
+        task,
+        context: options.contextData.chatbot,
+        workflowDefinition: options.workflowDefinition,
+        emitAgent,
+        emitTrace: (trace) => emitAgent(trace.node_type || 'WORKFLOW', trace.status === 'FAILED' ? 'ERROR' : trace.status === 'BLOCKED' ? 'WARN' : 'INFO', `${trace.node_name || 'Nodo'}: ${trace.status}`, { metrics: trace.metrics_json }),
+      });
+      await browser.close();
+      await opencode?.closeRun(testId);
+      emit('execution_finished', {
+        status: chatbotResult.status,
+        report_pending: true,
+        duration_seconds: chatbotResult.duration_seconds,
+        observations: chatbotResult.observations,
+        confidence: chatbotResult.ai_report?.confidence,
+        consensus: chatbotResult.ai_report?.consensus,
+        human_review_required: chatbotResult.ai_report?.human_review_required,
+        message: chatbotResult.observations,
+        ai_report_summary: { confidence: chatbotResult.ai_report?.confidence, consensus: chatbotResult.ai_report?.consensus, human_review_required: chatbotResult.ai_report?.human_review_required },
+      });
+      await flushAndCloseBackendWs();
+      return chatbotResult;
+    }
+
     await browser.init(Boolean(options.headless), options.viewport);
     report.setModel(ai.model);
     const page = browser.getPage();
@@ -302,14 +337,15 @@ export async function runTask(
     let auditPromise: Promise<AIResult<AuditDecision>> | undefined;
     let auditEvidence: AuditEvidenceBundle | undefined;
     let visualAuditUsed = false;
-    const performFinalAudit = async (): Promise<AIResult<AuditDecision>> => {
+    const performFinalAudit = async (providedRunResult?: Awaited<ReturnType<typeof runQaSteps>>): Promise<AIResult<AuditDecision>> => {
       if (auditResult) return auditResult;
       if (auditPromise) return auditPromise;
       auditPromise = (async () => {
-        if (!runResult) throw new Error('La auditoria final no puede ejecutarse sin resultados de pasos.');
+        const effectiveRunResult = providedRunResult || runResult;
+        if (!effectiveRunResult) throw new Error('La auditoria final no puede ejecutarse sin resultados de pasos.');
 
         finalScreenshot = await page.screenshot();
-        const evidence = buildAuditEvidence(task, qaSteps, runResult.steps, runResult.errors);
+        const evidence = buildAuditEvidence(task, qaSteps, effectiveRunResult.steps, effectiveRunResult.errors);
         const evidenceBundle = evidence.bundle;
         auditEvidence = evidenceBundle;
         const finalScreenshotBase64 = finalScreenshot.toString('base64');
@@ -320,20 +356,20 @@ export async function runTask(
         // A conclusive technical failure already establishes the outcome.
         // Do not wait for a visual model to reinterpret it: that adds latency
         // and can leave a campaign blocked when the local model is unavailable.
-        if (runResult.errors.length) {
-          const status = runResult.steps.some((step) => step.status === 'FALLO') ? 'FAILED' : 'BLOCKED';
+        if (effectiveRunResult.errors.length) {
+          const status = effectiveRunResult.steps.some((step) => step.status === 'FALLO') ? 'FAILED' : 'BLOCKED';
           auditResult = {
             data: normalizeAuditDecision({
               status,
-              reason: runResult.errors.join(' | '),
+              reason: effectiveRunResult.errors.join(' | '),
               confidence: 90,
               evidence_refs: [],
-              failed_expectations: runResult.errors,
+              failed_expectations: effectiveRunResult.errors,
               missing_evidence: [],
               contradictions: [],
             }),
             metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
-            prompt: { deterministic: true, technical_errors: runResult.errors },
+            prompt: { deterministic: true, technical_errors: effectiveRunResult.errors },
             rawResponse: { deterministic: true, status },
           };
           return auditResult;
@@ -371,10 +407,9 @@ export async function runTask(
           return auditResult;
         }
 
-        // A non-vision model cannot add a trustworthy visual verdict. When
-        // every step completed successfully and the runtime recorded no
-        // technical error, keep that verified execution as the final result
-        // instead of manufacturing a BLOCKED audit solely for missing vision.
+        // Technical success is not functional success when the expected result
+        // is semantic/visual. Without a verified vision capability, stop for
+        // review instead of approving a navigation or click that merely ran.
         const technicalPassWithoutVision = !ai.supportsVision
           && evidenceBundle.technical_status === 'PASO'
           && evidenceBundle.steps.length > 0
@@ -383,26 +418,26 @@ export async function runTask(
           const evidenceRefs = evidenceBundle.steps.flatMap((step) => step.attempts.map((attempt) => attempt.evidence_ref));
           auditResult = {
             data: normalizeAuditDecision({
-              status: 'PASSED',
-              reason: 'Todos los pasos finalizaron correctamente con evidencia observable; no se requiere auditoria visual para este modelo.',
-              confidence: 90,
+              status: 'BLOCKED',
+              reason: 'Los pasos técnicos finalizaron, pero falta una auditoría visual verificada para confirmar los resultados esperados.',
+              confidence: 50,
               evidence_refs: evidenceRefs,
               failed_expectations: [],
-              missing_evidence: [],
+              missing_evidence: ['Auditoría visual del estado final y de los resultados esperados'],
               contradictions: [],
             }),
             metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
             prompt: { deterministic: true, technical_pass_without_vision: true, evidence_refs: evidenceRefs },
-            rawResponse: { deterministic: true, status: 'PASSED' },
+            rawResponse: { deterministic: true, status: 'BLOCKED', technical_pass_without_vision: true },
           };
-          emitAgent('AUDITOR', 'INFO', 'Auditoria tecnica completada sin vision: todos los pasos finalizaron correctamente.', {
-            confidence: 90,
+          emitAgent('AUDITOR', 'WARN', 'Auditoria bloqueada: pasos técnicos OK pero sin vision verificada.', {
+            confidence: 50,
             evidence_refs: evidenceRefs,
           });
           return auditResult;
         }
 
-        const historyText = runResult.history.map((item) => (
+        const historyText = effectiveRunResult.history.map((item) => (
           `Paso ${item.step_number} intento ${item.attempt}: ${item.action?.action || '-'} -> ${item.execution?.ok ? 'OK' : 'ERROR'}; validacion=${item.post_validation?.reason || item.validation?.reason || 'sin registrar'}`
         ));
         const finalState = [
@@ -444,7 +479,7 @@ export async function runTask(
 
     return await finalizeSuccessfulRun({ runResult, qaSteps, report, emitAgent, emit, browser, opencode, testId, startedAt, ai, task, suite, expected, validation: (await performFinalAudit()).data, auditEvidence, visualAuditUsed, finalScreenshot, timeline, workflowTraces, options, maxSteps, workflowTimeoutMs, resultSteps, url, flushAndCloseBackendWs });
   } catch (error: any) {
-    return await finalizeFailedRun({ error, safeExecutionError, emitAgent, emit, report, browser, opencode, testId, startedAt, task, suite, ai, resultSteps, timeline, options, maxSteps, workflowTimeoutMs, url, flushAndCloseBackendWs });
+    return await finalizeFailedRun({ error, safeExecutionError, emitAgent, emit, report, browser, opencode, testId, startedAt, task, suite, expected, ai, resultSteps, timeline, options, maxSteps, workflowTimeoutMs, url, flushAndCloseBackendWs });
   }
 }
 

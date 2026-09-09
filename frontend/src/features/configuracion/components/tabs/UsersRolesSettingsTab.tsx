@@ -149,7 +149,7 @@ export function UsersSettingsTab({
       </Card>
 
       {/* ABM Usuarios */}
-      <Card className="border-0 shadow-sm rounded-4 bg-white overflow-hidden">
+      <Card className="border-0 shadow-sm rounded-4 bg-white overflow-hidden users-directory-card">
         <Card.Header className="bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center responsive-card-header">
           <div>
             <h6 className="fw-bold text-dark m-0">{t('configuracion.usersDirectoryTitle', { visible: visibleUsers.length, total: appUsers.length })}</h6>
@@ -172,31 +172,35 @@ export function UsersSettingsTab({
             />
           </div>
         </div>
-        <Table responsive hover className="mb-0 align-middle">
+        <Table responsive hover className="mb-0 align-middle users-directory-table">
           <thead className="bg-light">
             <tr className="x-small text-muted text-uppercase">
-              <th className="px-4 py-3 border-0">{t('configuracion.user')}</th>
-              <th className="border-0">{t('configuracion.email')}</th>
-              <th className="border-0">{t('configuracion.globalRole')}</th>
-              <th className="border-0">{t('configuracion.authentication')}</th>
-              <th className="border-0">{t('configuracion.status')}</th>
-              {canEditUsers && <th className="px-4 border-0 text-end">{t('configuracion.actions')}</th>}
+              <th className="px-4 py-3 border-0 users-directory-col-user">{t('configuracion.user')}</th>
+              <th className="border-0 users-directory-col-email">{t('configuracion.email')}</th>
+              <th className="border-0 users-directory-col-role">{t('configuracion.globalRole')}</th>
+              <th className="border-0 users-directory-col-auth">{t('configuracion.authentication')}</th>
+              <th className="border-0 users-directory-col-status">{t('configuracion.status')}</th>
+              {canEditUsers && <th className="px-4 border-0 text-end users-directory-col-actions">{t('configuracion.actions')}</th>}
             </tr>
           </thead>
           <tbody>
             {visibleUsers.map(u => (
               <tr key={u.id} className="border-bottom">
-                <td className="px-4 fw-bold text-dark d-flex align-items-center gap-2">
-                  <User size={16} className="text-secondary" /> {u.name}
+                <td className="px-4 fw-bold text-dark">
+                  <div className="d-flex align-items-center gap-2 users-directory-user-cell">
+                    <User size={16} className="text-secondary flex-shrink-0" /> <span>{u.name}</span>
+                  </div>
                 </td>
-                <td className="small text-muted">{u.email}</td>
+                <td className="small text-muted users-directory-email-cell">{u.email}</td>
                 <td><Badge bg="light" text="dark" className="border fw-normal shadow-sm">{u.role}</Badge></td>
                 <td>{u.auth === 'AD' ? <Badge bg="primary" className="x-small">{t('configuracion.adLinked')}</Badge> : <Badge bg="secondary" className="x-small">{t('configuracion.local')}</Badge>}</td>
                 <td><span className={`small fw-bold ${u.status === 'Activo' ? 'text-success' : 'text-danger'}`}>{u.status}</span></td>
                 {canEditUsers && (
-                  <td className="px-4 text-end d-flex gap-2 justify-content-end">
-                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openUserModal(u)} title={t('configuracion.editUser')} aria-label={t('configuracion.editUser')}><Edit size={14} /></Button>
-                    <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" disabled={u.email === loggedUser.email} title={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} aria-label={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} onClick={() => handleDeactivateUser(u)}><Trash2 size={14} /></Button>
+                  <td className="px-4 text-end">
+                    <div className="d-inline-flex gap-2 justify-content-end users-directory-actions">
+                      <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openUserModal(u)} title={t('configuracion.editUser')} aria-label={t('configuracion.editUser')}><Edit size={14} /></Button>
+                      <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" disabled={u.email === loggedUser.email} title={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} aria-label={u.email === loggedUser.email ? t('configuracion.cannotDeactivateOwnAccount') : t('configuracion.deactivateUser')} onClick={() => handleDeactivateUser(u)}><Trash2 size={14} /></Button>
+                    </div>
                   </td>
                 )}
               </tr>

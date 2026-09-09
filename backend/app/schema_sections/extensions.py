@@ -19,6 +19,9 @@ class ExtensionInstanceSummary(BaseModel):
     id: UUID
     provider_id: str
     kind: ExtensionKind
+    scope_key: str
+    organizacion_id: Optional[UUID] = None
+    proyecto_id: Optional[UUID] = None
     enabled: bool
     status: str
     config_json: Dict[str, Any] = Field(default_factory=dict)
@@ -40,6 +43,7 @@ class ExtensionCatalogItem(BaseModel):
     premium_required: bool = False
     installed: bool = False
     instance: Optional[ExtensionInstanceSummary] = None
+    instances: List[ExtensionInstanceSummary] = Field(default_factory=list)
 
 
 class ExtensionCatalogResponse(BaseModel):

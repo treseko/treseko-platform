@@ -26,8 +26,8 @@ async def add_workflow_node_from_preset(
     definition = None
     universal_version = None
     if payload.universal_agent_version_id:
-        if workflow.workflow_format != "universal_v2":
-            raise ValueError("Los agentes universales solo se pueden insertar en workflows universal_v2.")
+        if workflow.workflow_format not in {"universal_v2", "universal_v3"}:
+            raise ValueError("Los agentes universales solo se pueden insertar en workflows universal_v2 o universal_v3.")
         universal_version = (await db.execute(
             select(models.AiUniversalAgentVersion).filter(models.AiUniversalAgentVersion.id == payload.universal_agent_version_id)
         )).scalar_one_or_none()
@@ -54,6 +54,11 @@ async def add_workflow_node_from_preset(
         "universal-reporter/v1": "reporter_agent", "universal-http/v1": "webhook_agent",
         "universal-human-approval/v1": "human_approval_agent", "universal-mcp/v1": "mcp_tool_agent",
         "universal-script-sandbox/v1": "script_agent", "universal-a2a-disabled/v1": "a2a_disabled_agent",
+        "qa-context-resolver/v2": "ContextResolver", "qa-pre-execution-analyst/v2": "PreExecutionAnalyst",
+        "qa-browser-observer/v2": "Observer", "qa-action-planner/v2": "Planner",
+        "qa-security-guard/v2": "SecurityGuard", "qa-browser-action-executor/v2": "Executor",
+        "qa-step-validator/v2": "Validator", "qa-recovery-strategist/v2": "Recovery",
+        "qa-final-auditor/v2": "Auditor", "qa-execution-reporter/v2": "Reporter",
     }
     name = str(contract.get("name") or "Agente universal") if universal_version else (definition.name if definition else preset.name)
     node_type = adapter_types.get(adapter, "llm_agent") if universal_version else (definition.runtime_handler if definition and definition.runtime_handler else (definition.kind if definition else preset.type))
@@ -109,20 +114,25 @@ async def add_workflow_node_from_preset(
     return await get_ai_workflow(db, workflow_id)
 
 
-async def get_active_ai_workflow_definition(db: AsyncSession) -> Optional[Dict[str, Any]]:
+async def get_active_ai_workflow_definition(db: AsyncSession, purpose: str = "test_execution") -> Optional[Dict[str, Any]]:
     await ensure_default_ai_workflow(db)
+    if purpose == "chatbot_evaluation":
+        from .ai_builtin_workflows import ensure_builtin_workflow
+        await ensure_builtin_workflow(db, "chatbot-evaluation", activate_if_missing=True)
     config = await get_ai_engine_config(db)
-    workflow_id = (config.get("active_workflow_ids") or {}).get("test_execution") or config.get("active_workflow_id")
+    workflow_id = (config.get("active_workflow_ids") or {}).get(purpose)
+    if purpose == "test_execution":
+        workflow_id = workflow_id or config.get("active_workflow_id")
     workflow = None
     if workflow_id:
         try:
             workflow = await _load_workflow(db, UUID(str(workflow_id)))
         except (TypeError, ValueError):
             workflow = None
-    if not workflow or workflow.workflow_purpose != "test_execution" or workflow.status != "ACTIVE":
+    if not workflow or workflow.workflow_purpose != purpose or workflow.status != "ACTIVE":
         result = await db.execute(select(models.AiWorkflow).filter(
             models.AiWorkflow.status == "ACTIVE",
-            models.AiWorkflow.workflow_purpose == "test_execution",
+            models.AiWorkflow.workflow_purpose == purpose,
         ).order_by(models.AiWorkflow.is_default.desc()))
         candidate = result.scalars().first()
         workflow = await _load_workflow(db, candidate.id) if candidate else None

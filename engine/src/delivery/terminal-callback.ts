@@ -21,7 +21,8 @@ export interface TerminalCallbackAck {
 
 type PendingTerminalDelivery = Pick<TerminalCallbackOptions, 'url' | 'token' | 'executionId' | 'payload'>;
 
-const pendingDeliveryDir = () => process.env.ENGINE_PENDING_DELIVERIES_DIR || '/engine/pending-deliveries';
+const pendingDeliveryDir = () => process.env.ENGINE_PENDING_DELIVERIES_DIR
+  || path.join(process.env.ENGINE_RUNTIME_DIR || process.cwd(), 'pending-deliveries');
 const pendingDeliveryPath = (executionId: string) => path.join(pendingDeliveryDir(), `${executionId}.json`);
 
 // The terminal payload is written only to the Engine's private runtime volume

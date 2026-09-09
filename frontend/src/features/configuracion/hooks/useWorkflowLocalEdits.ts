@@ -39,14 +39,15 @@ export function useWorkflowLocalEdits({
   enqueueMoveNode,
 }: UseWorkflowLocalEditsParams) {
   const updateWorkflowDraft = (patch: Partial<AiWorkflow>) => {
-    if (!workflowDraft) return
+    if (!workflowDraft || !canEditAi) return
     const next = { ...workflowDraft, ...patch }
     setWorkflowDraft(next)
     setAiWorkflows(prev => prev.map(item => item.id === next.id ? next : item))
+    syncFlowFromWorkflow(next)
   }
 
   const updateWorkflowNode = (nodeId: string, patch: Partial<AiWorkflowNode>) => {
-    if (!workflowDraft) return
+    if (!workflowDraft || !canEditAi) return
     const next = {
       ...workflowDraft,
       nodes: workflowDraft.nodes.map(node => node.id === nodeId ? { ...node, ...patch } : node),
@@ -61,7 +62,7 @@ export function useWorkflowLocalEdits({
   }
 
   const updateWorkflowEdge = (edgeId: string, patch: Partial<AiWorkflowEdge>) => {
-    if (!workflowDraft) return
+    if (!workflowDraft || !canEditAi) return
     const next = {
       ...workflowDraft,
       edges: workflowDraft.edges.map(edge => edge.id === edgeId ? { ...edge, ...patch } : edge),
@@ -107,14 +108,14 @@ export function useWorkflowLocalEdits({
   }
 
   const onWorkflowNodeDragStop = (_event: any, node: Node) => {
-    if (autoLayoutEnabled) return
+    if (autoLayoutEnabled || !canEditAi) return
     if (!workflowDraft) return
     enqueueMoveNode(node.id, node.position)
     setFlowNodes(nodes => nodes.map(item => item.id === node.id ? { ...item, position: node.position } : item))
   }
 
   const onWorkflowConnect: OnConnect = (connection: Connection) => {
-    if (!workflowDraft || !connection.source || !connection.target) return
+    if (!workflowDraft || !canEditAi || !connection.source || !connection.target) return
     const edge: AiWorkflowEdge = {
       id: crypto.randomUUID(),
       source_node_id: connection.source,

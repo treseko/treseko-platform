@@ -15,15 +15,15 @@ type CaseVersionsModalProps = {
   getCasoVersionRows: (current: any, selected: any) => any[]
 }
 
-const formatStepText = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return 'Sin valor'
+const formatStepText = (value: unknown, emptyLabel: string) => {
+  if (value === null || value === undefined || value === '') return emptyLabel
   return String(value)
 }
 
-function VersionStepAttachments({ step }: { step: any }) {
+function VersionStepAttachments({ step, t }: { step: any, t: (key: string, params?: Record<string, unknown>) => string }) {
   const attachments = Array.isArray(step?.attachments) ? step.attachments : []
   if (attachments.length === 0) {
-    return <div className="x-small text-muted mt-2">Sin evidencias adjuntas</div>
+    return <div className="x-small text-muted mt-2">{t('casos.noAttachedEvidence')}</div>
   }
 
   return (
@@ -33,8 +33,8 @@ function VersionStepAttachments({ step }: { step: any }) {
         const url = resolveAssetUrl(attachment?.public_url)
         const available = isEvidenceAvailable(attachment)
         const image = available && isImageAsset(attachment)
-        const label = link?.tipo === 'EXPECTED_REFERENCE' ? 'Resultado esperado' : 'Acción'
-        const filename = attachment?.filename_original || 'Evidencia'
+        const label = link?.tipo === 'EXPECTED_REFERENCE' ? t('casos.expectedResult') : t('casos.action')
+        const filename = attachment?.filename_original || t('casos.evidence')
 
         if (!available || !url) {
           return (
@@ -51,7 +51,7 @@ function VersionStepAttachments({ step }: { step: any }) {
             target="_blank"
             rel="noreferrer"
             className="border rounded-2 bg-white p-1 d-flex align-items-center gap-2 text-decoration-none"
-            title={`Abrir ${filename}`}
+            title={t('casos.openAttachment', { filename })}
           >
             {image ? (
               <img src={url} alt={filename} className="rounded border" style={{ width: 42, height: 32, objectFit: 'cover' }} />
@@ -67,20 +67,20 @@ function VersionStepAttachments({ step }: { step: any }) {
   )
 }
 
-function VersionSteps({ value }: { value: any }) {
+function VersionSteps({ value, t }: { value: any, t: (key: string, params?: Record<string, unknown>) => string }) {
   const steps = Array.isArray(value) ? value.slice().sort((a, b) => (a?.numero_paso || 0) - (b?.numero_paso || 0)) : []
-  if (steps.length === 0) return <span className="text-muted">Sin pasos</span>
+  if (steps.length === 0) return <span className="text-muted">{t('casos.noSteps')}</span>
 
   return (
     <div className="d-flex flex-column gap-2">
       {steps.map((step: any, index: number) => (
         <div key={step?.id || `${step?.numero_paso || index}`} className="border rounded-2 p-2 bg-white">
-          <div className="fw-bold text-dark mb-1">Paso {step?.numero_paso || index + 1}</div>
-          <div className="x-small text-muted text-uppercase">Acción</div>
-          <div className="small text-dark mb-2" style={{ whiteSpace: 'pre-wrap' }}>{formatStepText(step?.accion || step?.acción)}</div>
-          <div className="x-small text-muted text-uppercase">Resultado esperado</div>
-          <div className="small text-dark" style={{ whiteSpace: 'pre-wrap' }}>{formatStepText(step?.resultado_esperado)}</div>
-          <VersionStepAttachments step={step} />
+          <div className="fw-bold text-dark mb-1">{t('casos.stepNumber', { number: step?.numero_paso || index + 1 })}</div>
+          <div className="x-small text-muted text-uppercase">{t('casos.action')}</div>
+          <div className="small text-dark mb-2" style={{ whiteSpace: 'pre-wrap' }}>{formatStepText(step?.accion || step?.acción, t('casos.noValue'))}</div>
+          <div className="x-small text-muted text-uppercase">{t('casos.expectedResult')}</div>
+          <div className="small text-dark" style={{ whiteSpace: 'pre-wrap' }}>{formatStepText(step?.resultado_esperado, t('casos.noValue'))}</div>
+          <VersionStepAttachments step={step} t={t} />
         </div>
       ))}
     </div>
@@ -105,7 +105,7 @@ export function CaseVersionsModal({
 
   return (
     <Modal show={show} onHide={onHide} centered size="xl">
-      <Modal.Header closeButton className="bg-light border-bottom text-dark">
+      <Modal.Header closeButton closeLabel={t('casos.closeModal')} className="bg-light border-bottom text-dark">
         <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
           <History size={20} className="text-primary" /> {t('casos.changeLog')}
         </Modal.Title>
@@ -159,12 +159,15 @@ export function CaseVersionsModal({
                   <tbody>
                     {rows.map(row => (
                       <tr key={row.key} className={row.changed ? 'table-warning' : ''}>
-                        <td className="fw-bold text-dark">{row.label}</td>
-                        <td>
-                          {row.key === 'pasos' ? <VersionSteps value={row.beforeValue} /> : <pre className="m-0 small text-dark bg-transparent border-0 p-0" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{row.before}</pre>}
+                        <td className="fw-bold text-dark">
+                          {row.label}
+                          {row.contextOnly && <Badge bg="light" text="secondary" className="border ms-2 x-small">{t('casos.contextLabel')}</Badge>}
                         </td>
                         <td>
-                          {row.key === 'pasos' ? <VersionSteps value={row.afterValue} /> : <pre className="m-0 small text-dark bg-transparent border-0 p-0" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{row.after}</pre>}
+                        {row.key === 'pasos' ? <VersionSteps value={row.beforeValue} t={t} /> : <pre className="m-0 small text-dark bg-transparent border-0 p-0" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{row.before}</pre>}
+                        </td>
+                        <td>
+                          {row.key === 'pasos' ? <VersionSteps value={row.afterValue} t={t} /> : <pre className="m-0 small text-dark bg-transparent border-0 p-0" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{row.after}</pre>}
                         </td>
                       </tr>
                     ))}

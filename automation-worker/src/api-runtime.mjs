@@ -1,6 +1,6 @@
 export function createApiRuntime(deps) {
   const {
-    API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, state,
+    API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, pairingStatePath, workerInstanceId, state,
     capabilities, isInvalidRunnerTokenError, clearRunnerCredentials, saveTokenFile,
     traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
   } = deps;
@@ -151,8 +151,16 @@ async function registerIfNeeded() {
 
 async function pairWithPlatform() {
   while (!state.runnerToken) {
-    console.log(`Solicitando vinculacion a ${API_BASE}...`);
-    const request = await createPairingRequest();
+    let request = readPairingState();
+    if (request && new Date(request.expires_at).getTime() <= Date.now()) {
+      clearPairingState();
+      request = null;
+    }
+    if (!request) {
+      console.log(`Solicitando vinculacion a ${API_BASE}...`);
+      request = await createPairingRequest();
+      writePairingState(request);
+    }
     const expiresAt = new Date(request.expires_at).getTime();
     console.log("");
     console.log(`Worker esperando vinculacion. Codigo: ${request.code}.`);
@@ -171,16 +179,19 @@ async function pairWithPlatform() {
         state.runnerToken = status.runner_token;
         state.runnerId = status.runner?.id || "";
         saveTokenFile(state.runnerToken);
+        clearPairingState();
         console.log(`Worker vinculado como ${status.runner?.nombre || RUNNER_NAME}. Token guardado en ${tokenPath}`);
         return;
       }
 
       if (status.estado === "DENIED") {
+        clearPairingState();
         console.log("Solicitud rechazada. Se generara un nuevo codigo en unos segundos.");
         break;
       }
 
       if (status.estado === "EXPIRED") {
+        clearPairingState();
         console.log("Solicitud expirada. Se generara un nuevo codigo.");
         break;
       }
@@ -202,6 +213,30 @@ async function createPairingRequest() {
       ttl_minutes: 120,
     }),
   });
+}
+
+function readPairingState() {
+  try {
+    if (!pairingStatePath || !fs.existsSync(pairingStatePath)) return null;
+    const request = JSON.parse(fs.readFileSync(pairingStatePath, "utf8"));
+    if (!request?.code || !request?.pairing_token || !request?.expires_at) return null;
+    return request;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writePairingState(request) {
+  if (!pairingStatePath) return;
+  fs.writeFileSync(pairingStatePath, JSON.stringify(request), { mode: 0o600 });
+}
+
+function clearPairingState() {
+  try {
+    if (pairingStatePath && fs.existsSync(pairingStatePath)) fs.unlinkSync(pairingStatePath);
+  } catch (_error) {
+    // A stale state file is harmless; the next request will be reconciled.
+  }
 }
 
   return { fetchJson, api, registerIfNeeded, pairWithPlatform, createPairingRequest };

@@ -1,6 +1,8 @@
 import { Badge, Button, Card, Col, ListGroup, Spinner } from 'react-bootstrap'
 import { Bug, ChevronDown, ChevronRight, Clock, Eye, FileText, History, ImagePlus, Info, RefreshCw, User, XCircle } from 'lucide-react'
 import type { AttachmentMeta } from '../../EvidenceUpload'
+import { createBugLocalizedLabels } from '../bugs/bugPresentation'
+import { executionStatusLabel } from './executionPresentation'
 
 export function ManualConsoleSidebar({ context }: { context: any }) {
   const { t,
@@ -30,6 +32,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
     setLinkComment,
     onCreateInternalBugFromExecution,
     executionHistory,
+    executionHistoryTotal,
     latestHistoryItem,
     getStatusColor,
     openAttachmentEvidence,
@@ -37,6 +40,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
     isImageAsset,
     resolveAssetUrl,
     openLegacyEvidence } = context
+  const bugStatusLabel = createBugLocalizedLabels(t).status
   return (
             <Col xl={3} lg={4} className="manual-console-details-column d-flex flex-column gap-3">
               <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
@@ -53,8 +57,8 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                     variant="light"
                     size="sm"
                     className="border p-1 flex-shrink-0"
-                    aria-label={collapsedLeftSections.details ? 'Expandir detalles del caso' : 'Compactar detalles del caso'}
-                    title={collapsedLeftSections.details ? 'Expandir' : 'Compactar'}
+                    aria-label={collapsedLeftSections.details ? t('common.expand') : t('common.collapse')}
+                    title={collapsedLeftSections.details ? t('common.expand') : t('common.collapse')}
                     onClick={() => toggleLeftSection('details')}
                   >
                     {collapsedLeftSections.details ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
@@ -63,14 +67,14 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                 {!collapsedLeftSections.details && (
                   <Card.Body className="manual-console-case-details-body p-3" style={expandedSectionBodyStyle}>
                     {renderTextBlock(t('ejecutarPruebas.objectiveDescription'), selectedTest.description || '', t('ejecutarPruebas.noObjective'))}
-                    {renderTextBlock('Precondiciones', selectedTest.pre || '', 'Ninguna precondicion especificada.')}
-                    {renderTextBlock('Postcondiciones', selectedTest.post || '', 'Ninguna postcondicion especificada.')}
+                    {renderTextBlock(t('ejecutarPruebas.preconditions'), selectedTest.pre || '', t('ejecutarPruebas.noPreconditions'))}
+                    {renderTextBlock(t('ejecutarPruebas.postconditions'), selectedTest.post || '', t('ejecutarPruebas.noPostconditions'))}
                     <div className="mb-3">
-                      <div className="x-small fw-bold text-muted text-uppercase mb-1" style={{ letterSpacing: '0.5px' }}>Datos usados en esta ejecucion</div>
+                      <div className="x-small fw-bold text-muted text-uppercase mb-1" style={{ letterSpacing: '0.5px' }}>{t('common.usedDataLabel')}</div>
                       {renderExecutionDataRows()}
                     </div>
                     <div>
-                      <div className="x-small fw-bold text-muted text-uppercase mb-1" style={{ letterSpacing: '0.5px' }}>Componente Afectado</div>
+                      <div className="x-small fw-bold text-muted text-uppercase mb-1" style={{ letterSpacing: '0.5px' }}>{t('ejecutarPruebas.affectedComponent')}</div>
                       <Badge bg="light" text="dark" className="border shadow-sm">{selectedTestComponentLabel}</Badge>
                     </div>
                   </Card.Body>
@@ -84,8 +88,8 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                       <Bug size={18} className="text-danger"/> {t('ejecutarPruebas.relatedBugs')}
                     </h6>
                     {collapsedLeftSections.bugs && (
-                      <div className="x-small text-muted text-truncate mt-1" title={latestRelatedBug ? `${latestRelatedBug.codigo} · ${latestRelatedBug.estado}` : 'Sin bugs relacionados'}>
-                        {latestRelatedBug ? `${latestRelatedBug.codigo} · ${latestRelatedBug.estado}` : 'Sin bugs relacionados'}
+                      <div className="x-small text-muted text-truncate mt-1" title={latestRelatedBug ? `${latestRelatedBug.codigo} · ${bugStatusLabel(latestRelatedBug.estado)}` : t('ejecutarPruebas.noRelatedBugs')}>
+                        {latestRelatedBug ? `${latestRelatedBug.codigo} · ${bugStatusLabel(latestRelatedBug.estado)}` : t('ejecutarPruebas.noRelatedBugs')}
                       </div>
                     )}
                   </div>
@@ -97,8 +101,8 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                       variant="light"
                       size="sm"
                       className="border p-1"
-                      aria-label={collapsedLeftSections.bugs ? 'Expandir bugs relacionados' : 'Compactar bugs relacionados'}
-                      title={collapsedLeftSections.bugs ? 'Expandir' : 'Compactar'}
+                      aria-label={collapsedLeftSections.bugs ? t('common.expand') : t('common.collapse')}
+                      title={collapsedLeftSections.bugs ? t('common.expand') : t('common.collapse')}
                       onClick={() => toggleLeftSection('bugs')}
                     >
                       {collapsedLeftSections.bugs ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
@@ -109,16 +113,16 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                   <Card.Body className="p-3 flex-grow-1" style={expandedSectionBodyStyle}>
                     {relatedCaseBugsLoading && relatedCaseBugs.length > 0 && (
                       <div className="d-flex align-items-center gap-2 text-muted x-small mb-2">
-                        <Spinner animation="border" size="sm" /> Actualizando...
+                        <Spinner animation="border" size="sm" /> {t('ejecutarPruebas.updating')}
                       </div>
                     )}
                     {relatedCaseBugsLoading && relatedCaseBugs.length === 0 && (
                       <div className="d-flex align-items-center gap-2 text-muted x-small">
-                        <Spinner animation="border" size="sm" /> Cargando bugs...
+                        <Spinner animation="border" size="sm" /> {t('ejecutarPruebas.loadingBugs')}
                       </div>
                     )}
                     {!relatedCaseBugsLoading && relatedCaseBugs.length === 0 && (
-                      <div className="text-muted x-small">Sin bugs relacionados.</div>
+                      <div className="text-muted x-small">{t('ejecutarPruebas.noRelatedBugs')}</div>
                     )}
                     {relatedCaseBugs.length > 0 && (
                       <div className="d-flex flex-column gap-2">
@@ -132,7 +136,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                   <div className="d-flex align-items-center gap-2 flex-wrap">
                                     <span className="fw-bold text-dark x-small">{bugItem.codigo}</span>
                                     <Badge bg={closed ? 'secondary' : 'danger'} className="x-small">
-                                      {closed ? 'CERRADO' : bugItem.estado}
+                                      {closed ? t('ejecutarPruebas.closed') : bugStatusLabel(bugItem.estado)}
                                     </Badge>
                                   </div>
                                   <div className="x-small text-dark text-truncate mt-1" title={bugItem.titulo}>{bugItem.titulo}</div>
@@ -140,7 +144,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                     {getBugDisplayBuild(bugItem)}
                                     {getBugDisplayComponent(bugItem) ? ` · ${getBugDisplayComponent(bugItem)}` : ''}
                                   </div>
-                                  {bugItem.external_issue_id && <Badge bg="light" text="primary" className="border x-small mt-1"><Bug size={10} className="me-1" />{bugItem.external_provider || 'Externo'} #{bugItem.external_issue_id}</Badge>}
+                                  {bugItem.external_issue_id && <Badge bg="light" text="primary" className="border x-small mt-1"><Bug size={10} className="me-1" />{bugItem.external_provider || t('ejecutarPruebas.externalProvider')} #{bugItem.external_issue_id}</Badge>}
                                 </div>
                                 <div className="d-flex align-items-center justify-content-end gap-1 flex-wrap flex-shrink-0">
                                   <Button
@@ -149,12 +153,12 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                     className="x-small fw-bold py-1 px-2"
                                     onClick={() => onViewRelatedBug?.(bugItem)}
                                     disabled={!canViewBugs}
-                                    title={!canViewBugs ? 'Necesitas permiso para ver bugs.' : 'Ver detalle del bug'}
+                                    title={!canViewBugs ? t('ejecutarPruebas.viewPermissionRequired') : t('ejecutarPruebas.viewDetail')}
                                   >
-                                    <Eye size={12} /> Ver
+                                    <Eye size={12} /> {t('ejecutarPruebas.view')}
                                   </Button>
                                   {linked ? (
-                                    <Badge bg="success" className="x-small">Actualizado</Badge>
+                                    <Badge bg="success" className="x-small">{t('ejecutarPruebas.updated')}</Badge>
                                   ) : (
                                     <Button
                                       variant="outline-danger"
@@ -167,7 +171,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                         setLinkComment('')
                                       }}
                                     >
-                                      <RefreshCw size={12} /> Actualizar
+                                      <RefreshCw size={12} /> {t('ejecutarPruebas.updateBug')}
                                     </Button>
                                   )}
                                 </div>
@@ -189,21 +193,21 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                               setLinkComment('')
                             }}
                             disabled={!canLinkCurrentExecution || !onLinkExecutionToBug || Boolean(creatingInternalBugContextId) || relatedCaseBugs.every(isBugLinkedToCurrentExecution)}
-                            title={!canCreateBugs ? 'Necesitas permiso para crear o actualizar bugs.' : undefined}
+                            title={!canCreateBugs ? t('ejecutarPruebas.createPermissionRequired') : undefined}
                           >
-                            <RefreshCw size={13} /> Actualizar seguimiento
+                            <RefreshCw size={13} /> {t('ejecutarPruebas.updateTracking')}
                           </Button>
                         )}
                         {onCreateInternalBugFromExecution && (
                           <Button
-                            variant="danger"
+                            variant={relatedCaseBugs.some(isBugLinkedToCurrentExecution) ? "outline-warning" : "danger"}
                             size="sm"
                             className="fw-bold x-small"
                             onClick={() => onCreateInternalBugFromExecution()}
                             disabled={!canCreateBugs || Boolean(creatingInternalBugContextId)}
-                            title={!canCreateBugs ? 'Necesitas permiso para crear bugs.' : undefined}
+                            title={!canCreateBugs ? t('ejecutarPruebas.createPermissionRequired') : undefined}
                           >
-                            <Bug size={13} /> Crear bug nuevo
+                            <Bug size={13} /> {relatedCaseBugs.some(isBugLinkedToCurrentExecution) ? t('ejecutarPruebas.createDifferentBug') : t('ejecutarPruebas.createNewBug')}
                           </Button>
                         )}
                       </div>
@@ -217,19 +221,19 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><History size={18} className="text-secondary"/> {t('ejecutarPruebas.detailedHistory')}</h6>
                     {collapsedLeftSections.history && (
-                      <div className="x-small text-muted text-truncate mt-1" title={latestHistoryItem ? `${latestHistoryItem.status} · ${latestHistoryItem.date}` : 'Sin ejecuciones previas'}>
-                        {latestHistoryItem ? t('ejecutarPruebas.latestHistory', { status: latestHistoryItem.status, date: latestHistoryItem.date }) : t('ejecutarPruebas.noPreviousExecutions')}
+                      <div className="x-small text-muted text-truncate mt-1" title={latestHistoryItem ? `${executionStatusLabel(latestHistoryItem.status, t)} · ${latestHistoryItem.date}` : t('ejecutarPruebas.noPreviousExecutions')}>
+                        {latestHistoryItem ? t('ejecutarPruebas.latestHistory', { status: executionStatusLabel(latestHistoryItem.status, t), date: latestHistoryItem.date }) : t('ejecutarPruebas.noPreviousExecutions')}
                       </div>
                     )}
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                    <Badge bg="light" text="secondary" className="border shadow-sm">{executionHistory.length}</Badge>
+                    <Badge bg="light" text="secondary" className="border shadow-sm">{executionHistoryTotal || executionHistory.length}</Badge>
                     <Button
                       variant="light"
                       size="sm"
                       className="border p-1"
-                      aria-label={collapsedLeftSections.history ? 'Expandir historial detallado' : 'Compactar historial detallado'}
-                      title={collapsedLeftSections.history ? 'Expandir' : 'Compactar'}
+                      aria-label={collapsedLeftSections.history ? t('common.expand') : t('common.collapse')}
+                      title={collapsedLeftSections.history ? t('common.expand') : t('common.collapse')}
                       onClick={() => toggleLeftSection('history')}
                     >
                       {collapsedLeftSections.history ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
@@ -242,7 +246,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                       {executionHistory.map((historyItem: any, index: number) => (
                       <ListGroup.Item key={index} className="p-3 bg-transparent border-light-subtle">
                         <div className="d-flex justify-content-between align-items-start mb-2">
-                          <Badge bg={getStatusColor(historyItem.status)} className="x-small shadow-sm">{historyItem.status?.toUpperCase()}</Badge>
+                          <Badge bg={getStatusColor(historyItem.status)} className="x-small shadow-sm">{executionStatusLabel(historyItem.status, t)}</Badge>
                           <span className="x-small text-muted font-monospace">{historyItem.date}</span>
                         </div>
 
@@ -276,15 +280,15 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                                       </button>
                                     ) : (
                                       <Button key={attachment.id} variant={isEvidenceAvailable(attachment) ? 'link' : 'outline-warning'} size="sm" className={`${isEvidenceAvailable(attachment) ? 'p-0' : 'py-0 px-1'} x-small text-decoration-none d-flex align-items-center gap-1 fw-bold`} onClick={() => openAttachmentEvidence(attachment)}>
-                                        <FileText size={14}/> {attachment.filename_original || 'Ver evidencia'}
-                                        {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark">Archivo no disponible</Badge>}
+                                        <FileText size={14}/> {attachment.filename_original || t('ejecutarPruebas.viewEvidence')}
+                                        {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark">{t('ejecutarPruebas.unavailableFile')}</Badge>}
                                       </Button>
                                     )
                                   ))}
                                 </div>
                               ) : (
                                 <Button variant="link" size="sm" className="p-0 x-small text-decoration-none d-flex align-items-center gap-1 fw-bold" onClick={() => openLegacyEvidence(historyItem.evidenceUrl)}>
-                                  <ImagePlus size={14}/> Ver evidencia adjunta
+                                  <ImagePlus size={14}/> {t('ejecutarPruebas.attachedEvidence')}
                                 </Button>
                               )}
                             </div>
@@ -296,7 +300,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                             <div className="x-small text-dark d-flex align-items-center gap-1">
                               <User size={12} className="text-primary"/> <span className="fw-semibold">{historyItem.executedBy}</span>
                             </div>
-                          ) : <span className="x-small text-muted">Auto</span>}
+                          ) : <span className="x-small text-muted">{t('ejecutarPruebas.automated')}</span>}
                           {historyItem.duration && (
                             <div className="x-small text-muted d-flex align-items-center gap-1">
                               <Clock size={12}/> {historyItem.duration}
@@ -308,7 +312,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                     {executionHistory.length === 0 && (
                       <div className="p-4 text-center text-muted x-small d-flex flex-column align-items-center gap-2">
                         <History size={24} className="opacity-25" />
-                        <span>No hay ejecuciones previas registradas.</span>
+                        <span>{t('ejecutarPruebas.noPreviousExecutions')}</span>
                       </div>
                     )}
                   </ListGroup>

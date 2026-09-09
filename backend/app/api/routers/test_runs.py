@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from ...main_context import *
 from ...services import config_service
 from ...services.ai_report_sanitizer import sanitize_ai_report_payload
+from ...services.api_evidence_policy import public_test_data_evidence_enabled
 
 
 router = APIRouter(tags=["Test Runs"])
@@ -12,6 +13,28 @@ router = APIRouter(tags=["Test Runs"])
 
 def _is_ai_execution_in_progress(execution: models.EjecucionCaso) -> bool:
     return execution.estado_resultado == models.EstadoResultado.EJECUTANDO_AI
+
+
+def _case_steps_from_execution_snapshots(snapshots: list[dict]) -> list[dict]:
+    """Expose the frozen case contract independently from Engine attempts."""
+    case_steps = []
+    for snapshot in snapshots:
+        if snapshot.get("numero_paso") is None:
+            continue
+        status = snapshot.get("estado_paso")
+        case_steps.append({
+            "number": snapshot.get("numero_paso"),
+            "action": snapshot.get("accion_congelada"),
+            "data": snapshot.get("datos_resueltos") if snapshot.get("datos_resueltos") is not None else snapshot.get("datos_congelados"),
+            "expected_result": snapshot.get("resultado_esperado_congelado"),
+            "status": status.value if hasattr(status, "value") else status,
+            "observations": snapshot.get("comentarios") or snapshot.get("error_log"),
+            "evidence_url": snapshot.get("evidencia_url"),
+            "evidences": snapshot.get("evidencias") or [],
+        })
+    return case_steps
+
+
 
 
 async def _should_sanitize_evidence_output(db: AsyncSession) -> bool:
@@ -108,6 +131,14 @@ async def create_test_run(
         )
         if invalid_cases.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="La build solo puede ejecutar casos de su componente")
+        selected_formats = {case.formato_prueba for case in cases_by_id.values()}
+        has_chatbot = models.FormatoPrueba.CONVERSACIONAL in selected_formats
+        has_non_chatbot = any(format_value != models.FormatoPrueba.CONVERSACIONAL for format_value in selected_formats)
+        if has_chatbot and has_non_chatbot and str(run.origen or "").upper() != "IA":
+            raise HTTPException(
+                status_code=400,
+                detail="Las ejecuciones manuales y automatizadas deben separar los casos Chatbot de los casos clásicos.",
+            )
     try:
         created_run = await crud.create_test_run(db=db, run=run, user_id=current_user.id)
         if created_run.dataset_id:
@@ -268,9 +299,26 @@ async def read_ai_execution_report(
         raise HTTPException(status_code=404, detail="Ejecucion no encontrada")
     execution, case, run = row
     await access_control.require_project_access(db, current_user, run.proyecto_id, "read")
+    is_chatbot = case.formato_prueba == models.FormatoPrueba.CONVERSACIONAL
+    environment = await db.get(models.Entorno, run.entorno_id) if run.entorno_id else None
+    public_evidence = public_test_data_evidence_enabled(environment=environment, case=case, execution=execution)
     execution_mode = crud._execution_mode_value(execution, case, run.origen)
-    is_ai_execution = execution_mode == models.ExecutionMode.IA.value or crud._has_ai_execution_data(execution)
+    is_ai_execution = (
+        execution_mode == models.ExecutionMode.IA.value
+        or crud._has_ai_execution_data(execution)
+        or (is_chatbot and bool(execution.chatbot_resultado))
+    )
     ai_report = execution.ai_report or {}
+    if is_chatbot and execution.chatbot_resultado:
+        ai_report = {
+            **ai_report,
+            "schema_version": ai_report.get("schema_version", 1),
+            "chatbot": True,
+            "execution_mode": execution_mode,
+            "status": ai_report.get("status") or (execution.estado_resultado.value if hasattr(execution.estado_resultado, "value") else execution.estado_resultado),
+            "chatbot_resultado": execution.chatbot_resultado,
+            "chatbot_config_snapshot": execution.chatbot_config_snapshot or {},
+        }
     review_status = crud._review_status_for_execution(execution) if is_ai_execution else models.AiReviewStatus.NO_REQUIERE_REVISION.value
     review_required = bool(is_ai_execution and review_status == models.AiReviewStatus.REQUIERE_REVISION.value)
     if is_ai_execution and _is_ai_execution_in_progress(execution):
@@ -318,6 +366,15 @@ async def read_ai_execution_report(
         raise HTTPException(status_code=404, detail="Reporte IA no disponible para esta ejecución")
 
     enriched_snapshots = (await crud._load_enriched_snapshots_by_execution(db, [execution], run)).get(execution.id, [])
+    # The Engine report describes actions that were actually attempted.  The
+    # frozen snapshots describe the test contract, including steps that could
+    # not be reached because planning or a safety guard stopped the workflow.
+    # Keep both collections separate so a blocked graph-native run does not
+    # look like a test case without steps.
+    case_steps = _case_steps_from_execution_snapshots(enriched_snapshots)
+    if case_steps:
+        ai_report = dict(ai_report)
+        ai_report["case_steps"] = case_steps
     evidence_by_step = {
         int(snapshot.get("numero_paso")): snapshot
         for snapshot in enriched_snapshots
@@ -337,7 +394,7 @@ async def read_ai_execution_report(
                 step_payload["evidences"] = step_payload.get("evidences") or evidencias
             enriched_steps.append(step_payload)
         ai_report["steps"] = enriched_steps
-    sanitize_output = await _should_sanitize_evidence_output(db)
+    sanitize_output = False if is_chatbot else (await _should_sanitize_evidence_output(db) and not public_evidence)
     ai_report = sanitize_ai_report_payload(ai_report) if sanitize_output else ai_report
 
     return {
@@ -358,5 +415,7 @@ async def read_ai_execution_report(
         "reviewed_at": execution.ai_reviewed_at.isoformat() if execution.ai_reviewed_at else None,
         "review_note": sanitize_ai_report_payload(execution.ai_review_note) if sanitize_output else execution.ai_review_note,
         "human_review_required": review_required,
+        "chatbot_config_snapshot": (execution.chatbot_config_snapshot or {}) if is_chatbot else {},
+        "chatbot_resultado": (execution.chatbot_resultado or ai_report.get("chatbot_resultado") or {}) if is_chatbot else {},
         "ai_report": ai_report,
     }

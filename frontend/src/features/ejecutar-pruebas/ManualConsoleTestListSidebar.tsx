@@ -1,6 +1,7 @@
 import { Badge, ListGroup } from 'react-bootstrap'
 import { LayoutList } from 'lucide-react'
 import { getManualConsoleCaseStatus } from './manualConsoleStatus'
+import { executionStatusLabel } from './executionPresentation'
 
 export function ManualConsoleTestListSidebar({ context }: { context: any }) {
   const { t, activeExecutionTests, selectedTest, currentExecutionRun, currentExecutionCase, handleSelectTestForExecution, getStatusColor, executionSnapshots, getExecutionReferenceCount } = context
@@ -30,14 +31,14 @@ export function ManualConsoleTestListSidebar({ context }: { context: any }) {
                   {test.code || test.id.slice(0, 8).toUpperCase()}
                 </span>
                 <Badge bg={currentStatus === 'EN CURSO' ? 'info' : getStatusColor(currentStatus)} className="x-small" style={{ fontSize: 'var(--app-font-size-meta)' }}>
-                  {currentStatus}
+                  {executionStatusLabel(currentStatus, t)}
                 </Badge>
               </div>
               <div className={`small fw-semibold text-truncate ${isActive ? 'text-dark' : 'text-muted'}`} title={test.title}>{test.title}</div>
               <div className="d-flex flex-wrap gap-2 mt-2">
-                <Badge bg="light" text="dark" className="border x-small">{isActive ? executionSnapshots.length : (test.stepsCount || 0)} pasos</Badge>
+                <Badge bg="light" text="dark" className="border x-small">{isActive ? executionSnapshots.length : (test.stepsCount || 0)} {t('ejecutarPruebas.steps')}</Badge>
                 {isActive && getExecutionReferenceCount() > 0 && (
-                  <Badge bg="light" text="primary" className="border x-small">{getExecutionReferenceCount()} refs.</Badge>
+                  <Badge bg="light" text="primary" className="border x-small">{getExecutionReferenceCount()} {t('ejecutarPruebas.referencesShort')}</Badge>
                 )}
               </div>
             </ListGroup.Item>

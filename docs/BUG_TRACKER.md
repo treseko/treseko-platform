@@ -1,54 +1,42 @@
 # Bug Tracker
 
-Bug Tracker permite registrar, seguir y cerrar defectos sin perder el vínculo
-con el caso, la ejecución, el paso y la evidencia donde se detectaron.
+Bug Tracker registra defectos y conserva el vínculo con caso, ejecución, build,
+componente y evidencia. El Centro de Incidencias es una vista operativa
+separada; consultá [su guía](INCIDENT_CENTER_GUIDE.md).
 
 ## Crear un bug desde una ejecución
 
-Esta es la forma recomendada cuando un paso falla o queda bloqueado:
+1. Marcá el resultado como **Falló** o **Bloqueado**.
+2. Guardá obtenido, observaciones y evidencia.
+3. Elegí **Preparar bug interno** o **Reportar bug interno**.
+4. Revisá título, prioridad, severidad y contexto.
+5. Guardá y confirmá el vínculo de origen.
 
-1. Durante la ejecución, marcá el paso como **Falló** o **Bloqueado**.
-2. Registrá el resultado obtenido y adjuntá la evidencia disponible.
-3. Seleccioná **Preparar bug interno** o **Reportar bug interno**.
-4. Revisá el título, severidad, prioridad, descripción y contexto precargado.
-5. Guardá el bug.
+El contexto respeta el formato: clásica conserva pasos; API conserva request,
+status, headers, cuerpo, aserciones y variables permitidas; conversacional
+conserva endpoint, turnos, esperado/obtenido, latencia, evaluación y trazas.
+`PERFORMANCE` es reservado y no debe transformarse en otra clase de bug.
 
-El bug conserva el caso, build, componente, ejecución y paso de origen. No
-necesitás copiar esos datos manualmente.
+## Crear y gestionar manualmente
 
-## Crear y gestionar un bug manualmente
+Desde **Bug Tracker → Añadir nuevo bug**, completá título, problema, esperado,
+prioridad, severidad y contexto. Según tus permisos podés asignar responsable,
+comentar, adjuntar evidencia, cambiar estado, registrar build de corrección,
+abrir contexto API/conversacional y generar un resumen externo.
 
-Abrí **Bug Tracker** y seleccioná **Añadir nuevo bug** si el defecto no proviene
-de una ejecución registrada. Completá un título claro, el problema observado,
-el resultado esperado, la prioridad y la severidad.
+Dos defectos distintos sobre el mismo caso siguen siendo registros distintos.
+Buscá el existente antes de crear otro.
 
-Desde el detalle del bug podés:
+## Estados, retest y herramientas externas
 
-- asignar una persona responsable;
-- agregar comentarios y evidencias;
-- cambiar el estado según avance la corrección;
-- indicar la build donde se corrigió;
-- preparar un resumen para un tracker externo;
-- registrar un vínculo externo de forma explícita.
+Usá **Listo para retest** y luego **En retest** cuando una corrección necesite
+verificación. Registrá build de detección, build de corrección y resolución.
 
-## Estados y retest
-
-Al cerrar un bug, Treseko solicita la build de corrección y una resolución. Si
-la corrección debe verificarse, usá **Listo para retest** y luego **En retest**.
-Así se conserva tanto la build donde se detectó el problema como la build donde
-se corrigió.
-
-## Vincular herramientas externas
-
-Treseko no crea tickets externos automáticamente. Podés generar un resumen
-para copiar y pegar en Redmine, Jira, GitHub Issues u otra herramienta y
-guardar el identificador o enlace externo en el bug. Cada vínculo se registra
-de forma independiente para evitar que dos bugs compartan un ticket por error.
+Treseko no crea tickets externos automáticamente. Podés copiar un resumen para
+Jira, Redmine o GitHub Issues y guardar su URL o identificador explícitamente.
 
 ## Ayuda rápida
 
-- Reportá un bug nuevo para un defecto distinto, aunque ocurra en el mismo caso.
-- Si el defecto ya existe, actualizá ese bug en lugar de crear un duplicado.
-- Adjuntá evidencia antes de reportar cuando ayude a reproducir el problema.
-- Si no podés crear o editar un bug, pedí permisos para Bug Tracker a un
-  administrador.
+- Adjuntá evidencia antes de reportar si ayuda a reproducir.
+- Preferí código, nombres y contexto legibles; no uses UUID como resumen.
+- Si no podés crear o editar, pedí permisos de Bug Tracker o Incidencias.

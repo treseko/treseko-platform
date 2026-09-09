@@ -3,7 +3,7 @@ from .ai_agent_definitions import definition_by_key, ensure_ai_agent_definitions
 from .ai_universal_agents import ensure_legacy_universal_adapter
 from .ai_workflow_validation import validate_workflow_graph
 
-from .ai_workflow_copy import copy_ai_workflow_as_blocks, copy_ai_workflow_as_universal
+from .ai_workflow_copy import copy_ai_workflow_as_blocks, copy_ai_workflow_as_universal, copy_ai_workflow_as_universal_v3
 
 async def create_ai_workflow_version(
     db: AsyncSession,

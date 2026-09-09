@@ -3,6 +3,8 @@ import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { fetchProjectRunHistory, fetchTestRunDetail } from './api/historialApi'
+import type { I18nContextValue } from '../../i18n'
+type Translator = I18nContextValue['t']
 
 type CreateHistorialActionsParams = {
   currentProjectId: string
@@ -12,6 +14,7 @@ type CreateHistorialActionsParams = {
   setProjectSyncMessage: (message: string) => void
   showFeedback?: (title: string, message: string, variant?: string) => void
   loadProjectMetrics?: () => Promise<void> | void
+  t: Translator
 }
 
 export function createHistorialActions({
@@ -22,6 +25,7 @@ export function createHistorialActions({
   setProjectSyncMessage,
   showFeedback,
   loadProjectMetrics,
+  t,
 }: CreateHistorialActionsParams) {
   const normalizeReviewCount = (...values: any[]) => {
     for (const value of values) {
@@ -47,7 +51,7 @@ export function createHistorialActions({
         }
         params.set(key, String(value))
       })
-      const data = await fetchProjectRunHistory(fetchWithAuth, currentProjectId, params)
+      const data = await fetchProjectRunHistory(fetchWithAuth, currentProjectId, params, t('historial.backendResponse'))
       const normalizedRuns = (Array.isArray(data) ? data : []).map((run: any) => {
         return {
           id: run.id,
@@ -65,7 +69,7 @@ export function createHistorialActions({
           origin: run.origin || '',
           executionModes: run.execution_modes || {},
           executionModeSummary: run.execution_mode_summary || 'MANUAL',
-          executionModeLabel: run.execution_mode_label || 'Manual',
+          executionModeLabel: run.execution_mode_label || 'MANUAL',
           executionModeDetail: run.execution_mode_detail || '',
           aiReviewRequired: normalizeReviewCount(run.ai_review_required, run.aiReviewRequired, run.human_review_required),
           aiReviewReviewed: normalizeReviewCount(run.ai_review_reviewed, run.aiReviewReviewed, run.human_review_reviewed),
@@ -73,8 +77,8 @@ export function createHistorialActions({
           runnerId: run.runner_id || '',
           date: run.date ? formatDateTime(run.date) : '',
           rawDate: run.date || '',
-          suite: run.suite || run.build_name || 'Run sin build',
-          runner: run.runner || 'Sistema',
+          suite: run.suite || run.build_name || t('historial.runWithoutBuild'),
+          runner: run.runner || t('historial.systemRunner'),
           passed: run.passed || 0,
           failed: run.failed || 0,
           blocked: run.blocked || 0,
@@ -85,12 +89,12 @@ export function createHistorialActions({
       })
       setRunHistory(normalizedRuns)
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudo cargar historial de runs: ${error.message}`)
+      setProjectSyncMessage(`${t('historial.loadHistoryError')}: ${error.message}`)
     }
   }
 
   const loadTestRunDetail = async (runId: string) => {
-    return fetchTestRunDetail(fetchWithAuth, runId)
+    return fetchTestRunDetail(fetchWithAuth, runId, t('historial.backendResponse'))
   }
 
   const markHistorialAiReviewed = async (executionId: string, note = 'Revision registrada desde historial') => {
@@ -110,12 +114,12 @@ export function createHistorialActions({
         throw new Error(
           detail && detail !== 'Not Found'
             ? detail
-            : `No se pudo marcar la revision IA para execution_id=${executionId}. Endpoint usado: ${API_BASE}/ejecuciones/${executionId}/ai-review. Si ese ID existe, reinicia el backend para exponer la ruta actualizada.`
+            : t('historial.reviewEndpointError', { executionId, endpoint: `${API_BASE}/ejecuciones/${executionId}/ai-review` })
         )
       }
-      throw new Error(detail || `No se pudo marcar la revision IA (${response.status})`)
+      throw new Error(detail || t('historial.reviewStatusError', { status: response.status }))
     }
-    showFeedback?.('Revision IA', 'La ejecucion quedo marcada como revisada.', 'success')
+    showFeedback?.(t('historial.iaReview'), t('historial.reviewRecorded'), 'success')
     await loadProjectMetrics?.()
   }
 

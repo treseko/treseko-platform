@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isBuildReadOnly } from './buildState'
+import { isBuildExecutable, isBuildReadOnly } from './buildState'
+
+test('only marks a build executable when both indicators agree', () => {
+  assert.equal(isBuildExecutable({ active: true, state: 'ACTIVA' }), true)
+  assert.equal(isBuildExecutable({ active: true, state: 'PREPARACION' }), false)
+  assert.equal(isBuildExecutable({ active: false, state: 'ACTIVA' }), false)
+  assert.equal(isBuildExecutable({ active: false, state: 'PREPARACION' }), false)
+})
 
 test('allows active and preparation builds, but protects historical builds', () => {
   assert.equal(isBuildReadOnly({ active: true, state: 'ACTIVA' }), false)

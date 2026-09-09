@@ -1,45 +1,54 @@
 # Despliegue distribuido recomendado
 
-Para instalaciones con mayor carga de automatización, Treseko puede separarse
-en servidores independientes. Esto evita que los navegadores, el Engine IA o
-los workers compitan con la interfaz y los datos.
+Separá servicios cuando automatización, navegadores o Engine IA compitan con la
+interfaz y PostgreSQL. No crea un worker API separado.
 
-## Diagrama de arquitectura
+Topología recomendada para Treseko Community 1.0.3:
 
 ```mermaid
 flowchart LR
-    USER["Usuarios / navegador"] -->|HTTPS| APP["Servidor A\nProxy + Frontend + Backend"]
-
-    APP -->|SQL privado| DATA["Servidor B\nPostgreSQL"]
-    APP -->|Redis privado| CACHE["Servidor B\nRedis"]
-    APP -->|HTTP / WebSocket privado| ENGINE["Servidor C\nEngine IA + Playwright"]
-    APP -->|API privada| WORKER["Servidor B\nAutomation Worker"]
-
-    WORKER --> TARGETS["Aplicaciones bajo prueba"]
-    ENGINE --> LLM["LLM / LM Studio / Ollama"]
+  U[Usuarios] --> A[Proxy + Frontend + Backend]
+  A --> B[(PostgreSQL + Redis)]
+  A --> C[Engine IA]
+  A --> D[Automation Worker unificado]
+  C --> L[LLM autorizado]
+  C --> T1[Chatbot bajo prueba]
+  D --> T2[Web y APIs bajo prueba]
 ```
 
-El navegador solo debe acceder al proxy del Servidor A. PostgreSQL, Redis,
-Engine y workers deben permanecer en la red privada.
+| Nodo | Componentes | Exposición |
+|---|---|---|
+| A | Proxy, frontend y backend | Solo HTTPS. |
+| B | PostgreSQL y Redis | Privada, sin puerto público. |
+| C | Engine IA | Privada. |
+| D | Uno o más Automation Worker y sus navegadores | Privada; cada uno requiere pairing. |
+| L | Proveedor LLM autorizado | Salida controlada según su configuración. |
+| P opcional | Perfil de complementos declarado, pero no incluido en este snapshot público | No operativo desde este paquete. |
 
-## Responsabilidad de cada servidor
+El worker procesa automatización clásica y API declarativa. Community admite un
+solo worker. Agregar workers requiere la capability/entitlement Premium; cada
+uno debe vincularse a la organización correcta y tener scope compatible.
 
-| Servidor | Componentes | Acceso público |
-| --- | --- | --- |
-| A — aplicación | Proxy, frontend y backend | Solo HTTPS |
-| B — datos y jobs | PostgreSQL, Redis y Automation Worker | No |
-| C — Engine | Engine IA, Playwright y navegadores | No |
-| D — opcional | Workers adicionales | No |
+## Red
 
-## Recomendaciones básicas
+- Usá red privada o VPN.
+- Permití solo conexiones necesarias.
+- No expongas PostgreSQL, Redis, Engine ni worker. Si una distribución futura
+  incorpora el runner de complementos, también deberá permanecer aislado.
+- Configurá FRONTEND_PUBLIC_URL con el origen público real.
+- Transferí secretos mediante archivos protegidos.
 
-- Usar una red privada o VPN entre los servidores.
-- Bloquear desde Internet los puertos de PostgreSQL, Redis y Engine.
-- Configurar el backend para usar los nombres privados de los servidores.
-- Mantener los secretos fuera del repositorio y del frontend.
-- Configurar backups de PostgreSQL y del almacenamiento de evidencias.
-- Si aumenta la automatización, agregar workers sin mover la base de datos.
+## Pairing
 
-Para una instalación pequeña, todos los servicios pueden ejecutarse en un
-único servidor mediante Docker Compose. La separación distribuida es una
-opción para crecer sin afectar la disponibilidad de la aplicación.
+1. Iniciá el worker compatible.
+2. Copiá el código de pairing.
+3. Aprobalo en Automatización → Workers.
+4. Confirmá heartbeat y capacidad.
+
+Si pierde el token persistente, es un nuevo pairing. No reutilices un token
+expuesto.
+
+## Evidencia y backups
+
+Respaldá PostgreSQL y adjuntos juntos y probá restauración aislada. En una
+instalación pequeña usá un solo host con Compose.

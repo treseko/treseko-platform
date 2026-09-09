@@ -6,7 +6,8 @@ import { mergeCasesById } from '../casos/caseUtils'
 import type { TranslationKey } from '../../i18n'
 import { createIaLog as iaLog, type ExecutionMode, type FeedbackVariant } from './executionPresentation'
 import { getExecutionStatusesByCaseId } from './executionRunStatus'
-
+import { isBuildExecutable } from '../../app/buildState'
+import { executeApiSelection } from './apiExecutionActions'
 type CreateExecutionActionsParams = {
   managingProjectId: string | null
   currentProjectId: string
@@ -14,10 +15,12 @@ type CreateExecutionActionsParams = {
   currentCompId: string
   selectedExecutionEnvironmentId: string
   selectedExecutionDatasetId: string
+  executionDatasetPreview?: any
   buildsList: any[]
   buildCaseIds: Record<string, string[]>
   currentProjectCases: any[]
   selectedTest: any
+  currentExecutionRun: any
   executionModalTests: any[]
   executionModalDiscardedCount: number
   canUseAutomatedExecution: boolean
@@ -44,7 +47,8 @@ type CreateExecutionActionsParams = {
   setActiveExecutionCaseIds: Dispatch<SetStateAction<string[]>>
   setExecutionModalCaseIds: Dispatch<SetStateAction<string[] | null>>
   setShowExecSelector: (show: boolean) => void
-  setViewMode: Dispatch<SetStateAction<'list' | 'manual_exec'>>
+  setViewMode: Dispatch<SetStateAction<'list' | 'manual_exec' | 'chatbot_manual' | 'api_exec'>>
+  setAutomationMonitor: Dispatch<SetStateAction<any>>
   setIaQueue: Dispatch<SetStateAction<string[]>>
   setIaExecutionStreams: Dispatch<SetStateAction<any[]>>
   setIaLogs: Dispatch<SetStateAction<any[]>>
@@ -62,10 +66,12 @@ export function createExecutionActions({
   currentCompId,
   selectedExecutionEnvironmentId,
   selectedExecutionDatasetId,
+  executionDatasetPreview,
   buildsList,
   buildCaseIds,
   currentProjectCases,
   selectedTest,
+  currentExecutionRun,
   executionModalTests,
   executionModalDiscardedCount,
   canUseAutomatedExecution,
@@ -93,6 +99,7 @@ export function createExecutionActions({
   setExecutionModalCaseIds,
   setShowExecSelector,
   setViewMode,
+  setAutomationMonitor,
   setIaQueue,
   setIaExecutionStreams,
   setIaLogs,
@@ -105,7 +112,6 @@ export function createExecutionActions({
 }: CreateExecutionActionsParams) {
   const getLatestCaseForExecution = (test: any) =>
     currentProjectCases.find(item => item.id === test?.latestCaseId) || null
-
   const promoteOutdatedCasesForExecution = async (tests: any[]) => {
     if (!currentBuildId || !isValidUUID(currentBuildId)) {
       return { tests, assignedIds: undefined as string[] | undefined }
@@ -120,7 +126,7 @@ export function createExecutionActions({
     for (const test of outdatedTests) {
       const latestCase = getLatestCaseForExecution(test)
       if (!latestCase) {
-        throw new Error(`No se encontró la versión v${test.latestVersion || ''} de ${getExecutionCaseLabel(test)} para actualizar la build`)
+        throw new Error(t('ejecutarPruebas.executionCaseVersionMissing', { version: test.latestVersion || '', case: getExecutionCaseLabel(test) }))
       }
       if (!latestAssignedIds.includes(latestCase.id)) {
         const response = await fetchWithAuth(`${API_BASE}/builds/${currentBuildId}/casos/promote-version/`, {
@@ -132,7 +138,7 @@ export function createExecutionActions({
         })
         if (!response.ok) {
           const error = await response.json().catch(() => null)
-          throw new Error(error?.detail || `Backend respondió ${response.status}`)
+          throw new Error(error?.detail || t('configuracion.backendResponded', { status: response.status }))
         }
         const updatedBuildCases = await response.json()
         promotedCases = updatedBuildCases.map((item: any) => mapBackendCasoToTest(item))
@@ -149,7 +155,6 @@ export function createExecutionActions({
     })
     return { tests: executableTests, assignedIds: latestAssignedIds }
   }
-
   const createExecutionRun = async (mode: ExecutionMode, tests: any[], assignedIdsOverride?: string[]) => {
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) throw new Error(t('ejecutarPruebas.executionProjectInvalid'))
@@ -158,7 +163,7 @@ export function createExecutionActions({
     if (!executionBuild || !isValidUUID(executionBuild.id)) {
       throw new Error(t('ejecutarPruebas.executionSelectActiveBuild'))
     }
-    if (!executionBuild.active) {
+    if (!isBuildExecutable(executionBuild)) {
       throw new Error(t('ejecutarPruebas.executionBuildInactive'))
     }
     const assignedIds = assignedIdsOverride || buildCaseIds[executionBuild.id] || []
@@ -190,7 +195,7 @@ export function createExecutionActions({
     })
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(errorText || `Backend respondió ${response.status}`)
+      throw new Error(errorText || t('configuracion.backendResponded', { status: response.status }))
     }
     return response.json()
   }
@@ -209,26 +214,26 @@ export function createExecutionActions({
       }))
     }
     const ejecucionesResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
-    if (!ejecucionesResponse.ok) throw new Error(`Backend respondió ${ejecucionesResponse.status}`)
+    if (!ejecucionesResponse.ok) throw new Error(t('configuracion.backendResponded', { status: ejecucionesResponse.status }))
     let ejecuciones = await ejecucionesResponse.json()
     let lastExecutionPageSize = ejecuciones.length
     for (let skip = lastExecutionPageSize; lastExecutionPageSize === 200; skip += 200) {
       const pageResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?skip=${skip}&limit=200`)
-      if (!pageResponse.ok) throw new Error(`Backend respondió ${pageResponse.status}`)
+      if (!pageResponse.ok) throw new Error(t('configuracion.backendResponded', { status: pageResponse.status }))
       const page = await pageResponse.json()
       lastExecutionPageSize = page.length
       ejecuciones = [...ejecuciones, ...page]
     }
     setCurrentExecutionRun((previous: any) => ({ ...(previous || {}), execution_statuses_by_case_id: getExecutionStatusesByCaseId(ejecuciones) }))
     const ejecucion = ejecuciones.find((item: any) => item.caso_id === caseId) || ejecuciones[0]
-    if (!ejecucion) throw new Error('La ejecución no tiene casos asociados')
+    if (!ejecucion) throw new Error(t('ejecutarPruebas.executionNoAssociatedCases'))
     const snapshotsResponse = await fetchWithAuth(`${API_BASE}/ejecuciones/${ejecucion.id}/snapshots/`)
-    if (!snapshotsResponse.ok) throw new Error(`Backend respondió ${snapshotsResponse.status}`)
+    if (!snapshotsResponse.ok) throw new Error(t('configuracion.backendResponded', { status: snapshotsResponse.status }))
     const snapshots = await snapshotsResponse.json()
     const stepSnapshots = snapshots.filter((snap: any) => Number(snap.numero_paso) > 0)
     const generalSnapshot = snapshots.find((snap: any) => Number(snap.numero_paso) === 0) || null
     const attachmentsResponse = await fetchWithAuth(`${API_BASE}/ejecuciones/${ejecucion.id}/snapshot-attachments/`)
-    if (!attachmentsResponse.ok) throw new Error(`No se pudieron cargar las evidencias (${attachmentsResponse.status})`)
+    if (!attachmentsResponse.ok) throw new Error(t('ejecutarPruebas.executionEvidenceLoadFailed', { status: attachmentsResponse.status }))
     const attachmentLinksBySnapshot = await attachmentsResponse.json()
     const attachmentsBySnapshot = Object.fromEntries(
       snapshots.map((snap: any) => [snap.id, (attachmentLinksBySnapshot[String(snap.id)] || []).map((link: any) => link.attachment)])
@@ -250,7 +255,6 @@ export function createExecutionActions({
     setGeneralExecutionNote(ejecucion.observaciones || '')
     return { ejecucion, snapshots: stepSnapshots, ejecuciones, generalSnapshot }
   }
-
   const waitForIaExecutionToFinish = async (runId: string, executionId: string, timeoutMs = 20 * 60 * 1000) => {
     const startedAt = Date.now()
     let delayMs = 2000
@@ -278,18 +282,19 @@ export function createExecutionActions({
     return null
   }
 
-  const handleStartExecution = async (mode: ExecutionMode) => {
+  const handleStartExecution = async (mode: ExecutionMode, executionOptions: any = {}) => {
+    const requestedTests = Array.isArray(executionOptions?.tests) ? executionOptions.tests.filter(Boolean) : []
+    const tests = requestedTests.length > 0 ? requestedTests : (executionModalTests.length > 0 ? executionModalTests : (selectedTest ? [selectedTest] : []))
+    const isApiSelection = Boolean(executionOptions?.forceApi) || (tests.length > 0 && tests.every(test => String(test?.format || test?.formato_prueba || '').toUpperCase() === 'API'))
+    if (isApiSelection) return executeApiSelection({ mode, executeRequest: executionOptions?.executeRequest === true, executeNow: executionOptions?.executeNow === true, canUseAutomatedExecution, selectedExecutionEnvironmentId, executionEnvironmentId: executionOptions?.environmentId || currentExecutionRun?.apiExecutionResults?.environment_id, executionDatasetPreview: executionDatasetPreview || currentExecutionRun?.apiExecutionResults?.dataset_preview, executionRunId: executionOptions?.runId || currentExecutionRun?.apiExecutionResults?.run_id, executionTests: currentExecutionRun?.apiExecutionResults?.tests || tests, currentExecutionRun, selectedExecutionDatasetId, executionDatasetId: executionOptions?.datasetId || currentExecutionRun?.apiExecutionResults?.dataset_id, setExecutionLoading, managingProjectId, currentProjectId, currentBuildId, fetchWithAuth, setCurrentExecutionRun, setSelectedTest, setExecutionMode, setExecutionModalCaseIds, setShowExecSelector, setActiveExecutionCaseIds, setViewMode, setAutomationMonitor, showFeedback, t }, tests)
     if (mode === 'automated' && !canUseAutomatedExecution) {
       showFeedback(
-        'Permiso requerido',
-        'Necesitas permiso de ejecucion y acceso a automatizacion para enviar pruebas a workers.',
+        t('ejecutarPruebas.manualPermissionRequired'),
+        t('ejecutarPruebas.executionPermission'),
         'warning'
       )
       return
     }
-    const tests = executionModalTests.length > 0
-      ? executionModalTests
-      : (selectedTest ? [selectedTest] : [])
     if (tests.length === 0) {
       const message = executionModalDiscardedCount > 0
         ? t('ejecutarPruebas.selectionDiscardedMessage')
@@ -309,12 +314,16 @@ export function createExecutionActions({
       setActiveExecutionCaseIds(mode === 'manual' ? executionCaseIds : [])
       setExecutionModalCaseIds(null)
       setShowExecSelector(false)
+      const isChatbotSelection = executableTests.length > 0 && executableTests.every(test =>
+        String(test?.format || test?.formato_prueba || '').toUpperCase() === 'CONVERSACIONAL'
+      )
       if (mode === 'manual') {
-        if (snapshots.length === 0) {
+        if (snapshots.length === 0 && !isChatbotSelection) {
           showFeedback(t('ejecutarPruebas.caseWithoutSteps'), t('ejecutarPruebas.caseWithoutStepsMessage'), 'warning')
         }
-        setViewMode('manual_exec')
-      } else if (mode === 'ia') {
+        setViewMode(isChatbotSelection ? 'chatbot_manual' : 'manual_exec')
+      } else if (mode === 'ia' || isChatbotSelection) {
+        const chatbotAutomated = isChatbotSelection && mode === 'automated'
         const pendingStreams = ejecuciones.map((item: any) => {
           const test = executableTests.find(candidate => candidate.id === item.caso_id)
           return {
@@ -322,10 +331,10 @@ export function createExecutionActions({
             caseId: item.caso_id,
             runId: run.id,
             caseCode: test?.code || test?.codigo || '',
-            caseTitle: test?.title || test?.titulo || 'Caso IA',
+            caseTitle: test?.title || test?.titulo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')),
             runName: run.nombre,
             status: 'EN_ESPERA',
-            lastMessage: 'Esperando turno para ejecutar IA.',
+            lastMessage: chatbotAutomated ? t('ejecutarPruebas.iaChatbotWaiting') : t('ejecutarPruebas.iaWaiting'),
           }
         })
         setIaQueue(prev => [...new Set([...prev, ...executableTests.map(test => test.id)])])
@@ -337,8 +346,8 @@ export function createExecutionActions({
         const maxParallelIa = Math.max(1, Math.min(5, Number(aiMaxParallelRuns || 1)))
         setIaLogs(prev => [
           ...prev,
-          iaLog('run', `${run.nombre} en cola IA con ${pendingStreams.length} caso(s). Max paralelo: ${maxParallelIa}.`),
-          ...pendingStreams.map(item => iaLog('queue', `${item.caseTitle}: esperando turno`, { caseCode: item.caseCode, executionId: item.executionId }))
+          iaLog('run', t('ejecutarPruebas.iaQueueSummary', { run: run.nombre, kind: chatbotAutomated ? t('ejecutarPruebas.chatbotAutomatedStarted') : t('ejecutarPruebas.iaCase'), count: pendingStreams.length, max: maxParallelIa })),
+          ...pendingStreams.map(item => iaLog('queue', t('ejecutarPruebas.iaWaitingTurn', { case: item.caseTitle }), { caseCode: item.caseCode, executionId: item.executionId }))
         ])
 
         const iaResults: any[] = []
@@ -348,10 +357,10 @@ export function createExecutionActions({
             const item = ejecuciones[queueIndex++]
           const test = executableTests.find(candidate => candidate.id === item.caso_id)
           setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-            ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: 'Ejecutando IA.' }
+            ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: chatbotAutomated ? t('ejecutarPruebas.iaChatbotExecuting') : t('ejecutarPruebas.iaExecuting') }
             : stream
           ))
-          setIaLogs(prev => [...prev, iaLog('run', `${test?.code || test?.codigo || 'Caso IA'} inicia ejecucion IA.`, { caseCode: test?.code || test?.codigo, executionId: item.id })])
+          setIaLogs(prev => [...prev, iaLog('run', t('ejecutarPruebas.iaStartMessage', { case: test?.code || test?.codigo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')), kind: chatbotAutomated ? t('ejecutarPruebas.chatbotAutomatedStarted') : t('ejecutarPruebas.iaCase') }), { caseCode: test?.code || test?.codigo, executionId: item.id })])
           try {
             const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, { method: 'POST' })
             const payload = await response.json().catch(async () => ({ detail: await response.text().catch(() => '') }))
@@ -360,7 +369,7 @@ export function createExecutionActions({
               executionId: item.id,
               caseId: item.caso_id,
               caseCode: test?.code || test?.codigo,
-              caseTitle: test?.title || test?.titulo || 'Caso IA',
+              caseTitle: test?.title || test?.titulo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')),
               message: payload?.detail || payload?.message || t('configuracion.backendResponded', { status: response.status })
             }
             iaResults.push(result)
@@ -384,7 +393,7 @@ export function createExecutionActions({
               executionId: item.id,
               caseId: item.caso_id,
               caseCode: test?.code || test?.codigo,
-              caseTitle: test?.title || test?.titulo || 'Caso IA',
+              caseTitle: test?.title || test?.titulo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')),
               message: error?.message || t('ejecutarPruebas.aiStartFailed')
             })
           }
@@ -397,12 +406,12 @@ export function createExecutionActions({
           const firstError = failedIa[0]
           const message = failedIa.length === iaResults.length
             ? firstError.message
-            : `${failedIa.length}/${iaResults.length} casos no iniciaron. ${firstError.caseCode ? `${firstError.caseCode}: ` : ''}${firstError.message}`
+            : t('ejecutarPruebas.iaPartialFailure', { count: failedIa.length, total: iaResults.length, detail: `${firstError.caseCode ? `${firstError.caseCode}: ` : ''}${firstError.message}` })
           showFeedback(startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially'), message, startedIa.length === 0 ? 'danger' : 'warning')
-          setProjectSyncMessage(`${startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially')}: ${message}`)
+          setProjectSyncMessage(t('ejecutarPruebas.executionStartMessage', { error: message }))
           setIaLogs(prev => [
             ...prev,
-            iaLog('error', `${startedIa.length === 0 ? 'IA no pudo iniciar' : 'IA iniciada parcialmente'}: ${message}`),
+            iaLog('error', `${startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially')}: ${message}`),
             ...failedIa.map(result => iaLog('error', `${result.caseTitle}: ${result.message}`, { caseCode: result.caseCode, executionId: result.executionId }))
           ])
           setActiveTab('motor_ia')
@@ -412,7 +421,7 @@ export function createExecutionActions({
         if (startedIa.length > 0) {
           setIaLogs(prev => [
             ...prev,
-            iaLog('run', `${run.nombre} proceso IA secuencial completo para ${startedIa.length} caso(s) iniciado(s).`)
+            iaLog('run', t('ejecutarPruebas.iaSequenceComplete', { run: run.nombre, count: startedIa.length }))
           ])
         }
         if (failedIa.length > 0) {
@@ -423,10 +432,10 @@ export function createExecutionActions({
         }
         if (failedIa.length === 0) {
         showFeedback(
-          mode === 'ia' ? t('ejecutarPruebas.aiExecutionStarted') : t('ejecutarPruebas.automatedJobCreated'),
+            mode === 'ia' ? t('ejecutarPruebas.aiExecutionStarted') : t('ejecutarPruebas.chatbotAutomatedStarted'),
           mode === 'ia'
-            ? `Se creó ${run.nombre} con ${tests.length} caso(s) y snapshots congelados.`
-            : `Se envió ${run.nombre} a la cola del worker dedicado.`,
+            ? t('ejecutarPruebas.iaRunCreatedMessage', { run: run.nombre, count: tests.length })
+            : t('ejecutarPruebas.chatbotRunCreatedMessage', { run: run.nombre }),
           'success'
         )
         }
@@ -450,7 +459,7 @@ export function createExecutionActions({
               return {
                 ...baseJob,
                 status: 'ERROR',
-                error: payload?.detail || `Backend respondio ${response.status}`
+                error: payload?.detail || t('configuracion.backendResponded', { status: response.status })
               }
             }
             return {
@@ -474,27 +483,27 @@ export function createExecutionActions({
             failedJobs[0]?.error || t('ejecutarPruebas.workerRejectedAll'),
             'danger'
           )
-          setProjectSyncMessage(`No se pudo enviar al worker: ${failedJobs[0]?.error || 'jobs rechazados'}`)
+          setProjectSyncMessage(t('ejecutarPruebas.workerSubmitMessage', { detail: failedJobs[0]?.error || t('ejecutarPruebas.workerRejectedJobs') }))
           return
         }
         if (failedJobs.length > 0) {
           showFeedback(
             t('ejecutarPruebas.automationPartial'),
-            `${failedJobs.length}/${jobs.length} job(s) no se pudieron crear. ${failedJobs[0]?.error || ''}`,
+            `${t('ejecutarPruebas.workerPartialJobs', { failed: failedJobs.length, total: jobs.length })} ${failedJobs[0]?.error || ''}`,
             'warning'
           )
         } else {
           showFeedback(
             t('ejecutarPruebas.automationSent'),
-            `Se envio ${run.nombre} a la cola del worker dedicado.`,
+            t('ejecutarPruebas.workerQueueMessage', { run: run.nombre }),
             'success'
           )
         }
       }
-      setProjectSyncMessage(`Ejecución creada: ${run.nombre}`)
+      setProjectSyncMessage(t('ejecutarPruebas.executionCreatedMessage', { run: run.nombre }))
     } catch (error: any) {
       showFeedback(t('ejecutarPruebas.executionStartFailed'), error.message || t('ejecutarPruebas.executionCreateError'), 'danger')
-      setProjectSyncMessage(`No se pudo iniciar ejecución: ${error.message}`)
+      setProjectSyncMessage(t('ejecutarPruebas.executionStartMessage', { error: error.message || t('ejecutarPruebas.executionCreateError') }))
     } finally {
       setExecutionLoading(false)
     }

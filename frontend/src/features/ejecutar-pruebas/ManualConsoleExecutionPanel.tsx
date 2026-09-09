@@ -55,7 +55,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
             ? rawResolvedStepData
             : ''
           const visibleStepDataText = resolvedStepDataText || stepDataText
-          const expectedText = snapshot.resultado_esperado_congelado || 'Sin resultado esperado definido'
+          const expectedText = snapshot.resultado_esperado_congelado || t('common.notDefinedValue')
           const actionReferences = getSnapshotReferences(snapshot, 'action')
           const expectedReferences = getSnapshotReferences(snapshot, 'expected')
           const snapshotDocumentationMissing = Boolean(
@@ -82,30 +82,30 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
                       <div className={`small fw-bold bg-light p-3 rounded-3 border border-light-subtle ${snapshot.accion_congelada ? 'text-dark' : 'text-muted'}`}>
                         {actionText}
                       </div>
-                      {renderCaseReferences('Referencia del caso', actionReferences)}
+                      {renderCaseReferences(t('ejecutarPruebas.referenceCase'), actionReferences)}
                     </Col>
                     {visibleStepDataText && (
                       <Col lg={3} md={3}>
-                        <div className="x-small fw-bold text-muted text-uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Datos</div>
+                        <div className="x-small fw-bold text-muted text-uppercase mb-2" style={{ letterSpacing: '0.5px' }}>{t('ejecutarPruebas.data')}</div>
                         <div className="small bg-white px-3 py-2 rounded-3 border border-success border-opacity-25 font-monospace text-primary text-break shadow-sm" style={{ minHeight: '44px', maxHeight: '96px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
                           {visibleStepDataText}
                         </div>
                       </Col>
                     )}
                     <Col lg={stepDataText ? 4 : 6} md={stepDataText ? 4 : 6}>
-                      <div className="x-small fw-bold text-muted text-uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Resultado esperado</div>
+                      <div className="x-small fw-bold text-muted text-uppercase mb-2" style={{ letterSpacing: '0.5px' }}>{t('ejecutarPruebas.expectedResult')}</div>
                       <div className={`small p-3 rounded-3 border border-light-subtle bg-white ${snapshot.resultado_esperado_congelado ? 'text-secondary' : 'text-muted'}`}>
                         {expectedText}
                       </div>
-                      {renderCaseReferences('Referencia esperada', expectedReferences)}
+                      {renderCaseReferences(t('ejecutarPruebas.referenceExpected'), expectedReferences)}
                     </Col>
                   </Row>
 
                   <div className={`mt-4 p-3 rounded-4 border shadow-sm transition-all ${snapshotDocumentationMissing ? 'bg-danger bg-opacity-10 border-danger border-opacity-50' : 'bg-light border-light-subtle'}`}>
                     <Row className="g-3 align-items-start">
                       <Col md={3}>
-                        <Form.Label className="x-small fw-bold text-dark text-uppercase">Veredicto</Form.Label>
-                        <Form.Select name="a11y-manualconsoleexecutionpaneltsx-108" aria-label="Campo de formulario" size="sm" className={`fw-bold shadow-sm cursor-pointer border-2 p-2 ${currentResult === 'PASO' ? 'text-success border-success' : currentResult === 'FALLO' ? 'text-danger border-danger' : 'text-secondary border-secondary'}`} disabled={isBlocked} value={currentResult} onChange={(event) => handleSnapshotStatusChange(snapshot, event.target.value)}>
+                        <Form.Label htmlFor={`manual-step-verdict-${snapshot.id}`} className="x-small fw-bold text-dark text-uppercase">{t('ejecutarPruebas.verdict')}</Form.Label>
+                        <Form.Select id={`manual-step-verdict-${snapshot.id}`} name="a11y-manualconsoleexecutionpaneltsx-108" aria-label={t('common.formField')} size="sm" className={`fw-bold shadow-sm cursor-pointer border-2 p-2 ${currentResult === 'PASO' ? 'text-success border-success' : currentResult === 'FALLO' ? 'text-danger border-danger' : 'text-secondary border-secondary'}`} disabled={isBlocked} value={currentResult} onChange={(event) => handleSnapshotStatusChange(snapshot, event.target.value)}>
                           <option value="SIN_CORRER">{t('ejecutarPruebas.pending')}</option>
                           <option value="PASO">{t('ejecutarPruebas.pass')}</option>
                           <option value="FALLO">{t('ejecutarPruebas.fail')}</option>
@@ -113,12 +113,12 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
                         </Form.Select>
                       </Col>
                       <Col md={9}>
-                        <Form.Label className="x-small fw-bold text-dark text-uppercase d-flex justify-content-between w-100">
+                        <Form.Label htmlFor={`manual-step-observations-${snapshot.id}`} className="x-small fw-bold text-dark text-uppercase d-flex justify-content-between w-100">
                           <span>{t('ejecutarPruebas.observationsEvidence')}</span>
                         </Form.Label>
-                        <Form.Control name="a11y-manualconsoleexecutionpaneltsx-119" aria-label="Campo de formulario" as="textarea" rows={2} size="sm" placeholder={hasFailed ? 'Detalla la falla encontrada y adjunta evidencia para Redmine...' : 'Notas opcionales del comportamiento...'} className={`shadow-sm text-dark ${snapshotDocumentationMissing ? 'bg-white border-danger' : 'bg-white border-light-subtle'}`} disabled={isBlocked} value={snapshotNotes[snapshot.numero_paso] || ''} onChange={(event) => handleSnapshotNoteChange(snapshot.numero_paso, event.target.value)} onBlur={() => handleSnapshotNoteBlur(snapshot)} />
+                        <Form.Control id={`manual-step-observations-${snapshot.id}`} name="a11y-manualconsoleexecutionpaneltsx-119" aria-label={t('common.formField')} as="textarea" rows={2} size="sm" placeholder={hasFailed ? t('ejecutarPruebas.failurePlaceholder') : t('ejecutarPruebas.optionalNotesPlaceholder')} className={`shadow-sm text-dark ${snapshotDocumentationMissing ? 'bg-white border-danger' : 'bg-white border-light-subtle'}`} disabled={isBlocked} value={snapshotNotes[snapshot.numero_paso] || ''} onChange={(event) => handleSnapshotNoteChange(snapshot.numero_paso, event.target.value)} onBlur={() => handleSnapshotNoteBlur(snapshot)} />
                         <div className="mt-2">
-                          <EvidenceUpload compact label="Adjuntar evidencia" uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} disabled={isBlocked} currentEvidence={snapshot.evidencia_url} currentAttachments={snapshotAttachments[snapshot.id] || []} onUploadComplete={(attachment) => handleSnapshotAttachmentUpload(snapshot, attachment)} onRemoveAttachment={(attachment) => handleRemoveSnapshotAttachment(snapshot, attachment)} />
+                          <EvidenceUpload compact label={t('ejecutarPruebas.attachEvidence')} uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} disabled={isBlocked} currentEvidence={snapshot.evidencia_url} currentAttachments={snapshotAttachments[snapshot.id] || []} onUploadComplete={(attachment) => handleSnapshotAttachmentUpload(snapshot, attachment)} onRemoveAttachment={(attachment) => handleRemoveSnapshotAttachment(snapshot, attachment)} />
                         </div>
                         {snapshotDocumentationMissing && (
                           <div className="text-danger fw-semibold x-small mt-2 d-flex align-items-center gap-1">
@@ -148,8 +148,8 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
             </div>
             <Row className="g-3">
               <Col md={4}>
-                <Form.Label className="x-small fw-bold text-dark text-uppercase">Veredicto general</Form.Label>
-                <Form.Select name="a11y-manualconsoleexecutionpaneltsx-152" aria-label="Campo de formulario" size="sm" className="fw-bold shadow-sm border-2 p-2 text-dark" value={generalExecutionStatus} onChange={(event) => setGeneralExecutionStatus(event.target.value)}>
+                <Form.Label htmlFor="manual-general-verdict" className="x-small fw-bold text-dark text-uppercase">{t('ejecutarPruebas.generalVerdict')}</Form.Label>
+                <Form.Select id="manual-general-verdict" name="a11y-manualconsoleexecutionpaneltsx-152" aria-label={t('common.formField')} size="sm" className="fw-bold shadow-sm border-2 p-2 text-dark" value={generalExecutionStatus} onChange={(event) => setGeneralExecutionStatus(event.target.value)}>
                   <option value="SIN_CORRER">{t('ejecutarPruebas.pending')}</option>
                   <option value="PASO">{t('ejecutarPruebas.pass')}</option>
                   <option value="FALLO">{t('ejecutarPruebas.fail')}</option>
@@ -157,11 +157,11 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
                 </Form.Select>
               </Col>
               <Col md={8}>
-                <Form.Label className="x-small fw-bold text-dark text-uppercase">{t('ejecutarPruebas.generalObservation')}</Form.Label>
-                <Form.Control name="a11y-manualconsoleexecutionpaneltsx-161" aria-label="Campo de formulario" as="textarea" rows={3} size="sm" className={`shadow-sm text-dark bg-white ${generalDocumentationMissing ? 'border-danger' : 'border-light-subtle'}`} value={generalExecutionNote} onChange={(event) => setGeneralExecutionNote(event.target.value)} placeholder={generalExecutionStatus === 'FALLO' || generalExecutionStatus === 'BLOQUEADO' ? t('ejecutarPruebas.failureOrBlockPlaceholder') : t('ejecutarPruebas.generalNotesPlaceholder')} />
+                <Form.Label htmlFor="manual-general-observation" className="x-small fw-bold text-dark text-uppercase">{t('ejecutarPruebas.generalObservation')}</Form.Label>
+                <Form.Control id="manual-general-observation" name="a11y-manualconsoleexecutionpaneltsx-161" aria-label={t('common.formField')} as="textarea" rows={3} size="sm" className={`shadow-sm text-dark bg-white ${generalDocumentationMissing ? 'border-danger' : 'border-light-subtle'}`} value={generalExecutionNote} onChange={(event) => setGeneralExecutionNote(event.target.value)} placeholder={generalExecutionStatus === 'FALLO' || generalExecutionStatus === 'BLOQUEADO' ? t('ejecutarPruebas.failureOrBlockPlaceholder') : t('ejecutarPruebas.generalNotesPlaceholder')} />
                 {(requireFailureDocumentation && isEvidenceRequiredStatus(generalExecutionStatus)) && (
                   <div className={`mt-2 rounded-3 ${generalDocumentationMissing ? 'p-2 bg-danger bg-opacity-10 border border-danger border-opacity-25' : ''}`}>
-                    <EvidenceUpload compact label="Adjuntar evidencia general" uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} currentEvidence={generalExecutionSnapshot?.evidencia_url} currentAttachments={generalExecutionAttachments} onUploadComplete={handleGeneralExecutionAttachmentUpload} onRemoveAttachment={handleRemoveGeneralExecutionAttachment} />
+                    <EvidenceUpload compact label={t('ejecutarPruebas.attachGeneralEvidence')} uploadScope="EXECUTION_EVIDENCE" maxFileSize={attachmentConfig.max_file_size_mb} enablePaste={attachmentConfig.enable_clipboard_paste} currentEvidence={generalExecutionSnapshot?.evidencia_url} currentAttachments={generalExecutionAttachments} onUploadComplete={handleGeneralExecutionAttachmentUpload} onRemoveAttachment={handleRemoveGeneralExecutionAttachment} />
                   </div>
                 )}
                 {generalDocumentationMissing && (
@@ -179,7 +179,7 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
       <Card.Footer className="manual-console-footer bg-white p-4 text-end border-top d-flex justify-content-between align-items-center gap-3">
         <span className={`small fw-bold text-start ${evidenceBlockMessage ? 'text-danger' : 'text-muted'}`} style={{ minHeight: '20px' }}>
           {evidenceBlockMessage || (requireFailureDocumentation
-            ? 'Si marcas FALLO o BLOQUEADO, agrega un comentario o adjunta evidencia.'
+            ? t('ejecutarPruebas.documentationBlock')
             : t('ejecutarPruebas.documentEvidenceHint'))}
         </span>
         <Button variant="success" className="manual-console-finish-button fw-bold shadow rounded-pill d-flex align-items-center justify-content-center gap-2" onClick={handleCompleteCase} disabled={finishDisabled} aria-busy={isCompletingCase} title={evidenceBlockMessage ? t('ejecutarPruebas.missingFailureDoc') : undefined}>

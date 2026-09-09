@@ -29,7 +29,7 @@ export const getEffectiveRunExecutionMode = (run: any) => {
   if (origin === 'IA') return { summary: 'IA', label: 'IA', detail: '' }
   return {
     summary: run.executionModeSummary || 'MANUAL',
-    label: run.executionModeLabel || 'Manual',
+    label: run.executionModeLabel || 'MANUAL',
     detail: run.executionModeDetail || ''
   }
 }

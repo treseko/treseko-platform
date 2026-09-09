@@ -1,4 +1,5 @@
 export default {
+  formField: 'Campo de formulario',
   attachedEvidence: 'Evidencia adjunta', evidenceFileUnavailable: 'Archivo no disponible', evidenceUrlResolveFailed: 'No se pudo resolver la URL de la evidencia.', loadingPreview: 'Cargando vista previa...', previewFailed: 'No se pudo mostrar la vista previa.', previewNotSupported: 'Este archivo no se puede previsualizar en el navegador.', downloadToReview: 'Descárgalo para revisarlo con una aplicación compatible.', previewFallbackHint: 'Si el navegador no muestra la vista previa correctamente, usa descargar.', openSeparately: 'Abrir aparte', preparing: 'Preparando...', download: 'Descargar', evidenceSessionExpired: 'La sesión para ver esta evidencia expiró. Vuelve a iniciar sesión o usa descargar con una sesión activa.', evidenceStorageUnavailable: 'El archivo físico de esta evidencia no está disponible en el storage. El registro existe, pero no hay archivo para previsualizar o descargar.', evidenceLoadFailed: 'No se pudo cargar la evidencia', previewLoadFailed: 'No se pudo cargar la vista previa.', evidenceRecordPreserved: 'El registro de evidencia se conserva para trazabilidad, pero el archivo físico no está en storage.',
   appName: 'Treseko Platform',
   retry: 'Reintentar',
@@ -101,4 +102,7 @@ export default {
   windowExpired: 'Vencida', windowInProgress: 'En curso', windowNotStarted: 'No iniciada', windowNoDates: 'Sin fechas',
   clickTo: 'Clic para {action}.', duration: 'Duración:', category: 'Categoría:', review: 'Revisión:', model: 'Modelo:', errorCode: 'Código de error:', workflowUsed: 'Workflow usado:', visualAudit: 'Auditoría visual:', visualAuditEvidence: 'Se analizaron capturas como evidencia.', deterministicValidation: 'Se usó validación determinista.', recentResultsCompared: 'Resultados recientes comparados',
   compatibleWorkerMissing: 'No hay worker compatible para {framework} + {language}. Inicia o vincula un worker que anuncie ese framework y lenguaje, y vuelve a ejecutar el dry-run o la prueba.', engineActivity: 'Actividad del Motor IA', temporaryEvidence: 'Evidencias temporales', interpretedData: 'Datos interpretados por el agente', stepNumber: 'Paso {step}:', noStructuredData: '(sin datos estructurados)', ambiguity: 'Ambigüedad:', returnedSteps: 'Steps devueltos por el script', noVariablesPreview: 'No hay variables disponibles para previsualizar.', source: 'Origen', key: 'Clave', currentValue: 'Valor actual', token: 'Token',
+  saving: 'Guardando…',
+  delete: 'Eliminar',
+  of: 'de',
 } as const

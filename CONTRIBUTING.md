@@ -1,27 +1,32 @@
-# Contributing
+# Contribuir a Treseko
 
-Thanks for helping improve Treseko.
+Gracias por ayudar a mejorar Treseko.
 
 Project maintainer: [José Manuel Zúñiga](https://www.linkedin.com/in/jose-manuel-zuniga/).
 For project contact, visit [treseko.com](https://treseko.com) or write to
 [jose@treseko.com](mailto:jose@treseko.com).
 
-By contributing to this repository, you agree that your contribution is provided under the same license as the project: AGPL-3.0-or-later.
+Al contribuir aceptás que tu aporte se distribuye bajo la misma licencia del
+proyecto: AGPL-3.0-or-later.
 
-## Development Flow
+## Flujo de desarrollo
 
-Recommended local flow:
+Para preparar una instalación local de desarrollo o evaluación, usá el
+instalador incluido:
 
 ```bash
-cp .env.production.example compose.production.env
-docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d --build
+scripts/install_local_treseko.sh --with-demo
 ```
 
-Use focused branches and keep changes scoped to one feature or fix.
+La publicación incluye ejemplos `.env.production.example` sin secretos; el
+instalador genera `compose.production.env` y los secretos locales. Consultá la
+[guía de instalación](docs/INSTALLATION.md) para el procedimiento manual.
 
-## Before Opening A Pull Request
+Usá ramas enfocadas y mantené cada cambio limitado a una función o corrección.
 
-Run the checks relevant to the files you changed:
+## Antes de abrir un pull request
+
+Ejecutá las verificaciones relacionadas con los archivos modificados:
 
 ```bash
 npm --prefix frontend run build
@@ -29,30 +34,33 @@ npm --prefix engine run smoke
 python -m py_compile backend/seed_admin.py backend/reset_user_password.py
 ```
 
-For backend changes, also run the relevant tests if available in your checkout.
+Para cambios de backend, ejecutá también las pruebas específicas disponibles.
 
-## Public Repo Boundary
+## Límite del repositorio público
 
-Do not contribute private commercial infrastructure to this repository:
+No incorpores infraestructura comercial privada en este repositorio:
 
-- license generation services;
-- private update signing;
-- private key material;
-- customer telemetry backends;
-- internal audit evidence;
-- private deployment credentials.
+- servicios de generación de licencias;
+- firma privada de actualizaciones;
+- claves privadas;
+- backends de telemetría de clientes;
+- evidencias de auditorías internas;
+- credenciales privadas de despliegue.
 
-Community/Premium gates may exist in the platform code, but the commercial authority services are intentionally separate.
+El código puede incluir gates Community/Premium, pero los servicios que actúan
+como autoridad comercial están separados intencionalmente.
 
-## License And Trademark
+## Licencia y marca
 
-- Code contributions are licensed under AGPL-3.0-or-later.
-- Do not add dependencies or assets that conflict with AGPL distribution.
-- Do not add brand assets unless they are intended for public use.
-- The Treseko name and visual identity are governed by `TRADEMARKS.md`.
+- Los aportes de código se licencian bajo AGPL-3.0-or-later.
+- No agregues dependencias ni recursos incompatibles con esa distribución.
+- No agregues recursos de marca que no estén destinados al uso público.
+- El nombre y la identidad visual de Treseko se rigen por `TRADEMARKS.md`.
 
-## Documentation
+## Documentación
 
-User-facing changes should update documentation in `docs/` when behavior, installation or operations change.
+Los cambios visibles para usuarios deben actualizar `docs/` cuando modifican
+el comportamiento, la instalación o la operación. Las guías españolas son la
+fuente de verdad y deben conservar un espejo equivalente en `docs/en/`.
 
-For more about the maintainer, visit [biuler.com](https://www.biuler.com).
+Para conocer más sobre el mantenedor, visitá [biuler.com](https://www.biuler.com).

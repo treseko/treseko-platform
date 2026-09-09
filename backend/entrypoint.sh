@@ -24,6 +24,17 @@ ENTRYPOINT_UPDATE_TASK_ID=""
 ENTRYPOINT_UPDATE_VERSION=""
 AUTO_DB_ROLLBACK_ON_FAILURE="${TRESEKO_AUTO_DB_ROLLBACK_ON_MIGRATION_FAILURE:-false}"
 
+migrate_instance_identity() {
+  persistent_identity_file="${TRESEKO_INSTANCE_ID_FILE:-$UPDATES_DIR/instance_id}"
+  legacy_identity_file="${HOME:-/root}/.treseko/instance_id"
+  if [ ! -s "$persistent_identity_file" ] && [ -s "$legacy_identity_file" ]; then
+    mkdir -p "$(dirname "$persistent_identity_file")"
+    cp -p "$legacy_identity_file" "$persistent_identity_file"
+    chmod 600 "$persistent_identity_file"
+    echo "Identidad de instalacion migrada al almacenamiento persistente."
+  fi
+}
+
 read_version() {
   if [ -n "$VERSION_FILE" ] && [ -r "$VERSION_FILE" ]; then
     cat "$VERSION_FILE"
@@ -40,6 +51,7 @@ read_version() {
 
 echo "=== Treseko Startup ==="
 echo "Version: $(read_version)"
+migrate_instance_identity
 
 load_env_from_file() {
   var_name="$1"
@@ -60,6 +72,33 @@ load_env_from_file DATABASE_URL
 load_env_from_file DB_PASSWORD
 load_env_from_file SECRET_KEY
 load_env_from_file AI_ENGINE_INTERNAL_TOKEN
+
+installation_mode_gate() {
+  python_bin="$(command -v python || command -v python3 || true)"
+  [ -n "$python_bin" ] || { echo "Python runtime unavailable for installation mode gate" >&2; return 2; }
+  INSTALLATION_MODE_COMMAND="$1" PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}" "$python_bin" - <<'PY'
+import os
+try:
+    from app.services.update_installation_mode import InstallationModeError, require
+except ModuleNotFoundError as exc:
+    # A 1.0.2 image has no gate module. Preserve its ordinary legacy boot and
+    # migrate-only path; coordinated signals must still fail closed. The
+    # coordinator uses the explicit coordinated-serve command, so allowing
+    # legacy here does not bypass the newer admission path.
+    if (exc.name or "").startswith("app.services") and not (
+        os.environ.get("TRESEKO_COORDINATED_BACKEND_BOOT", "").strip()
+    ) and os.environ.get("INSTALLATION_MODE_COMMAND") in {"legacy", "migrate-only"}:
+        raise SystemExit(0)
+    print("Installation mode gate unavailable", file=os.sys.stderr)
+    raise SystemExit(2)
+
+try:
+    require(os.environ["INSTALLATION_MODE_COMMAND"])
+except InstallationModeError as exc:
+    print(f"Installation mode admission blocked: {exc.code}", file=os.sys.stderr)
+    raise SystemExit(2)
+PY
+}
 
 if [ "${TRESEKO_DEPLOY_MODE:-}" = "docker" ] && [ -n "${DB_PASSWORD:-}" ]; then
   encoded_db_password="$(python -c \
@@ -168,8 +207,8 @@ restore_runtime_code() {
   fi
   if [ -d "$restore_dir/frontend_html" ]; then
     mkdir -p "$FRONTEND_HTML_DIR"
-    find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
-    cp -a "$restore_dir/frontend_html/." "$FRONTEND_HTML_DIR/"
+    find "$FRONTEND_HTML_DIR" -mindepth 1 -maxdepth 1 ! -name '.maintenance' ! -name '.treseko-update-fence' ! -name 'maintenance.html' -exec rm -rf {} +
+    find "$restore_dir/frontend_html" -mindepth 1 -maxdepth 1 ! -name '.maintenance' ! -name '.treseko-update-fence' -exec cp -a {} "$FRONTEND_HTML_DIR/" \;
     # El backup puede contener la marca activa del update fallido. No debe
     # sobrevivir al rollback: maintenance_off debe poder liberar la interfaz.
     rm -f "$MAINTENANCE_MARKER"
@@ -298,6 +337,9 @@ PY
 )"
       ;;
   esac
+  if [ -z "$ENTRYPOINT_UPDATE_VERSION" ] && [ -r "$update_dir/VERSION" ]; then
+    ENTRYPOINT_UPDATE_VERSION="$(tr -d '[:space:]' < "$update_dir/VERSION")"
+  fi
   if [ -z "$update_dir" ] || [ ! -d "$update_dir" ]; then
     echo "Update pendiente invalido: $update_dir"
     rm -f "$flag_file"
@@ -325,6 +367,16 @@ PY
     fi
   fi
 
+  # The entrypoint belongs to the backend runtime, not only to the image that
+  # originally installed it. A legacy 1.0.2 installation must receive the
+  # compatible bootstrap before its next restart; otherwise it keeps executing
+  # the old gate against the new application code and can enter a restart loop.
+  if [ -f "$update_dir/backend/entrypoint.sh" ]; then
+    echo "  Actualizando entrypoint de backend..."
+    cp "$update_dir/backend/entrypoint.sh" "$APP_DIR/entrypoint.sh"
+    chmod 755 "$APP_DIR/entrypoint.sh"
+  fi
+
   if [ -f "$update_dir/VERSION" ]; then
     echo "  Actualizando version instalada..."
     cp "$update_dir/VERSION" "$APP_DIR/VERSION"
@@ -344,8 +396,8 @@ PY
   if [ -d "$update_dir/frontend/dist" ]; then
     echo "  Reemplazando frontend..."
     mkdir -p "$FRONTEND_HTML_DIR"
-    find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
-    cp -a "$update_dir/frontend/dist/." "$FRONTEND_HTML_DIR/"
+    find "$FRONTEND_HTML_DIR" -mindepth 1 -maxdepth 1 ! -name '.maintenance' ! -name '.treseko-update-fence' ! -name 'maintenance.html' -exec rm -rf {} +
+    find "$update_dir/frontend/dist" -mindepth 1 -maxdepth 1 ! -name '.maintenance' ! -name '.treseko-update-fence' -exec cp -a {} "$FRONTEND_HTML_DIR/" \;
     expected_frontend_version="${ENTRYPOINT_UPDATE_VERSION:-$(cat "$update_dir/VERSION")}"
     validate_frontend_runtime "$expected_frontend_version"
   fi
@@ -373,8 +425,10 @@ PY
   if [ -d "$update_dir/automation-worker" ]; then
     echo "  Reemplazando worker..."
     mkdir -p "$WORKER_DIR"
-    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    cp -a "$update_dir/automation-worker/." "$WORKER_DIR/"
+    # Pairing and local configuration belong to this installation, including
+    # workers whose backend is on another host. Never replace them from a release.
+    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec rm -rf {} +
+    find "$update_dir/automation-worker" -mindepth 1 -maxdepth 1 ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec cp -a {} "$WORKER_DIR/" \;
     # Workers nuevos consumen esta marca cuando terminan el job activo. Las
     # releases anteriores requieren un reinicio manual unico para adoptar este
     # comportamiento, sin interrumpir ejecuciones en curso.
@@ -442,19 +496,138 @@ PY
   fi
 }
 
+component_versions_converged() {
+  expected_version="$1"
+
+  if [ -z "$expected_version" ]; then
+    echo "No se puede verificar la convergencia: falta la version esperada." >&2
+    return 1
+  fi
+
+  # El frontend se sirve desde un volumen compartido, pero su proceso nginx
+  # debe consumir la marca antes de considerar completado el update.
+  if [ "${TRESEKO_DEPLOY_MODE:-docker}" = "docker" ] && [ -f "$FRONTEND_HTML_DIR/.treseko-update-restart" ]; then
+    return 1
+  fi
+  if ! FRONTEND_EXPECTED_VERSION="$expected_version" FRONTEND_HTML_DIR="$FRONTEND_HTML_DIR" python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["FRONTEND_HTML_DIR"])
+expected = os.environ["FRONTEND_EXPECTED_VERSION"].strip()
+version_path = root / "VERSION"
+metadata_path = root / "version.json"
+if not version_path.is_file() or not metadata_path.is_file():
+    raise SystemExit(1)
+if version_path.read_text(encoding="utf-8").strip() != expected:
+    raise SystemExit(1)
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+if str(metadata.get("version") or "").strip() != expected:
+    raise SystemExit(1)
+PY
+  then
+    return 1
+  fi
+
+  # El Engine expone su propia version. No alcanza con que exista el archivo
+  # VERSION: hay que confirmar que el proceso cargado ya sea el nuevo.
+  engine_url="${ENGINE_URL:-http://engine:3010}"
+  if ! ENGINE_EXPECTED_VERSION="$expected_version" ENGINE_HEALTH_URL="${engine_url%/}/health" python - <<'PY'
+import json
+import os
+import urllib.request
+
+try:
+    with urllib.request.urlopen(os.environ["ENGINE_HEALTH_URL"], timeout=3) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if str(payload.get("version") or "").strip() != os.environ["ENGINE_EXPECTED_VERSION"].strip():
+        raise SystemExit(1)
+except Exception:
+    raise SystemExit(1)
+PY
+  then
+    return 1
+  fi
+  if [ -f "$ENGINE_DIR/.treseko-update-restart" ]; then
+    return 1
+  fi
+
+  # Las instalaciones sin perfil automation no tienen worker que esperar. Si
+  # existe el token del runner, en cambio, la marca debe ser consumida por el
+  # proceso y el runtime debe contener la version esperada.
+  if [ -f "$WORKER_DIR/.runner-token" ]; then
+    if [ -f "$WORKER_DIR/.treseko-update-restart" ]; then
+      return 1
+    fi
+    if [ ! -f "$WORKER_DIR/VERSION" ] || [ "$(tr -d '[:space:]' < "$WORKER_DIR/VERSION")" != "$expected_version" ]; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+wait_for_component_convergence() {
+  expected_version="$1"
+  timeout_seconds="${TRESEKO_UPDATE_COMPONENT_CONVERGENCE_TIMEOUT_SECONDS:-180}"
+  started_at="$(date +%s)"
+  deadline=$((started_at + timeout_seconds))
+
+  echo "Esperando convergencia de componentes en ${expected_version} (timeout ${timeout_seconds}s)."
+  while :; do
+    if component_versions_converged "$expected_version"; then
+      echo "Frontend, Engine y Worker convergieron en ${expected_version}."
+      return 0
+    fi
+    now="$(date +%s)"
+    if [ "$now" -ge "$deadline" ]; then
+      echo "La actualizacion no convergio en todos los componentes antes del timeout." >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+# A one-shot database participant must not consume the shared update request,
+# mutate other components or release a fence owned by the update coordinator.
+# In Compose it runs before backend/Engine; waiting for their versions here
+# creates a startup cycle. Failure remains nonzero for the caller to recover.
+if [ "${1:-}" = "migrate-only" ]; then
+  installation_mode_gate migrate-only
+  backup_database
+  run_migrations
+  echo "Migraciones listas; no se aplicaron ni finalizaron updates de componentes."
+  exit 0
+fi
+
+# The host coordinator owns package application, backups, migrations and global
+# version verification in this mode. Never consume a legacy update-ready file
+# or remove maintenance here. ASGI defers initialization while its API fence is
+# present, then keeps admission closed until initialization succeeds.
+if [ "${1:-}" = "coordinated-serve" ]; then
+  installation_mode_gate coordinated-serve
+  if [ -z "${TRESEKO_BACKEND_UPDATE_CONTROL_DIR:-}" ]; then
+    echo "Dedicated API update control directory required" >&2
+    exit 2
+  fi
+  export TRESEKO_COORDINATED_BACKEND_BOOT=true
+  echo "Iniciando backend bajo control del coordinador; sin migraciones ni finalizacion local."
+  exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+fi
+
+installation_mode_gate legacy
 apply_pending_update
 backup_database
 run_migrations
+if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ]; then
+  wait_for_component_convergence "$ENTRYPOINT_UPDATE_VERSION"
+fi
 mark_update_applied
 maintenance_off
 ENTRYPOINT_UPDATE_IN_PROGRESS="false"
 if [ -n "$ENTRYPOINT_UPDATE_FAILED_FILE" ]; then
   rm -f "$ENTRYPOINT_UPDATE_FAILED_FILE"
-fi
-
-if [ "${1:-}" = "migrate-only" ]; then
-  echo "Migraciones listas."
-  exit 0
 fi
 
 if [ "${1:-}" = "seed-admin" ]; then

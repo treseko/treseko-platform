@@ -31,3 +31,25 @@ test('rejects a core definition wired to the wrong runtime handler', () => {
   });
   assert.equal(result.length, 1);
 });
+
+test('allows registered universal adapters even when their node type is custom', () => {
+  const result = validateWorkflowRuntime({
+    workflow: { id: 'universal', name: 'universal', version: 1, workflow_format: 'universal_v2' },
+    nodes: [{
+      id: 'transform', agent_key: 'CUSTOM_TRANSFORM', type: 'Transform', name: 'Transform', enabled: true,
+      universal_agent: {
+        version_id: 'v1', version: '1.0.0', contract: {
+          contract_version: 'treseko.universal-agent/v1', key: 'transform', version: '1.0.0',
+          implementation: { runtime_key: 'universal-agent-runtime/v1', native_adapter: 'universal-transform/v1', editable_strategy: 'mapping' },
+          inputs: { schema: {}, mapping: {} }, instructions: { mode: 'deterministic', objective: 'Transformar' },
+          capabilities: ['context.transform', 'memory.write'], output_contract: { schema: {}, publish: {}, required_evidence: [] },
+          memory: { read_namespaces: ['execution'], write_namespaces: ['execution'] }, execution: { timeout_sec: 60, max_retries: 0, model: {} },
+          ports: { control_inputs: ['input'], control_outputs: ['success', 'failed', 'blocked', 'retry'] },
+          security: { allow_private_network: false, allow_filesystem: false, allow_shell: false, allow_arbitrary_code: false }, ui: { category: 'control' },
+        },
+      },
+    }],
+    edges: [],
+  });
+  assert.deepEqual(result, []);
+});

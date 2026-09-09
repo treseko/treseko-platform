@@ -69,7 +69,9 @@ async def _publish_dataset_change(
 
 
 def _public_update_fields(update_model):
-    private_fields = {"variables", "url"}
+    # Headers/tokens stay in the environment response for authorized QA users,
+    # but must not be duplicated in realtime audit payloads.
+    private_fields = {"variables", "url", "configuracion_chatbot", "configuracion_api"}
     return {
         key: value
         for key, value in update_model.model_dump(exclude_unset=True).items()
@@ -118,7 +120,11 @@ async def update_entorno(
         "environment.updated",
         db_entorno,
         current_user,
-        {"updated_fields": _public_update_fields(entorno)},
+        {
+            "updated_fields": _public_update_fields(entorno),
+            "chatbot_config_updated": "configuracion_chatbot" in entorno.model_dump(exclude_unset=True),
+            "api_config_updated": "configuracion_api" in entorno.model_dump(exclude_unset=True),
+        },
     )
     return db_entorno
 

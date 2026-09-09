@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button, Modal, Toast, ToastContainer } from 'react-bootstrap'
 import { useI18n } from '../../i18n'
@@ -17,11 +17,20 @@ type FeedbackModalProps = {
 
 export function FeedbackModal({ feedback, onHide }: FeedbackModalProps) {
   const { t } = useI18n()
+  const onHideRef = useRef(onHide)
+
   useEffect(() => {
+    onHideRef.current = onHide
+  }, [onHide])
+
+  useEffect(() => {
+    // Solo las notificaciones tipo toast se cierran automáticamente.
+    // Los errores y advertencias se muestran como modal y deben quedar
+    // visibles hasta que el usuario los cierre de forma explícita.
     if (!feedback.show || feedback.variant !== 'success') return
-    const timer = window.setTimeout(onHide, 2600)
+    const timer = window.setTimeout(() => onHideRef.current(), 4000)
     return () => window.clearTimeout(timer)
-  }, [feedback.show, feedback.variant, onHide])
+  }, [feedback.show, feedback.variant, feedback.title, feedback.message])
 
   if (feedback.variant === 'success') {
     return (

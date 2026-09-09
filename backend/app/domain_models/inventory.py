@@ -19,6 +19,8 @@ class Entorno(Base):
     status = Column(String(50), default="Unknown")
     version = Column(String(50))
     variables = Column(JSON, default=dict)
+    configuracion_chatbot = Column(JSON, default=dict, nullable=True)
+    configuracion_api = Column(JSON, default=dict, nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     ultima_verificacion = Column(UTCDateTime())
 

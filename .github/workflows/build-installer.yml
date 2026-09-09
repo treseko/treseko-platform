@@ -1,0 +1,70 @@
+name: Build GUI installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "VERSION"
+      - "installer/**"
+      - "scripts/install_local_treseko.*"
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: py -m pip install -r installer/requirements-build.txt
+      - run: py installer/build_installer.py --target windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: treseko-installer-windows-${{ github.sha }}
+          path: dist/Treseko-Installer-v*-windows-x64.exe
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r installer/requirements-build.txt
+      - name: Install appimagetool
+        shell: bash
+        run: |
+          curl --fail --location --output appimagetool-x86_64.AppImage \
+            https://github.com/AppImageCommunity/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+      - run: APPIMAGETOOL="$PWD/appimagetool-x86_64.AppImage" APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 python installer/build_installer.py --target linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: treseko-installer-linux-${{ github.sha }}
+          path: dist/Treseko-Installer-v*-linux-x64.AppImage
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r installer/requirements-build.txt
+      - name: Build native macOS app
+        run: python installer/build_installer.py --target macos
+      - name: Verify architecture-specific artifact name
+        shell: bash
+        run: test -d "dist/Treseko-Installer-v$(tr -d '\\r\\n' < VERSION)-macos-${{ matrix.arch }}.app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: treseko-installer-macos-${{ matrix.arch }}-${{ github.sha }}
+          path: dist/Treseko-Installer-v*-macos-${{ matrix.arch }}.app

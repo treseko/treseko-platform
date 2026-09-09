@@ -2,6 +2,7 @@ import { Badge, Button, Card, Form } from "react-bootstrap";
 import { ChevronDown, ChevronRight, Code, PlayCircle, RefreshCw, Terminal } from "lucide-react";
 import { ScriptEditor } from "../../ScriptEditor";
 import { API_BASE } from "../../app/constants";
+import { VariableReferenceHints } from "./VariableReferenceHints";
 
 type Props = { context: any };
 
@@ -15,7 +16,7 @@ export function CaseAutomationCard({ context }: Props) {
     selectedDryRunEnvironment, setDryRunEnvironmentId, setDryRunDatasetId, dryRunDatasets,
     selectedDryRunDataset, dryRunDebugMode, setDryRunDebugMode, scriptTestResult, scriptTesting,
     setScriptTesting, setScriptTestResult, fetchWithAuth, newTestTitle, newTestData, newTestComponent,
-    newTestSteps, setScriptValidationDetails, onRunSavedAutomatedCase, uuidOrNull,
+    newTestSteps, setScriptValidationDetails, onRunSavedAutomatedCase, uuidOrNull, componentsList,
   } = context;
   return (
     <>
@@ -23,15 +24,22 @@ export function CaseAutomationCard({ context }: Props) {
       <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
         <div
           className="bg-light border-bottom py-2 px-3 d-flex justify-content-between align-items-center"
-          onClick={() => setCollapsedSections(prev => ({ ...prev, script: !prev.script }))}
           style={{ cursor: 'pointer' }}
         >
-          <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+          <h6
+            className="fw-bold text-dark m-0 d-flex align-items-center gap-2"
+            role="button"
+            tabIndex={0}
+            aria-expanded={!collapsedSections.script}
+            aria-controls={!collapsedSections.script ? 'case-automation-script-body' : undefined}
+            onClick={() => setCollapsedSections(prev => ({ ...prev, script: !prev.script }))}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setCollapsedSections(prev => ({ ...prev, script: !prev.script })) } }}
+          >
             <Code size={18} className="text-success"/> 3. {t('casos.automationScript')}
           </h6>
           <div className="d-flex align-items-center gap-2">
             {!collapsedSections.script && (
-              <Form.Select name="a11y-caseautomationcardtsx-34" aria-label="Campo de formulario"
+              <Form.Select name="a11y-caseautomationcardtsx-34" aria-label={t('casos.framework')}
                 value={newTestFramework}
                 onChange={(e) => {
                   const nextFramework = e.target.value
@@ -52,7 +60,7 @@ export function CaseAutomationCard({ context }: Props) {
               </Form.Select>
             )}
             {!collapsedSections.script && (
-              <Form.Select name="a11y-caseautomationcardtsx-55" aria-label="Campo de formulario"
+              <Form.Select name="a11y-caseautomationcardtsx-55" aria-label={t('casos.language')}
                 value={newTestLanguage}
                 onChange={(e) => setNewTestLanguage(e.target.value)}
                 size="sm"
@@ -69,10 +77,10 @@ export function CaseAutomationCard({ context }: Props) {
           </div>
         </div>
         {!collapsedSections.script && (
-        <Card.Body className="p-4 bg-light">
+        <Card.Body id="case-automation-script-body" className="p-4 bg-light">
           {!newTestScript.trim() && (
             <div className="border border-warning bg-warning bg-opacity-10 text-dark rounded-3 p-3 mb-3 small">
-              <strong>Este caso requiere un script para ejecutarse con worker.</strong>
+              <strong>{t('automatizacion.scriptRequired')}</strong>
             </div>
           )}
           <ScriptEditor
@@ -84,9 +92,19 @@ export function CaseAutomationCard({ context }: Props) {
             suiteId={newTestSuite}
             confirmAction={confirmAction}
           />
+          <VariableReferenceHints
+            value={newTestScript}
+            caseData={newTestData}
+            environments={projectEnvironments}
+            selectedEnvironment={selectedDryRunEnvironment}
+            selectedDataset={selectedDryRunDataset}
+            component={componentsList?.find((item: any) => String(item.id) === String(newTestComponent))}
+            triggerLabel={t('casos.variableDetected')}
+            t={t}
+          />
           {!workerSupportsSelectedLanguage && (
             <div className="border border-warning bg-warning bg-opacity-10 text-dark rounded-3 p-2 mt-3 small">
-              No hay worker compatible para {newTestFramework} + {selectedLanguageLabel}. Puedes guardar el caso, pero el dry-run y la ejecucion quedaran bloqueados hasta vincular un worker con esa capacidad.
+              {t('automatizacion.noCompatibleWorker', { framework: newTestFramework, language: selectedLanguageLabel })}
             </div>
           )}
           <div className="d-flex justify-content-between align-items-center mt-3">
@@ -116,11 +134,11 @@ export function CaseAutomationCard({ context }: Props) {
                   setDryRunEnvironmentId(event.target.value)
                   setDryRunDatasetId('')
                 }}
-                aria-label="Ambiente para dry-run"
-                title="Ambiente y URL que usara la prueba"
+                aria-label={t('automatizacion.dryRunEnvironment')}
+                title={t('automatizacion.dryRunEnvironmentTitle')}
                 className="w-auto"
               >
-                <option value="">Sin ambiente</option>
+                <option value="">{t('automatizacion.noEnvironment')}</option>
                 {projectEnvironments.map((environment: any) => (
                   <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>
                 ))}
@@ -129,28 +147,28 @@ export function CaseAutomationCard({ context }: Props) {
                 size="sm"
                 value={selectedDryRunDataset?.id || ''}
                 onChange={event => setDryRunDatasetId(event.target.value)}
-                aria-label="Dataset para dry-run"
-                title="Dataset que usara la prueba"
+                aria-label={t('automatizacion.dryRunDataset')}
+                title={t('automatizacion.dryRunDatasetTitle')}
                 className="w-auto"
                 disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}
               >
-                <option value="">Sin dataset</option>
+                <option value="">{t('automatizacion.noDataset')}</option>
                 {dryRunDatasets.map((dataset: any) => (
                   <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>
                 ))}
               </Form.Select>
-              <Form.Check name="a11y-caseautomationcardtsx-142" aria-label="Campo de formulario"
+              <Form.Check name="a11y-caseautomationcardtsx-142" aria-label={t('automatizacion.showBrowser')}
                 type="switch"
                 id="dry-run-debug-mode"
                 checked={dryRunDebugMode}
                 onChange={event => setDryRunDebugMode(event.target.checked)}
-                label="Ver navegador"
+                label={t('automatizacion.showBrowser')}
                 className="small text-muted"
-                title="Abre el navegador visible en la maquina donde corre el worker compatible"
+                title={t('automatizacion.showBrowserTitle')}
               />
               {scriptTestResult && (
                 <Badge bg={scriptTestResult === 'success' ? 'success' : 'danger'} className="x-small">
-                  {scriptTestResult === 'success' ? 'Script valido' : 'Error en script'}
+                  {scriptTestResult === 'success' ? t('automatizacion.scriptValid') : t('automatizacion.scriptError')}
                 </Badge>
               )}
               <Button
@@ -158,7 +176,7 @@ export function CaseAutomationCard({ context }: Props) {
                 size="sm"
                 className="fw-bold shadow-none"
                 disabled={scriptTesting || !newTestScript.trim()}
-                title="Valida sintaxis, placeholders y contexto; no ejecuta navegador ni envia jobs al worker"
+                title={t('automatizacion.validateScriptTitle')}
                 onClick={async () => {
                   setScriptTesting(true)
                   setScriptTestResult(null)
@@ -191,8 +209,8 @@ export function CaseAutomationCard({ context }: Props) {
                     setScriptValidationDetails({
                       valid: isValid,
                       hasWarnings: warnings.length > 0,
-                      message: result?.message || (isValid ? 'Script y prueba validos' : 'No se pudo validar la prueba.'),
-                      error: isValid ? undefined : (result?.detail || result?.error || 'No se pudo validar la prueba.'),
+                        message: result?.message || (isValid ? t('automatizacion.scriptAndCaseValid') : t('automatizacion.validationFailed')),
+                        error: isValid ? undefined : (result?.detail || result?.error || t('automatizacion.validationFailed')),
                       warnings,
                       checks
                     })
@@ -201,8 +219,8 @@ export function CaseAutomationCard({ context }: Props) {
                     setScriptValidationDetails({
                       valid: false,
                       hasWarnings: false,
-                      message: 'Error de conexion al validar.',
-                      error: error?.message || 'Error de conexion al validar.',
+                      message: t('automatizacion.validationConnectionError'),
+                      error: error?.message || t('automatizacion.validationConnectionError'),
                       warnings: [],
                       checks: []
                     })
@@ -212,14 +230,14 @@ export function CaseAutomationCard({ context }: Props) {
                   }
                 }}
               >
-                {scriptTesting ? <><RefreshCw size={14} className="me-1 animate-pulse" /> Validando...</> : <><PlayCircle size={14} className="me-1" /> Validar sintaxis/contexto</>}
+                {scriptTesting ? <><RefreshCw size={14} className="me-1 animate-pulse" /> {t('automatizacion.validating')}</> : <><PlayCircle size={14} className="me-1" /> {t('automatizacion.validateScript')}</>}
               </Button>
               <Button
                 variant="outline-success"
                 size="sm"
                 className="fw-bold shadow-none"
                 disabled={!newTestScript.trim() || !workerSupportsSelectedLanguage}
-                title="Ejecuta temporalmente el script actual con un worker compatible, sin guardar historial ni requerir build"
+                title={t('automatizacion.dryRunTitle')}
                 onClick={() => {
                   onRunSavedAutomatedCase?.({
                     script_automatizado: newTestScript,
@@ -242,7 +260,7 @@ export function CaseAutomationCard({ context }: Props) {
                   })
                 }}
               >
-                <Terminal size={14} className="me-1" /> Dry-run con worker
+                <Terminal size={14} className="me-1" /> {t('automatizacion.dryRun')}
               </Button>
             </div>
           </div>

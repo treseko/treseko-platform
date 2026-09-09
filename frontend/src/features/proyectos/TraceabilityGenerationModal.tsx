@@ -16,7 +16,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
         <Modal.Header closeButton className="border-0 pb-2">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <Sparkles size={18} className="text-primary" />
-            Generar historias con IA
+            {t('proyectos.generationTitle')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -33,10 +33,10 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
               </div>
               <div className="d-flex flex-wrap gap-2 small" aria-label={tx("stages")}>
                 {[
-                  "1. Contexto",
-                  "2. Analizar requisito",
-                  "3. Generar propuestas",
-                  "4. Revisar borradores",
+                  t('proyectos.stageContext'),
+                  t('proyectos.stageAnalyze'),
+                  t('proyectos.stageConfigure'),
+                  t('proyectos.stageReview'),
                 ].map((label, index) => {
                   const currentStep = {
                     context: 0,
@@ -64,12 +64,12 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                       <span className="fw-semibold">{tx("aiWorking")}</span>
                       <span className="text-muted small ms-2">
                         {generationStep === "context"
-                          ? (locale === "en" ? "Analyzing the requirement and selected context." : "Analizando el requisito y el contexto seleccionado.")
+                          ? t('proyectos.caseGenerationBusyAnalyzing')
                           : generationStep === "analysis"
-                            ? (locale === "en" ? "Updating the analysis with the provided answers." : "Actualizando el análisis con las respuestas proporcionadas.")
+                            ? t('proyectos.caseGenerationBusyUpdating')
                             : generationStep === "configuration"
-                            ? `Generando borrador ${Math.min(generationCompletedCount + 1, generationRequestedCount)} de ${generationRequestedCount}. Los resultados válidos aparecen a medida que se completan.`
-                            : (locale === "en" ? "Creating the selected drafts." : "Creando los borradores seleccionados.")}
+                            ? t('proyectos.caseGenerationProgress', { current: Math.min(generationCompletedCount + 1, generationRequestedCount), total: generationRequestedCount })
+                            : t('proyectos.caseGenerationBusyCreating')}
                       </span>
                     </div>
                     <span className="small text-muted">{generationElapsedSeconds}s</span>
@@ -99,11 +99,13 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 estimateExplanationVisible,
                 setEstimateExplanationVisible,
                 locale,
+                t,
               }} />
               <TraceabilityGenerationResults options={{
                 generationRun,
                 generationStep,
                 locale,
+                t,
                 tx,
                 generationBusy,
                 generationCompletedCount,
@@ -144,7 +146,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 setExpandedCandidateIndexes(new Set());
               }}
             >
-              Volver a contexto
+              {t('proyectos.backContext')}
             </Button>
           )}
           {!generationRun && (
@@ -153,15 +155,15 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
               onClick={() => void estimateGeneration()}
             >
               {generationBusy
-                ? "Analizando..."
-                : "Analizar requisito"}
+                ? t('proyectos.caseGenerationBusyAnalyzing')
+                : t('proyectos.stageAnalyze')}
             </Button>
           )}
           {generationRun && generationCandidates.length === 0 && (
             generationRun.estado === "ESPERANDO_SUPUESTOS" && generationHasActionableReview ? (
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 <Button disabled={generationBusy} onClick={() => void confirmAssumptions()}>
-                  {generationBusy ? "Guardando..." : "Continuar con supuestos de trabajo"}
+                  {generationBusy ? t('proyectos.saving') : t('proyectos.continueWithAssumptions')}
                 </Button>
                 {generationHasCriticalAssumptions ? (
                   <span className="small text-muted">{tx("criticalAssumptions")}</span>
@@ -188,7 +190,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 disabled={generationBusy}
                 onClick={() => void recalculateGenerationScope()}
               >
-                {generationBusy ? "Actualizando..." : "Continuar y calcular alcance"}
+                {generationBusy ? t('proyectos.updating') : t('proyectos.continueCalculateScope')}
               </Button>
             ) : generationStep === "configuration" ? (
               <div className="d-flex align-items-end gap-2">
@@ -200,8 +202,8 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                   {tx("backAnalysis")}
                 </Button>
                 <Form.Group style={{ width: "158px" }}>
-                  <Form.Label className="small mb-1 text-nowrap">Cantidad de borradores</Form.Label>
-                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-204" aria-label="Campo de formulario"
+                  <Form.Label className="small mb-1 text-nowrap">{t('proyectos.quantityDrafts')}</Form.Label>
+                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-204" aria-label={t('proyectos.quantityDrafts')}
                     size="sm"
                     type="number"
                     min={1}
@@ -212,14 +214,14 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                   />
                 </Form.Group>
                 <Button disabled={generationBusy} onClick={() => void generateCandidates()}>
-                  {generationBusy ? "Generando..." : `Generar ${generationMaxStories} ${generationMaxStories === 1 ? "borrador" : "borradores"}`}
+                  {generationBusy ? t('proyectos.generating') : t(generationMaxStories === 1 ? 'proyectos.generateDraft' : 'proyectos.generateDrafts', { count: generationMaxStories })}
                 </Button>
               </div>
             ) : (
               <div className="d-flex align-items-end gap-2">
                 <Form.Group style={{ width: "104px" }}>
-                  <Form.Label className="small mb-1">Propuestas</Form.Label>
-                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-222" aria-label="Campo de formulario"
+                  <Form.Label className="small mb-1">{t('proyectos.proposals')}</Form.Label>
+                  <Form.Control name="a11y-traceabilitygenerationmodaltsx-222" aria-label={t('proyectos.proposals')}
                     size="sm"
                     type="number"
                     min={1}
@@ -230,7 +232,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                   />
                 </Form.Group>
                 <Button disabled={generationBusy} onClick={() => void generateCandidates()}>
-                  {generationBusy ? "Generando..." : `Generar ${generationMaxStories} ${generationMaxStories === 1 ? "propuesta" : "propuestas"}`}
+                  {generationBusy ? t('proyectos.generating') : t(generationMaxStories === 1 ? 'proyectos.generateProposal' : 'proyectos.generateProposals', { count: generationMaxStories })}
                 </Button>
               </div>
             )
@@ -247,8 +249,8 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 onClick={() => void applyCandidates()}
               >
                 {generationBusy
-                  ? "Creando..."
-                  : `Crear ${selectedCandidateCount} borradores`}
+                  ? t('proyectos.creating')
+                  : t('proyectos.createDraftsCount', { count: selectedCandidateCount })}
               </Button>
             </div>
           )}

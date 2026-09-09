@@ -21,6 +21,9 @@ type MotorIaPageProps = {
   setIaExecutionStreams: (updater: any) => void
   setIaQueue: (updater: any) => void
   currentProjectCases: any[]
+  currentProjectEnvironments?: any[]
+  openSingleCaseExecutionSelector?: (test: any) => void
+  openCaseEditor?: (test: any) => void
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: 'success' | 'danger' | 'warning' | 'info') => void
   setActiveTab: (tab: any) => void
@@ -40,6 +43,9 @@ export function MotorIaPage({
   setIaExecutionStreams,
   setIaQueue,
   currentProjectCases,
+  currentProjectEnvironments = [],
+  openSingleCaseExecutionSelector,
+  openCaseEditor,
   fetchWithAuth,
   showFeedback,
   setActiveTab,
@@ -88,6 +94,6 @@ export function MotorIaPage({
     ...monitor,
     t, canEditConfig, canViewLogs, canViewStatus, canViewWorkflows,
     setActiveTab, setConfigTab, setIaQueue, setIaExecutionStreams, setIaLogs,
-    iaStatus, iaExecutionStreams, currentProjectIaQueue, hasAiEngine,
+    iaStatus, iaExecutionStreams, currentProjectIaQueue, currentProjectCases, currentProjectEnvironments, openSingleCaseExecutionSelector, openCaseEditor, hasAiEngine,
   }} />
 }

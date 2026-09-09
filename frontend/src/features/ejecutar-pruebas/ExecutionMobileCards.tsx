@@ -1,5 +1,7 @@
 import { Alert, Badge, Button, Form } from "react-bootstrap";
 import { Bug, Clock, PlayCircle } from "lucide-react";
+import { useI18n } from '../../i18n';
+import { executionPriorityLabel, executionStatusLabel } from './executionPresentation';
 
 const getTrend = (test: any) => {
   if (!test.history || test.history.length < 2) return null;
@@ -23,6 +25,7 @@ const getLastResultColor = (test: any) => {
 };
 
 export function ExecutionMobileCards({ options }: { options: any }) {
+  const { t } = useI18n();
   const {
     visibleTests,
     selectedTest,
@@ -65,7 +68,7 @@ export function ExecutionMobileCards({ options }: { options: any }) {
                 </div>
                 <div className="fw-bold text-dark text-break">{test.title}</div>
                 <div className="x-small text-muted mt-1">
-                  v{test.version} actual - {test.type}
+                  v{test.version} {t('ejecutarPruebas.currentVersion').toLowerCase()} - {test.type}
                 </div>
               </div>
               <div onClick={(event) => event.stopPropagation()}>
@@ -81,13 +84,13 @@ export function ExecutionMobileCards({ options }: { options: any }) {
               <Badge
                 bg={test.priority === "ALTA" || test.priority === "CRITICA" ? "danger" : test.priority === "BAJA" ? "secondary" : "warning"}
                 text={test.priority === "MEDIA" ? "dark" : undefined}
-              >{test.priority || "-"}</Badge>
+              >{executionPriorityLabel(test.priority, t)}</Badge>
               <Badge
                 bg={test.criticality === "CRITICA" ? "danger" : test.criticality === "ALTA" ? "warning" : "light"}
                 text="dark"
                 className="border"
-              >{test.criticality || "-"}</Badge>
-              {test.stepsCount != null && <Badge bg="light" text="dark" className="border">{test.stepsCount} pasos</Badge>}
+              >{executionPriorityLabel(test.criticality, t)}</Badge>
+              {test.stepsCount != null && <Badge bg="light" text="dark" className="border">{test.stepsCount} {t('ejecutarPruebas.steps').toLowerCase()}</Badge>}
               {isOutdatedExecutionCase(test) && <Badge bg="warning" text="dark" className="border">Nueva v{test.latestVersion}</Badge>}
               {renderOpenBugBadge(test)}
             </div>
@@ -95,7 +98,7 @@ export function ExecutionMobileCards({ options }: { options: any }) {
             {openBugs.length > 0 && (
               <Alert variant={openBugs.some(isRetestBug) ? "warning" : "danger"} className="py-2 px-3 x-small mb-3">
                 {openBugs.some(isRetestBug)
-                  ? "Tiene bug pendiente de retest en esta prueba."
+                  ? t('ejecutarPruebas.noRetestTests')
                   : `Tiene ${openBugs.length} bug${openBugs.length > 1 ? "s" : ""} abierto${openBugs.length > 1 ? "s" : ""} relacionado${openBugs.length > 1 ? "s" : ""}.`}
               </Alert>
             )}
@@ -103,16 +106,16 @@ export function ExecutionMobileCards({ options }: { options: any }) {
             <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
               {test.lastResult ? (
                 <Badge bg={lastResultColor} className="text-uppercase">
-                  {test.lastResult}{test.lastExecutedVersion ? ` - v${test.lastExecutedVersion}` : ""}
+                  {executionStatusLabel(test.lastResult, t)}{test.lastExecutedVersion ? ` - v${test.lastExecutedVersion}` : ""}
                 </Badge>
               ) : isResultHydrating ? (
-                <span className="text-muted small">Cargando resultado...</span>
+                <span className="text-muted small">{t('ejecutarPruebas.loadingResult')}</span>
               ) : (
-                <Badge bg="light" text="secondary" className="border">Sin correr</Badge>
+                <Badge bg="light" text="secondary" className="border">{t('ejecutarPruebas.pending')}</Badge>
               )}
               {trend && (
                 <Badge bg="light" text="dark" className="border">
-                  Tendencia: {trend === "up" ? "mejoro" : trend === "down" ? "empeoro" : "igual"}
+                  {t('ejecutarPruebas.trend')}: {trend === "up" ? t('ejecutarPruebas.improved') : trend === "down" ? t('ejecutarPruebas.worsened') : t('ejecutarPruebas.sameAsPrevious')}
                 </Badge>
               )}
             </div>
@@ -143,15 +146,15 @@ export function ExecutionMobileCards({ options }: { options: any }) {
         );
       })}
       {executionInitialLoading && visibleTests.length === 0 && (
-        <div className="text-center py-5 text-muted small">Cargando pruebas del proyecto...</div>
+        <div className="text-center py-5 text-muted small">{t('ejecutarPruebas.loadingProjectTests')}</div>
       )}
       {!executionInitialLoading && visibleTests.length === 0 && (
         <div className="text-center py-5 text-muted small">
           {bugCaseFilter === "open"
-            ? "No hay pruebas con bugs abiertos en esta vista."
+            ? t('ejecutarPruebas.noOpenBugTests')
             : bugCaseFilter === "retest"
-              ? "No hay pruebas pendientes de retest en esta vista."
-              : "No se encontraron pruebas."}
+              ? t('ejecutarPruebas.noRetestTests')
+              : t('ejecutarPruebas.noTestsFound')}
         </div>
       )}
     </div>

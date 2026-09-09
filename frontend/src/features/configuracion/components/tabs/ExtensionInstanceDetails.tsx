@@ -75,7 +75,7 @@ export function ExtensionInstanceDetails({
 
     <section className="d-flex flex-wrap gap-2">
       <Button variant={instance.enabled ? 'outline-danger' : 'success'} size="sm" className="fw-bold" onClick={onToggle} disabled={saving || !canToggle || premiumBlocked}><Power size={14} className="me-1" /> {instance.enabled ? 'Deshabilitar' : 'Habilitar'}</Button>
-      {isStorePlugin && <Button variant="outline-danger" size="sm" onClick={onUninstall} disabled={saving || !canAccessCapability('plugins.instalar', 'edit')}>Desinstalar</Button>}
+      {isStorePlugin && <Button variant="outline-danger" size="sm" onClick={onUninstall} disabled={saving || !canAccessCapability('plugins.desinstalar', 'edit')}>Desinstalar</Button>}
     </section>
 
     <section>

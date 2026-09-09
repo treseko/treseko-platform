@@ -2,53 +2,54 @@
 
 <!-- Language: en -->
 
-Treseko Community includes the core QA workflow. Premium Team, Premium Pro and
-Enterprise extend that foundation for teams that need more scale, integration
-and control. The active plan is available under **Settings → License**.
+The edition enables entitlements and limits; roles and capabilities decide
+which user can perform each action.
 
-## What Community includes
+## Community
 
-Community lets you manage one solution, up to three projects, five users and
-one local worker. It includes suites, cases, steps, manual execution, basic
-automation, evidence, Bug Tracker, reports, case import/export, traceability
-and AI features with a weekly quota.
+Reference limits:
 
-| Area | Community | Premium Team | Premium Pro | Enterprise |
-|---|---|---|---|---|
-| Focus | Free self-hosted QA foundation | More capacity and collaboration | Active QA release workflow | Critical or regulated operation |
-| Users and projects | Up to 5 users and 3 projects | Expanded capacity | Expanded capacity | Custom limits |
-| Automation and AI | Local worker and quotas | Expanded automation and AI | Workers and specialized profiles | Capacity adapted to the operation |
-| Reports and integrations | Basic reports | Shared reports and main integrations | Snapshots, advanced reports and integrations | Custom configuration and assistance |
-| Identity and support | Local sign-in and Community updates | Email support | Priority support and Premium updates | SSO, SLA, offline licenses and dedicated channel |
-| Deployment | Self-hosted | Self-hosted | Self-hosted | Self-hosted or optional managed SaaS |
+- 1 organization, 5 users, 3 projects and 1 worker.
+- 50 automated executions per week.
+- 10 AI executions per week.
+- 20 AI case generations per week.
+- 1024 MB of storage.
 
-Limits apply to new operations. Existing information is preserved even if a
-Premium license expires or is no longer available.
+Includes QA management, manual execution, local automation, declarative API
+through the unified worker, AI within quotas, Bug Tracker, basic reports and
+import/export.
 
-## Install a Premium plan
+## Premium
 
-1. Open **Settings → License**.
-2. Select the license file you received.
-3. Confirm the installation.
-4. Review the plan, capabilities and limits shown on screen.
+The public runtime recognizes the `premium` edition and enables capabilities or
+limits according to the signed entitlements in the license. The catalog
+includes, among others, granular RBAC, multiple workers, scheduling, advanced
+automation, the external API, advanced reports, snapshots, integrations,
+notifications, audit, historical metrics, branding and Premium updates.
 
-Treseko does not need to be reinstalled. The platform validates the license
-before enabling Premium features. If the file is invalid or expires, Treseko
-continues operating with Community capabilities and limits.
+Specific commercial package names are defined outside this repository and must
+not be inferred solely from a feature appearing in the catalog.
 
-## When a license expires
+Being present in the catalog does not prove enablement. Review the plan and
+entitlements under Settings → License.
 
-- Data is not deleted.
-- Premium capabilities are no longer available.
-- New usage is adjusted to Community limits.
-- You can install a current license from the same screen to recover its enabled
-  capabilities.
+## License
 
-## Quick help
+1. Open Settings → License.
+2. Select the file received through a trusted channel.
+3. Confirm.
+4. Review edition, expiration, limits and capabilities.
 
-- If a Premium feature is not visible after installing the license, refresh the
-  screen and check that your role is allowed to use it.
-- If you reach a Community limit, review active resources before creating a new
-  one.
-- Do not edit or share license contents: always install the file delivered by
-  Treseko.
+The signature, validity and entitlement are checked. Reinstallation is not
+required. Do not share the license contents.
+
+## Downgrade or expiration
+
+- Data is not deleted automatically.
+- New Premium operations are restricted.
+- Community limits apply.
+- Historical policy may preserve reading of existing snapshots, reports, bugs
+  and audit records.
+- To return to Premium, install a current license and review RBAC.
+
+Historical reading does not imply editing.

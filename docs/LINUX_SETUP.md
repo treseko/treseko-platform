@@ -1,288 +1,58 @@
-# Desarrollo local en Linux
+# Configuración en Linux
 
-Esta guía está destinada exclusivamente a quienes contribuyen al proyecto o
-necesitan ejecutar los componentes por separado en Linux. Para instalar
-Treseko para uso normal o productivo, usá [Instalación rápida](INSTALLATION.md)
-o [Guía Docker](DOCKER_GUIDE.md). Los ejemplos asumen Ubuntu o Debian.
+Cubre instalación self-hosted y un worker ejecutado fuera del host de la
+aplicación. Para comenzar, leé [INSTALLATION.md](INSTALLATION.md).
 
-> Puertos de desarrollo: backend `8000`, frontend Vite `5173` y Motor IA
-> `3010`. Una instalación normal se abre en `http://localhost:9095`; no
-> expongas estos puertos de desarrollo como puertos públicos.
+## Dependencias
 
-## Requisitos Del Sistema
-
-```bash
-sudo apt update
-sudo apt install -y \
-  git curl build-essential \
-  python3 python3-venv python3-pip \
-  libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
-```
-
-Si tu distro no tiene `libasound2t64`, usa:
+- Docker Engine y Docker Compose v2.
+- Node.js si ejecutarás el worker fuera de Docker.
+- Python y Selenium si usarás su runtime.
+- Red privada entre backend, Engine, worker y sistemas bajo prueba.
 
 ```bash
-sudo apt install -y libasound2
+docker --version
+docker compose version
 ```
 
-Instala Node.js 18 o superior. Con NodeSource:
+## Plataforma
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node --version
-npm --version
+scripts/install_local_treseko.sh --http-port 9095
 ```
 
-## Preparar los entornos locales
+El instalador crea compose.production.env y secretos en .treseko-local/secrets.
+No copies passwords a .env, Markdown ni logs.
 
-Usa un `venv` separado para Python y `node_modules` locales por componente:
-
-- `backend/.venv`: dependencias FastAPI/backend.
-- `automation-worker/.venv`: Selenium Python del worker.
-- `frontend/node_modules`: UI.
-- `engine/node_modules`: motor IA/Playwright.
-- `automation-worker/node_modules`: worker multi-framework.
-
-No compartas un virtualenv global. Evita instalar paquetes Python con `sudo pip`.
-
-## Iniciar el backend
+## Worker
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile automation up -d automation-worker
 ```
 
-Crea o revisa `backend/.env`:
-
-```env
-DATABASE_URL=postgresql+asyncpg://treseko:<DB_PASSWORD>@localhost:5432/treseko_db
-SECRET_KEY=<SECRET_KEY_DE_64_CARACTERES_O_MAS>
-ENGINE_URL=http://localhost:3010
-```
-
-Inicializa la base local:
+Fuera de Docker:
 
 ```bash
-python init_db.py
-```
-
-Inicia backend:
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-El backend queda disponible solo para el entorno de desarrollo local. La guía
-de API que se publica para integraciones está en
-[Automatización externa](API_USAGE_GUIDE.md).
-
-## Iniciar el frontend
-
-En otra terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev -- --host 0.0.0.0
-```
-
-URL esperada:
-
-- `http://localhost:5173`
-
-## Iniciar el Motor IA
-
-En otra terminal:
-
-```bash
-cd engine
-npm install
-npx playwright install chromium
-```
-
-Crea o revisa `engine/.env`:
-
-```env
-AI_API_ENDPOINT=http://localhost:1234/v1
-AI_MODEL=google/gemma-4-e4b
-ENGINE_PORT=3010
-BACKEND_WS_URL=ws://localhost:8000/ws/engine-sync
-```
-
-Inicia:
-
-```bash
+cd automation-worker
+npm ci
 npm start
 ```
 
-Healthcheck:
+Configurá backend, organización autorizada e intervalo de polling. El worker
+conserva su token en .runner-token. Al iniciar muestra WK-xxxxxx o pairing
+equivalente; aprobalo en Automatización → Workers. Sin aprobación no ejecuta.
 
-```bash
-curl http://localhost:3010/health
-```
+No hay worker API separado: el mismo procesa API_EXECUTION, treseko-api/declarative,
+native-fetch y treseko.api-result/v1. POST /external/executions/report sirve a
+runners externos y no reemplaza pairing ni polling.
 
-## Iniciar un worker de automatización
+## Verificación
 
-En otra terminal:
+1. Confirmá worker visible y aprobado.
+2. Ejecutá un caso clásico.
+3. Ejecutá un caso API declarativo.
+4. Verificá run, evidencia y estado separados.
+5. Revisá logs si queda pendiente.
 
-```bash
-cd automation-worker
-npm install
-npm run install:browsers
-```
-
-Para Selenium Python usa un venv propio del worker:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install selenium
-python -c "import selenium; print(selenium.__version__)"
-```
-
-Copia configuracion:
-
-```bash
-cp .env.example .env
-```
-
-Ajusta `automation-worker/.env`:
-
-```env
-QA_API_BASE=http://localhost:8000
-QA_RUNNER_NAME=Linux Multi-Framework Worker
-QA_HEADLESS=true
-QA_RUNNER_TAGS=linux,v1,playwright,puppeteer,cypress,selenium
-QA_PYTHON_BIN=/ruta/al/proyecto/automation-worker/.venv/bin/python
-```
-
-Si estas parado dentro de `automation-worker`, puedes obtener la ruta del Python con:
-
-```bash
-realpath .venv/bin/python
-```
-
-Inicia el worker:
-
-```bash
-npm start
-```
-
-La primera vez mostrara un código `WK-xxxxxx`. Apruebalo desde `Automatizacion > Workers`. El token real queda en `automation-worker/.runner-token`.
-
-## Usar PostgreSQL y Redis con Docker
-
-Opcionalmente puedes levantar infraestructura:
-
-```bash
-docker compose up -d
-```
-
-Entonces usa en `backend/.env`:
-
-```env
-DATABASE_URL=postgresql+asyncpg://treseko:<DB_PASSWORD>@localhost:5432/treseko_db
-SECRET_KEY=<SECRET_KEY_DE_64_CARACTERES_O_MAS>
-ENGINE_URL=http://localhost:3010
-```
-
-## Orden de arranque
-
-1. `docker compose up -d` si usas PostgreSQL/Redis.
-2. Backend de desarrollo en puerto `8000`.
-3. Frontend de desarrollo en puerto `5173`.
-4. Motor IA en puerto `3010`, si vas a usar IA.
-5. Automation worker, si vas a ejecutar automatizadas.
-
-## Verificaciones rápidas
-
-Backend de desarrollo:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Frontend:
-
-```bash
-curl http://localhost:5173
-```
-
-Engine:
-
-```bash
-curl http://localhost:3010/health
-```
-
-Worker:
-
-- Debe aparecer en `Automatizacion > Workers`.
-- Debe reportar frameworks `playwright, puppeteer, cypress, selenium`.
-- Si no hay token, debe mostrar código `WK-xxxxxx`.
-
-## Resolver problemas en Linux
-
-### Playwright/Cypress fallan por librerias del sistema
-
-Instala dependencias de Playwright:
-
-```bash
-cd automation-worker
-npx playwright install-deps chromium
-```
-
-Si tambien usas `engine`:
-
-```bash
-cd engine
-npx playwright install-deps chromium
-```
-
-### Selenium no encuentra Python o módulo
-
-Verifica:
-
-```bash
-automation-worker/.venv/bin/python -c "import selenium; print(selenium.__version__)"
-```
-
-Y revisa `QA_PYTHON_BIN`.
-
-### Puertos ocupados
-
-```bash
-ss -ltnp | grep -E ':8000|:5173|:3010'
-```
-
-### Reinstalar navegadores del worker
-
-```bash
-cd automation-worker
-npm run install:browsers
-```
-
-### Resetear vinculacion del worker
-
-Solo si necesitas revincular:
-
-```bash
-rm -f automation-worker/.runner-token
-```
-
-Luego ejecuta `npm start` y aprueba el nuevo código en la UI.
-
-## Por qué usar entornos virtuales
-
-Conviene usar `venv` para todo lo Python porque:
-
-- Evita mezclar dependencias del sistema con el proyecto.
-- Permite tener versiones distintas para backend y worker.
-- Facilita reproducir instalaciones.
-- Evita usar `sudo pip`, que puede romper paquetes del sistema.
-
-No hace falta `venv` para frontend, engine ni dependencias Node del worker: cada carpeta ya queda aislada por su propio `node_modules`.
+No borres .runner-token para resolver un fallo: inicia otro pairing. Mantené
+runtime, navegadores y worker fuera de Internet cuando sea posible.

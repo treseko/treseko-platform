@@ -1,24 +1,34 @@
 # Guía de Historial Runs
 
-**Historial Runs** conserva las ejecuciones del proyecto para que puedas comparar resultados, revisar evidencias y retomar una investigación.
+**Historial Runs** conserva ejecuciones y datos congelados para comparar
+resultados, revisar evidencia y reconstruir una investigación.
 
 ## Buscar una ejecución
 
 1. Abrí **Historial Runs**.
-2. Usá **Filtros avanzados** para acotar por caso, fecha, resultado, origen, build u otros criterios disponibles.
-3. Abrí **Ver detalle** en la ejecución que necesitás revisar.
+2. Filtrá por caso, fecha, resultado, origen, build, formato o modo.
+3. Abrí **Ver detalle**.
+4. Confirmá proyecto, build y componente.
 
 ## Qué muestra el detalle
 
-El detalle reúne el run, la build, el componente, el ambiente, el origen y el ejecutor. También muestra los casos incluidos, sus pasos, veredictos, observaciones, evidencias y bugs relacionados.
+Puede incluir run, build, componente, ambiente, dataset, origen, ejecutor,
+formato, modo, casos, pasos, veredictos, observaciones, evidencia y bugs.
+También puede mostrar variables dinámicas y configuración congeladas, resultado
+API o transcripción/configuración conversacional, e informe IA con confianza y
+revisión humana.
 
-Una ejecución de IA puede incluir trazas o resultados específicos de ese modo; revisalos junto con la evidencia antes de cerrar un bug o aprobar una build.
+La configuración congelada explica qué se ejecutó; no equivale a la
+configuración actual del caso.
 
-## Cómo usarlo en una investigación
+## Cómo investigar
 
-- Compará el resultado con la ejecución anterior del mismo caso.
-- Abrí los bugs relacionados para verificar su estado.
-- Confirmá que una evidencia corresponde al paso y build evaluados.
-- Aplicá filtros y volvés a cargar la lista cuando cambie el contexto.
+1. Compará con la ejecución anterior.
+2. Identificá si el resultado es clásico, API o conversacional.
+3. Confirmá que evidencia y variables pertenezcan al caso y build.
+4. Abrí o prepará el bug relacionado.
+5. En IA, revisá trazas, confianza y decisión humana.
 
-El historial es de consulta: no reemplaza la edición del caso ni la gestión de bugs. Para ello usá [Casos de prueba](TEST_CASES_GUIDE.md) y [Bug Tracker](BUG_TRACKER.md).
+El historial es de consulta. Para editar usá [Casos](TEST_CASES_GUIDE.md); para
+defectos, [Bug Tracker](BUG_TRACKER.md). Preferí nombres, códigos y contexto
+legibles sobre UUID, payloads o variables resueltas.

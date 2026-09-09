@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from ..attachment_storage import attachment_availability_dict
 from .auth import validate_preference_json_payload
+from .bug_conversational import CHATBOT_BUG_FINDING_TYPES, BugConversationalContextResponse, validate_chatbot_finding_type
 from ..models import (
     AiReviewStatus,
     AutomationJobStatus,
@@ -53,11 +54,8 @@ BUG_EXTERNAL_URL_SENSITIVE_QUERY_KEYS = {
     "token",
     "x_qa_api_key",
 }
-
-
 def validate_bug_json_payload(value: Optional[Dict[str, Any]], *, max_bytes: int = MAX_BUG_JSON_BYTES, label: str = "bug metadata") -> Optional[Dict[str, Any]]:
     return validate_preference_json_payload(value, max_bytes=max_bytes, label=label)
-
 
 def normalize_bug_text(value: Any):
     """Keep legacy text fields compatible with structured execution data."""
@@ -69,7 +67,6 @@ def normalize_bug_text(value: Any):
         except (TypeError, ValueError) as exc:
             raise ValueError("datos_prueba contiene datos no serializables") from exc
     return value
-
 
 def validate_bug_external_url(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -90,7 +87,6 @@ def validate_bug_external_url(value: Optional[str]) -> Optional[str]:
         raise ValueError("external issue URL cannot include sensitive query parameters")
     return text
 
-
 class BugIssueCreate(BaseModel):
     proyecto_id: UUID
     componente_id: Optional[UUID] = None
@@ -102,6 +98,8 @@ class BugIssueCreate(BaseModel):
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
     numero_paso: Optional[int] = Field(default=None, ge=1, le=1000)
+    chatbot_turn_index: Optional[int] = Field(default=None, ge=0, le=10000)
+    chatbot_finding_type: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     execution_mode: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     case_code: Optional[str] = Field(default=None, max_length=MAX_BUG_CODE_LENGTH)
     build_code: Optional[str] = Field(default=None, max_length=MAX_BUG_CODE_LENGTH)
@@ -137,6 +135,7 @@ class BugIssueCreate(BaseModel):
     bloquea_caso: bool = False
     asignado_a: Optional[UUID] = None
     origen: str = Field(default="manual", max_length=MAX_BUG_STATUS_LENGTH)
+    tipo_contexto: str = Field(default="CLASICO", max_length=20)
     external_provider: Optional[str] = Field(default=None, max_length=MAX_BUG_EXTERNAL_PROVIDER_LENGTH)
     external_issue_id: Optional[str] = Field(default=None, max_length=MAX_BUG_EXTERNAL_ID_LENGTH)
     external_issue_url: Optional[str] = Field(default=None, max_length=MAX_BUG_URL_LENGTH)
@@ -150,23 +149,31 @@ class BugIssueCreate(BaseModel):
     @classmethod
     def validate_external_issue_url(cls, value):
         return validate_bug_external_url(value)
-
     @field_validator("datos_prueba", mode="before")
     @classmethod
     def normalize_test_data(cls, value):
         return normalize_bug_text(value)
-
     @field_validator("external_payload_snapshot")
     @classmethod
     def validate_external_payload_snapshot(cls, value):
         return validate_bug_json_payload(value, label="bug external payload") or {}
-
     @field_validator("metadata_json")
     @classmethod
     def validate_metadata_json(cls, value):
         return validate_bug_json_payload(value, label="bug metadata") or {}
-
+    @field_validator("chatbot_finding_type")
+    @classmethod
+    def validate_chatbot_finding(cls, value):
+        return validate_chatbot_finding_type(value)
+    @field_validator("tipo_contexto")
+    @classmethod
+    def validate_context_type(cls, value):
+        normalized = str(value or "CLASICO").strip().upper()
+        if normalized not in {"CLASICO", "CONVERSACIONAL", "API"}:
+            raise ValueError("Tipo de contexto de bug inválido.")
+        return normalized
 class BugIssueUpdate(BaseModel):
+    comentario: Optional[str] = Field(default=None, max_length=MAX_BUG_COMMENT_LENGTH)
     componente_id: Optional[UUID] = None
     build_id: Optional[UUID] = None
     caso_id: Optional[UUID] = None
@@ -176,6 +183,8 @@ class BugIssueUpdate(BaseModel):
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
     numero_paso: Optional[int] = Field(default=None, ge=1, le=1000)
+    chatbot_turn_index: Optional[int] = Field(default=None, ge=0, le=10000)
+    chatbot_finding_type: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     execution_mode: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     case_code: Optional[str] = Field(default=None, max_length=MAX_BUG_CODE_LENGTH)
     build_code: Optional[str] = Field(default=None, max_length=MAX_BUG_CODE_LENGTH)
@@ -244,6 +253,10 @@ class BugIssueUpdate(BaseModel):
     def validate_metadata_json(cls, value):
         return validate_bug_json_payload(value, label="bug metadata")
 
+    @field_validator("chatbot_finding_type")
+    @classmethod
+    def validate_chatbot_finding(cls, value):
+        return validate_chatbot_finding_type(value)
 class BugTransitionRequest(BaseModel):
     estado: str = Field(..., min_length=1, max_length=MAX_BUG_STATUS_LENGTH)
     resolution_build_id: Optional[UUID] = None
@@ -251,7 +264,6 @@ class BugTransitionRequest(BaseModel):
     motivo_cierre: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
 
     model_config = ConfigDict(extra="forbid")
-
 class BugExternalLinkCreate(BaseModel):
     provider_id: str = Field(..., min_length=1, max_length=MAX_BUG_EXTERNAL_PROVIDER_LENGTH)
     external_issue_id: str = Field(..., min_length=1, max_length=MAX_BUG_EXTERNAL_ID_LENGTH)
@@ -324,14 +336,30 @@ class BugMarkDuplicateRequest(BaseModel):
 class BugExecutionLinkRequest(BaseModel):
     ejecucion_id: UUID
     snapshot_id: Optional[UUID] = None
+    chatbot_turn_index: Optional[int] = Field(default=None, ge=0, le=10000)
+    chatbot_finding_type: Optional[str] = Field(default=None, max_length=MAX_BUG_STATUS_LENGTH)
     attachment_ids: List[UUID] = Field(default_factory=list, max_length=MAX_BUG_COMMENT_ATTACHMENTS)
     comentario: Optional[str] = Field(default=None, max_length=MAX_BUG_COMMENT_LENGTH)
+
+    @field_validator("chatbot_finding_type")
+    @classmethod
+    def validate_chatbot_finding(cls, value):
+        return validate_chatbot_finding_type(value)
 
 class BugListResponse(BaseModel):
     items: List["BugIssueResponse"] = Field(default_factory=list, max_length=MAX_BUG_LIST_ITEMS)
     total: int = 0
     skip: int = 0
     limit: int = 50
+
+class IncidentCenterResponse(BaseModel):
+    """Operational bug view; it reuses the persisted BugIssue contract."""
+
+    items: List[BugIssueResponse] = Field(default_factory=list, max_length=500)
+    total: int = 0
+    skip: int = 0
+    limit: int = 50
+    summary: BugSummaryResponse = Field(default_factory=BugSummaryResponse)
 
 class BugCommentCreate(BaseModel):
     comentario: str = Field(..., min_length=1, max_length=MAX_BUG_COMMENT_LENGTH)
@@ -383,7 +411,6 @@ class BugAttachmentResponse(BaseModel):
         }
 
     model_config = ConfigDict(from_attributes=True)
-
 class BugIssueResponse(BaseModel):
     id: UUID
     codigo: str
@@ -400,9 +427,14 @@ class BugIssueResponse(BaseModel):
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
     numero_paso: Optional[int] = None
+    chatbot_turn_index: Optional[int] = None
+    chatbot_finding_type: Optional[str] = None
     execution_mode: Optional[str] = None
     case_code: Optional[str] = None
+    case_title: Optional[str] = None
     build_code: Optional[str] = None
+    build_name: Optional[str] = None
+    component_name: Optional[str] = None
     titulo: str
     descripcion: Optional[str] = None
     severidad: str
@@ -436,6 +468,7 @@ class BugIssueResponse(BaseModel):
     asignado_a: Optional[UUID] = None
     creado_por: Optional[UUID] = None
     origen: str
+    tipo_contexto: str = "CLASICO"
     external_provider: Optional[str] = None
     external_issue_id: Optional[str] = None
     external_issue_url: Optional[str] = None
@@ -458,7 +491,6 @@ class BugIssueResponse(BaseModel):
     external_links: List[BugExternalLinkResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
-
 class BugStatusHistoryResponse(BaseModel):
     id: UUID
     bug_id: UUID

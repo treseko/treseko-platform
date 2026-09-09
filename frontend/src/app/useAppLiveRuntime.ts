@@ -113,8 +113,13 @@ export function useAppLiveRuntime({ options }: { options: any }) {
       const silent = Boolean(options?.silent);
       if (!silent) setRelatedCaseBugsLoading(true);
       try {
+        // Chatbot must also see legacy bugs created before tipo_contexto was
+        // introduced; the selected case is already conversational. Classic
+        // execution keeps its existing CLASICO filter.
+        const contextType = viewMode === "manual_exec" ? "CLASICO" : null;
+        const contextQuery = contextType ? `&tipo_contexto=${contextType}` : "";
         const response = await fetchWithAuth(
-          `${API_BASE}/casos/${caseId}/bugs/relacionados/?include_closed=true`,
+          `${API_BASE}/casos/${caseId}/bugs/relacionados/?include_closed=true${contextQuery}`,
         );
         if (!response.ok)
           throw new Error(`Backend respondio ${response.status}`);
@@ -137,13 +142,14 @@ export function useAppLiveRuntime({ options }: { options: any }) {
       bugTrackerRefreshToken,
       loggedUser,
       hasSystemFeature,
+      viewMode,
     ],
   );
 
   useEffect(() => {
     if (
       activeTab === "ejecutar" &&
-      viewMode === "manual_exec" &&
+      (viewMode === "manual_exec" || viewMode === "chatbot_manual") &&
       selectedTest?.id
     ) {
       const caseId = String(selectedTest.id);

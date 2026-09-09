@@ -17,6 +17,7 @@ OFFICIAL_FRAMEWORK_LANGUAGES = {
     "selenium": {"java", "python", "csharp", "javascript", "typescript", "ruby"},
     "cypress": {"javascript", "typescript"},
     "puppeteer": {"javascript", "typescript"},
+    "treseko-api": {"declarative"},
 }
 
 LOCAL_WORKER_DEFAULT_LANGUAGES = {
@@ -24,6 +25,7 @@ LOCAL_WORKER_DEFAULT_LANGUAGES = {
     "selenium": {"python"},
     "cypress": {"javascript", "typescript"},
     "puppeteer": {"javascript", "typescript"},
+    "treseko-api": {"declarative"},
 }
 
 LANGUAGE_ALIASES = {
@@ -92,6 +94,11 @@ def _runner_supports_job(runner: models.AutomationRunner, job: models.Automation
     frameworks = capabilities.get("frameworks") or capabilities.get("framework") or capabilities.get("supported_frameworks")
     if isinstance(frameworks, str):
         frameworks = [frameworks]
+    # API execution is opt-in.  Legacy browser workers must not accidentally
+    # claim a declarative API suite merely because they omit a capability
+    # matrix.
+    if framework == "treseko-api" and framework not in {str(item).lower() for item in (frameworks or [])}:
+        return False
     if frameworks and framework not in {str(item).lower() for item in frameworks}:
         return False
     required_language = _job_required_language(job)
@@ -157,6 +164,10 @@ async def _find_compatible_runner_for_job(db: AsyncSession, job: models.Automati
         select(models.AutomationRunner).filter(
             models.AutomationRunner.activo == True,
             models.AutomationRunner.estado.in_(["ONLINE", "BUSY"]),
+            # A runner is permanently paired to one solution.  Jobs without a
+            # resolved scope are deliberately fail-closed and cannot be
+            # assigned by this path.
+            models.AutomationRunner.organizacion_id == job.organizacion_id,
         )
     )
     return next(

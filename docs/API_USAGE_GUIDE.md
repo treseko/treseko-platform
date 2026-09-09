@@ -26,7 +26,7 @@ Podés verlos en la información de esos recursos dentro de Treseko.
 El runner envía un `POST` a:
 
 ```text
-<URL_DE_TRESEKO>/api/external/executions/report
+<URL_DE_TRESEKO>/external/executions/report
 ```
 
 con la clave en el encabezado:
@@ -50,3 +50,11 @@ ver el contrato completo, payloads, respuestas y un ejemplo en Python.
 - No expongas la API key en repositorios, capturas o registros de CI.
 - Revocá la clave desde **Configuración → Preferencias → API keys de
   automatización externa** si se filtra, cambia el responsable o deja de usarse.
+
+## Si necesitás que Treseko ejecute la prueba
+
+Esta guía describe únicamente el reporte desde un runner externo. Para que la
+plataforma ejecute una prueba API, usá **Ejecución automatizada** y un
+Automation Worker que anuncie `treseko-api/declarative`. Ese flujo usa el
+contrato congelado del caso y produce `treseko.api-result/v1`; no usa esta API
+externa ni requiere instalar otro worker.

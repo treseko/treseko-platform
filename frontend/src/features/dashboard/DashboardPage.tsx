@@ -1,5 +1,5 @@
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, Card, Form, ListGroup, ProgressBar, Spinner } from 'react-bootstrap'
+import { Alert, Badge, Button, Card, Form, ListGroup, ProgressBar, Spinner } from 'react-bootstrap'
 import { BarChart3, Bug, Clock, Grip, LayoutDashboard, RefreshCw, RotateCcw, Save, Settings2, Timer, UserCheck } from 'lucide-react'
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
 import type { LayoutItem, ResponsiveLayouts } from 'react-grid-layout'
@@ -7,6 +7,7 @@ const ResponsiveGridLayout = WidthProvider(Responsive)
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { API_BASE } from '../../app/constants'
+import { readBackendError } from '../../app/errorMessages'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { useI18n } from '../../i18n'
 import { BuildWindowSummary, EmptyWidget, ExecutionList, ExecutionTypeDistribution, Kpi, TrendByBuildList } from './DashboardWidgets'
@@ -264,7 +265,9 @@ export function DashboardPage({
       if (currentBuildId) params.set('build_id', currentBuildId)
       if (currentCompId) params.set('component_id', currentCompId)
       const response = await fetchWithAuthRef.current(`${API_BASE}/dashboard/summary?${params.toString()}`, { signal: controller.signal })
-      if (!response.ok) throw new Error(await response.text())
+      if (!response.ok) {
+        throw new Error(await readBackendError(response, t('dashboard.dashboardLoadError')))
+      }
       const data = await response.json()
       if (controller.signal.aborted || requestId !== summaryRequestSeq.current) return
       const serialized = JSON.stringify(data)
@@ -359,7 +362,7 @@ export function DashboardPage({
 
   const renderWidget = (id: string) => {
     if (loading && !summary) return <div className="h-100 d-flex align-items-center justify-content-center"><Spinner size="sm" /></div>
-    if (error && !summary) return <div className="small text-danger">{error}</div>
+    if (error && !summary) return <div className="small text-muted">{t('dashboard.unavailableWidget')}</div>
     if (!summary) return <div className="small text-muted">{t('dashboard.noData')}</div>
     switch (id) {
       case 'quality_summary':
@@ -444,6 +447,15 @@ export function DashboardPage({
             ))}
           </div>
         </Card>
+      )}
+
+      {error && !summary && (
+        <Alert variant="danger" className="d-flex align-items-center justify-content-between gap-3 py-2 px-3 mb-3" role="alert">
+          <span>{error}</span>
+          <Button variant="outline-danger" size="sm" onClick={() => loadSummary({ force: true })}>
+            {t('dashboard.retry')}
+          </Button>
+        </Alert>
       )}
 
       <div className="dashboard-grid-host">

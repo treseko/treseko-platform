@@ -1,8 +1,15 @@
+import { useState } from "react";
 import { useExecutionPreparation } from "../features/ejecutar-pruebas/hooks/useExecutionPreparation";
 import { createEjecucionActionBundle } from "../features/ejecucion/ejecucionActionBundle";
 export function useAppExecutionActions({ options }: { options: any }) {
   const { canAccessCapability } = options;
-  const { activeExecutionCaseIds,activeTab,aiEngineConfig,attachmentConfig,buildCaseIds,buildCaseResultHistoryByBuild,buildCasesLoadingByBuild,buildsList,casosList,casosLoading,componentsList,currentBuildId,currentCompId,currentExecutionCase,currentExecutionRun,currentProjectCases,currentProjectId,executionModalCaseIds,executionSnapshots,fetchWithAuth,generalExecutionAttachments,generalExecutionNote,generalExecutionSnapshot,generalExecutionStatus,latestResultsLoadingByBuild,loadBuildCaseExecutionStatus,loadBuildCases,loadCasoExecutionHistory,loadCasosFromBackend,managingProjectId,mapBackendCasoToTest,redmineDecisionByExecution,selectSuiteTarget,selectedExecutionDatasetId,selectedExecutionEnvironmentId,selectedExecutionTestIds,selectedSubSuiteId,selectedSuiteId,selectedTest,setActiveExecutionCaseIds,setActiveTab,setAutomationMonitor,setBuildCaseIds,setBuildCaseResultHistoryByBuild,setCasosList,setCurrentExecutionCase,setCurrentExecutionRun,setExecName,setExecutionDatasetPreview,setExecutionDatasetPreviewLoading,setExecutionLoading,setExecutionModalCaseIds,setExecutionMode,setExecutionSnapshots,setGeneralExecutionAttachments,setGeneralExecutionNote,setGeneralExecutionSnapshot,setGeneralExecutionStatus,setIaExecutionStreams,setIaLogs,setIaQueue,setProjectSyncMessage,setRedmineBugs,setRedmineDecisionByExecution,setScheduledTime,setSchedulerSearch,setSelectedExecutionTestIds,setSelectedSubSuiteId,setSelectedSuiteId,setSelectedTest,setSelectedTestsForIa,setShowExecSelector,setShowIaScheduler,setShowRedmineDrawer,setShowRedminePrompt,setSnapshotAttachments,setSnapshotNotes,setStepResults,setViewMode,showExecSelector,showFeedback,snapshotAttachments,snapshotNotes,stepResults,suitesLoading,suitesTree,t,testSearchQuery,viewMode,visibleSuiteTree
+  // Keep the original batch local to the selector. The parent selection state
+  // contains only cases that are currently enabled, so it cannot be used to
+  // rebuild a format after the user temporarily deselects it.
+  const [modalCandidateCaseIds, setModalCandidateCaseIds] = useState<string[] | null>(
+    options.executionModalCandidateCaseIds || null,
+  );
+  const { activeExecutionCaseIds,activeTab,aiEngineConfig,attachmentConfig,buildCaseIds,buildCaseResultHistoryByBuild,buildCasesLoadingByBuild,buildsList,casosList,casosLoading,componentsList,currentBuildId,currentCompId,currentExecutionCase,currentExecutionRun,currentProjectCases,currentProjectId,executionDatasetPreview,executionModalCaseIds,executionModalCandidateCaseIds,executionSnapshots,fetchWithAuth,generalExecutionAttachments,generalExecutionNote,generalExecutionSnapshot,generalExecutionStatus,latestResultsLoadingByBuild,loadBuildCaseExecutionStatus,loadBuildCases,loadCasoExecutionHistory,loadCasosFromBackend,managingProjectId,mapBackendCasoToTest,redmineDecisionByExecution,selectSuiteTarget,selectedExecutionDatasetId,selectedExecutionEnvironmentId,selectedExecutionTestIds,selectedSubSuiteId,selectedSuiteId,selectedTest,setActiveExecutionCaseIds,setActiveTab,setAutomationMonitor,setBuildCaseIds,setBuildCaseResultHistoryByBuild,setCasosList,setCurrentExecutionCase,setCurrentExecutionRun,setExecName,setExecutionDatasetPreview,setExecutionDatasetPreviewLoading,setExecutionLoading,setExecutionModalCaseIds,setExecutionModalCandidateCaseIds,setExecutionMode,setExecutionSnapshots,setGeneralExecutionAttachments,setGeneralExecutionNote,setGeneralExecutionSnapshot,setGeneralExecutionStatus,setIaExecutionStreams,setIaLogs,setIaQueue,setProjectSyncMessage,setRedmineBugs,setRedmineDecisionByExecution,setScheduledTime,setSchedulerSearch,setSelectedExecutionTestIds,setSelectedSubSuiteId,setSelectedSuiteId,setSelectedTest,setSelectedTestsForIa,setShowExecSelector,setShowIaScheduler,setShowRedmineDrawer,setShowRedminePrompt,setSnapshotAttachments,setSnapshotNotes,setStepResults,setViewMode,showExecSelector,showFeedback,snapshotAttachments,snapshotNotes,stepResults,suitesLoading,suitesTree,t,testSearchQuery,viewMode,visibleSuiteTree
  } = options;
   const executionPreparation = useExecutionPreparation({
     activeTab,
@@ -23,11 +30,13 @@ export function useAppExecutionActions({ options }: { options: any }) {
     testSearchQuery,
     selectedExecutionTestIds,
     executionModalCaseIds,
+    executionModalCandidateCaseIds: modalCandidateCaseIds,
     activeExecutionCaseIds,
     selectedTest,
     showExecSelector,
     selectedExecutionEnvironmentId,
     selectedExecutionDatasetId,
+    executionDatasetPreview,
     setExecutionDatasetPreview,
     setExecutionDatasetPreviewLoading,
     fetchWithAuth,
@@ -38,6 +47,7 @@ export function useAppExecutionActions({ options }: { options: any }) {
     setSelectedTest,
     setSelectedExecutionTestIds,
     setExecutionModalCaseIds,
+    setExecutionModalCandidateCaseIds: setModalCandidateCaseIds,
     setShowExecSelector,
     setSelectedTestsForIa,
     setSchedulerSearch,
@@ -47,7 +57,7 @@ export function useAppExecutionActions({ options }: { options: any }) {
     showFeedback,
   });
 
-  const { activeBuildCaseIds, activeExecutionTests, executionModalTests, executionModalDiscardedCount, isOutdatedExecutionCase, getExecutionCaseLabel } = executionPreparation;
+  const { activeBuildCaseIds, activeExecutionTests, executionModalTests, executionModalCandidateTests, executionModalDiscardedCount, isOutdatedExecutionCase, getExecutionCaseLabel } = executionPreparation;
   const executionActions = createEjecucionActionBundle({
     t,
     managingProjectId,
@@ -77,6 +87,7 @@ export function useAppExecutionActions({ options }: { options: any }) {
     redmineDecisionByExecution,
     viewMode,
     executionModalTests,
+    executionModalCandidateTests,
     executionModalDiscardedCount,
     canUseAutomatedExecution:
       canAccessCapability("ejecutar.automatizada", "edit") &&

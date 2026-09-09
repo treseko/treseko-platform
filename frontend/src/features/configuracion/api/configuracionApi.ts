@@ -220,10 +220,23 @@ export async function applySystemUpdate(fetchWithAuth: FetchWithAuth, payload: {
 }
 
 export async function restartPreparedSystemUpdate(fetchWithAuth: FetchWithAuth, taskId: string) {
-  const response = await fetchWithAuth(`${API_BASE}/system/updates/restart/${encodeURIComponent(taskId)}`, {
-    method: 'POST',
-  })
-  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+  const url = `${API_BASE}/system/updates/restart/${encodeURIComponent(taskId)}`
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetchWithAuth(url, { method: 'POST' })
+    if (response.status !== 429 || attempt === 2) {
+      return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+    }
+    const retryAfter = response.headers.get('Retry-After')
+    const retryAfterSeconds = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) : NaN
+    const retryAfterDate = retryAfter && !Number.isNaN(Date.parse(retryAfter)) ? Date.parse(retryAfter) - Date.now() : NaN
+    const retryDelayMs = Number.isFinite(retryAfterSeconds)
+      ? Math.max(1000, retryAfterSeconds * 1000)
+      : Number.isFinite(retryAfterDate)
+      ? Math.max(1000, retryAfterDate)
+      : 2000 * (attempt + 1)
+    await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs))
+  }
+  throw new Error('No se pudo reiniciar la actualización preparada.')
 }
 
 export async function rollbackSystemUpdate(fetchWithAuth: FetchWithAuth, taskId: string) {

@@ -47,7 +47,7 @@ export function createWikiActions({
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/wiki/`)
       if (!response.ok) {
         const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
+        throw new Error(error?.detail || String(response.status))
       }
 
       const pages = await response.json()
@@ -94,7 +94,7 @@ export function createWikiActions({
         })
         if (!response.ok) {
           const error = await response.json().catch(() => null)
-          throw new Error(error?.detail || `Backend respondió ${response.status}`)
+          throw new Error(error?.detail || String(response.status))
         }
         const page = await response.json()
         const mapped = mapBackendWikiToItem(page)
@@ -125,7 +125,7 @@ export function createWikiActions({
         const response = await fetchWithAuth(`${API_BASE}/wiki/${pageId}`, { method: 'DELETE' })
         if (!response.ok) {
           const error = await response.json().catch(() => null)
-          throw new Error(error?.detail || `Backend respondió ${response.status}`)
+          throw new Error(error?.detail || String(response.status))
         }
       } catch (error: any) {
         setProjectSyncMessage(`${t('proyectos.wikiDeleteError')}: ${error.message}.`)

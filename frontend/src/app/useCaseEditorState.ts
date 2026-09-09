@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildCaseEditorSnapshot } from './mappers'
 import type { AttachmentMeta } from '../EvidenceUpload'
 
@@ -6,7 +6,10 @@ export function useCaseEditorState({ caseEditorOpen }: { caseEditorOpen: boolean
   const [newTestSuite, setNewTestSuite] = useState("s1");
   const [newTestSuiteSub, setNewTestSuiteSub] = useState("sub1");
   const [newTestTitle, setNewTestTitle] = useState("");
-  const [newTestType, setNewTestType] = useState("AI Agent");
+  const [newTestType, setNewTestType] = useState("Manual");
+  const [newTestFormat, setNewTestFormat] = useState("CLASICA");
+  const [newTestChatbotConfig, setNewTestChatbotConfigState] = useState<Record<string, any>>({});
+  const [newTestApiConfig, setNewTestApiConfig] = useState<Record<string, any>>({});
   const [newTestComponent, setNewTestComponent] = useState("Web");
   const [newTestPre, setNewTestPre] = useState("");
   const [newTestData, setNewTestData] = useState("");
@@ -35,6 +38,9 @@ export function useCaseEditorState({ caseEditorOpen }: { caseEditorOpen: boolean
   const [pendingTraceabilityStoryIds, setPendingTraceabilityStoryIds] =
     useState<string[]>([]);
   const [caseEditorBaseline, setCaseEditorBaseline] = useState("");
+  const [chatbotEditorRevision, setChatbotEditorRevision] = useState(0);
+  const previousCaseEditorBaseline = useRef(caseEditorBaseline);
+  const previousCaseEditorOpen = useRef(caseEditorOpen);
   const [caseEditorSaving, setCaseEditorSaving] = useState(false);
   const [aiDryRunRunning, setAiDryRunRunning] = useState(false);
   const aiDryRunInFlightRef = useRef(false);
@@ -65,9 +71,12 @@ export function useCaseEditorState({ caseEditorOpen }: { caseEditorOpen: boolean
         criticality: newTestCriticality,
         status: newTestStatus,
         type: newTestType,
+        format: newTestFormat,
         script: newTestScript,
         framework: `${newTestFramework}:${newTestLanguage}`,
         steps: newTestSteps,
+        chatbotConfig: newTestChatbotConfig,
+        apiConfig: newTestApiConfig,
       }),
     [
       newTestSuite,
@@ -83,15 +92,32 @@ export function useCaseEditorState({ caseEditorOpen }: { caseEditorOpen: boolean
       newTestCriticality,
       newTestStatus,
       newTestType,
+      newTestFormat,
       newTestScript,
       newTestFramework,
       newTestLanguage,
       pendingTraceabilityStoryIds,
       newTestSteps,
+      newTestChatbotConfig,
+      newTestApiConfig,
     ],
   );
   const hasUnsavedCaseChanges =
-    caseEditorOpen && currentCaseEditorSnapshot !== caseEditorBaseline;
+    caseEditorOpen && (
+      currentCaseEditorSnapshot !== caseEditorBaseline ||
+      (newTestFormat === 'CONVERSACIONAL' && chatbotEditorRevision > 0)
+    );
+  const setNewTestChatbotConfig = useCallback((value: any) => {
+    if (caseEditorOpen) setChatbotEditorRevision(current => current + 1);
+    setNewTestChatbotConfigState(value);
+  }, [caseEditorOpen]);
+  useEffect(() => {
+    if (previousCaseEditorBaseline.current !== caseEditorBaseline || previousCaseEditorOpen.current !== caseEditorOpen) {
+      setChatbotEditorRevision(0);
+    }
+    previousCaseEditorBaseline.current = caseEditorBaseline;
+    previousCaseEditorOpen.current = caseEditorOpen;
+  }, [caseEditorOpen, caseEditorBaseline]);
   const canSaveCaseEditor =
     Boolean(newTestTitle.trim()) && !caseEditorSaving && hasUnsavedCaseChanges;
 
@@ -105,6 +131,12 @@ export function useCaseEditorState({ caseEditorOpen }: { caseEditorOpen: boolean
     setNewTestTitle,
     newTestType,
     setNewTestType,
+    newTestFormat,
+    setNewTestFormat,
+    newTestChatbotConfig,
+    setNewTestChatbotConfig,
+    newTestApiConfig,
+    setNewTestApiConfig,
     newTestComponent,
     setNewTestComponent,
     newTestPre,

@@ -14,5 +14,10 @@ export async function loadCatalog(locale: Locale): Promise<TranslationCatalog> {
     catalogs.en = module.default
     return module.default
   }
+  if (locale === 'pt') {
+    const module = await import('./pt')
+    catalogs.pt = module.default
+    return module.default
+  }
   return fallbackCatalog
 }

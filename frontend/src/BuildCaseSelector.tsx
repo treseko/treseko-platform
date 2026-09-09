@@ -1,8 +1,9 @@
 import { memo, useMemo, useState, useCallback, type CSSProperties } from 'react'
 import { Button, Form } from 'react-bootstrap'
-import { ChevronDown, ChevronRight, Folders, FileText, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folders, Search } from 'lucide-react'
 import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 import { useI18n } from './i18n'
+import { caseFormatPresentation, normalizeCaseFormat } from './features/casos/caseFormat'
 
 type BuildCaseSelectorProps = {
   suitesTree: any[]
@@ -163,6 +164,9 @@ const SuiteNode = memo(({
             .filter(c => !query || c.title.toLowerCase().includes(query) || c.id.toLowerCase().includes(query) || (c.code || '').toLowerCase().includes(query))
             .map(test => {
               const locked = lockedIds.has(test.id)
+              const format = normalizeCaseFormat(test.format)
+              const CaseIcon = caseFormatPresentation[format].icon
+              const formatLabel = t(caseFormatPresentation[format].labelKey)
               return (
             <div
               key={test.id}
@@ -178,7 +182,7 @@ const SuiteNode = memo(({
                 disabled={locked}
                 onChange={() => onToggleCase(test.id)}
               />
-              <FileText size={12} className="flex-shrink-0 text-muted" />
+              <CaseIcon size={13} className="flex-shrink-0" style={{ color: caseFormatPresentation[format].color }} aria-label={formatLabel} />
               <span className="font-monospace x-small fw-bold text-secondary flex-shrink-0">{test.code || test.id.slice(0, 8).toUpperCase()}</span>
               <span className="x-small text-truncate flex-grow-1 text-dark">{test.title}</span>
               {locked && <span className="badge bg-success-subtle text-success border border-success-subtle x-small flex-shrink-0">{t('common.executed')}</span>}

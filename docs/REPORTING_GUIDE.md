@@ -1,49 +1,50 @@
 # Guía de Reportes y Métricas
 
-Esta sección convierte las ejecuciones, bugs, evidencias y trazabilidad de la build activa en una vista de seguimiento de calidad.
+Reportes y Métricas resume ejecuciones, bugs, evidencias y trazabilidad del
+contexto seleccionado. Ayuda a decidir y comunicar resultados sin reemplazar
+el historial técnico.
 
 ## Leer el reporte
 
-1. Seleccioná proyecto, componente y build.
+1. Seleccioná solución, proyecto, componente y build.
 2. Abrí **Reportes y Métricas**.
-3. Revisá primero cobertura de trazabilidad, salud de la build y resumen de resultados.
-4. Aplicá filtros para limitar el análisis por suite, prioridad, estado, responsable, modo o evidencia.
+3. Revisá cobertura, salud, resultados y riesgos.
+4. Filtrá por suite, prioridad, estado, responsable, modo, formato o evidencia.
+5. Abrí el caso, bug o run desde la tabla para investigar.
 
-Los filtros afectan las tablas y métricas de detalle visibles. Si un dato no aparece, verificá el contexto seleccionado antes de concluir que falta.
+`formato_prueba` distingue `CLASICA`, `API`, `CONVERSACIONAL` y el formato
+reservado `PERFORMANCE`; la modalidad de ejecución se informa por separado.
+Una métrica vacía puede indicar falta de alcance o evidencia.
 
-## Configurar la vista
+## Vista, actualización y compartir
 
-Usá **Configurar vista** para ordenar, mostrar u ocultar bloques. Las cards pueden adaptarse al espacio disponible; al cambiar su tamaño, revisá que las tablas y métricas queden legibles.
+Usá **Configurar vista** si tenés permiso. El preset de Desarrollo prioriza
+fallos, bloqueos, bugs y acciones; el detalle completo permanece disponible.
+
+Después de nuevas ejecuciones, actualizá antes de analizar. Al **Compartir**,
+Treseko genera un snapshot nuevo cuando detecta datos nuevos. El enlace apunta
+a ese snapshot y no a una consulta histórica mutable; los snapshots existentes
+no se reescriben.
+
+## Tipos de informe
+
+- **Ejecutivo:** KPIs, riesgos, tendencias y hallazgos principales.
+- **Desarrollo:** fallos, bloqueos, bugs nuevos, históricos pendientes, fichas
+  de reproducción y acciones recomendadas.
+- **Interno:** inventario técnico completo del snapshot.
+
+Los enlaces de defectos apuntan a **Bug Tracker** o **Centro de Incidencias**
+según el destino. Los nombres de proyecto, build, ambiente, dataset, casos y
+códigos BUG/TC son la referencia principal; los UUID quedan como relación
+interna.
 
 ## Quality Intelligence
 
-Cuando el bloque está habilitado para el proyecto, resume señales calculadas a
-partir de ejecuciones ya registradas:
+Cuando está habilitado, resume estabilidad, flakiness, huellas técnicas,
+diagnósticos asistidos y un snapshot explicable de riesgo. Los diagnósticos son
+borradores revisables: no confirman causa raíz, no cambian ejecuciones ni crean
+bugs automáticamente. Con datos nuevos, reconstruí señales antes de evaluar
+riesgo; una decisión asistida requiere revisión humana y motivo auditado.
 
-- salud y estabilidad de cada caso, incluida una señal de comportamiento
-  *flaky* cuando alterna entre resultados comparables;
-- fallos agrupados por una huella técnica, para investigar el mismo problema
-  sin abrir diagnósticos duplicados;
-- diagnósticos asistidos que separan hechos, hipótesis, evidencia y puntos
-  desconocidos; son borradores, se editan creando una nueva versión auditable
-  y requieren revisión humana antes de crear un bug; y
-- un snapshot de riesgo de release explicable, que no cambia el estado de la
-  build ni la aprueba automáticamente.
-
-Podés recalcular las señales cuando haya nuevas ejecuciones. Si hay ejecuciones
-o evidencia nuevas, el análisis queda desactualizado: reconstruílo antes de
-generar diagnósticos, evaluar o aceptar riesgo. La flakiness del riesgo usa
-solo observaciones de la build elegida y, cuando existe, compara con la última
-build aceptada como contexto. Aceptar un riesgo requiere un motivo y queda
-auditado. Si faltan ejecuciones, cobertura o evidencia, el resultado correcto
-puede ser **Revisión humana**. La selección de regresión por impacto no
-sustituye a la suite completa mientras no exista una fuente trazable de cambios.
-
-## Acciones habituales
-
-- Actualizar datos después de una ejecución.
-- Abrir un caso, un bug o una ejecución desde una tabla para investigar.
-- Usar la cobertura de trazabilidad para detectar requisitos o historias sin casos asociados.
-- Exportar o compartir informes solo cuando la capacidad esté habilitada.
-
-La guía de [Trazabilidad](TRACEABILITY.md) explica cómo corregir vínculos incompletos entre requisitos, historias y casos.
+Consultá [Trazabilidad](TRACEABILITY.md), [Historial Runs](RUN_HISTORY_GUIDE.md)
+y [Adjuntos y evidencias](ATTACHMENTS_EVIDENCE.md).

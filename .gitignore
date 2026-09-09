@@ -63,5 +63,6 @@ frontend/.vite/
 .opencode/plugins/
 AGENTS.md
 automation-worker/.runner-token
+automation-worker/.worker-instance-id
 docs/release-evidence/*
 !docs/release-evidence/.gitignore

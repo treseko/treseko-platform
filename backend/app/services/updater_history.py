@@ -1,5 +1,6 @@
 from .updater import *
 from .updater import _utc_iso
+from .update_installation_mode import InstallationModeError, require as require_installation_mode
 
 def _update_state(self, state: UpdateTaskState, stage: str, progress: int, message: str) -> None:
     state.stage = stage
@@ -77,13 +78,44 @@ def _load_history(self) -> None:
             self._append_event(state, "applied", message=state.message, persist=False)
             changed = True
         elif state.status in {"queued", "in_progress", "restarting"}:
-            state.status = "failed"
-            state.stage = "interrupted"
-            state.progress_pct = min(state.progress_pct, 99)
-            state.error = "El proceso se reinicio antes de terminar la tarea de update."
-            state.message = "La tarea quedo interrumpida por reinicio del proceso."
-            state.completed_at = state.completed_at or _utc_iso()
-            changed = True
+            coordinated_report = None
+            try:
+                installation_mode = require_installation_mode("history")
+            except InstallationModeError:
+                installation_mode = None
+            if installation_mode == "coordinated":
+                try:
+                    from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeSettings
+                    coordinated_report = CoordinatedBridgeClient(
+                        CoordinatedBridgeSettings.from_environment()
+                    ).read_report(task_id)
+                except Exception:
+                    coordinated_report = None
+            if coordinated_report and coordinated_report.get("status") == "complete":
+                state.status = "done"
+                state.stage = "applied"
+                state.progress_pct = 100
+                state.error = None
+                state.message = "Actualizacion coordinada reconciliada tras el reinicio."
+                state.completed_at = state.completed_at or _utc_iso()
+                self._append_event(state, "applied", message=state.message, persist=False)
+                changed = True
+            elif coordinated_report and coordinated_report.get("status") == "rolled_back":
+                state.status = "failed"
+                state.stage = "rolled_back"
+                state.progress_pct = min(state.progress_pct, 99)
+                state.error = "La actualizacion coordinada fue revertida por el host."
+                state.message = "La tarea fue revertida tras el reinicio."
+                state.completed_at = state.completed_at or _utc_iso()
+                changed = True
+            elif installation_mode == "legacy":
+                state.status = "failed"
+                state.stage = "interrupted"
+                state.progress_pct = min(state.progress_pct, 99)
+                state.error = "El proceso se reinicio antes de terminar la tarea de update."
+                state.message = "La tarea quedo interrumpida por reinicio del proceso."
+                state.completed_at = state.completed_at or _utc_iso()
+                changed = True
         self._tasks[task_id] = state
     if self._tasks:
         latest = max(

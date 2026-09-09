@@ -1,6 +1,7 @@
 export const UPDATE_MAINTENANCE_STORAGE_KEY = 'treseko_update_maintenance_until'
 export const UPDATE_MAINTENANCE_EVENT = 'treseko:update-maintenance'
 export const UPDATE_MAINTENANCE_TIMEOUT_MS = 120 * 1000
+export const TERMINAL_UPDATE_STATUSES = new Set(['done', 'failed'])
 
 export type UpdateMaintenanceState = {
   active: boolean
@@ -10,11 +11,13 @@ export type UpdateMaintenanceState = {
   targetVersion?: string
   lastCheckedAt?: number
   backendVersion?: string
+  taskId?: string
 }
 
 type StoredUpdateMaintenanceSignal = {
   until: number
   targetVersion?: string
+  taskId?: string
 }
 
 export function readUpdateMaintenanceSignal(): UpdateMaintenanceState {
@@ -26,6 +29,7 @@ export function readUpdateMaintenanceSignal(): UpdateMaintenanceState {
       stored = {
         until: Number(parsed.until),
         targetVersion: typeof parsed.targetVersion === 'string' ? parsed.targetVersion : undefined,
+        taskId: typeof parsed.taskId === 'string' ? parsed.taskId : undefined,
       }
     } catch {
       stored = { until: 0 }
@@ -42,6 +46,7 @@ export function readUpdateMaintenanceSignal(): UpdateMaintenanceState {
     timedOut,
     until: active || timedOut ? until : 0,
     targetVersion: active || timedOut ? stored.targetVersion : undefined,
+    taskId: active || timedOut ? stored.taskId : undefined,
     message: timedOut
       ? 'No se pudo confirmar el reinicio dentro del tiempo esperado. Reintenta o revisa el estado del backend.'
       : 'Treseko esta aplicando una actualizacion. El servicio puede tardar unos minutos en volver.',
@@ -58,14 +63,27 @@ export function updateMaintenanceConnectionState(patch: Partial<Pick<UpdateMaint
   }
 }
 
-export function announceUpdateMaintenance(durationMs = UPDATE_MAINTENANCE_TIMEOUT_MS, targetVersion?: string | null) {
+export function announceUpdateMaintenance(durationMs = UPDATE_MAINTENANCE_TIMEOUT_MS, targetVersion?: string | null, taskId?: string | null) {
+  const current = readUpdateMaintenanceSignal()
+  const normalizedTargetVersion = targetVersion || current.targetVersion
+  const normalizedTaskId = taskId || current.taskId
+  if (current.active && current.targetVersion === normalizedTargetVersion && current.taskId === normalizedTaskId) {
+    window.dispatchEvent(new CustomEvent(UPDATE_MAINTENANCE_EVENT))
+    return current
+  }
   const until = Date.now() + durationMs
   localStorage.setItem(UPDATE_MAINTENANCE_STORAGE_KEY, JSON.stringify({
     until,
-    targetVersion: targetVersion || undefined,
+    targetVersion: normalizedTargetVersion,
+    taskId: normalizedTaskId,
   }))
   window.dispatchEvent(new CustomEvent(UPDATE_MAINTENANCE_EVENT))
   return readUpdateMaintenanceSignal()
+}
+
+export function isTerminalUpdateStatus(status?: unknown, stage?: unknown): boolean {
+  if (status === 'failed') return true
+  return status === 'done' && stage === 'applied'
 }
 
 export function clearUpdateMaintenanceSignal() {

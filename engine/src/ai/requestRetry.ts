@@ -1,7 +1,7 @@
 import { traceEntry, traceRequestId } from '../test-trace.ts'
 import { generateWithProvider, ProviderRequestError } from './provider-adapters.ts'
 
-export async function sendWithRetry<T>(context: any, messages: any[], temperature?: number, maxCompletionTokens?: number): Promise<any> {
+export async function sendWithRetry<T>(context: any, messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text'): Promise<any> {
   let attempts = 0
   let fallbackIndex = 0
   const start = Date.now()
@@ -39,6 +39,7 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
         temperature: aiPayload.temperature,
         maxTokens: aiPayload.max_tokens,
         disableThinking: context.disableThinking,
+        responseFormat,
       })
       traceEntry('ai_response', {
         request_id: requestId,

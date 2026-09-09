@@ -136,13 +136,22 @@ watch_update_restart() {
     if [ -f "$marker" ]; then
       rm -f "$marker"
       echo "Actualizacion lista; reiniciando frontend."
-      kill -TERM 1 2>/dev/null || true
+      kill -TERM "$nginx_pid" 2>/dev/null || true
       return 0
     fi
     sleep 2
   done
 }
 
+nginx -g 'daemon off;' &
+nginx_pid="$!"
 watch_update_restart &
+watcher_pid="$!"
 
-exec nginx -g 'daemon off;'
+cleanup() {
+  kill -TERM "$nginx_pid" "$watcher_pid" 2>/dev/null || true
+  wait "$watcher_pid" 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+wait "$nginx_pid"

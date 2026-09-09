@@ -26,21 +26,21 @@ from ..services.quality_intelligence import (
     quality_scope_key,
 )
 from ..time_utils import ensure_utc, utc_now
-
-
+from .quality_intelligence_chatbot import evidence_fields, failure_candidates
 def _quality_execution_mode_value(value: object) -> str:
     raw = getattr(value, "value", value)
     return str(raw or models.ExecutionMode.MANUAL.value).strip().upper()
 
-
 def _failure_context(execution: models.EjecucionCaso, snapshots: list[models.SnapshotPaso]) -> str:
-    """Select one bounded source for a fingerprint without persisting raw text."""
+    """Select one bounded source for a fingerprint."""
     report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
     candidates = [
         execution.observaciones,
         report.get("summary"),
         report.get("error"),
     ]
+    chatbot = execution.chatbot_resultado if isinstance(execution.chatbot_resultado, dict) else report.get("chatbot_resultado") if isinstance(report.get("chatbot_resultado"), dict) else {}
+    if chatbot: candidates.extend(failure_candidates(chatbot))
     for snapshot in snapshots:
         if canonical_result(snapshot.estado_paso) in {"FALLO", "BLOQUEADO"}:
             candidates.extend([snapshot.error_log, snapshot.comentarios])
@@ -49,18 +49,19 @@ def _failure_context(execution: models.EjecucionCaso, snapshots: list[models.Sna
             return sanitize_external_error(value, max_len=1000)
     return ""
 
-
-def _evidence_summary(snapshots: list[models.SnapshotPaso], failure_context: str) -> dict[str, Any]:
+def _evidence_summary(execution: models.EjecucionCaso, case: models.CasoPrueba, snapshots: list[models.SnapshotPaso], failure_context: str) -> dict[str, Any]:
     statuses = [canonical_result(snapshot.estado_paso) for snapshot in snapshots]
+    chatbot_fields = evidence_fields(execution, case)
     return {
-        "source": "execution-snapshot-v1",
+        "source": chatbot_fields.get("source", "execution-snapshot-v1"),
+        "formato_prueba": chatbot_fields.get("formato_prueba", str(getattr(case.formato_prueba, "value", case.formato_prueba) or "CLASICA").upper()),
         "snapshot_count": len(snapshots),
         "failed_snapshot_count": statuses.count("FALLO"),
         "blocked_snapshot_count": statuses.count("BLOQUEADO"),
         "evidence_reference_count": sum(1 for snapshot in snapshots if bool(snapshot.evidencia_url)),
         "has_failure_context": bool(failure_context),
+        "chatbot": chatbot_fields.get("chatbot", {}),
     }
-
 
 async def _analysis_state(
     db: AsyncSession,
@@ -250,7 +251,7 @@ async def rebuild_quality_intelligence(
             "duracion_segundos": max(0, int(execution.duracion_segundos or 0)),
             "observed_at": observed_at,
             "failure_fingerprint_id": fingerprint_row.id if fingerprint_row else None,
-            "evidence_summary": _evidence_summary(snapshot_rows, failure_context),
+            "evidence_summary": _evidence_summary(execution, case, snapshot_rows, failure_context),
             "source_version": "v1",
         }
         if observation is None:

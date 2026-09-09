@@ -1,5 +1,26 @@
 from .repository_context import *
+from ..services.shared_report_revocation import hydrate_legacy_revocation_actor
+from ..services.edition.entitlement_provider import get_entitlement_provider
 from ..version import PRODUCT_VERSION
+from .report_bug_payloads import _enrich_api_bug_snapshots
+from ..services.development_report import (
+    development_sections_for_payload,
+)
+from .report_bug_loading import (
+    load_and_freeze_development_bug_labels,
+    list_all_project_bugs,
+)
+
+
+async def _shared_report_branding(db: AsyncSession) -> Dict[str, Any]:
+    entitlement_state = await get_entitlement_provider().get_state(db)
+    enabled_features = set(entitlement_state.get("enabled_features") or [])
+    can_customize = entitlement_state.get("edition") == "premium" and "branding.custom" in enabled_features
+    return config_service.branding_response(
+        await config_service.get_workspace_branding(db),
+        edition=str(entitlement_state.get("edition") or "community"),
+        can_customize=can_customize,
+    )
 
 
 async def _build_shared_report_base_payload(
@@ -30,6 +51,7 @@ async def _build_shared_report_base_payload(
     if responsible_id:
         responsible = (await db.execute(select(models.Usuario).filter(models.Usuario.id == responsible_id))).scalar_one_or_none()
     responsible_display = (responsible.nombre_completo or responsible.email) if responsible else None
+    branding = await _shared_report_branding(db)
     stats = metrics.get("stats") or {}
     build_context = metrics.get("build_context") or {}
     definition_at = utc_now()
@@ -67,17 +89,30 @@ async def _build_shared_report_base_payload(
         "definition_responsible_display": manual_definition["responsible_display"],
         "definition_at": manual_definition["defined_at"],
         "report_settings_version": report_settings.get("version"),
+        "branding": {
+            "brand_name": branding["effective_brand_name"],
+            "logo_url": branding["effective_logo_url"],
+        },
     }
-    all_bug_items = _bug_list_items(await list_project_bugs(db, payload.proyecto_id))
+    all_bug_items = await list_all_project_bugs(db, payload.proyecto_id)
     if component:
         all_bug_items = [bug for bug in all_bug_items if not bug.componente_id or bug.componente_id == component.id]
     current_bug_items = list(all_bug_items)
     if build:
         current_bug_items = [bug for bug in current_bug_items if not bug.build_id or bug.build_id == build.id]
-    all_bug_snapshots = [_bug_issue_snapshot_dict(bug) for bug in all_bug_items]
-    current_bug_snapshots = [_bug_issue_snapshot_dict(bug) for bug in current_bug_items]
+    all_bug_snapshots = await load_and_freeze_development_bug_labels(
+        db, [_bug_issue_snapshot_dict(bug) for bug in all_bug_items], all_bug_items, payload.proyecto_id,
+    )
+    current_bug_snapshots = await load_and_freeze_development_bug_labels(
+        db, [_bug_issue_snapshot_dict(bug) for bug in current_bug_items], current_bug_items, payload.proyecto_id,
+    )
+    bugs_by_id = {str(bug.id): bug for bug in all_bug_items}
+    await _enrich_conversational_bug_snapshots(db, all_bug_snapshots, bugs_by_id)
+    await _enrich_conversational_bug_snapshots(db, current_bug_snapshots, bugs_by_id)
+    await _enrich_api_bug_snapshots(db, all_bug_snapshots, bugs_by_id)
+    await _enrich_api_bug_snapshots(db, current_bug_snapshots, bugs_by_id)
     build_names = {
-        str(item.get("build_id")): str(item.get("build_name") or item.get("build_id"))
+        str(item.get("build_id")): str(item.get("build_name") or "Build no registrada")
         for item in (metrics.get("historico_versions") or [])
         if item.get("build_id")
     }
@@ -100,8 +135,47 @@ async def _build_shared_report_base_payload(
     failed_cases = [case for case in cases if str(case.get("estado") or "").upper() in {"FALLO", "BLOQUEADO"}]
     development_cases = [_report_development_case(case) for case in failed_cases]
     bug_tracking = _report_bug_tracking(all_bug_snapshots, build_names, str(build.id) if build else None)
-    enriched_bugs = metrics.get("bugs") or current_bug_snapshots
-    development_bugs = _report_development_bug_snapshots(enriched_bugs, current_bug_snapshots)
+    metric_bugs = metrics.get("bugs") or []
+    current_by_key = {
+        str(item.get("id")): item
+        for item in current_bug_snapshots
+        if item.get("id")
+    }
+    current_by_key.update({
+        str(item.get("codigo")): item
+        for item in current_bug_snapshots
+        if item.get("codigo")
+    })
+    # A metric bug can remain associated with the project while its build
+    # association is absent or points to a previous build. Prefer the current
+    # snapshot, but retain the complete project snapshot as a fallback so
+    # enriched API/conversational evidence is not reduced to a summary row.
+    all_by_key = {
+        str(item.get("id")): item
+        for item in all_bug_snapshots
+        if item.get("id")
+    }
+    all_by_key.update({
+        str(item.get("codigo")): item
+        for item in all_bug_snapshots
+        if item.get("codigo")
+    })
+    enriched_bugs = [
+        _report_merge_bug_snapshot(
+            current_by_key.get(str(item.get("id")))
+            or current_by_key.get(str(item.get("codigo")))
+            or all_by_key.get(str(item.get("id")))
+            or all_by_key.get(str(item.get("codigo")))
+            or {},
+            item,
+        )
+        for item in metric_bugs
+    ] or current_bug_snapshots
+    development_bugs = _report_development_bug_snapshots(enriched_bugs, all_bug_snapshots)
+    development_sections = development_sections_for_payload(
+        metadata, metrics, all_bug_snapshots, development_bugs,
+        metrics.get("failures_and_blockers") or [],
+    )
     development_bug_tracking = [
         item for item in bug_tracking
         if item.get("current_status") == "Sigue abierto"
@@ -131,6 +205,7 @@ async def _build_shared_report_base_payload(
             "cases": development_cases,
             "failures": metrics.get("failures_and_blockers") or [],
             "bugs": development_bugs,
+            **development_sections,
             "bug_tracking": development_bug_tracking,
             "bugs_without_evidence": [bug for bug in development_bugs if not bug.get("has_evidence")],
             "bugs_without_responsible": [bug for bug in development_bugs if not bug.get("responsable")],
@@ -145,16 +220,17 @@ async def _current_shared_report_bundle_hash(
     proyecto_id: UUID,
     build_id: Optional[UUID],
     componente_id: Optional[UUID],
+    *,
+    metrics: Optional[Dict[str, Any]] = None,
 ) -> str:
-    metrics = await get_project_metrics(db, proyecto_id, build_id)
+    metrics = metrics if metrics is not None else await get_project_metrics(db, proyecto_id, build_id)
     project = (await db.execute(select(models.Proyecto).filter(models.Proyecto.id == proyecto_id))).scalar_one_or_none()
     report_settings = normalize_project_report_settings((project.report_settings if project else {}) or {})
-    bug_items = _bug_list_items(await list_project_bugs(db, proyecto_id))
+    bug_items = await list_all_project_bugs(db, proyecto_id)
     if componente_id:
         bug_items = [bug for bug in bug_items if not bug.componente_id or bug.componente_id == componente_id]
-    if build_id:
-        bug_items = [bug for bug in bug_items if not bug.build_id or bug.build_id == build_id]
-    return _report_bundle_fingerprint(metrics, _report_bugs_digest(bug_items), report_settings)
+    branding = await _shared_report_branding(db)
+    return _report_bundle_fingerprint(metrics, _report_bugs_digest(bug_items), report_settings, branding)
 
 async def create_shared_report_bundle(
     db: AsyncSession,
@@ -173,13 +249,12 @@ async def create_shared_report_bundle(
     component_id = payload.componente_id or (build.componente_id if build else None)
     if component_id:
         component = (await db.execute(select(models.Componente).filter(models.Componente.id == component_id))).scalar_one_or_none()
-    bug_items = _bug_list_items(await list_project_bugs(db, payload.proyecto_id))
+    bug_items = await list_all_project_bugs(db, payload.proyecto_id)
     if component:
         bug_items = [bug for bug in bug_items if not bug.componente_id or bug.componente_id == component.id]
-    if build:
-        bug_items = [bug for bug in bug_items if not bug.build_id or bug.build_id == build.id]
     report_settings = normalize_project_report_settings(project.report_settings or {})
-    metrics_hash = _report_bundle_fingerprint(metrics, _report_bugs_digest(bug_items), report_settings)
+    branding = await _shared_report_branding(db)
+    metrics_hash = _report_bundle_fingerprint(metrics, _report_bugs_digest(bug_items), report_settings, branding)
     manual_definition = {
         "requested_report_type": str(payload.requested_report_type or "all").lower(),
         "build_definition": str(payload.build_definition or "").strip(),
@@ -277,17 +352,30 @@ async def create_shared_report_snapshot(
     return bundle["snapshots"][0]
 
 async def get_shared_report_by_token(db: AsyncSession, token: str):
-    result = await db.execute(select(models.SharedReportSnapshot).filter(models.SharedReportSnapshot.token == token))
-    return result.scalar_one_or_none()
+    result = await db.execute(
+        select(models.SharedReportSnapshot)
+        .options(selectinload(models.SharedReportSnapshot.revoker))
+        .filter(models.SharedReportSnapshot.token == token)
+    )
+    snapshot = result.scalar_one_or_none()
+    await hydrate_legacy_revocation_actor(db, snapshot)
+    return snapshot
 
-async def shared_report_has_new_values(db: AsyncSession, snapshot: models.SharedReportSnapshot) -> bool:
-    metrics = await get_project_metrics(db, snapshot.proyecto_id, snapshot.build_id)
+async def shared_report_has_new_values(
+    db: AsyncSession,
+    snapshot: models.SharedReportSnapshot,
+    *,
+    metrics: Optional[Dict[str, Any]] = None,
+    current_hash: Optional[str] = None,
+) -> bool:
+    # Reuse request-scoped calculations while keeping frozen snapshots immutable.
+    metrics = metrics if metrics is not None else await get_project_metrics(db, snapshot.proyecto_id, snapshot.build_id)
     payload = snapshot.payload or {}
     metadata = payload.get("metadata") or {}
     if metadata.get("snapshot_bundle_version") and metadata.get("snapshot_bundle_version") != REPORT_SNAPSHOT_BUNDLE_VERSION:
         return True
     if metadata.get("snapshot_bundle_version") == REPORT_SNAPSHOT_BUNDLE_VERSION:
-        current_hash = await _current_shared_report_bundle_hash(db, snapshot.proyecto_id, snapshot.build_id, snapshot.componente_id)
+        current_hash = current_hash if current_hash is not None else await _current_shared_report_bundle_hash(db, snapshot.proyecto_id, snapshot.build_id, snapshot.componente_id, metrics=metrics)
         frozen_hash = _shared_report_payload_bundle_hash(payload)
         if current_hash in {metadata.get("snapshot_hash"), snapshot.metrics_hash, frozen_hash}:
             return False
@@ -300,7 +388,7 @@ async def shared_report_has_new_values(db: AsyncSession, snapshot: models.Shared
     if "report_type" not in metadata:
         return _legacy_report_metrics_fingerprint(metrics) != snapshot.metrics_hash
     report_type = str(metadata.get("report_type") or "executive").lower()
-    bug_items = _bug_list_items(await list_project_bugs(db, snapshot.proyecto_id))
+    bug_items = await list_all_project_bugs(db, snapshot.proyecto_id)
     if snapshot.componente_id:
         bug_items = [bug for bug in bug_items if not bug.componente_id or bug.componente_id == snapshot.componente_id]
     if snapshot.build_id:
@@ -363,7 +451,7 @@ def shared_report_is_expired(snapshot: models.SharedReportSnapshot) -> bool:
         return False
     return ensure_utc(snapshot.expires_at) < utc_now()
 
-async def revoke_shared_report(db: AsyncSession, token: str):
+async def revoke_shared_report(db: AsyncSession, token: str, revoked_by_id: Optional[UUID] = None):
     snapshot = await get_shared_report_by_token(db, token)
     if not snapshot:
         return None
@@ -377,6 +465,7 @@ async def revoke_shared_report(db: AsyncSession, token: str):
     for target in targets:
         target.activo = False
         target.revoked_at = now
+        target.revoked_by = revoked_by_id
     await db.commit()
     await db.refresh(snapshot)
     return snapshot
@@ -389,6 +478,7 @@ async def list_shared_report_bundle_history(
 ) -> List[Dict[str, Any]]:
     query = (
         select(models.SharedReportSnapshot)
+        .options(selectinload(models.SharedReportSnapshot.revoker))
         .filter(models.SharedReportSnapshot.proyecto_id == proyecto_id)
         .order_by(models.SharedReportSnapshot.created_at.desc())
     )
@@ -416,13 +506,35 @@ async def list_shared_report_bundle_history(
         reverse=True,
     )
     latest_hash = None
+    metrics_cache: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    current_hash_cache: Dict[tuple[str, str, str], str] = {}
     for group_snapshots in sorted_groups:
         first = sorted(group_snapshots, key=lambda item: item.created_at or datetime.min.replace(tzinfo=timezone.utc))[0]
         metadata = _shared_report_metadata(first)
         group_hash = metadata.get("snapshot_hash") or first.metrics_hash
         if latest_hash is None:
             latest_hash = group_hash
-        has_new_values = await shared_report_has_new_values(db, first)
+        cache_key = (str(first.proyecto_id), str(first.build_id or ""), str(first.componente_id or ""))
+        group_metrics = metrics_cache.get(cache_key)
+        if group_metrics is None:
+            group_metrics = await get_project_metrics(db, first.proyecto_id, first.build_id)
+            metrics_cache[cache_key] = group_metrics
+        group_current_hash = current_hash_cache.get(cache_key)
+        if group_current_hash is None:
+            group_current_hash = await _current_shared_report_bundle_hash(
+                db,
+                first.proyecto_id,
+                first.build_id,
+                first.componente_id,
+                metrics=group_metrics,
+            )
+            current_hash_cache[cache_key] = group_current_hash
+        has_new_values = await shared_report_has_new_values(
+            db,
+            first,
+            metrics=group_metrics,
+            current_hash=group_current_hash,
+        )
         items.append({
             "snapshot_group_id": _shared_report_group_id(first),
             "metrics_hash": group_hash,
@@ -432,6 +544,16 @@ async def list_shared_report_bundle_history(
             "created_by": first.created_by,
             "created_by_display": creators.get(first.created_by) if first.created_by else None,
             "activo": any(snapshot.activo for snapshot in group_snapshots),
+            "revoked_at": max((snapshot.revoked_at for snapshot in group_snapshots if snapshot.revoked_at), default=None),
+            "revoked_by": next((snapshot.revoked_by for snapshot in group_snapshots if snapshot.revoked_by), None),
+            "revoked_by_display": next(
+                (
+                    (snapshot.revoker.nombre_completo or snapshot.revoker.email)
+                    for snapshot in group_snapshots
+                    if snapshot.revoker
+                ),
+                None,
+            ),
             "has_new_values": has_new_values,
             "is_latest": group_hash == latest_hash,
             "snapshots": sorted(group_snapshots, key=lambda item: _shared_report_type(item)),

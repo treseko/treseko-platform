@@ -1,0 +1,438 @@
+{
+  "schema_version": "2.0",
+  "source_of_truth": "runtime_registry",
+  "adapters": [
+    {
+      "key": "legacy-auditor/v1",
+      "version": "v1",
+      "category": "audit",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Auditor",
+        "auditor"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-context-resolver/v1",
+      "version": "v1",
+      "category": "context",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "ContextResolver",
+        "context_resolver"
+      ],
+      "capabilities": [],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-executor/v1",
+      "version": "v1",
+      "category": "browser_action",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Executor",
+        "executor"
+      ],
+      "capabilities": [
+        "browser.act"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-observer/v1",
+      "version": "v1",
+      "category": "browser_observation",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Observer",
+        "observer"
+      ],
+      "capabilities": [
+        "browser.observe"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-planner/v1",
+      "version": "v1",
+      "category": "llm_planning",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Planner",
+        "planner"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-pre-execution-analyst/v1",
+      "version": "v1",
+      "category": "analysis",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "PreExecutionAnalyst",
+        "pre_execution_analyst"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-recovery/v1",
+      "version": "v1",
+      "category": "recovery",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Recovery",
+        "recovery"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-reporter/v1",
+      "version": "v1",
+      "category": "reporting",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Reporter",
+        "reporter"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-security-guard/v1",
+      "version": "v1",
+      "category": "security",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "SecurityGuard",
+        "security_guard"
+      ],
+      "capabilities": [],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "legacy-validator/v1",
+      "version": "v1",
+      "category": "validation",
+      "atomic": false,
+      "legacy": true,
+      "compatible_node_types": [
+        "Validator",
+        "validator"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-action-planner/v2",
+      "version": "v2",
+      "category": "llm_planning",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Planner",
+        "planner"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-browser-action-executor/v2",
+      "version": "v2",
+      "category": "browser_action",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Executor",
+        "executor"
+      ],
+      "capabilities": [
+        "browser.act"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-browser-observer/v2",
+      "version": "v2",
+      "category": "browser_observation",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Observer",
+        "observer"
+      ],
+      "capabilities": [
+        "browser.observe"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-context-resolver/v2",
+      "version": "v2",
+      "category": "context",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "ContextResolver",
+        "context_resolver"
+      ],
+      "capabilities": [],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-execution-reporter/v2",
+      "version": "v2",
+      "category": "reporting",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Reporter",
+        "reporter"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-final-auditor/v2",
+      "version": "v2",
+      "category": "audit",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Auditor",
+        "auditor"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-pre-execution-analyst/v2",
+      "version": "v2",
+      "category": "analysis",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "PreExecutionAnalyst",
+        "pre_execution_analyst"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-recovery-strategist/v2",
+      "version": "v2",
+      "category": "recovery",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Recovery",
+        "recovery"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-security-guard/v2",
+      "version": "v2",
+      "category": "security",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "SecurityGuard",
+        "security_guard"
+      ],
+      "capabilities": [],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    },
+    {
+      "key": "qa-step-validator/v2",
+      "version": "v2",
+      "category": "validation",
+      "atomic": true,
+      "legacy": false,
+      "compatible_node_types": [
+        "Validator",
+        "validator"
+      ],
+      "capabilities": [
+        "llm.invoke"
+      ],
+      "editable_fields": [
+        "prompt_template",
+        "config_json",
+        "input_mapping",
+        "output_mapping",
+        "timeout_ms",
+        "retry_policy"
+      ]
+    }
+  ]
+}

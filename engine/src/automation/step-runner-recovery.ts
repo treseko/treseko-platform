@@ -184,6 +184,37 @@ export function deterministicRecoveryAction(step: QAEngineStep, observation: Bro
     }
   }
 
+  // Observation/stability steps are executable even when the model cannot
+  // name a specific control. Let the normal validator inspect the unchanged
+  // page after a short wait; do not turn an ambiguous model answer into a
+  // false BLOCKED result.
+  if (/(repetir|reintentar|recarga|recargar|estado estable|estabilidad|esperar).*(observ|carga|naveg|estado)|(?:observ|estado).*(estable|recarga)/.test(text)) {
+    const action: StrictAIAction = {
+      action: 'wait',
+      value: '1000',
+      reason: 'Recuperacion deterministica: esperar y volver a validar la estabilidad observable de la pagina.',
+      confidence: 88,
+      step_number: step.number,
+    };
+    if (step.expected) action.expected = step.expected;
+    return action;
+  }
+
+  // Recording the outcome is an executable terminal step. The evidence and
+  // expectation are evaluated by the final auditor from the accumulated
+  // trace; asking the model for another browser target here only creates a
+  // spurious parse/block failure.
+  if (/(registrar|documentar|guardar).*(resultado|evidencia|url|viewport)|resultado.*(evidencia|registrar)/.test(text)) {
+    const action: StrictAIAction = {
+      action: 'finish',
+      reason: 'Recuperacion deterministica: cerrar el caso conservando la evidencia acumulada para auditoria.',
+      confidence: 86,
+      step_number: step.number,
+    };
+    if (step.expected) action.expected = step.expected;
+    return action;
+  }
+
   if (/(validar|confirmar|verificar|registrar evidencia|buscar visualmente|observar|visual)/.test(text)) {
     const expectedText = extractKeyValue(step, ['expected_keyword', 'keyword', 'texto', 'text']);
     if (expectedText) {

@@ -21,6 +21,7 @@ type BuildExecutionViewModelParams = {
   testSearchQuery: string;
   selectedExecutionTestIds: string[];
   executionModalCaseIds: string[] | null;
+  executionModalCandidateCaseIds: string[] | null;
   activeExecutionCaseIds: string[];
 };
 
@@ -73,6 +74,7 @@ export function buildExecutionViewModel({
   testSearchQuery,
   selectedExecutionTestIds,
   executionModalCaseIds,
+  executionModalCandidateCaseIds,
   activeExecutionCaseIds,
 }: BuildExecutionViewModelParams) {
   const executionContextReady = Boolean(currentBuildId && currentCompId);
@@ -222,6 +224,10 @@ export function buildExecutionViewModel({
   const executionModalTests = executionModalTestIds
     .map(resolveExecutionCandidate)
     .filter(Boolean);
+  const executionModalCandidateTestIds = executionModalCandidateCaseIds || executionModalTestIds;
+  const executionModalCandidateTests = executionModalCandidateTestIds
+    .map(resolveExecutionCandidate)
+    .filter(Boolean);
   const executionModalDiscardedCount =
     executionModalTestIds.length - executionModalTests.length;
   const activeExecutionTests = (
@@ -291,6 +297,7 @@ export function buildExecutionViewModel({
     selectedExecutionTests,
     selectedExecutionDiscardedCount,
     executionModalTests,
+    executionModalCandidateTests,
     executionModalDiscardedCount,
     activeExecutionTests,
     filteredExecutionTestIds,

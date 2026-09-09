@@ -1,28 +1,30 @@
-# Capabilities and permissions
+# Capability matrix
 
 <!-- Language: en -->
 
-This reference helps administrators decide what access to assign. Capabilities
-are applied through roles and module permissions; technical identifiers do not
-need to be configured manually.
+Capabilities are evaluated together with role, level, scope and license; they
+are not edited manually as technical text.
 
-| Area | Common capabilities | Recommendation |
+| Area | Capabilities to review | Scope |
 |---|---|---|
-| Projects | Portfolio, components, builds, team, environments, datasets, wiki, requirements and stories | QA Lead to edit; Tester to view or collaborate according to the role. |
-| Cases | Suites, cases, steps, versions, attachments, scripts and traceability | QA Lead and Tester with editing when designing tests. |
-| Execution | Manual, automated and AI execution, evidence and history | QA Lead and Tester according to the authorized method. |
-| Automation | Workers, jobs, validation and reusable functions | QA Lead or a specific technical role. |
-| Reports | Metrics, export, sharing and traceability | Read access for decision makers; edit only when appropriate. |
-| Bugs | Create, edit, assign, comment, attach, triage and external links | Tester to report; QA Lead to triage and assign. |
-| Configuration | Preferences, profile, users, roles, license, AI and API keys | Restricted administration; each user manages their own API keys. |
-| Notifications | Personal inbox, rules, templates, SMTP and audit | Users for the inbox; administrators for configuration. |
+| Projects | Portfolio, components, builds, environments, datasets, stories | Organization/project. |
+| Cases | Suites, cases, steps, attachments, scripts, traceability | Authorized project. |
+| Execution | `ejecutar.manual`, `ejecutar.automatizada`, `ejecutar.ia` | Format and mode are independent. |
+| Automation | Workers, jobs, validation, declarative API | Approved worker and valid scope. |
+| Reports | Reading, export, snapshots, sharing, metrics | Some require Premium. |
+| Bugs/incidents | Create, edit, assign, comment, attach, triage | Eligible evidence. |
+| History | Runs, snapshots and historical audit | Downgrade may preserve read access. |
+| AI | Profiles, credentials, workflows and review | Does not mean all formats can be executed. |
+| Integrations | Provider, links, notifications | Project scope and capability. |
+| Plugins | Catalog, install, enable, configure, portability | Runner and entitlement. |
+| Configuration | Users, roles, license, updates, API keys | Restricted administration. |
 
-## Apply the least privilege necessary
+Premium may enable granular RBAC, SSO, multiple workers, scheduler, advanced
+external API, advanced reports/snapshots, enterprise bugs, integrations, audit,
+historical metrics, branding and Premium updates.
 
-- Grant **Reader** if the person only needs to view information.
-- Grant **Editor** only if they must create, change or administer resources.
-- Separate execution roles from global configuration roles.
-- Review permissions after team or responsibility changes.
+## MCP
 
-If an action is not visible despite access to the module, review the edition,
-license, project status and specific permissions with an administrator.
+MCP is disabled by default, uses an API key separate from the JWT and exposes
+only read tools enabled by an allowlist, with simultaneous organization and
+project scope.

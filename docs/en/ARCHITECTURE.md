@@ -2,61 +2,82 @@
 
 <!-- Language: en -->
 
-This guide offers a technical view of the self-hosted installation. It is meant
-for administrators who need to identify which component to review when there is
-a problem, make a backup or integrate an external service.
+Technical guide for a Treseko Community 1.0.3 self-hosted installation. The
+interface does not write directly to the database.
 
-## Main components
+## Components
 
-```text
-Browser → Frontend → Backend → Database
-                        ├→ AI Engine
-                        └→ Automation worker
+```mermaid
+flowchart LR
+  U[Browser] --> F[Frontend]
+  CI[External CI runner] -->|reports results| B
+  MCP[Authorized MCP client] -->|read-only queries| B
+  F --> B[Backend]
+  B --> P[(PostgreSQL)]
+  B --> R[(Redis)]
+  B --> E[AI Engine]
+  W[Unified Automation Worker] -->|polling and results| B
+  B --> H[Declarative HTTP runner]
+  E --> L[LLM provider]
+  E --> C[Chatbot under test]
+  W --> S[Web and APIs under test]
+  H --> S
 ```
 
-| Component | Function | When to review it |
+| Component | Responsibility | Network |
 |---|---|---|
-| Frontend | Displays the platform in the browser. | The page does not load or a screen does not respond. |
-| Backend | Applies permissions, business rules and exposes the API. | An action returns an error or does not save data. |
-| Database | Stores projects, cases, executions, users and configuration. | Before restoring or migrating information. |
-| AI Engine | Runs the AI-assisted flows. | An AI generation or execution does not start. |
-| Worker | Runs automated scripts on a compatible machine. | A job is not picked up or fails in the test environment. |
+| Frontend | React application and static resources. | HTTP/HTTPS proxy only. |
+| Backend | Authentication, RBAC, rules, API, snapshots and persistence. | Authorized services. |
+| PostgreSQL | Operational data, audit and configuration. | No public port. |
+| Redis | Coordination and queues. | No public port. |
+| AI Engine | Generation and evaluation workflows. | Private. |
+| Automation Worker | Classic and declarative API automation; polls for jobs and returns results. | Private; pairing required. |
+| plugin-runner | Declared profile for isolated plugins; not included in this public snapshot. | Not operational from this package. |
 
-## How they relate
+The worker uses the `automation` profile. The `plugins` profile is declared in
+Compose, but this public snapshot does not contain the `plugin-runner` context;
+it must not be started or considered operational from this package.
 
-- The browser communicates with the backend through the web application.
-- The backend persists information and validates permissions before each action.
-- The AI Engine and workers report results to the backend; they do not write
-  directly to the database.
-- Attachments are stored as files and are linked to cases,
-  executions or bugs through their metadata.
+## Executions
 
-## Data and traceability
+`formato_prueba` and `tipo_prueba` are independent:
 
-Operational information follows this main relationship:
+- `CLASICA`: steps, data and expected result.
+- `API`: `treseko.api-test/v1` contract and HTTP assertions.
+- `CONVERSACIONAL`: endpoint, turns, memory and evaluation.
+- `PERFORMANCE`: reserved format; it has no documented load executor.
+- `tipo_prueba`: `MANUAL`, `AUTOMATIZADA` or `AUTOMATIZADA_AI`.
 
-```text
-Solution → Project → Component → Build → Case → Execution → Evidence
-```
+There is one Automation Worker. `API_EXECUTION` or `treseko-api` framework jobs
+are routed to `native-api-runtime.mjs` and return `treseko.api-result/v1`. The
+external results API is a separate flow: `POST /external/executions/report`.
+There is no second API worker.
 
-Requirements and stories are linked to cases to measure coverage. Executions
-keep a snapshot of the steps and data used, so that a later change to the case
-does not alter the historical result.
+## Data and evidence
 
-## Security and operation
+Executions retain configuration snapshots, results and evidence. Eligible bugs
+and reports are built from the persisted execution. The normal policy redacts
+secrets, cookies, tokens, sensitive variables and content over the limits.
+`public_test_data` only allows explicitly marked test data to be preserved; it
+never includes real data. Snapshots, exports and shared links follow RBAC.
 
-- Permissions are validated in the backend, not only in the interface.
-- API keys, AI credentials and integrations must be stored as deployment
-  secrets or from Treseko's protected configuration.
-- Make backups of the database and the attachment storage before updating or
-  changing infrastructure.
-- Do not expose the backend, the database nor the AI Engine directly to the
-  Internet without a proxy and appropriate access controls.
+## Security
 
-## Where to continue
+- PostgreSQL, Redis, Engine and worker remain on the private network. If a
+  plugin runner is included in a future distribution, it must also remain on
+  the private network.
+- Inject credentials through secret files, never through Git or the frontend.
+- The backend evaluates capability, level and organization/project scope.
+- Back up PostgreSQL and attachments before updating.
+- The runner must not receive the Docker socket, host mounts, DB, Redis or
+  credentials.
 
-- [Quick installation](INSTALLATION.md)
-- [Docker guide](DOCKER_GUIDE.md)
-- [Data, persistence and backups](DATABASE.md)
-- [Automation worker](AUTOMATION_WORKER_V1.md)
-- [AI Engine configuration](AI_ENGINE_CONFIG.md)
+## Continue
+
+- [Installation](INSTALLATION.md)
+- [Docker](DOCKER_GUIDE.md)
+- [Linux](LINUX_SETUP.md)
+- [Database](DATABASE.md)
+- [Access and RBAC](AUTH_RBAC_GUIDE.md)
+- [Worker](AUTOMATION_WORKER_V1.md)
+- [Portability](CASE_PORTABILITY.md)

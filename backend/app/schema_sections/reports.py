@@ -274,6 +274,9 @@ class SharedReportSnapshotResponse(BaseModel):
     created_at: datetime
     expires_at: Optional[datetime] = None
     activo: bool
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[UUID] = None
+    revoked_by_display: Optional[str] = None
     public_url: Optional[str] = None
     has_new_values: bool = False
 
@@ -305,6 +308,9 @@ class SharedReportBundleHistoryItem(BaseModel):
     created_by: Optional[UUID] = None
     created_by_display: Optional[str] = None
     activo: bool = True
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[UUID] = None
+    revoked_by_display: Optional[str] = None
     has_new_values: bool = False
     is_latest: bool = False
     links: Dict[str, str] = Field(default_factory=dict)
@@ -323,6 +329,9 @@ class SharedReportStatus(BaseModel):
     token: str
     activo: bool
     expired: bool = False
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[UUID] = None
+    revoked_by_display: Optional[str] = None
     has_new_values: bool = False
     created_at: datetime
     expires_at: Optional[datetime] = None

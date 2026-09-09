@@ -7,6 +7,7 @@ export type ConfiguracionPageProps = {
   canAccessCapability: (capabilityId: any, level?: any) => boolean
   hasSystemFeature: (featureId: string) => boolean
   showFeedback: (title: string, message: string, variant?: string) => void
+  confirmAction: (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
   apiKeys: any[]
   apiKeysLoading: boolean
   apiKeyName: string
@@ -32,6 +33,7 @@ export type ConfiguracionPageProps = {
   checkAiEngineHealth: (options?: { silent?: boolean }) => Promise<any>
   organizations: any[]
   projectsList: any[]
+  currentProjectId: string | null
   selectedOrganizationId: string | null
   setSelectedOrganizationId: (id: string) => void
   handleCreateOrganization: (event: any) => void
@@ -81,6 +83,11 @@ export type AiWorkflowNode = {
   locked?: boolean
   prompt_template?: string
   config_json?: Record<string, any>
+  input_mapping?: Record<string, any>
+  output_mapping?: Record<string, any>
+  input_ports?: Array<string | { id?: string; name?: string }>
+  output_ports?: Array<string | { id?: string; name?: string }>
+  terminal_ports?: string[]
   position_x?: number
   position_y?: number
   retry_policy?: Record<string, any>
@@ -110,8 +117,9 @@ export type AiWorkflow = {
   version: number
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | string
   is_default?: boolean
-  workflow_format?: 'legacy_v1' | 'block_v2' | 'universal_v2'
-  workflow_purpose?: 'test_execution' | 'story_generation' | 'test_case_generation'
+  workflow_format?: 'legacy_v1' | 'block_v2' | 'universal_v2' | 'universal_v3'
+  workflow_purpose?: 'test_execution' | 'story_generation' | 'test_case_generation' | 'chatbot_evaluation'
+  runtime_mode?: 'legacy' | 'graph_compat' | 'graph_native' | 'shadow_compare' | string
   source_workflow_id?: string | null
   provider_profile_id?: string | null
   fallback_profile_ids?: string[]

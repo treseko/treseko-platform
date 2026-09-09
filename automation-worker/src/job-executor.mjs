@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { executePostmanRuntimeJob } from "./postman-runtime.mjs";
+import { executeApiWorkerJob } from "./native-api-runtime.mjs";
 
 function cleanupWorkspace(workspace) {
   try {
@@ -25,7 +27,7 @@ export function createJobExecutor(deps) {
     compileScript, normalizeDataset, normalizeStepResult, normalizeJobStatus,
     isAssertionLike, artifactFromBuffer, formatLogArg, formatErrorDetail,
     redact, replacePlaceholders, frameworkKey, languageKey, localWorkerSupports,
-    detectScriptFormat, setActiveCorrelationId,
+    detectScriptFormat, setActiveCorrelationId, allowLoopbackForTests,
   } = deps;
 
 async function executePlaywrightTestJob(job, script, variables, started) {
@@ -342,6 +344,40 @@ async function executeJob(job) {
 
   const framework = frameworkKey(job);
   const language = languageKey(job);
+  if (job.job_type === "API_EXECUTION" || framework === "treseko-api") {
+    try {
+      return withCorrelation(await executeApiWorkerJob({
+        job,
+        allowLoopbackForTests: Boolean(allowLoopbackForTests),
+      }));
+    } catch (error) {
+      return withCorrelation({
+        status: "BLOCKED",
+        duration_seconds: 0,
+        observations: "El job API no pudo validarse.",
+        logs: "",
+        error_message: redact(error?.message || error),
+        metadata: { worker: RUNNER_NAME, framework: "treseko-api", language: "declarative", runtime: "native-fetch" },
+        steps: [],
+        api_results: [],
+      });
+    }
+  }
+  if (framework === "postman") {
+    try {
+      return withCorrelation(await executePostmanRuntimeJob({ job, runnerName: RUNNER_NAME }));
+    } catch (error) {
+      return withCorrelation({
+        status: "ERROR",
+        duration_seconds: 0,
+        observations: "El runtime Postman no pudo completar la colección.",
+        logs: "",
+        error_message: redact(error?.message || error),
+        metadata: { worker: RUNNER_NAME, framework: "postman", runtime: "postman-runtime" },
+        steps: [],
+      });
+    }
+  }
   if (!localWorkerSupports(framework, language)) {
     return withCorrelation({
       status: "ERROR",

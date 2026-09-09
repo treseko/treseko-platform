@@ -5,6 +5,7 @@ import { API_BASE } from '../../../../app/constants'
 import { PremiumGate } from '../../../premium/PremiumGate'
 import { featureEnabled, type FeatureLookup } from '../../../premium/featureAccess'
 import { ExtensionInstanceDetails } from './ExtensionInstanceDetails'
+import { ExtensionInstallTargetSelect } from './ExtensionInstallTargetSelect'
 import { useI18n } from '../../../../i18n'
 
 export type ExtensionKind = 'integration' | 'plugin'
@@ -13,6 +14,9 @@ export type ExtensionInstance = {
   id: string
   provider_id: string
   kind: ExtensionKind
+  scope_key: string
+  organizacion_id?: string | null
+  proyecto_id?: string | null
   enabled: boolean
   status: string
   config_json: Record<string, any>
@@ -34,6 +38,7 @@ export type ExtensionItem = {
   builtin?: boolean
   installed: boolean
   instance?: ExtensionInstance | null
+  instances?: ExtensionInstance[]
 }
 
 type OfficialStoreItem = {
@@ -51,6 +56,10 @@ type Props = {
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
   canAccessCapability: (capabilityId: any, level?: any) => boolean
+  organizations: any[]
+  projectsList: any[]
+  currentProjectId: string | null
+  loggedUser: any
 }
 
 const statusVariant = (status?: string) => {
@@ -77,12 +86,28 @@ const fallbackDescription = (item: ExtensionItem, t: (key: string) => string) =>
   return item.kind === 'plugin' ? t('configuracion.integrationPluginDescription') : t('configuracion.integrationDescription')
 }
 
+const scopeLabel = (instance: ExtensionInstance | null | undefined, organizations: any[], projects: any[], t: (key: string) => string) => {
+  if (instance?.proyecto_id) {
+    const project = projects.find(item => String(item.id) === String(instance.proyecto_id))
+    return `${t('configuracion.scopeProject')}: ${project?.nombre || project?.name || instance.proyecto_id}`
+  }
+  if (instance?.organizacion_id) {
+    const organization = organizations.find(item => String(item.id) === String(instance.organizacion_id))
+    return `${t('configuracion.scopeOrganization')}: ${organization?.nombre || organization?.name || instance.organizacion_id}`
+  }
+  return t('configuracion.scopeGlobal')
+}
+
 export function IntegrationsSettingsTab({
   setConfigTab,
   hasSystemFeature,
   fetchWithAuth,
   showFeedback,
   canAccessCapability,
+  organizations,
+  projectsList,
+  currentProjectId,
+  loggedUser,
 }: Props) {
   const { t } = useI18n()
   const enterpriseEnabled = featureEnabled(hasSystemFeature, 'integrations.enterprise')
@@ -98,12 +123,23 @@ export function IntegrationsSettingsTab({
   const [storeLoading, setStoreLoading] = useState(false)
   const [storePaired, setStorePaired] = useState(false)
   const [storeAudit, setStoreAudit] = useState<Array<{ id: string, accion: string, usuario_email?: string, fecha?: string, detalles?: Record<string, any> }>>([])
+  const [installTarget, setInstallTarget] = useState(currentProjectId ? `project:${currentProjectId}` : '')
+  const isGlobalAdmin = String(loggedUser?.role || '').toUpperCase() === 'ADMIN'
 
-  const installedItems = useMemo(() => items.filter(item => item.installed && item.instance), [items])
+  useEffect(() => {
+    if (currentProjectId) {
+      setInstallTarget(previous => !previous || previous.startsWith('project:') ? `project:${currentProjectId}` : previous)
+    }
+  }, [currentProjectId])
+
+  const installedItems = useMemo(() => items.flatMap(item => {
+    const instances = item.instances?.length ? item.instances : item.instance ? [item.instance] : []
+    return instances.map(instance => ({ ...item, instance }))
+  }), [items])
   const builtinItems = useMemo(() => items.filter(item => item.installed && item.builtin && !item.instance), [items])
   const installedCount = installedItems.length + builtinItems.length
   const selected = useMemo(
-    () => installedItems.find(item => item.id === selectedId) || installedItems[0],
+    () => installedItems.find(item => item.instance?.id === selectedId) || installedItems[0],
     [installedItems, selectedId]
   )
 
@@ -115,8 +151,11 @@ export function IntegrationsSettingsTab({
       if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationCatalogLoadError'))
       const nextItems = data.items || []
       setItems(nextItems)
-      const installed = nextItems.filter((item: ExtensionItem) => item.installed && item.instance)
-      setSelectedId(prev => prev && installed.some((item: ExtensionItem) => item.id === prev) ? prev : installed[0]?.id || '')
+      const installed = nextItems.flatMap((item: ExtensionItem) => {
+        const instances = item.instances?.length ? item.instances : item.instance ? [item.instance] : []
+        return instances.map(instance => ({ ...item, instance }))
+      })
+      setSelectedId(prev => prev && installed.some((item: ExtensionItem) => item.instance?.id === prev) ? prev : installed[0]?.instance?.id || '')
     } catch (err: any) {
       showFeedback(t('configuracion.integrationFeedbackTitle'), err?.message || t('configuracion.integrationInstalledLoadError'), 'danger')
     } finally {
@@ -189,8 +228,20 @@ export function IntegrationsSettingsTab({
 
   const installStoreRelease = async (item: OfficialStoreItem) => {
     if (!item.release_id) return
+    const [scope, scopeId] = installTarget.split(':', 2)
+    const target = scope === 'project' && scopeId
+      ? { proyecto_id: scopeId }
+      : scope === 'organization' && scopeId
+        ? { organizacion_id: scopeId }
+        : scope === 'global' && isGlobalAdmin
+          ? {}
+          : null
+    if (!target) {
+      showFeedback(t('configuracion.scopeRequiredTitle'), t('configuracion.scopeRequiredMessage'), 'warning')
+      return
+    }
     try {
-      await request(`${API_BASE}/plugins/store/releases/${item.release_id}/install`, { method: 'POST', body: JSON.stringify({}) })
+      await request(`${API_BASE}/plugins/store/releases/${item.release_id}/install`, { method: 'POST', body: JSON.stringify(target) })
       showFeedback(t('configuracion.integrationInstallSuccessTitle'), `${item.manifest?.name || item.plugin_id} ${t('configuracion.integrationInstallSuccess')}`, 'success')
     } catch (err: any) {
       showFeedback(t('configuracion.integrationInstallFailedTitle'), err?.message || t('configuracion.integrationInstallCheck'), 'danger')
@@ -326,6 +377,7 @@ export function IntegrationsSettingsTab({
                 <Button variant="outline-secondary" size="sm" onClick={loadOfficialStore} disabled={storeLoading}><RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}</Button>
               </div>
             </div>
+            <ExtensionInstallTargetSelect value={installTarget} onChange={setInstallTarget} projects={projectsList} organizations={organizations} allowGlobal={isGlobalAdmin} />
             {storeLoading ? <div className="py-3 text-center"><Spinner size="sm" /></div> : storeItems.length === 0 ? (
               <div className="small text-muted py-2">{t('configuracion.integrationNoReleases')}</div>
             ) : (
@@ -336,7 +388,7 @@ export function IntegrationsSettingsTab({
                     <div className="small text-muted mt-1">{item.manifest?.publisher || 'Treseko'} · {t('configuracion.integrationCompatibleWith')} {item.manifest?.compatibility?.treseko_min || '?'} {t('configuracion.integrationTo')} {item.manifest?.compatibility?.treseko_max || '?'}</div>
                     {item.changelog && <div className="small mt-2">{item.changelog}</div>}
                     <div className="d-flex flex-wrap gap-2 mt-3">
-                      <Button size="sm" variant="primary" onClick={() => installStoreRelease(item)} disabled={saving || !storePaired || !canAccessCapability('plugins.instalar', 'edit')}>
+                      <Button size="sm" variant="primary" onClick={() => installStoreRelease(item)} disabled={saving || !storePaired || !installTarget || !canAccessCapability('plugins.instalar', 'edit')}>
                         {t('configuracion.integrationInstall')}
                       </Button>
                       {!storePaired && <span className="small text-muted align-self-center">{t('configuracion.integrationPairBeforeInstall')}</span>}
@@ -375,7 +427,7 @@ export function IntegrationsSettingsTab({
               <h6 className="fw-bold text-dark mb-1">{t('configuracion.integrationManagementTitle')}</h6>
               <div className="small text-muted">{t('configuracion.integrationManagementDescription')}</div>
             </div>
-            <Badge bg="primary" className="p-2">{installedCount} {t('configuracion.integrationInstalledCount')}</Badge>
+            <Badge bg="primary" className="p-2">{t('configuracion.integrationInstalledCount', { count: installedCount })}</Badge>
           </div>
 
           {!loading && builtinItems.length > 0 && (
@@ -400,15 +452,16 @@ export function IntegrationsSettingsTab({
                 <div className="d-grid gap-2">
                   {installedItems.map(item => (
                     <button
-                      key={item.id}
+                      key={item.instance?.id || item.id}
                       type="button"
-                      className={`extension-installed-picker text-start border rounded-3 p-3 bg-white ${selected?.id === item.id ? 'is-selected' : ''}`}
-                      onClick={() => setSelectedId(item.id)}
+                      className={`extension-installed-picker text-start border rounded-3 p-3 bg-white ${selected?.instance?.id === item.instance?.id ? 'is-selected' : ''}`}
+                      onClick={() => setSelectedId(item.instance?.id || '')}
                     >
                       <div className="d-flex justify-content-between gap-2">
                         <strong>{item.display_name}</strong>
                         <Badge bg={statusVariant(item.instance?.status)}>{statusLabel(item.instance?.status, t)}</Badge>
                       </div>
+                      <div className="small text-primary text-break mt-1">{scopeLabel(item.instance, organizations, projectsList, t)}</div>
                       <div className="small text-muted mt-1">{fallbackDescription(item, t)}</div>
                     </button>
                   ))}

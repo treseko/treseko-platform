@@ -4,9 +4,9 @@ Worker dedicado para ejecutar pruebas automatizadas. La plataforma principal con
 
 ## Requisitos
 
-- Node.js 18 o superior.
+- Node.js 18 o superior (el ejecutor API usa el `fetch` nativo del runtime).
 - Python 3.10 o superior solo si vas a ejecutar Selenium Python.
-- Treseko accesible para el worker, normalmente en `http://localhost:9095/api`.
+- Backend Treseko iniciado, normalmente en `http://localhost:8000`.
 - Acceso a la UI con permiso `automatizacion:edit` para aprobar el worker.
 
 ## Instalacion Rapida
@@ -39,7 +39,7 @@ Selenium 4 usa Selenium Manager para resolver drivers cuando el navegador local 
 Copia `.env.example` a `.env` y ajusta lo necesario:
 
 ```env
-QA_API_BASE=http://localhost:9095/api
+QA_API_BASE=http://localhost:8000
 QA_RUNNER_NAME=Local Multi-Framework Worker
 QA_ORGANIZACION_ID=uuid-de-la-solucion
 QA_HEADLESS=true
@@ -49,6 +49,11 @@ QA_REQUEST_TIMEOUT_MS=10000
 QA_MAX_PARALLEL_JOBS=1
 QA_RUNNER_TAGS=local,v1,playwright,puppeteer,cypress,selenium
 QA_PYTHON_BIN=python
+# Spool durable fuera del árbol del worker (opcional)
+QA_RESULT_SPOOL_DIR=/var/lib/treseko/automation-worker/result-spool
+QA_RESULT_RETRY_ATTEMPTS=3
+QA_RESULT_RETRY_BASE_MS=1000
+QA_RESULT_RETRY_MAX_MS=30000
 ```
 
 No pegues tokens manualmente salvo que uses el flujo legacy. El flujo normal crea un codigo corto y guarda el token definitivo en `.runner-token`.
@@ -89,6 +94,34 @@ Worker esperando vinculacion. Codigo: WK-482913.
 6. Aprueba ese codigo desde `Automatizacion > Workers`.
 
 Al aprobar, el worker guarda el token real en `automation-worker/.runner-token`. Ese archivo es local y no debe subirse a Git.
+
+### Contrato Seguro De Cola
+
+Cada claim debe devolver `lease_token`, `lease_expires_at`, `attempt_count` y
+`max_attempts`. Mientras el job está activo, el worker renueva el lease con
+heartbeats que incluyen `current_job_id` y `lease_token`, incluso mientras
+reintenta entregar el resultado.
+
+Antes del primer POST, el resultado se guarda de forma atómica en un spool
+durable. El valor predeterminado es
+`~/.treseko/automation-worker/result-spool`; en instalaciones administradas se
+recomienda configurarlo fuera del repositorio con `QA_RESULT_SPOOL_DIR`. Los
+archivos se crean con permisos restringidos, se reintentan ante errores de red
+y HTTP 5xx con backoff y se eliminan únicamente después de un ACK 2xx. El mismo
+`result_event_id` se conserva después de un reinicio. Un rechazo 4xx se mueve a
+`quarantine/` y deja un diagnóstico sanitizado.
+
+Mensajes operativos relevantes:
+
+- `El job ... fue tomado por otro worker; se volverá a consultar la cola.`
+- `El lease del job ... venció o fue reemplazado...`
+- `Resultado del job ... pendiente de reenvío...`
+- `Resultado del job ... confirmado y spool eliminado.`
+
+`npm run once` devuelve código de error si una entrega no queda confirmada y
+conserva el spool para el siguiente proceso. No se escriben tokens, leases ni
+payloads sensibles en las trazas; el payload durable queda protegido en disco
+porque es necesario para reanudar la entrega.
 
 ## Comandos
 
@@ -147,6 +180,26 @@ Este worker local anuncia y ejecuta:
 | Selenium | Python |
 | Cypress | JavaScript, TypeScript |
 | Puppeteer | JavaScript, TypeScript |
+
+El worker anuncia `treseko-api: ["declarative"]` y ejecuta jobs
+`API_EXECUTION` con `treseko.api-worker-job/v1`. Los casos se procesan en orden,
+comparten solamente variables `api.*` extraídas y devuelven resultados
+`treseko.api-result/v1` dentro de `api_results`. La evidencia se redacta antes
+de entrar al loop y se limita a 2 MiB por respuesta y 8 MiB por job. Loopback
+solo puede habilitarse desde las pruebas mediante una opción explícita; no hay
+override de producción por payload.
+
+Postman se anuncia como `postman: ["javascript"]` y usa el runtime Postman
+aislado sólo para jobs cuyo `payload_congelado.framework` sea explícitamente
+`postman`. Los casos API importados no cambian de executor por tener origen
+Postman: el runner declarativo del backend sigue siendo el camino por defecto.
+
+La ruta Postman exige `allowed_hosts` proveniente del ambiente, sólo permite
+HTTP/HTTPS, limita cantidad de requests, tamaño de respuesta y tiempo, no sigue
+redirecciones abiertas y bloquea paquetes externos y acceso a archivos. Las
+requests, aserciones, runtime y errores se devuelven como evidencia acotada y
+redactada. Una colección sin allowlist válida queda rechazada antes de enviar
+tráfico.
 
 Java, C# y Ruby no se instalan en este worker Node por defecto. Para esos casos usa un worker especializado que anuncie sus capacidades.
 

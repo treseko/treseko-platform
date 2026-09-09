@@ -20,7 +20,7 @@ export const DEFAULT_BRANDING: BrandingState = {
   logo_url: null,
   enabled: false,
   effective_brand_name: 'Treseko',
-  effective_logo_url: '/gecko-community-icon.png?v=3',
+  effective_logo_url: '/gecko-community-icon.svg?v=4',
   custom_branding_active: false,
   primary_color: '#172033',
   accent_color: '#1677ff',

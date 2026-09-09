@@ -35,6 +35,22 @@ export interface AIResult<T> {
   prompt: any;
   rawResponse: any;
 }
+
+export type VisionCapabilityStatus = 'verified' | 'unsupported' | 'unknown';
+
+export interface VisionCapabilityResult {
+  status: VisionCapabilityStatus;
+  verified: boolean;
+  attempts: Array<{ expected: 'ROJO' | 'AZUL'; answer?: string; ok: boolean; error?: string }>;
+  reason: string;
+}
+
+// Deliberately use two different images. A model that ignores image input but
+// always answers the same token must not be classified as vision-capable.
+const VISION_PROBE_IMAGES = [
+  { expected: 'ROJO' as const, base64: 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAYElEQVR4nO3PwQkAIBDAMAX3H/lwCB9BaCZo96y/HR3wqgGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQHtAgK6AfwYG1VIAAAAAElFTkSuQmCC' },
+  { expected: 'AZUL' as const, base64: 'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAYElEQVR4nO3PwQkAIBDAsBPcf2UdwkcQmgnaNXPmZ1sHvGpAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAuzD7Af1qJsBlAAAAAElFTkSuQmCC' },
+];
 export class AIClient {
   private provider: string;
   private endpoint: string;
@@ -202,8 +218,8 @@ Responde JSON:
   private safeJsonParse(raw: string): any {
     return parseAIJson(raw);
   }
-  private async sendWithRetry<T>(messages: any[], temperature?: number, maxCompletionTokens?: number): Promise<AIResult<T>> {
-    return sendWithRetry<T>(this, messages, temperature, maxCompletionTokens);
+  private async sendWithRetry<T>(messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text'): Promise<AIResult<T>> {
+    return sendWithRetry<T>(this, messages, temperature, maxCompletionTokens, responseFormat);
   }
   async checkLoadingState(screenshotBase64: string): Promise<AIResult<{ loading: boolean, reason: string }>> {
     return checkLoadingState(this, screenshotBase64);
@@ -235,6 +251,7 @@ Responde JSON:
     outputSchema?: Record<string, any>;
     temperature?: number;
     maxCompletionTokens?: number;
+    responseFormat?: 'json_schema' | 'json_object' | 'text';
   }): Promise<AIResult<any>> {
     const prompt = `${args.promptTemplate || 'Analiza el input del workflow y responde AgentOutput JSON.'}
 ### NODO
@@ -267,6 +284,7 @@ Responde SOLO JSON con esta forma minima:
       [{ role: 'user', content: prompt }],
       args.temperature ?? this.temperature,
       args.maxCompletionTokens,
+      args.responseFormat,
     );
   }
   async waitForStability(page: any): Promise<void> {
@@ -303,6 +321,47 @@ Responde SOLO JSON con esta forma minima:
   async checkHealth(): Promise<boolean> {
     const result = await this.checkHealthDetailed();
     return result.ok;
+  }
+  async checkVisionCapability(): Promise<VisionCapabilityResult> {
+    const attempts: VisionCapabilityResult['attempts'] = [];
+    for (const probe of VISION_PROBE_IMAGES) {
+      try {
+        const response = await generateWithProvider(
+          { provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) },
+          {
+            model: this.model,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Observa la imagen. Responde únicamente ROJO o AZUL según el color del cuadrado.' },
+                { type: 'image_url', image_url: { url: `data:image/png;base64,${probe.base64}` } },
+              ],
+            }],
+            temperature: 0,
+            maxTokens: 8,
+            disableThinking: true,
+          },
+        );
+        const answer = String(response.content || '').trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g, '');
+        const ok = answer === probe.expected;
+        attempts.push({ expected: probe.expected, answer: response.content, ok });
+        if (!ok) {
+          return {
+            status: 'unknown', verified: false, attempts,
+            reason: `La respuesta visual no fue concluyente para ${probe.expected}.`,
+          };
+        }
+      } catch (error: any) {
+        attempts.push({ expected: probe.expected, ok: false, error: error?.message || String(error) });
+        const category = error instanceof ProviderRequestError ? error.category : 'provider_error';
+        // Transport failures do not say anything about model capabilities.
+        // Only an explicit client-side rejection is evidence of no vision.
+        const status: VisionCapabilityStatus = error instanceof ProviderRequestError && [400, 404, 415, 422].includes(error.status || 0)
+          ? 'unsupported' : 'unknown';
+        return { status, verified: false, attempts, reason: `La prueba visual fue rechazada: ${category}.` };
+      }
+    }
+    return { status: 'verified', verified: true, attempts, reason: 'El proveedor identificó correctamente dos imágenes de colores distintos.' };
   }
   async checkHealthDetailed(): Promise<{ ok: boolean; category?: string; status?: number }> {
     try {
@@ -449,6 +508,10 @@ function resolveProviderApiKey(provider: string): string | undefined {
     perplexity: ['PERPLEXITY_API_KEY'],
     xai: ['XAI_API_KEY'],
     'azure-openai': ['AZURE_OPENAI_API_KEY'],
+    // LM Studio may require the API key configured by its local server. Keep
+    // it ephemeral in the Engine environment; provider profiles do not store
+    // it in the workflow payload.
+    'lm-studio': ['AI_API_KEY', 'LM_STUDIO_API_KEY'],
     'openai-compatible': ['AI_API_KEY', 'OPENAI_API_KEY'],
   };
   const envNames = envByProvider[provider] || [];

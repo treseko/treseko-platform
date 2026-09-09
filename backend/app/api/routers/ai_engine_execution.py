@@ -83,6 +83,20 @@ async def get_shared_ai_execution_queue(
     from ...services.ai_execution_queue import list_project_ai_queue
     return await list_project_ai_queue(db, proyecto_id)
 
+
+@router.get("/ai-engine/history")
+async def get_ai_execution_history(
+    proyecto_id: UUID,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("motor_ia.ver", "read")),
+):
+    """Durable AI execution index used by the Motor IA history panel."""
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    from ...services.ai_execution_queue import list_project_ai_history
+    return await list_project_ai_history(db, proyecto_id, limit=limit, offset=offset)
+
 @router.post("/ai-engine/executions/{ejecucion_id}/result", response_model=schemas.AiEngineExecutionAck)
 async def complete_ai_engine_execution(
     ejecucion_id: UUID,

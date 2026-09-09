@@ -10,14 +10,16 @@ import logging
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from .. import models
 from ..database import AsyncSessionLocal
 from ..repositories.ai_execution_triggers import recover_stale_ai_executions, trigger_ai_execution
 from ..repositories.core_settings_ai_workflow_helpers import get_ai_engine_config
 from ..services.realtime_events import realtime_event_bus
+from ..services.ai_execution_lifecycle import resolve_queued_execution_mode
 from ..time_utils import utc_now
+from .update_ai_queue_control import AI_QUEUE_LOCK, ai_queue_paused
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +33,36 @@ FINAL_QUEUE_STATES = (
     models.AutomationJobStatus.TIMEOUT,
     models.AutomationJobStatus.CANCELLED,
 )
+RECENT_FINISHED_QUEUE_LIMIT = 25
 _scheduler_task: asyncio.Task | None = None
 _scheduler_lock = asyncio.Lock()
 
 
-async def enqueue_ai_execution(db, execution: models.EjecucionCaso, user_id: UUID) -> models.AutomationJob:
+def _visible_queue_rows(rows, *, finished_limit: int = RECENT_FINISHED_QUEUE_LIMIT):
+    """Return unique active rows plus a bounded newest-first finished tail."""
+    latest_row_by_execution = {}
+    for row in rows:
+        job = row[0]
+        latest_row_by_execution[str(job.ejecucion_id)] = row
+    unique_rows = list(latest_row_by_execution.values())
+    active_rows = [row for row in unique_rows if row[0].estado not in FINAL_QUEUE_STATES]
+    finished_rows = [row for row in unique_rows if row[0].estado in FINAL_QUEUE_STATES]
+    return [*active_rows, *reversed(finished_rows[-finished_limit:])]
+
+
+async def enqueue_ai_execution(
+    db,
+    execution: models.EjecucionCaso,
+    user_id: UUID,
+    requested_mode: models.ExecutionMode = models.ExecutionMode.IA,
+) -> models.AutomationJob:
+    # Serialize enqueue requests for the same execution.  This is deliberately
+    # a row lock rather than a process-local lock: the API and scheduler may
+    # run in different backend processes.
+    locked_execution = await db.get(models.EjecucionCaso, execution.id, with_for_update=True)
+    if locked_execution is None:
+        raise ValueError("Ejecucion no encontrada para encolar la ejecución IA")
+    execution = locked_execution
     existing = (await db.execute(
         select(models.AutomationJob)
         .where(
@@ -47,8 +74,14 @@ async def enqueue_ai_execution(db, execution: models.EjecucionCaso, user_id: UUI
     )).scalars().first()
     if existing:
         return existing
+    run = await db.get(models.TestRun, execution.test_run_id)
+    project = await db.get(models.Proyecto, run.proyecto_id) if run else None
+    if not run or not project:
+        raise ValueError("No se pudo resolver el alcance del proyecto para encolar la ejecución IA")
     job = models.AutomationJob(
         job_type=AI_EXECUTION_JOB_TYPE,
+        organizacion_id=project.organizacion_id,
+        proyecto_id=project.id,
         test_run_id=execution.test_run_id,
         ejecucion_id=execution.id,
         caso_id=execution.caso_id,
@@ -57,7 +90,11 @@ async def enqueue_ai_execution(db, execution: models.EjecucionCaso, user_id: UUI
         required_language="typescript",
         timeout_seconds=900,
         # Never place provider credentials or prompt data in this durable row.
-        payload_congelado={"queue_kind": "ai_execution", "execution_id": str(execution.id)},
+        payload_congelado={
+            "queue_kind": "ai_execution",
+            "execution_id": str(execution.id),
+            "execution_mode": requested_mode.value,
+        },
         creado_por=user_id,
     )
     db.add(job)
@@ -68,6 +105,8 @@ async def enqueue_ai_execution(db, execution: models.EjecucionCaso, user_id: UUI
 async def _context(db, job: models.AutomationJob):
     row = (await db.execute(
         select(models.TestRun, models.CasoPrueba, models.Build)
+        .select_from(models.AutomationJob)
+        .join(models.TestRun, models.TestRun.id == models.AutomationJob.test_run_id)
         .join(models.CasoPrueba, models.CasoPrueba.id == models.AutomationJob.caso_id)
         .outerjoin(models.Build, models.Build.id == models.TestRun.build_id)
         .where(models.AutomationJob.id == job.id)
@@ -111,9 +150,14 @@ async def list_project_ai_queue(db, project_id: UUID, *, recent_hours: int = 24)
         )
         .order_by(models.AutomationJob.fecha_creacion.asc())
     )).all()
+    # A logical execution may have more than one historical scheduler job
+    # (for example after an explicit retry).  The operational monitor must not
+    # render those rows as duplicate queue entries.  It also must not ship an
+    # unbounded day of completed runs to the browser: reports remain available
+    # from Run History, while this view keeps only a small recent tail.
     pending_position = 0
     items = []
-    for job, execution, case, run in rows:
+    for job, execution, case, run in _visible_queue_rows(rows):
         if job.estado == models.AutomationJobStatus.PENDING:
             pending_position += 1
         status = "EN_ESPERA" if job.estado == models.AutomationJobStatus.PENDING else (
@@ -132,6 +176,52 @@ async def list_project_ai_queue(db, project_id: UUID, *, recent_hours: int = 24)
     return items
 
 
+async def list_project_ai_history(db, project_id: UUID, *, limit: int = 100, offset: int = 0):
+    """Return durable AI executions for the Motor IA history view.
+
+    This is intentionally separate from the operational queue: the queue is a
+    small live monitor, while this collection is the durable index from which
+    the report and complete runtime traces can be opened after a refresh.
+    """
+    rows = (await db.execute(
+        select(models.EjecucionCaso, models.CasoPrueba, models.TestRun)
+        .join(models.CasoPrueba, models.CasoPrueba.id == models.EjecucionCaso.caso_id)
+        .join(models.TestRun, models.TestRun.id == models.EjecucionCaso.test_run_id)
+        .where(
+            models.TestRun.proyecto_id == project_id,
+            models.EjecucionCaso.execution_mode == models.ExecutionMode.IA,
+        )
+        .order_by(models.EjecucionCaso.fecha_ejecucion.desc())
+        .offset(offset)
+        .limit(limit)
+    )).all()
+    history = []
+    for execution, case, run in rows:
+        report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
+        history.append({
+            "execution_id": str(execution.id),
+            "run_id": str(run.id),
+            "case_id": str(case.id),
+            "case_code": case.codigo,
+            "case_title": case.titulo,
+            "run_name": run.nombre,
+            "status": execution.estado_resultado.value if hasattr(execution.estado_resultado, "value") else str(execution.estado_resultado),
+            "execution_mode": execution.execution_mode.value if hasattr(execution.execution_mode, "value") else str(execution.execution_mode),
+            "executed_at": execution.fecha_ejecucion,
+            "duration_seconds": execution.duracion_segundos,
+            "confidence": execution.ai_confidence,
+            "consensus": execution.ai_consensus,
+            "failure_category": execution.ai_failure_category,
+            "human_review_required": bool(execution.ai_human_review_required),
+            "review_status": execution.ai_review_status.value if hasattr(execution.ai_review_status, "value") else str(execution.ai_review_status),
+            "has_report": bool(report),
+            "timeline_count": len(report.get("timeline") or []),
+            "agent_event_count": len(report.get("agent_conversation") or []),
+            "workflow_trace_count": len(report.get("workflow_traces") or []),
+        })
+    return history
+
+
 async def _dispatch(job_id: UUID):
     async with AsyncSessionLocal() as db:
         job = await db.get(models.AutomationJob, job_id, with_for_update=True)
@@ -143,7 +233,18 @@ async def _dispatch(job_id: UUID):
         await _publish(db, job, "ia.execution.running")
     try:
         async with AsyncSessionLocal() as db:
-            await trigger_ai_execution(job.ejecucion_id, db)
+            requested_mode = resolve_queued_execution_mode(job.payload_congelado)
+            await trigger_ai_execution(job.ejecucion_id, db, requested_mode)
+            execution = await db.get(models.EjecucionCaso, job.ejecucion_id)
+            if execution and execution.estado_resultado in (
+                models.EstadoResultado.BLOQUEADO,
+                models.EstadoResultado.FALLO,
+            ):
+                # Configuration/dispatch validation can close the execution
+                # normally instead of raising. Close the queue job exactly
+                # once; mark_ai_execution_finished only updates active jobs.
+                await mark_ai_execution_finished(db, execution.id, execution.estado_resultado)
+                await db.commit()
     except Exception as exc:
         async with AsyncSessionLocal() as db:
             job = await db.get(models.AutomationJob, job_id, with_for_update=True)
@@ -161,15 +262,43 @@ async def drain_ai_execution_queue() -> int:
         return 0
     async with _scheduler_lock:
         async with AsyncSessionLocal() as db:
+            # The local asyncio lock is not enough when uvicorn has multiple
+            # workers. PostgreSQL advisory locking makes the count-and-claim
+            # section installation-wide; SQLite/fake sessions keep the local
+            # lock used by tests and native single-process development.
+            bind = getattr(db, "bind", None)
+            dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
+            if dialect_name == "postgresql":
+                await db.execute(text(f"SELECT pg_advisory_xact_lock({AI_QUEUE_LOCK})"))
+            # Read only after taking the same lock as the durable pause writer.
+            # Already claimed jobs may finish; do not recover or claim new work
+            # while the updater owns this pause.
+            if await ai_queue_paused(db):
+                return 0
             # Reconcile terminal callbacks and backend restarts before using a
             # slot. A stale execution is closed, never silently re-run.
-            await recover_stale_ai_executions(db)
+            # Keep recovery, reconciliation, slot counting and claiming in
+            # this same transaction so the advisory transaction lock covers
+            # the complete count-and-claim critical section.
+            await recover_stale_ai_executions(db, commit=False)
             active_rows = (await db.execute(
                 select(models.AutomationJob, models.EjecucionCaso)
                 .join(models.EjecucionCaso, models.EjecucionCaso.id == models.AutomationJob.ejecucion_id)
                 .where(models.AutomationJob.job_type == AI_EXECUTION_JOB_TYPE, models.AutomationJob.estado.in_(ACTIVE_QUEUE_STATES))
             )).all()
             for job, execution in active_rows:
+                # A process can die after claiming a job but before starting
+                # the dispatch. Requeue that orphan instead of consuming the
+                # global AI slot forever; the execution remains SIN_CORRER and
+                # no duplicate logical execution is created.
+                if (
+                    execution.estado_resultado == models.EstadoResultado.SIN_CORRER
+                    and job.estado in ACTIVE_QUEUE_STATES
+                    and job.fecha_inicio is None
+                ):
+                    job.estado = models.AutomationJobStatus.PENDING
+                    job.fecha_claim = None
+                    continue
                 if execution.estado_resultado not in (models.EstadoResultado.SIN_CORRER, models.EstadoResultado.EJECUTANDO_AI):
                     job.estado = (
                         models.AutomationJobStatus.PASSED if execution.estado_resultado == models.EstadoResultado.PASO
@@ -177,7 +306,6 @@ async def drain_ai_execution_queue() -> int:
                         else models.AutomationJobStatus.FAILED
                     )
                     job.fecha_fin = job.fecha_fin or utc_now()
-            await db.commit()
             config = await get_ai_engine_config(db)
             limit = max(1, min(5, int(config.get("max_parallel_ai_runs") or 1)))
             active = (await db.execute(
@@ -188,6 +316,7 @@ async def drain_ai_execution_queue() -> int:
             )).scalars().all()
             available = max(0, limit - len(active))
             if not available:
+                await db.commit()
                 return 0
             jobs = (await db.execute(
                 select(models.AutomationJob)

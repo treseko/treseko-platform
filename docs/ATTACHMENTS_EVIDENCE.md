@@ -1,58 +1,43 @@
 # Adjuntos y evidencias
 
-Los adjuntos ayudan a definir un caso y a demostrar qué ocurrió durante una
-ejecución. Treseko los conserva junto al paso o resultado correspondiente para
-que sigan disponibles en el historial y los reportes.
+Los adjuntos ayudan a definir un caso y a demostrar qué ocurrió. La evidencia
+queda asociada al paso, snapshot o resultado para consultarla desde historial,
+bug e informes.
 
 ## Dos usos distintos
 
-| Uso | Cuándo adjuntarlo | Ejemplos |
+| Uso | Cuándo | Ejemplos |
 |---|---|---|
-| Referencia del paso | Al diseñar un caso. | Captura de la acción, imagen esperada, documento de apoyo. |
-| Evidencia de ejecución | Al ejecutar o analizar un resultado. | Screenshot, foto, PDF o log. |
+| Referencia del caso | Al diseñar o versionar. | Imagen esperada o documento de apoyo. |
+| Evidencia de ejecución | Al ejecutar o investigar. | Screenshot, PDF, foto, log o respuesta. |
 
-## Adjuntar una referencia a un caso
+Una referencia explica cómo probar; una evidencia demuestra qué ocurrió.
+
+## Adjuntar una referencia
 
 1. Abrí **Añadir Pruebas** y editá el caso.
-2. Elegí el paso correspondiente.
-3. Adjuntá la referencia de acción o de resultado esperado.
-4. Guardá el caso.
-
-La referencia queda disponible para quienes ejecuten el caso. Usá nombres de
-archivo claros y evitá subir información sensible que no sea necesaria.
+2. Elegí paso o sección.
+3. Adjuntá el archivo.
+4. Guardá la versión.
 
 ## Adjuntar evidencia durante una ejecución
 
-1. En la consola de ejecución, completá el resultado del paso.
-2. Seleccioná **Adjuntar evidencia**.
-3. Elegí el archivo y esperá la confirmación de carga.
-4. Guardá el resultado del paso o finalizá la ejecución.
+1. Completá el resultado en la consola correspondiente.
+2. Elegí **Adjuntar evidencia**.
+3. Seleccioná el archivo y esperá confirmación.
+4. Guardá el resultado o finalizá.
 
-Una evidencia puede acompañar un fallo, un bloqueo o un resultado exitoso. Si
-vas a reportar un bug, adjuntala antes de crear el reporte para que el contexto
-se copie correctamente.
+En API o conversacional puede haber snapshots de configuración, respuestas,
+aserciones, turnos, trazas y variables. Esos datos pertenecen al formato y no
+se reemplazan con pasos clásicos.
 
-## Configuración para administradores
+## Política y problemas
 
-Abrí **Configuración → Preferencias → Adjuntos y evidencias** para definir:
+Si tu instalación lo ofrece, **Configuración → Preferencias → Adjuntos y
+evidencias** permite definir tipos, tamaño máximo, cantidad, portapapeles y
+obligatoriedad ante fallos. La carga requiere el permiso correspondiente.
 
-- tipos de archivo permitidos;
-- tamaño máximo por archivo;
-- cantidad máxima por paso y por evidencia;
-- pegado desde el portapapeles;
-- obligatoriedad de evidencia ante fallos.
-
-Aplicá límites acordes al almacenamiento disponible y a las políticas de tu
-organización. Los archivos se guardan fuera de la base de datos y Treseko usa
-su huella para evitar duplicados físicos.
-
-## Consultar y resolver problemas
-
-Las referencias se ven al editar o ejecutar un caso. Las evidencias de
-ejecución se consultan desde el resultado, Historial Runs, Bug Tracker y los
-reportes relacionados.
-
-Si una carga falla, verificá que el archivo cumpla los tipos y tamaños
-permitidos, que tu rol permita adjuntar evidencia y que haya espacio de
-almacenamiento disponible. No incluyas secretos, contraseñas o datos personales
-innecesarios en capturas y logs.
+Las evidencias se consultan desde resultado, Historial Runs, Bug Tracker,
+Centro de Incidencias y reportes. Si falla una carga, verificá tipo, tamaño,
+permisos y almacenamiento. No incluyas secretos ni datos personales
+innecesarios.

@@ -7,6 +7,8 @@ import type { AiWorkflow } from '../../types/configuracion'
 import type { FetchWithAuth } from '../../api/configuracionApi'
 import { AiProviderProfilesPanel } from './AiProviderProfilesPanel'
 import { useI18n } from '../../../../i18n'
+import { humanizeAiError } from '../../../../app/errorMessages'
+import { activeWorkflowsForPurpose } from '../../workflowSelection'
 
 type Props = {
   aiEngineConfig: any
@@ -161,9 +163,7 @@ export function AiEngineSettingsCards({
     { purpose: 'story_generation', label: t('configuracion.aiEngineStoryGeneration') },
     { purpose: 'test_case_generation', label: t('configuracion.aiEngineCaseGeneration') },
   ] as const
-  const activeWorkflowsByPurpose = (purpose: typeof workflowUses[number]['purpose']) => aiWorkflows.filter(
-    workflow => workflow.status === 'ACTIVE' && workflow.workflow_purpose === purpose,
-  )
+  const activeWorkflowsByPurpose = (purpose: typeof workflowUses[number]['purpose']) => activeWorkflowsForPurpose(aiWorkflows, purpose)
   const selectedWorkflowIdForPurpose = (purpose: typeof workflowUses[number]['purpose']) => (
     aiEngineConfig.active_workflow_ids?.[purpose]
     || (purpose === 'test_execution' ? aiEngineConfig.active_workflow_id : '')
@@ -348,7 +348,7 @@ export function AiEngineSettingsCards({
             <div className="small text-uppercase text-muted fw-bold mb-1">{t('configuracion.aiEngineDiagnostics')}</div>
             <h6 className="fw-bold mb-1">{t('configuracion.aiEngineStatus')}: {engineStatusLabel}</h6>
             <div className="small text-muted">
-              {aiEngineHealth?.detail || (aiEngineHealth
+              {humanizeAiError(aiEngineHealth?.detail) || (aiEngineHealth
                 ? `${t('configuracion.aiEngineLabel')} ${aiEngineHealth?.engine?.engine?.version || t('configuracion.aiEngineEngineActive')}${llmOnline ? t('configuracion.aiEngineModelAvailable') : t('configuracion.aiEngineProviderReview')}`
                 : t('configuracion.aiEngineHealthHint'))}
             </div>

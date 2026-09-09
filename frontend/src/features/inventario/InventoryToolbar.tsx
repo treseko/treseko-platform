@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Col, Form, InputGroup, Row } from 'react-bootstrap'
 import { Boxes, Globe, Info, Network, Plus, Search, Server } from 'lucide-react'
+import { inventoryAria, inventoryLabel } from './inventoryPresentation'
 
 const ASSET_TYPES = ['Servidor', 'Computadora', 'Laptop', 'Dispositivo movil', 'Tablet', 'Router/Switch', 'Impresora', 'Dispositivo IoT', 'Nodo de ejecucion', 'Maquina virtual', 'Contenedor', 'Herramienta digital', 'Servicio', 'API', 'Base de datos', 'Otro']
 const NATURES = ['fisico', 'virtual', 'digital']
@@ -34,7 +35,7 @@ export function InventoryToolbar({ options }: { options: any }) {
             setNewCategoryName('')
           }}
         >
-          <Form.Control name="a11y-inventorytoolbartsx-37" aria-label="Campo de formulario"
+          <Form.Control name="a11y-inventorytoolbartsx-37" aria-label={inventoryAria(t, t('inventario.newCategory'))}
             size="sm"
             value={newCategoryName}
             onChange={event => setNewCategoryName(event.target.value)}
@@ -71,35 +72,35 @@ export function InventoryToolbar({ options }: { options: any }) {
       <Col xl={4} lg={6}>
         <InputGroup size="sm">
           <InputGroup.Text className="bg-white"><Search size={14} /></InputGroup.Text>
-          <Form.Control name="a11y-inventorytoolbartsx-74" aria-label="Campo de formulario" value={filters.q} onChange={event => setFilters({ ...filters, q: event.target.value })} placeholder={t('inventario.search')} />
+          <Form.Control name="a11y-inventorytoolbartsx-74" aria-label={inventoryAria(t, t('inventario.search'))} value={filters.q} onChange={event => setFilters({ ...filters, q: event.target.value })} placeholder={t('inventario.search')} />
         </InputGroup>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select name="a11y-inventorytoolbartsx-78" aria-label="Campo de formulario" size="sm" value={filters.tipo} onChange={event => setFilters({ ...filters, tipo: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-78" aria-label={inventoryAria(t, t('inventario.type'))} size="sm" value={filters.tipo} onChange={event => setFilters({ ...filters, tipo: event.target.value })}>
           <option value="">{t('inventario.type')}</option>
-          {ASSET_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+          {ASSET_TYPES.map(type => <option key={type} value={type}>{inventoryLabel(t, 'assetType', type)}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select name="a11y-inventorytoolbartsx-84" aria-label="Campo de formulario" size="sm" value={filters.naturaleza} onChange={event => setFilters({ ...filters, naturaleza: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-84" aria-label={inventoryAria(t, t('inventario.nature'))} size="sm" value={filters.naturaleza} onChange={event => setFilters({ ...filters, naturaleza: event.target.value })}>
           <option value="">{t('inventario.nature')}</option>
-          {NATURES.map(nature => <option key={nature} value={nature}>{nature}</option>)}
+          {NATURES.map(nature => <option key={nature} value={nature}>{inventoryLabel(t, 'nature', nature)}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select name="a11y-inventorytoolbartsx-90" aria-label="Campo de formulario" size="sm" value={filters.estado} onChange={event => setFilters({ ...filters, estado: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-90" aria-label={inventoryAria(t, t('inventario.status'))} size="sm" value={filters.estado} onChange={event => setFilters({ ...filters, estado: event.target.value })}>
           <option value="">{t('inventario.status')}</option>
-          {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+          {STATUSES.map(status => <option key={status} value={status}>{inventoryLabel(t, 'status', status)}</option>)}
         </Form.Select>
       </Col>
       <Col xl={2} md={4}>
-        <Form.Select name="a11y-inventorytoolbartsx-96" aria-label="Campo de formulario" size="sm" value={filters.criticidad} onChange={event => setFilters({ ...filters, criticidad: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-96" aria-label={inventoryAria(t, t('inventario.criticality'))} size="sm" value={filters.criticidad} onChange={event => setFilters({ ...filters, criticidad: event.target.value })}>
           <option value="">{t('inventario.criticality')}</option>
-          {CRITICALITIES.map(criticality => <option key={criticality} value={criticality}>{criticality}</option>)}
+          {CRITICALITIES.map(criticality => <option key={criticality} value={criticality}>{inventoryLabel(t, 'criticality', criticality)}</option>)}
         </Form.Select>
       </Col>
       <Col xl={3} md={6}>
-        <Form.Select name="a11y-inventorytoolbartsx-102" aria-label="Campo de formulario" size="sm" value={filters.parentId} onChange={event => setFilters({ ...filters, parentId: event.target.value })}>
+        <Form.Select name="a11y-inventorytoolbartsx-102" aria-label={inventoryAria(t, t('inventario.parentAsset'))} size="sm" value={filters.parentId} onChange={event => setFilters({ ...filters, parentId: event.target.value })}>
           <option value="">{t('inventario.parentAsset')}</option>
           {parentOptions.map(asset => <option key={asset.id} value={asset.id}>{asset.nombre}</option>)}
         </Form.Select>

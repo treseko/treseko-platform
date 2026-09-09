@@ -1,9 +1,13 @@
 import asyncio
+from html import escape
 
 from fastapi import APIRouter, Path
+from fastapi.responses import HTMLResponse
 
 from ...main_context import *
 from .report_rendering import *
+from .report_rendering_sections import _format_report_datetime
+from .system_support import branding_state as _live_branding_state
 from .reports_shared import *
 from .reports_shared import (
     SHARED_REPORT_TOKEN_PATH,
@@ -22,13 +26,94 @@ from .reports_shared import (
 
 router = APIRouter(tags=["reports"])
 
+
+def _revoked_public_report_response(snapshot, branding: dict | None = None) -> HTMLResponse:
+    """Return a safe, human-readable response for a revoked public link.
+
+    The report payload is deliberately not rendered. A holder of an old link
+    may learn only that it was revoked, when, and by whom; the report content
+    remains unavailable.
+    """
+    revoker = getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)
+    revoked_by = (
+        getattr(revoker, "nombre_completo", None)
+        or getattr(revoker, "email", None)
+        or "Usuario no disponible"
+    )
+    revoked_at = getattr(snapshot, "revoked_at", None)
+    revoked_at_text = _format_report_datetime(revoked_at) if revoked_at else "Fecha no disponible"
+    live_brand_name = str(
+        (branding or {}).get("effective_brand_name")
+        or ((getattr(snapshot, "payload", None) or {}).get("metadata") or {}).get("branding", {}).get("brand_name")
+        or "Treseko"
+    ).strip() or "Treseko"
+    live_brand_name = escape(live_brand_name)
+    title = escape(str(getattr(snapshot, "title", None) or "Informe compartido"))
+    actor = escape(str(revoked_by))
+    date = escape(str(revoked_at_text))
+    body = f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Informe revocado</title>
+  <style>
+    :root {{ color-scheme: light; font-family: Inter, system-ui, sans-serif; }}
+    body {{ margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% 48%, rgba(31, 79, 191, .10), transparent 42%), #f4f7fb; color: #172033; }}
+    .report-page {{ position: relative; min-height: 100vh; display: grid; place-items: center; }}
+    main {{ position: relative; z-index: 1; width: min(560px, calc(100% - 32px)); box-sizing: border-box; padding: 32px; border: 1px solid #dbe3ef; border-radius: 14px; background: #fff; box-shadow: 0 12px 30px rgba(23, 32, 51, .08); }}
+    .badge {{ display: inline-block; padding: 5px 9px; border-radius: 999px; background: #fff0f1; color: #b42318; font-size: 12px; font-weight: 700; }}
+    h1 {{ margin: 16px 0 8px; font-size: 24px; }}
+    p {{ line-height: 1.55; }}
+    dl {{ margin: 24px 0 0; padding: 16px; border-radius: 10px; background: #f7f9fc; }}
+    dt {{ margin-top: 12px; color: #667085; font-size: 12px; font-weight: 700; }}
+    dt:first-child {{ margin-top: 0; }}
+    dd {{ margin: 4px 0 0; overflow-wrap: anywhere; }}
+    .watermark {{ position: absolute; inset: 0; z-index: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); grid-auto-rows: 130px; align-content: start; gap: 58px 70px; padding: 42px 18px; overflow: hidden; pointer-events: none; }}
+    .watermark span {{ color: #1f4fbf; font-size: clamp(32px, 5vw, 58px); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .14; transform: rotate(-24deg); white-space: nowrap; mix-blend-mode: multiply; }}
+    .brand-note {{ margin: 24px 0 0; color: #667085; font-size: 12px; font-weight: 700; text-align: center; }}
+  </style>
+</head>
+<body>
+  <div class="report-page">
+  <main>
+    <span class="badge">ENLACE REVOCADO</span>
+    <h1>Este informe ya no está disponible</h1>
+    <p>El enlace compartido fue revocado y el contenido del informe no puede consultarse desde esta URL.</p>
+    <dl>
+      <dt>Informe</dt>
+      <dd>{title}</dd>
+      <dt>Revocado por</dt>
+      <dd>{actor}</dd>
+      <dt>Fecha de revocación</dt>
+      <dd>{date}</dd>
+    </dl>
+    <p class="brand-note">Gracias por utilizar {live_brand_name}</p>
+  </main>
+  <div class="watermark" aria-hidden="true">{"".join(f"<span>{live_brand_name}</span>" for _ in range(64))}</div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(
+        content=body,
+        status_code=410,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 @router.get("/s/reports/{token}.md", name="public_shared_report_markdown")
 async def public_shared_report_markdown(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
     _enforce_public_shared_report_rate_limit(request, token)
     snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
+    if not snapshot:
         raise HTTPException(status_code=404, detail="Informe no disponible")
     if not _is_public_shared_report(snapshot):
+        raise HTTPException(status_code=404, detail="Informe no disponible")
+    if not snapshot.activo:
+        return _revoked_public_report_response(snapshot, await _live_branding_state(db))
+    if crud.shared_report_is_expired(snapshot):
         raise HTTPException(status_code=404, detail="Informe no disponible")
     content = _shared_report_markdown(snapshot, await crud.shared_report_has_new_values(db, snapshot))
     filename = f"{snapshot.token}.md"
@@ -50,9 +135,13 @@ async def pretty_public_shared_report_markdown(
 async def public_shared_report_csv(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
     _enforce_public_shared_report_rate_limit(request, token)
     snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
+    if not snapshot:
         raise HTTPException(status_code=404, detail="Informe no disponible")
     if not _is_public_shared_report(snapshot):
+        raise HTTPException(status_code=404, detail="Informe no disponible")
+    if not snapshot.activo:
+        return _revoked_public_report_response(snapshot, await _live_branding_state(db))
+    if crud.shared_report_is_expired(snapshot):
         raise HTTPException(status_code=404, detail="Informe no disponible")
     return _shared_report_csv_response(_shared_report_csv(snapshot), f"{snapshot.token}.csv")
 
@@ -72,14 +161,18 @@ async def pretty_public_shared_report_csv(
 async def public_shared_report_pdf(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
     _enforce_public_shared_report_rate_limit(request, token)
     snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
+    if not snapshot:
         raise HTTPException(status_code=404, detail="Informe no disponible")
     if not _is_public_shared_report(snapshot):
+        raise HTTPException(status_code=404, detail="Informe no disponible")
+    if not snapshot.activo:
+        return _revoked_public_report_response(snapshot, await _live_branding_state(db))
+    if crud.shared_report_is_expired(snapshot):
         raise HTTPException(status_code=404, detail="Informe no disponible")
     has_new_values = await crud.shared_report_has_new_values(db, snapshot)
     latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
     latest_url = _snapshot_url(latest, request) if latest else None
-    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url)
+    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url, await _live_branding_state(db))
 
 @router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}.pdf", name="pretty_public_shared_report_pdf")
 async def pretty_public_shared_report_pdf(
@@ -97,14 +190,18 @@ async def pretty_public_shared_report_pdf(
 async def public_shared_report_v2(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
     _enforce_public_shared_report_rate_limit(request, token)
     snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
+    if not snapshot:
         raise HTTPException(status_code=404, detail="Informe no disponible")
     if not _is_public_shared_report(snapshot):
+        raise HTTPException(status_code=404, detail="Informe no disponible")
+    if not snapshot.activo:
+        return _revoked_public_report_response(snapshot, await _live_branding_state(db))
+    if crud.shared_report_is_expired(snapshot):
         raise HTTPException(status_code=404, detail="Informe no disponible")
     has_new_values = await crud.shared_report_has_new_values(db, snapshot)
     latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
     latest_url = _snapshot_url(latest, request) if latest else None
-    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url))
+    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url, await _live_branding_state(db)))
 
 @router.get("/informes/{solution}/{project}/{build}/{report_type}/{token}", response_class=HTMLResponse, name="pretty_public_shared_report")
 async def pretty_public_shared_report(
@@ -186,7 +283,7 @@ async def internal_shared_report_pdf(
     has_new_values = await crud.shared_report_has_new_values(db, snapshot)
     latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
     latest_url = _snapshot_url(latest, request) if latest else None
-    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url)
+    return await _shared_report_pdf_response(snapshot, request, has_new_values, latest_url, await _live_branding_state(db))
 
 @router.get("/informes-internos/{solution}/{project}/{build}/{token}.pdf", name="pretty_internal_shared_report_pdf")
 async def pretty_internal_shared_report_pdf(
@@ -216,7 +313,7 @@ async def internal_shared_report(
     has_new_values = await crud.shared_report_has_new_values(db, snapshot)
     latest = await crud.get_latest_equivalent_shared_report(db, snapshot) if has_new_values else None
     latest_url = _snapshot_url(latest, request) if latest else None
-    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url))
+    return _shared_report_html_response(_shared_report_html(snapshot, request, has_new_values, latest_url, await _live_branding_state(db)))
 
 @router.get("/informes-internos/{solution}/{project}/{build}/{token}", response_class=HTMLResponse, name="pretty_internal_shared_report")
 async def pretty_internal_shared_report(
@@ -234,9 +331,13 @@ async def pretty_internal_shared_report(
 async def public_shared_report(request: Request, token: str = SHARED_REPORT_TOKEN_PATH, db: AsyncSession = Depends(get_db)):
     _enforce_public_shared_report_rate_limit(request, token)
     snapshot = await crud.get_shared_report_by_token(db, token)
-    if not snapshot or not snapshot.activo or crud.shared_report_is_expired(snapshot):
+    if not snapshot:
         raise HTTPException(status_code=404, detail="Informe no disponible")
     if not _is_public_shared_report(snapshot):
+        raise HTTPException(status_code=404, detail="Informe no disponible")
+    if not snapshot.activo:
+        return _revoked_public_report_response(snapshot, await _live_branding_state(db))
+    if crud.shared_report_is_expired(snapshot):
         raise HTTPException(status_code=404, detail="Informe no disponible")
     has_new_values = await crud.shared_report_has_new_values(db, snapshot)
     payload = snapshot.payload or {}

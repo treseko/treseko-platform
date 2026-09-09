@@ -2,59 +2,44 @@
 
 <!-- Language: en -->
 
-Attachments help define a case and demonstrate what happened during an
-execution. Treseko keeps them alongside the corresponding step or result so
-they stay available in the history and in the reports.
+Attachments help define a case and demonstrate what happened. Evidence stays
+linked to the step, snapshot or result so it can be consulted from history,
+bugs and reports.
 
 ## Two different uses
 
 | Use | When to attach | Examples |
 |---|---|---|
-| Step reference | When designing a case. | Screenshot of the action, expected image, supporting document. |
-| Execution evidence | When executing or analyzing a result. | Screenshot, photo, PDF or log. |
+| Case reference | When designing or versioning. | Expected image or supporting document. |
+| Execution evidence | When executing or investigating. | Screenshot, PDF, photo, log or response. |
+
+A reference explains how to test; evidence demonstrates what happened.
 
 ## Attach a reference to a case
 
 1. Open **Add Tests** and edit the case.
-2. Choose the corresponding step.
-3. Attach the action reference or the expected result reference.
-4. Save the case.
-
-The reference stays available for those who execute the case. Use clear file
-names and avoid uploading sensitive information that is not necessary.
+2. Choose a step or section.
+3. Attach the file.
+4. Save the version.
 
 ## Attach evidence during an execution
 
-1. In the execution console, complete the step result.
+1. Complete the result in the corresponding console.
 2. Select **Attach evidence**.
 3. Choose the file and wait for the upload confirmation.
-4. Save the step result or finish the execution.
+4. Save the result or finish the execution.
 
-Evidence can accompany a failure, a blocked state or a successful result. If
-you are going to report a bug, attach it before creating the report so that the
-context is copied correctly.
+API or conversational tests may include configuration snapshots, responses,
+assertions, turns, traces and variables. Those data belong to the format and
+are not replaced with classic steps.
 
-## Configuration for administrators
+## Policy and troubleshooting
 
-Open **Settings → Preferences → Attachments and evidence** to define:
+If your installation provides it, **Settings → Preferences → Attachments and
+evidence** lets you define types, maximum size, count, clipboard support and
+whether evidence is mandatory on failures. Uploading requires the relevant
+permission.
 
-- allowed file types;
-- maximum size per file;
-- maximum count per step and per evidence;
-- pasting from the clipboard;
-- whether evidence is mandatory on failures.
-
-Apply limits that fit the available storage and your organization's policies.
-Files are stored outside the database and Treseko uses
-their fingerprint to avoid physical duplicates.
-
-## Check and troubleshoot
-
-References are seen when editing or executing a case. Execution
-evidence can be consulted from the result, Run History, Bug Tracker and the
-related reports.
-
-If an upload fails, verify that the file meets the allowed types and sizes,
-that your role allows attaching evidence and that there is available storage.
-Do not include secrets, passwords or unnecessary personal data in screenshots
-and logs.
+Evidence can be consulted from the result, Run History, Bug Tracker, Incident
+Center and reports. If an upload fails, check type, size, permissions and
+storage. Do not include secrets or unnecessary personal data.

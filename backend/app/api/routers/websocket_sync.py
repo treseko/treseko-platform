@@ -1,7 +1,18 @@
 from .websocket_support import *
+from ...services.ai_execution_lifecycle import terminal_report_metadata
 
 def _log_engine_ws_error(exc: Exception) -> None:
     logger.warning("WS Engine error: %s", sanitize_external_error(exc))
+
+
+def _locked_engine_finish_execution_query(ejecucion_id: UUID):
+    """Serialize WebSocket completion with the terminal HTTP callback."""
+
+    return (
+        select(models.EjecucionCaso)
+        .filter(models.EjecucionCaso.id == ejecucion_id)
+        .with_for_update()
+    )
 
 
 @router.websocket("/ws/project-sync/{project_id}")
@@ -248,8 +259,13 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
 
                 async with AsyncSessionLocal() as session:
                     context = await _get_execution_context(session, ejecucion_id)
+                    # The terminal HTTP callback writes the complete report at
+                    # the same time this WebSocket can announce
+                    # ``report_pending``. Serialize both writers on the
+                    # execution row so a stale pending snapshot can never
+                    # overwrite the complete terminal report.
                     result = await session.execute(
-                        select(models.EjecucionCaso).filter(models.EjecucionCaso.id == ejecucion_id)
+                        _locked_engine_finish_execution_query(ejecucion_id)
                     )
                     execution = result.scalar_one_or_none()
                     if not context or not execution:
@@ -272,7 +288,10 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                         execution.execution_mode = models.ExecutionMode.IA
                         execution.duracion_segundos = duration_seconds
                         execution.observaciones = observations or error_message or execution.observaciones
-                        execution.fecha_ejecucion = now
+                        # fecha_ejecucion represents the real start, not the
+                        # arrival time of the terminal event.
+                        if execution.fecha_ejecucion is None:
+                            execution.fecha_ejecucion = now
                         current_report = execution.ai_report if isinstance(execution.ai_report, dict) else {}
                         fallback_report = {
                             **current_report,
@@ -286,6 +305,13 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                                 summary.get("human_review_required", estado != models.EstadoResultado.PASO)
                             ),
                             "completed_via": "engine.websocket.finish",
+                            **terminal_report_metadata(
+                                delivery_id=f"ai-websocket:{ejecucion_id}",
+                                completed_via="engine.websocket.finish",
+                                human_review_required=bool(
+                                    summary.get("human_review_required", estado != models.EstadoResultado.PASO)
+                                ),
+                            ),
                         }
                         if error_message:
                             fallback_report["error_message"] = error_message
@@ -309,6 +335,8 @@ async def sync_ai_engine(websocket: WebSocket, ejecucion_id: UUID):
                             if execution.ai_human_review_required
                             else models.AiReviewStatus.NO_REQUIERE_REVISION
                         )
+                        from ...services.ai_execution_queue import mark_ai_execution_finished
+                        await mark_ai_execution_finished(session, ejecucion_id, estado)
 
                         pending_result = await session.execute(
                             select(models.EjecucionCaso.id)

@@ -10,7 +10,7 @@ router = APIRouter(tags=["Users"])
 @router.get("/users/me/preferences", response_model=schemas.UserPreferences)
 async def read_my_preferences(current_user: models.Usuario = Depends(auth.check_capability("configuracion.preferencias", "read"))):
     return schemas.UserPreferences(
-        personal_theme=current_user.personal_theme or "system",
+        personal_theme=current_user.personal_theme or "light",
         profile_settings=current_user.profile_settings or {},
         project_theme_overrides=current_user.project_theme_overrides or {},
     )

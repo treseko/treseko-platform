@@ -1,7 +1,7 @@
 export type MotorIaTranslator = (key: any, params?: Record<string, string | number>) => string
 
 export type IaLogLevel = 'error' | 'warn' | 'engine' | 'ws' | 'run' | 'system' | 'queue' | 'info'
-export type IaRunStatus = 'EN_ESPERA' | 'EN_EJECUCION' | 'PASO' | 'FALLO' | 'BLOQUEADO' | 'ERROR' | 'STREAM_CERRADO'
+export type IaRunStatus = 'EN_ESPERA' | 'EN_EJECUCION' | 'PASO' | 'FALLO' | 'BLOQUEADO' | 'ERROR' | 'STREAM_CERRADO' | 'TIMEOUT' | 'SKIPPED' | 'CANCELLED' | 'REQUIERE_REVISION'
 
 export type IaLogEntry = {
   ts: string
@@ -19,6 +19,7 @@ export type IaLogEntry = {
 }
 
 export type IaExecutionStream = {
+  jobId?: string
   executionId: string
   caseId: string
   runId?: string
@@ -36,6 +37,7 @@ export type IaExecutionStream = {
 }
 
 export type IaQueueItem = {
+  jobId?: string
   caseId: string
   executionId: string
   runId?: string

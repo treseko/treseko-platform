@@ -2,9 +2,9 @@ import { startTransition } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 type CreateExecutionCaseSelectionActionsParams = {
-  viewMode: 'list' | 'manual_exec'
+  viewMode: 'list' | 'manual_exec' | 'chatbot_manual'
   currentExecutionRun: any
-  loadCasoExecutionHistory: (caseId: string) => Promise<any[]>
+  loadCasoExecutionHistory: (caseId: string) => Promise<any[] & { total?: number; stats?: any }>
   loadExecutionDetails: (runId: string, caseId: string) => Promise<any>
   setStepResults: Dispatch<SetStateAction<Record<number, string>>>
   setSnapshotNotes: Dispatch<SetStateAction<Record<number, string>>>
@@ -35,7 +35,7 @@ export function createExecutionCaseSelectionActions({
   setCasosList
 }: CreateExecutionCaseSelectionActionsParams) {
   const handleSelectTestForExecution = async (test: any) => {
-    const activeRun = viewMode === 'manual_exec' ? currentExecutionRun : null
+    const activeRun = (viewMode === 'manual_exec' || viewMode === 'chatbot_manual') ? currentExecutionRun : null
 
     // En una ejecución activa, conservar el caso visible hasta disponer de
     // todos los datos del nuevo caso. Si se limpian los estados antes de la
@@ -51,9 +51,11 @@ export function createExecutionCaseSelectionActions({
             lastExecutedAt: latestHistory.date,
             lastExecutedBy: latestHistory.executedBy,
             lastExecutedVersion: latestHistory.versionExecuted,
-            history
+            history,
+            historyTotal: history.total ?? history.length,
+            historyStats: history.stats || null,
           }
-        : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history }
+        : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history, historyTotal: history.total ?? history.length, historyStats: history.stats || null }
       await loadExecutionDetails(activeRun.id, test.id)
       startTransition(() => {
         setSelectedTest(hydratedTest)
@@ -87,9 +89,11 @@ export function createExecutionCaseSelectionActions({
           lastExecutedAt: latestHistory.date,
           lastExecutedBy: latestHistory.executedBy,
           lastExecutedVersion: latestHistory.versionExecuted,
-          history
+          history,
+          historyTotal: history.total ?? history.length,
+          historyStats: history.stats || null,
         }
-      : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history }
+      : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history, historyTotal: history.total ?? history.length, historyStats: history.stats || null }
     startTransition(() => {
       setSelectedTest(hydratedTest)
       setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))

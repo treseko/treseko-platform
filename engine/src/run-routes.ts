@@ -1,7 +1,15 @@
 import express from "express";
 import { deliverTerminalResult, persistPendingTerminalDelivery } from "./delivery/terminal-callback.ts";
+import type { UpdateAdmission } from "./update-admission.ts";
 export function registerRunRoutes(app: express.Express, deps: any) {
-  const { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds } = deps;
+  const { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission } = deps as { updateAdmission?: UpdateAdmission } & any;
+  const beginAdmission = (kind: "run-task" | "run-task-sync", label: string) => {
+    try {
+      return updateAdmission?.beginLease(kind, label) || (() => undefined);
+    } catch (_error) {
+      return null;
+    }
+  };
   app.post("/run-task", async (req, res) => {
     if (!protectedStoryEndpoint(req, res)) return;
     const {
@@ -37,6 +45,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
       variables,
       dataset_ambiente,
       dataset_caso,
+      chatbot,
       agent_workflow,
       workflow_definition,
       case_id,
@@ -60,6 +69,10 @@ export function registerRunRoutes(app: express.Express, deps: any) {
     const executionKey = String(testId || "").trim();
     if (executionKey && activeExecutionIds.has(executionKey)) {
       return res.status(202).json({ message: "Task already started", testId: executionKey, duplicate: true, correlation_id: (req as any).correlationId });
+    }
+    const releaseAdmission = beginAdmission("run-task", executionKey || "anonymous");
+    if (!releaseAdmission) {
+      return sendPublicError(req, res, 503, "El Engine está cerrado para actualizaciones.", "ENGINE_UPDATE_ADMISSION_BLOCKED");
     }
     if (executionKey) activeExecutionIds.add(executionKey);
 
@@ -109,6 +122,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
             variables,
             dataset_ambiente,
             dataset_caso,
+            ...(chatbot && typeof chatbot === "object" ? { chatbot } : {}),
           },
           agentWorkflow: Array.isArray(agent_workflow)
             ? agent_workflow
@@ -256,6 +270,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         });
       }
     } finally {
+      releaseAdmission();
       if (executionKey) activeExecutionIds.delete(executionKey);
     }
   });
@@ -291,6 +306,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
       variables,
       dataset_ambiente,
       dataset_caso,
+      chatbot,
       agent_workflow,
       workflow_definition,
       case_id,
@@ -311,6 +327,11 @@ export function registerRunRoutes(app: express.Express, deps: any) {
     }
     if (!allowedEndpoint(llm_endpoint) || !allowedFallbacks(provider_fallbacks)) {
       return sendPublicError(req, res, 400, "El endpoint del modelo no está permitido.", "LLM_ENDPOINT_NOT_ALLOWED");
+    }
+
+    const releaseAdmission = beginAdmission("run-task-sync", String(testId || "anonymous"));
+    if (!releaseAdmission) {
+      return sendPublicError(req, res, 503, "El Engine está cerrado para actualizaciones.", "ENGINE_UPDATE_ADMISSION_BLOCKED");
     }
 
     try {
@@ -356,6 +377,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
             variables,
             dataset_ambiente,
             dataset_caso,
+            ...(chatbot && typeof chatbot === "object" ? { chatbot } : {}),
           },
           agentWorkflow: Array.isArray(agent_workflow)
             ? agent_workflow
@@ -417,6 +439,8 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         },
         steps: [],
       });
+    } finally {
+      releaseAdmission();
     }
   });
 

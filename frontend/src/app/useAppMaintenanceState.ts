@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { API_BASE } from "./constants";
-import { UPDATE_MAINTENANCE_EVENT, announceUpdateMaintenance, clearUpdateMaintenanceSignal, readUpdateMaintenanceSignal, updateMaintenanceConnectionState } from "../features/configuracion/updateMaintenance";
+import { UPDATE_MAINTENANCE_EVENT, announceUpdateMaintenance, clearUpdateMaintenanceSignal, isTerminalUpdateStatus, readUpdateMaintenanceSignal, updateMaintenanceConnectionState } from "../features/configuracion/updateMaintenance";
 export function useAppMaintenanceState({ options }: { options: any }): void {
   const { fetchWithAuth, updateMaintenanceState, setUpdateMaintenanceState, t } = options;
+  const pollingRef = useRef(false);
   useEffect(() => {
     const refreshSignal = () => {
       const next = readUpdateMaintenanceSignal();
@@ -14,7 +15,8 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
           prev.message === next.message &&
           prev.targetVersion === next.targetVersion &&
           prev.lastCheckedAt === next.lastCheckedAt &&
-          prev.backendVersion === next.backendVersion;
+          prev.backendVersion === next.backendVersion &&
+          prev.taskId === next.taskId;
         return unchanged ? prev : next;
       });
     };
@@ -35,23 +37,60 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
     let cancelled = false;
 
     const pollRestartState = async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
       const activeSignal = readUpdateMaintenanceSignal();
-      if (!activeSignal.active && !activeSignal.timedOut) return;
+      if (!activeSignal.active && !activeSignal.timedOut) {
+        pollingRef.current = false;
+        return;
+      }
       try {
         const statusResponse = await fetchWithAuth(
           `${API_BASE}/system/updates/status`,
         );
         const data = await statusResponse.json().catch(() => ({}));
+        if (!statusResponse.ok) {
+          if (statusResponse.status === 429 && !cancelled) {
+            setUpdateMaintenanceState(
+              updateMaintenanceConnectionState({
+                lastCheckedAt: Date.now(),
+                message: t('common.backendUpdating'),
+              }),
+            );
+          }
+          pollingRef.current = false;
+          return;
+        }
+        if (
+          activeSignal.taskId &&
+          data?.task_id === activeSignal.taskId &&
+          isTerminalUpdateStatus(data?.status, data?.stage)
+        ) {
+          if (!cancelled) {
+            clearUpdateMaintenanceSignal();
+            window.location.reload();
+          }
+          pollingRef.current = false;
+          return;
+        }
         if (data?.status === "restarting") {
+          if (cancelled) {
+            pollingRef.current = false;
+            return;
+          }
           const refreshed = announceUpdateMaintenance(
             undefined,
             data?.pending_version,
+            data?.task_id,
           );
           if (!cancelled) setUpdateMaintenanceState(refreshed);
+          pollingRef.current = false;
           return;
         }
       } catch {
         // Backend can be temporarily unavailable while the update entrypoint restarts services.
+        pollingRef.current = false;
+        return;
       }
 
       try {
@@ -75,8 +114,10 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
           }
           return;
         }
-        clearUpdateMaintenanceSignal();
-        window.location.reload();
+        if (!cancelled) {
+          clearUpdateMaintenanceSignal();
+          window.location.reload();
+        }
       } catch {
         if (!cancelled) {
           setUpdateMaintenanceState(
@@ -87,11 +128,13 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
             }),
           );
         }
+      } finally {
+        pollingRef.current = false;
       }
     };
 
     void pollRestartState();
-    const timer = window.setInterval(pollRestartState, 3000);
+    const timer = window.setInterval(pollRestartState, 6000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

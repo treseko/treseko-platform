@@ -207,6 +207,15 @@ async def update_my_profile(db: AsyncSession, user: models.Usuario, profile: sch
     allowed_avatar_providers = {"gravatar", "none"}
     if "avatar_provider" in update_data and update_data["avatar_provider"] not in allowed_avatar_providers:
         raise ValueError("Proveedor de avatar no soportado")
+    if "profile_settings" in update_data:
+        current = user.profile_settings or {}
+        merged = {**current, **(update_data.pop("profile_settings") or {})}
+        schemas.validate_preference_json_payload(
+            merged,
+            max_bytes=schemas.MAX_PROFILE_SETTINGS_BYTES,
+            label="La configuracion de perfil",
+        )
+        user.profile_settings = merged
     for field, value in update_data.items():
         setattr(user, field, value)
     await db.commit()
@@ -239,7 +248,7 @@ async def update_my_preferences(db: AsyncSession, user: models.Usuario, preferen
     await db.commit()
     await db.refresh(user)
     return schemas.UserPreferences(
-        personal_theme=user.personal_theme or "system",
+        personal_theme=user.personal_theme or "light",
         profile_settings=user.profile_settings or {},
         project_theme_overrides=user.project_theme_overrides or {},
     )
@@ -256,7 +265,7 @@ async def update_my_language(db: AsyncSession, user: models.Usuario, language: s
     await db.commit()
     await db.refresh(user)
     return schemas.UserPreferences(
-        personal_theme=user.personal_theme or "system",
+        personal_theme=user.personal_theme or "light",
         profile_settings=user.profile_settings or {},
         project_theme_overrides=user.project_theme_overrides or {},
     )
@@ -274,7 +283,7 @@ async def change_my_password(db: AsyncSession, user: models.Usuario, new_hashed_
     await db.commit()
     await db.refresh(user)
     return schemas.UserPreferences(
-        personal_theme=user.personal_theme or "system",
+        personal_theme=user.personal_theme or "light",
         profile_settings=user.profile_settings or {},
         project_theme_overrides=user.project_theme_overrides or {},
     )

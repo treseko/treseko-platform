@@ -44,10 +44,20 @@ export function useSharedReportState(options: any) {
     } catch { setSharedReportHistory([]); setSharedReportHistoryBuildId(null); return emptyResult
     } finally { setLoadingSharedHistory(false) }
   }, [currentProjectId, canViewSharedReports, projectMetrics?.build_id, currentBuildId, fetchWithAuth])
-  useEffect(() => { loadSharedReportHistory() }, [loadSharedReportHistory])
+  useEffect(() => {
+    // Wait for the selected build metrics so the first history request uses
+    // the same build context and is not repeated when metrics arrive.
+    if (!projectMetrics?.build_id) return
+    loadSharedReportHistory()
+  }, [loadSharedReportHistory, projectMetrics?.build_id])
   const openShareModal = async () => {
     if (!canShareReports) { showFeedback(t('reportes.sharedReportsPremiumTitle'), t('reportes.sharedReportsHistoryPremium'), 'info'); return }
-    const { items, buildId } = await loadSharedReportHistory(); const reusable = findReusableSharedReport(items, buildId)
+    const selectedBuildId = projectMetrics?.build_id || currentBuildId
+    const historyIsCurrent = sharedReportHistoryBuildId && normalizeId(sharedReportHistoryBuildId) === normalizeId(selectedBuildId)
+    const { items, buildId } = historyIsCurrent
+      ? { items: sharedReportHistory, buildId: sharedReportHistoryBuildId }
+      : await loadSharedReportHistory()
+    const reusable = findReusableSharedReport(items, buildId)
     setSharedReport(reusable ? normalizeSharedReportFromHistory(reusable) : null); setShareAcknowledged(false); setShowShareModal(true)
   }
   const shareReport = async () => {

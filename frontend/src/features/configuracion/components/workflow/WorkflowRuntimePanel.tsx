@@ -1,6 +1,7 @@
 ﻿import { Badge, Button, Form, Tab, Tabs } from 'react-bootstrap'
 import { Activity } from 'lucide-react'
 import { useI18n } from '../../../../i18n'
+import { workflowStatusLabel } from './workflowStatusPresentation'
 
 type Props = {
   traceExecutionId: string
@@ -20,6 +21,7 @@ export function WorkflowRuntimePanel({
   loadRuntimeTraces,
 }: Props) {
   const { t } = useI18n()
+  const statusLabel = (status: unknown) => workflowStatusLabel(status, t)
   return (
     <div className={`workflow-runtime ${workflowRuntimeExpanded ? 'is-expanded' : 'is-collapsed'}`}>
       <div className="workflow-runtime-header">
@@ -42,7 +44,7 @@ export function WorkflowRuntimePanel({
                 <div key={trace.id} className={`workflow-runtime-chip is-${String(trace.status || '').toLowerCase()}`}>
                   <span>{index + 1}</span>
                   <strong>{trace.node_id ? String(trace.node_id).slice(0, 8) : 'workflow'}</strong>
-                  <small>{trace.status}</small>
+                  <small>{statusLabel(trace.status)}</small>
                 </div>
               ))}
               {runtimeTraces.length === 0 && <div className="small text-muted">{t('configuracion.noTraces')}</div>}
@@ -52,7 +54,7 @@ export function WorkflowRuntimePanel({
             <div className="workflow-runtime-list">
               {runtimeTraces.map(trace => (
                 <details key={trace.id} className="workflow-runtime-item">
-                  <summary><Badge bg={trace.status === 'SUCCESS' ? 'success' : trace.status === 'FAILED' ? 'danger' : trace.status === 'BLOCKED' ? 'primary' : 'secondary'}>{trace.status}</Badge><span className="font-monospace">{trace.node_id || 'workflow'}</span><span className="text-muted">{trace.started_at || '-'}</span></summary>
+                  <summary><Badge bg={trace.status === 'SUCCESS' ? 'success' : trace.status === 'FAILED' ? 'danger' : trace.status === 'BLOCKED' ? 'primary' : 'secondary'}>{statusLabel(trace.status)}</Badge><span className="font-monospace">{trace.node_id || 'workflow'}</span><span className="text-muted">{trace.started_at || '-'}</span></summary>
                   <pre>{JSON.stringify({ input: trace.input_json, output: trace.output_json, metrics: trace.metrics_json }, null, 2)}</pre>
                 </details>
               ))}

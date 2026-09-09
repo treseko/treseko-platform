@@ -15,6 +15,7 @@ from ...services.mcp_governance import (
     validate_tool_arguments,
 )
 from ...main_context import AsyncSessionLocal
+from ...version import PRODUCT_VERSION
 
 
 router = APIRouter(prefix="/mcp", tags=["MCP governed"])
@@ -85,7 +86,7 @@ async def mcp_json_rpc(request: Request):
     method = message.get("method")
     request_id = message.get("id")
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2025-03-26", "serverInfo": {"name": "treseko-mcp", "version": "1.0.2"}, "capabilities": {"tools": {}}}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2025-03-26", "serverInfo": {"name": "treseko-mcp", "version": PRODUCT_VERSION}, "capabilities": {"tools": {}}}}
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": _authorized_tools(user)}}
     if method != "tools/call":

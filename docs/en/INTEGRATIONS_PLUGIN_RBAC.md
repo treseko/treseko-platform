@@ -1,53 +1,40 @@
-# Integrations and plugins
+# Integrations, plugins and RBAC
 
 <!-- Language: en -->
 
-An integration connects Treseko with an external system. A plugin adds
-a capability within Treseko. The **Plugins** section shows what is
-included, available or upcoming for your edition.
+They depend on provider, capability, scope and entitlement. Their appearance
+in the catalog does not mean they are enabled.
 
-## Use integrations
+## Integrations
 
-Integrations allow relating QA work with tools such as
-Redmine, Jira, GitHub Issues, GitLab, Azure DevOps or a CI/CD pipeline when
-the capability is enabled for your installation.
+The catalog includes Redmine, Jira, GitHub Issues, GitLab, Azure DevOps, Slack,
+Teams and CI/CD, with availability Community, Premium, legacy or planned
+depending on the provider. Review the installation status.
 
-1. Open **Settings → Plugins** or the corresponding integration
-   section.
-2. Review whether the integration appears as included, available or Premium.
-3. Configure only the credentials and data authorized by your organization.
-4. Test the connection before using it in a project.
+Bug links are explicit: Treseko does not publish external issues automatically.
+Review the summary and save the link or identifier. Use least-privilege
+technical accounts and never paste tokens into cases or evidence.
 
-Treseko does not show already stored secrets. If you update a token, save it in
-the integration configuration and avoid copying it into cases, comments or
-evidence.
+## plugin-runner
 
-## Link bugs with external tools
+The `plugins` profile is declared in Compose, but the current public snapshot
+does not contain the `plugin-runner` build context. It is therefore not
+operational and must not be started from this package. The existence of the
+profile does not imply support for third-party plugins.
 
-From a bug's detail you can prepare a summary to copy and paste into an
-external tool and store the identifier or link of the created ticket. The
-linking is explicit: Treseko does not publish external issues automatically.
+## Portability
 
-Each link belongs to a specific bug. If two defects need distinct
-tickets, record a link for each one.
+Portability uses provider capabilities and profiles. Review
+[CASE_PORTABILITY.md](CASE_PORTABILITY.md). Importers do not execute scripts as
+free code; Postman preserves diagnostics and uses the supported declarative
+runtime.
 
-## Plugins
+## MCP
 
-Included plugins extend capabilities such as case portability, internal Bug
-Tracker, AI Engine and assisted generation. The store can also show
-future or Premium capabilities; those cards report their availability, they
-do not install third-party code in the background.
+MCP is not the external reporting API. It is disabled by default, uses
+`X-MCP-API-Key` and does not accept browser JWTs. The current allowlist exposes
+the read-only `treseko.project.get` and `treseko.builds.list` tools.
 
-## Permissions
-
-The configuration of integrations, secrets and plugins is restricted to
-authorized roles. If you can see an integration but not configure it, ask the
-account administrator to review your permissions in Settings.
-
-## Quick help
-
-- Verify the connection before using an integration with real data.
-- Use a technical account with the least possible scope in the external tool.
-- Revoke and replace a token if it is exposed.
-- Check the license status if an integration or plugin appears
-  as Premium.
+Each call requires capability, organization and project scope through
+`project_id`, validation, limits, rate limiting and auditing. There is no shell,
+filesystem, secrets, database or generic network access.

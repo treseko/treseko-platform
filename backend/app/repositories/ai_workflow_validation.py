@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import models
 from .ai_agent_definitions import ensure_ai_agent_definitions
 from .ai_universal_agents import CAPABILITY_CATALOG, validate_universal_agent_contract
+from ..services.ai_workflow_runtime_manifest import workflow_runtime_adapters
 
 
 BLOCKING_STATUSES = {"experimental", "requires_configuration", "deprecated"}
@@ -100,7 +101,7 @@ async def validate_workflow_graph(db: AsyncSession, workflow: models.AiWorkflow)
     universal_versions = {
         item.id: item
         for item in (await db.execute(select(models.AiUniversalAgentVersion))).scalars().all()
-    } if workflow.workflow_format == "universal_v2" else {}
+    } if workflow.workflow_format in {"universal_v2", "universal_v3"} else {}
     issues: List[Dict[str, Any]] = []
     if workflow.provider_profile_id:
         profile = await db.get(models.AiProviderProfile, workflow.provider_profile_id)
@@ -139,21 +140,52 @@ async def validate_workflow_graph(db: AsyncSession, workflow: models.AiWorkflow)
         cycle_adjacency[edge.source_node_id].append((edge.target_node_id, edge))
         if edge.source_node_id == edge.target_node_id and edge.max_passes <= 1:
             issues.append(_issue("error", "UNBOUNDED_SELF_LOOP", "Un ciclo propio debe tener una politica de pases explicita.", edge_id=edge.id))
-        if workflow.workflow_format == "universal_v2":
+        if workflow.workflow_format in {"universal_v2", "universal_v3"}:
             source_node = next((node for node in enabled if node.id == edge.source_node_id), None)
+            target_node = next((node for node in enabled if node.id == edge.target_node_id), None)
             source_version = universal_versions.get(source_node.universal_agent_version_id) if source_node else None
+            target_version = universal_versions.get(target_node.universal_agent_version_id) if target_node else None
             declared_ports = set(((source_version.contract_json or {}).get("ports") or {}).get("control_outputs") or []) if source_version else set()
+            declared_inputs = set(((target_version.contract_json or {}).get("ports") or {}).get("control_inputs") or []) if target_version else set()
             if edge.source_handle and edge.source_handle not in declared_ports:
                 issues.append(_issue("error", "UNDECLARED_OUTPUT_PORT", "La conexion usa un puerto no declarado por el agente universal.", edge_id=edge.id))
+            if edge.target_handle and edge.target_handle not in declared_inputs:
+                issues.append(_issue("error", "UNDECLARED_INPUT_PORT", "La conexion usa una entrada no declarada por el agente universal.", edge_id=edge.id))
+            if edge.condition_type in {"output_port", "decision_is"}:
+                expected_port = str((edge.condition_json or {}).get("value") or (edge.condition_json or {}).get("output_port") or edge.source_handle or "").strip()
+                if not expected_port:
+                    issues.append(_issue("error", "MISSING_OUTPUT_PORT_CONDITION", "Una condicion por puerto debe indicar el puerto de salida esperado.", edge_id=edge.id))
+                elif expected_port not in declared_ports:
+                    issues.append(_issue("error", "UNDECLARED_OUTPUT_PORT", "La condicion usa un puerto de salida no declarado por el agente universal.", edge_id=edge.id))
             for mapping in edge.data_mapping_json or []:
                 if not isinstance(mapping, dict) or not str(mapping.get("source") or "").startswith("outputs.") or not str(mapping.get("target") or "").startswith("inputs."):
                     issues.append(_issue("error", "INVALID_DATA_MAPPING", "Los mapeos universales deben ir de outputs.* hacia inputs.*.", edge_id=edge.id))
+            if workflow.workflow_format == "universal_v3":
+                if not edge.source_handle:
+                    issues.append(_issue("error", "V3_SOURCE_PORT_REQUIRED", "Cada conexion V3 debe salir de un puerto explicito.", edge_id=edge.id))
+                if not edge.target_handle:
+                    issues.append(_issue("error", "V3_TARGET_PORT_REQUIRED", "Cada conexion V3 debe entrar por un puerto explicito.", edge_id=edge.id))
+                if edge.condition_type not in {"output_port", "decision_is"}:
+                    issues.append(_issue("error", "V3_TYPED_EDGE_REQUIRED", "Las conexiones V3 deben seleccionar una salida tipada del nodo.", edge_id=edge.id))
     starts = [node_id for node_id, count in incoming.items() if count == 0]
     terminals = [node_id for node_id, count in outgoing.items() if count == 0]
     if len(starts) != 1:
         issues.append(_issue("error", "INVALID_START_NODE", "El workflow debe tener exactamente un nodo inicial."))
     if not terminals:
         issues.append(_issue("error", "NO_TERMINAL_NODE", "El workflow debe tener al menos una ruta terminal."))
+    if workflow.workflow_format == "universal_v3":
+        policy = workflow.decision_policy_json or {}
+        if policy.get("runtime_mode") != "graph_native":
+            issues.append(_issue("error", "V3_REQUIRES_GRAPH_NATIVE", "Universal V3 requiere runtime_mode=graph_native."))
+        if policy.get("source_of_truth") != "persisted_graph" or policy.get("legacy_step_runner_allowed") is not False:
+            issues.append(_issue("error", "V3_GRAPH_NOT_AUTHORITATIVE", "Universal V3 debe declarar al grafo persistido como unica fuente de verdad y deshabilitar el runner heredado."))
+        entry_node_id = str(policy.get("entry_node_id") or "")
+        if not entry_node_id:
+            issues.append(_issue("error", "V3_ENTRY_NODE_REQUIRED", "Universal V3 requiere entry_node_id explicito."))
+        elif entry_node_id not in {str(node_id) for node_id in enabled_ids}:
+            issues.append(_issue("error", "V3_ENTRY_NODE_INVALID", "El entry_node_id V3 no referencia un nodo habilitado."))
+        elif starts and entry_node_id != str(starts[0]):
+            issues.append(_issue("error", "V3_ENTRY_NODE_MISMATCH", "El entry_node_id V3 no coincide con la entrada estructural del grafo."))
     if starts:
         visited, pending = set(), [starts[0]]
         while pending:
@@ -175,7 +207,7 @@ async def validate_workflow_graph(db: AsyncSession, workflow: models.AiWorkflow)
         # is a planning warning, while the engine keeps the hard global limit.
         issues.append(_issue("warning", "TIMEOUT_BUDGET_EXCEEDED", "La suma potencial de timeouts supera el limite del motor; revisar rutas de reintento."))
     for node in enabled:
-        if workflow.workflow_format == "universal_v2":
+        if workflow.workflow_format in {"universal_v2", "universal_v3"}:
             if node.model_override:
                 issues.append(_issue("error", "NODE_MODEL_OVERRIDE_FORBIDDEN", "Los workflows universales usan un unico perfil/modelo por workflow.", node_id=node.id))
             universal_version = universal_versions.get(node.universal_agent_version_id)
@@ -193,6 +225,24 @@ async def validate_workflow_graph(db: AsyncSession, workflow: models.AiWorkflow)
             forbidden = requested - set(CAPABILITY_CATALOG)
             if forbidden:
                 issues.append(_issue("error", "UNAUTHORIZED_CAPABILITY", "El agente solicita capabilities no autorizadas.", node_id=node.id))
+            if workflow.workflow_format == "universal_v3":
+                adapter = str((node.config_json or {}).get("runtime_adapter") or (contract.get("implementation") or {}).get("native_adapter") or "").strip()
+                if not adapter:
+                    issues.append(_issue("error", "V3_NATIVE_ADAPTER_REQUIRED", "El nodo V3 debe declarar un adaptador nativo explicito.", node_id=node.id))
+                else:
+                    manifest_entry = workflow_runtime_adapters().get(adapter)
+                    if not manifest_entry:
+                        issues.append(_issue("error", "UNKNOWN_RUNTIME_ADAPTER", f"El adaptador V3 '{adapter}' no esta registrado.", node_id=node.id))
+                    elif manifest_entry.get("atomic") is not True:
+                        issues.append(_issue("error", "V3_ATOMIC_ADAPTER_REQUIRED", f"El adaptador '{adapter}' no es atomico y podria ocultar otro workflow.", node_id=node.id))
+                terminal_ports = (node.config_json or {}).get("terminal_ports") or []
+                if node.id in terminals and not terminal_ports:
+                    issues.append(_issue("error", "V3_TERMINAL_PORT_REQUIRED", "El nodo terminal V3 debe declarar al menos un puerto terminal.", node_id=node.id))
+                elif node.id in terminals:
+                    declared_outputs = set((contract.get("ports") or {}).get("control_outputs") or [])
+                    invalid_terminal_ports = [port for port in terminal_ports if not isinstance(port, str) or port not in declared_outputs]
+                    if invalid_terminal_ports:
+                        issues.append(_issue("error", "V3_TERMINAL_PORT_UNDECLARED", "Los puertos terminales V3 deben estar declarados como salidas de control.", node_id=node.id))
             continue
         definition = definitions.get(node.agent_definition_id)
         if not definition:

@@ -8,12 +8,12 @@ async function readJsonOrThrow(response: Response, fallback: string) {
   throw new Error(error?.detail || error?.message || fallback)
 }
 
-export async function fetchProjectRunHistory(fetchWithAuth: FetchWithAuth, projectId: string, params: URLSearchParams) {
+export async function fetchProjectRunHistory(fetchWithAuth: FetchWithAuth, projectId: string, params: URLSearchParams, fallback = 'Backend responded') {
   const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/test-runs/?${params.toString()}`)
-  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+  return readJsonOrThrow(response, `${fallback} ${response.status}`)
 }
 
-export async function fetchTestRunDetail(fetchWithAuth: FetchWithAuth, runId: string) {
+export async function fetchTestRunDetail(fetchWithAuth: FetchWithAuth, runId: string, fallback = 'Backend responded') {
   const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/`)
-  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+  return readJsonOrThrow(response, `${fallback} ${response.status}`)
 }

@@ -1,29 +1,44 @@
 # Guía de Configuración
 
-**Configuración** reúne las opciones administrativas. Las pestañas que ves dependen de tu rol, de tus permisos y de la edición de Treseko.
+**Configuración** reúne opciones administrativas y personales. Las pestañas y
+acciones dependen del rol, capacidades, instancia y edición disponible.
 
-## Preferencias
+## Preferencias y cuenta
 
-Administrá preferencias de la instancia y, cuando esté disponible, las **API keys de automatización externa**. Generá una key, guardala una sola vez en un gestor de secretos y revocala si deja de usarse.
+En **Mi Perfil** mantené tus datos y preferencias. Si la instancia ofrece
+idioma, se guarda para tu cuenta; algunos mensajes generados por backend o
+exportaciones pueden depender de la configuración del formato.
 
-## Perfil, usuarios y roles
+En **Preferencias** revisá opciones generales y, cuando estén habilitadas,
+claves de automatización externa. Guardá cada clave en un gestor de secretos y
+revocala cuando deje de usarse.
 
-- **Mi Perfil:** actualizá datos personales y opciones disponibles para tu cuenta.
-- **Gestión Usuarios:** creá, editá, activá o desactivá cuentas autorizadas.
-- **Roles:** asigná permisos de acuerdo con las responsabilidades reales del equipo.
+## Usuarios, roles y auditoría
 
-Consultá [Acceso, usuarios y permisos](AUTH_RBAC_GUIDE.md) antes de dar acceso administrativo.
+**Gestión Usuarios** administra cuentas; **Roles** asigna capacidades y
+**Auditoría** consulta acciones administrativas. La expiración disponible se
+configura en **Preferencias → Sesión y seguridad**; la edición base no incluye
+una bandeja general para revisar o revocar sesiones activas. El acceso efectivo
+combina rol, permiso de módulo y capacidad específica. Si necesitás ampliarlo,
+pedí a un administrador que confirme tu rol y capacidades.
 
-## Correo, IA y monitor
+## Correo, IA, monitor e integraciones
 
-- **Correo:** configurá notificaciones y verificá la conectividad SMTP cuando tengas permiso.
-- **Pruebas con IA:** definí proveedores, modelos y workflows habilitados.
-- **Monitor:** consultá el estado de los componentes y workers de la instancia.
+- **Correo:** SMTP, reglas, plantillas, inbox y entregas.
+- **Pruebas con IA:** proveedores, modelos y workflows.
+- **Monitor:** componentes, workers y ejecuciones técnicas.
+- **Integraciones:** catálogo, estado, prueba de conexión y configuración.
+- **Complementos:** conexiones y vínculos disponibles.
+- **Adjuntos y evidencias:** límites y política de carga.
 
-Las guías de [notificaciones](NOTIFICATIONS_EMAIL.md) y [Motor IA](AI_ENGINE_CONFIG.md) detallan esos temas.
+Consultá [Notificaciones](NOTIFICATIONS_EMAIL.md), [Motor IA](AI_ENGINE_CONFIG.md)
+y [Adjuntos](ATTACHMENTS_EVIDENCE.md). Las integraciones visibles dependen de
+la instalación y sus permisos.
 
 ## Licencia y actualizaciones
 
-En **Licencia** revisá la edición activa e instalá un archivo firmado cuando corresponda. En **Actualizaciones** consultá la versión disponible antes de planificar una actualización. Hacé backup y probá en un entorno controlado antes de actualizar una instalación productiva.
-
-La pestaña **Complementos** no se documenta todavía en esta guía.
+En **Licencia** revisá la edición y capacidades que la instancia reconoce. El
+nombre comercial no reemplaza la comprobación de una capacidad. En
+**Actualizaciones**, revisá versión, backup y entorno controlado antes de
+actualizar producción. No se prometen aquí capacidades comerciales no
+verificables en la instalación.

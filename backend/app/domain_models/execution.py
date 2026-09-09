@@ -23,6 +23,7 @@ class TestRun(Base):
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("entorno_datasets.id", ondelete="SET NULL"), nullable=True, index=True)
     variables_resueltas = Column(JSON, default=dict)
     datasets_resueltos = Column(JSON, default=dict)
+    dynamic_seed = Column(String(200), nullable=True)
     estado_run = Column(Enum(EstadoRun), default=EstadoRun.ABIERTO, nullable=False, index=True)
     creado_por = Column(UUID(as_uuid=True), nullable=False)
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
@@ -31,6 +32,26 @@ class TestRun(Base):
     proyecto = relationship("Proyecto", back_populates="runs")
     build = relationship("Build", back_populates="runs")
     ejecuciones = relationship("EjecucionCaso", back_populates="test_run", cascade="all, delete-orphan")
+
+
+class ApiPersistentState(Base):
+    __tablename__ = "api_persistent_states"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    entorno_id = Column(UUID(as_uuid=True), ForeignKey("entornos.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(255), nullable=False)
+    value = Column(JSON, nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    last_run_id = Column(UUID(as_uuid=True), ForeignKey("test_runs.id", ondelete="SET NULL"), nullable=True)
+    last_case_id = Column(UUID(as_uuid=True), ForeignKey("casos_prueba.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(UUID(as_uuid=True), nullable=True)
+    fecha_actualizacion = Column(UTCDateTime(), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("proyecto_id", "entorno_id", "key", name="uq_api_persistent_state_scope_key"),
+        Index("ix_api_persistent_state_scope", "proyecto_id", "entorno_id"),
+    )
 
 class EjecucionCaso(Base):
     __tablename__ = "ejecuciones_casos"
@@ -46,6 +67,15 @@ class EjecucionCaso(Base):
     duracion_segundos = Column(Integer, default=0)
     observaciones = Column(Text)
     ai_report = Column(JSON, default=dict)
+    # Frozen at run creation so later environment edits cannot change how
+    # historical evidence is rendered or exported.
+    evidence_policy = Column(JSON, default=dict, nullable=False)
+    chatbot_config_snapshot = Column(JSON, default=dict)
+    chatbot_resultado = Column(JSON, default=dict)
+    api_config_snapshot = Column(JSON, default=dict)
+    api_resultado = Column(JSON, default=dict)
+    dynamic_seed = Column(String(200), nullable=True)
+    dynamic_variables = Column(JSON, default=dict, nullable=False)
     ai_confidence = Column(Integer)
     ai_consensus = Column(String(30))
     ai_failure_category = Column(String(80))
@@ -73,6 +103,7 @@ class SnapshotPaso(Base):
     numero_paso = Column(Integer, nullable=False)
     accion_congelada = Column(Text, nullable=False)
     datos_congelados = Column(Text)
+    datos_resueltos = Column(Text)
     resultado_esperado_congelado = Column(Text, nullable=False)
     estado_paso = Column(Enum(EstadoResultado), default=EstadoResultado.SIN_CORRER, nullable=False)
     comentarios = Column(Text)

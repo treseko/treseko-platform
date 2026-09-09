@@ -27,6 +27,8 @@ import { ReportDetailWidgets } from './ReportDetailWidgets'
 import { ReportChartWidgets } from './ReportChartWidgets'
 import { ReportOverviewWidgets } from './ReportOverviewWidgets'
 import { ReportAiMetricsWidget } from './ReportAiMetricsWidget'
+import { ReportFormatMetricsWidget } from './ReportFormatMetricsWidget'
+import { ReportFormatModeMatrixWidget } from './ReportFormatModeMatrixWidget'
 import { ReportSecondaryWidgets } from './ReportSecondaryWidgets'
 import { SharedReportHistory } from './SharedReportHistory'
 import { ReportEmptyState } from './ReportEmptyState'
@@ -135,7 +137,7 @@ type ReportesPageProps = {
   currentProjectId: string
   currentBuildId: string
   onOpenHistorial?: (filters?: Record<string, any>, runId?: string) => void
-  onOpenBugTracker?: (bug?: any) => void
+  onOpenBugTracker?: (bug?: any, options?: { buildId?: string; scope?: 'reported' | 'historical' }) => void
   canAccessCapability?: (capabilityId: any, level?: any) => boolean
   hasSystemFeature?: FeatureLookup
   loggedUser?: any
@@ -433,6 +435,14 @@ export function ReportesPage({
             onOpenHistorial, showFeedback,
           })}
 
+          {ReportFormatMetricsWidget({
+            renderReportesWidget, t, formatInt, formatMs, projectMetrics,
+          })}
+
+          {ReportFormatModeMatrixWidget({
+            renderReportesWidget, t, formatInt, projectMetrics,
+          })}
+
           {renderReportesWidget('qualityIntelligence', (
             <QualityIntelligenceWidget
               t={t}
@@ -476,7 +486,7 @@ export function ReportesPage({
             failureItems, ownerFilterOptions, formatInt, formatHours, formatPercent,
             bugTraceability, bugMetrics, filteredReportBugs, filteredFailures,
             filteredEvidenceItems, isColumnVisible, visibleColumnCount, riskVariant,
-            onOpenBugTracker, canViewBugs, showFeedback, evidenceSummary,
+            onOpenBugTracker, currentBuildId, canViewBugs, showFeedback, evidenceSummary,
           })}
           {ReportChartWidgets({
             renderReportesWidget, t, statusChartData, statusGradient, statusChartTotal,

@@ -1,297 +1,72 @@
-# Ejecutar Treseko con Docker
+# Guía Docker
 
-Esta guía acompaña una instalación self-hosted con `docker-compose.prod.yml`.
-Seguí los pasos en orden: preparar secretos, validar la configuración,
-inicializar servicios y verificar el primer acceso. Conservá los secretos fuera
-del repositorio y referencialos mediante archivos protegidos.
+El Compose separa frontend, backend, PostgreSQL, Redis, Engine y worker. También
+declara un perfil de complementos, pero este snapshot público no incluye el
+contexto `plugin-runner`. Usa compose.production.env y secretos por archivo.
 
-## Requisitos
+## Secretos por archivo
 
-- Docker Engine con soporte para `docker compose`.
-- Acceso de shell al servidor.
-- Puerto HTTP libre, por defecto `9095`.
-- Un directorio externo para secretos, por ejemplo `/opt/treseko/secrets`.
+| Variable | Contenido |
+|---|---|
+| TRESEKO_DB_PASSWORD_FILE | Contraseña PostgreSQL. |
+| TRESEKO_DATABASE_URL_FILE | URL postgresql+asyncpg. |
+| TRESEKO_SECRET_KEY_FILE | Clave de sesión/configuración. |
+| TRESEKO_AI_CREDENTIALS_MASTER_KEY_FILE | Clave maestra IA. |
+| TRESEKO_AI_ENGINE_INTERNAL_TOKEN_FILE | Token backend-Engine. |
 
-Docker es el camino recomendado si el host es Windows, macOS, Ubuntu 20.04,
-Debian 11 o una distribucion Linux antigua. El instalador bare-metal soportado
-requiere Linux con systemd, nginx, PostgreSQL/Redis administrados por el host y
-Python 3.10 o superior.
+Los instaladores crean esas rutas. La instalación manual está en
+[INSTALLATION.md](INSTALLATION.md). No uses valores inline ni subas secretos.
 
-## Preparar secretos
+## Servicios y profiles
 
-Crear secretos fuera del directorio de Treseko:
+Servicios base: db, redis, migrator, backend, engine y frontend.
 
-```bash
-sudo install -d -m 0700 /opt/treseko/secrets
-sudo sh -c 'openssl rand -hex 32 > /opt/treseko/secrets/db-password'
-sudo sh -c 'openssl rand -hex 48 > /opt/treseko/secrets/secret-key'
-sudo sh -c 'printf "%s" "postgresql+asyncpg://treseko:$(cat /opt/treseko/secrets/db-password)@db:5432/treseko" > /opt/treseko/secrets/database-url'
-sudo chmod 0600 /opt/treseko/secrets/db-password /opt/treseko/secrets/database-url /opt/treseko/secrets/secret-key
-```
+| Profile | Servicio | Uso |
+|---|---|---|
+| automation | automation-worker | Automatización clásica y API declarativa. |
+| plugins | plugin-runner declarado en Compose | No operativo en este snapshot: el paquete público no contiene su contexto de build. |
 
-No guardes passwords, `SECRET_KEY`, tokens de worker ni licencias privadas en
-`compose.production.env`. Ese archivo solo debe contener configuracion y rutas a
-secretos.
+El worker debe registrarse y aprobar pairing en Automatización → Workers. Su
+token persiste en treseko_worker_runtime.
 
-## Crear `compose.production.env`
-
-`compose.production.env` es un archivo de configuracion de Compose, no una caja de
-secretos. Debe guardar rutas, puertos y flags operativos. Las contraseñas,
-tokens, `SECRET_KEY` y URLs con credenciales viven en archivos separados con
-permisos `0600`, y Compose solo recibe la ruta mediante variables `*_FILE`.
-
-Copiar el ejemplo:
-
-```bash
-cp .env.production.example compose.production.env
-```
-
-Editar como minimo:
-
-```env
-TRESEKO_DB_PASSWORD_FILE=/opt/treseko/secrets/db-password
-TRESEKO_DATABASE_URL_FILE=/opt/treseko/secrets/database-url
-TRESEKO_SECRET_KEY_FILE=/opt/treseko/secrets/secret-key
-TRESEKO_HTTP_PORT=9095
-```
-
-Ejemplo correcto:
-
-```env
-TRESEKO_SECRET_KEY_FILE=/opt/treseko/secrets/secret-key
-```
-
-Ejemplo incorrecto:
-
-guardar `SECRET_KEY` o cualquier password directamente dentro de
-`compose.production.env`.
-
-Si el puerto `9095` esta ocupado, elegir otro puerto libre y usar ese mismo
-valor en todos los comandos y URLs de esta instalación:
-
-```env
-TRESEKO_HTTP_PORT=PUERTO_ELEGIDO
-```
-
-Validar la configuracion sin imprimir secretos:
+## Arranque
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env config
-```
-
-## Construir imagenes
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file compose.production.env build
-```
-
-## Inicializar servicios base
-
-Levantar PostgreSQL y Redis:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d db redis
-```
-
-Ejecutar migraciones:
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm migrator
-```
-
-Crear o asegurar el primer administrador:
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm backend \
-  seed-admin
-```
-
-El comando imprime una contraseña temporal una sola vez para
-`admin@qa.local`. El primer login obliga a cambiarla.
-Internamente el modo `seed-admin` del entrypoint ejecuta `/app/seed_admin.py`
-despues de aplicar las migraciones.
-
-Si una automatizacion necesita definir una contraseña inicial, usar un archivo
-de secreto con permisos `0600`:
-
-```bash
-sudo install -m 600 /dev/null /opt/treseko/secrets/initial-admin-password
-sudoedit /opt/treseko/secrets/initial-admin-password
-docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm -T backend \
-  seed-admin --password-stdin < /opt/treseko/secrets/initial-admin-password
-```
-
-## Levantar Treseko
-
-```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
 ```
 
-Abrir:
+El frontend publica TRESEKO_HTTP_PORT, por defecto 9095.
 
-- `http://localhost:9095` con la configuración predeterminada.
-- `http://localhost:PUERTO_ELEGIDO` si se cambió `TRESEKO_HTTP_PORT`.
-
-Validar:
-
-```bash
-curl http://localhost:9095/api/health
-curl http://localhost:9095/api/system/version
-docker compose -f docker-compose.prod.yml --env-file compose.production.env ps
-```
-
-Una instalación Community limpia no crea soluciones ni proyectos demo. Después
-del primer acceso, creá la primera solución desde la interfaz.
-
-## Datos demo para desarrollo
-
-El producto self-hosted productivo arranca en blanco. Para un entorno de
-desarrollo o una demo comercial controlada, Treseko incluye un seed opcional que
-crea una solucion demo, dos proyectos, builds, ambientes, casos, ejecuciones,
-bugs, evidencia sintetica y complementos internos configurados sin secretos
-reales.
-
-Reset dev con Docker local:
-
-```bash
-docker compose down -v
-docker compose up -d db redis
-cd backend
-DATABASE_URL=postgresql+asyncpg://postgres:<db-password-dev>@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  alembic upgrade head
-DATABASE_URL=postgresql+asyncpg://postgres:<db-password-dev>@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  python seed_admin.py
-DATABASE_URL=postgresql+asyncpg://postgres:<db-password-dev>@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  python seed_demo_showcase.py --reset-demo
-```
-
-Reset dev con PostgreSQL local:
-
-```bash
-dropdb --if-exists treseko_db
-createdb treseko_db
-cd backend
-DATABASE_URL=postgresql+asyncpg://postgres:treseko_dev@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  alembic upgrade head
-DATABASE_URL=postgresql+asyncpg://postgres:treseko_dev@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  python seed_admin.py
-DATABASE_URL=postgresql+asyncpg://postgres:treseko_dev@localhost:5432/treseko_db \
-  SECRET_KEY=dev-secret-key-dev-secret-key-32chars \
-  python seed_demo_showcase.py --reset-demo
-```
-
-`seed_demo_showcase.py` es idempotente para la solucion `Inmser Demo Lab`. El
-flag `--reset-demo` elimina solo esa solucion y sus datos asociados antes de
-recrearla; no borra otros clientes ni usuarios. No usar este seed para una
-instalacion productiva limpia.
-
-## Recuperar contraseña de administrador
-
-No existe reset publico desde la web. La recuperacion requiere acceso al
-servidor:
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm backend \
-  python /app/reset_user_password.py --email admin@qa.local
-```
-
-El comando genera una contraseña temporal nueva, registra auditoria
-`PASSWORD_RESET` y obliga a cambiarla en el siguiente login. Las sesiones JWT
-ya emitidas expiran según la duración configurada.
-
-Para recuperación automatizada, usar `--password-file` o `--password-stdin`.
-Los archivos pasados a `--password-file` deben tener permisos `0600` o más
-restrictivos.
-
-## Actualizaciones del sistema
-
-Treseko consulta `updates.treseko.com` desde `Configuracion > Actualizaciones`.
-El compose productivo crea volumenes compartidos para preparar updates:
-
-- `treseko_update_data`: paquetes descargados, extraccion y flag `update-ready`.
-- `treseko_backend_backups`: backups pre-update de base y codigo.
-- `treseko_frontend_html`: archivos estaticos servidos por nginx.
-- `treseko_engine_runtime` y `treseko_worker_runtime`: runtime actualizable de
-  engine y worker.
-
-Flujo recomendado:
-
-1. El administrador busca updates desde la UI.
-2. Treseko descarga el paquete, verifica SHA-256, genera backups y deja
-   `update-ready`.
-3. Con `TRESEKO_ENABLE_SELF_UPDATE_APPLY=true` (valor predeterminado del
-   compose productivo), Treseko solicita el reinicio y `entrypoint.sh` aplica
-   el paquete y ejecuta Alembic automáticamente. No hace falta reconstruir el
-   frontend ni copiar archivos manualmente. Si la instalación deshabilita esa
-   opción, el administrador puede reiniciar los servicios:
-
-```bash
-docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
-```
-
-El arranque compara las versiones del volumen compartido y de la imagen para
-evitar que una imagen anterior sobrescriba un frontend actualizado. Después de
-copiarlo, el entrypoint valida `VERSION` y `version.json`; si no coinciden, la
-actualización falla y se activa el rollback de código.
-
-## Worker automatizado opcional
-
-El servicio `automation-worker` queda bajo el profile `automation`. Una
-instalacion limpia no lo arranca por defecto.
-
-Flujo recomendado:
-
-1. Iniciar la aplicacion base.
-2. Entrar como administrador.
-3. Crear o emparejar el worker desde la pantalla de automatizacion.
-4. Guardar el token generado en un secreto operativo fuera del repo.
-5. Levantar el worker con el profile `automation`:
+## Worker unificado
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile automation up -d automation-worker
 ```
 
-## Instalacion alternativa sin Docker
+El mismo worker procesa API_EXECUTION, usa treseko-api/declarative y
+native-api-runtime.mjs, y devuelve native-fetch y treseko.api-result/v1. No hay
+un worker API separado.
 
-Para servidores Linux con PostgreSQL, Redis y nginx gestionados por el
-administrador, existe un instalador base:
+La API para runners externos es independiente:
 
-```bash
-sudo DATABASE_URL_FILE=/root/treseko-secrets/database-url \
-  SECRET_KEY_FILE=/root/treseko-secrets/secret-key \
-  scripts/install_treseko.sh
+```text
+POST /external/executions/report
 ```
 
-El script instala backend en `/opt/treseko`, crea el servicio
-`treseko-backend`, configura nginx, corre migraciones iniciales, asegura el
-admin local y usa el mismo `entrypoint.sh` para updates preparados. Solo acepta
-`DATABASE_URL_FILE` y `SECRET_KEY_FILE`; no recibe secretos crudos por variables
-de ambiente.
+## Persistencia y diagnóstico
 
-Compatibilidad bare-metal validada para RC:
+Antes de down -v respaldá los volúmenes.
 
-- Ubuntu 22.04+.
-- Ubuntu 24.04+.
-- Debian 12+.
+```bash
+docker compose -f docker-compose.prod.yml --env-file compose.production.env ps
+docker compose -f docker-compose.prod.yml --env-file compose.production.env logs backend
+docker compose -f docker-compose.prod.yml --env-file compose.production.env logs automation-worker
+```
 
-No soportado para bare-metal:
-
-- Ubuntu 20.04, porque trae Python 3.8.
-- Debian 11 o anterior.
-- Windows/macOS; usar Docker.
-
-## Reglas de producción
-
-- No habilitar variables `TRESEKO_ALLOW_DEV_*`.
-- No guardar secretos en `compose.production.env`.
-- No agregar tokens del worker al archivo productivo base; usar
-  `QA_RUNNER_TOKEN_FILE` y el volumen persistente del worker.
-- No copiar llaves privadas ni material sensible al runtime.
-- El backend productivo requiere migraciones Alembic aplicadas.
-- Si Alembic falla por schema drift, corregir la migracion o recrear la base
-  antes de publicar; no usar `stamp head` como solucion silenciosa.
+Revisá migrator, backend y permisos de secretos antes de borrar datos. El
+profile `plugins` está declarado en el Compose, pero no puede construirse desde
+este paquete porque falta el contexto público de `plugin-runner`; no lo
+habilites como si fuera operativo.

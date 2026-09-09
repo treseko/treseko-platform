@@ -22,6 +22,7 @@ export function createWorkerValues({ HEADLESS, redactTraceText }) {
     const publicError = data?.error && typeof data.error === "object" ? data.error : {};
     const error = new Error(formatErrorDetail(publicError.message || data?.detail || data?.error || text || `HTTP ${status}`));
     error.error_code = publicError.error_code || `HTTP_${status}`;
+    error.http_status = status;
     error.correlation_id = publicError.correlation_id || correlationId;
     error.retryable = publicError.retryable;
     return error;

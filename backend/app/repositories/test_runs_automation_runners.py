@@ -1,5 +1,13 @@
 from .repository_context import *
 from ..services.edition.entitlement_service import enforce_limit
+from ..services.api_dynamic_variables import (
+    DynamicVariableContext,
+    derive_case_dynamic_seed,
+    extract_unsupported_dynamic_variable_names,
+    safe_dynamic_values,
+)
+from ..services.api_test_runner import resolve_variables
+from ..services.api_evidence_policy import evidence_policy_marker, public_test_data_evidence_enabled
 
 
 async def _enforce_worker_limit_for_solution(db: AsyncSession, organizacion_id: UUID | None):
@@ -15,6 +23,14 @@ async def _enforce_worker_limit_for_solution(db: AsyncSession, organizacion_id: 
 
 async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id: UUID):
     run_data = run.model_dump(exclude={"caso_ids"})
+    db_entorno = None
+    if not run.build_id:
+        raise ValueError("Toda ejecución debe pertenecer a una build activa")
+    db_build = await db.get(models.Build, run.build_id)
+    if not db_build or db_build.proyecto_id != run.proyecto_id:
+        raise ValueError("La build no pertenece al proyecto seleccionado")
+    if not access_control.is_build_active(db_build):
+        raise ValueError("La build no está activa. No se pueden crear nuevas ejecuciones")
     if run.entorno_id:
         entorno_result = await db.execute(
             select(models.Entorno).filter(
@@ -92,6 +108,8 @@ async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id:
             f"{case_names}. Restaura la prueba o quítala de la selección."
         )
 
+    run_seed = run.dynamic_seed or DynamicVariableContext().seed
+    run_data["dynamic_seed"] = run_seed
     db_run = models.TestRun(**run_data, creado_por=user_id, estado_run=models.EstadoRun.ABIERTO)
     db.add(db_run)
     await db.flush()
@@ -101,9 +119,13 @@ async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id:
     run_execution_mode = _run_origin_execution_mode(run.origen) or models.ExecutionMode.MANUAL.value
     for caso in casos_activos:
         resolved_dataset = await resolve_case_dataset(db, caso.id, run.build_id, run.entorno_id, run.dataset_id)
+        case_variables = {}
         if resolved_dataset:
             datasets_resueltos[str(caso.id)] = resolved_dataset["dataset_resuelto"]
-            variables_resueltas.update(resolved_dataset["variables_resueltas"])
+            case_variables = resolved_dataset["variables_resueltas"]
+            variables_resueltas.update(case_variables)
+        case_dynamic = DynamicVariableContext(derive_case_dynamic_seed(run_seed, str(caso.id)))
+        public_evidence = public_test_data_evidence_enabled(environment=db_entorno, case=caso)
         db_ejecucion = models.EjecucionCaso(
             test_run_id=db_run.id,
             caso_id=caso.id,
@@ -111,22 +133,41 @@ async def create_test_run(db: AsyncSession, run: schemas.TestRunCreate, user_id:
             ejecutado_por=user_id,
             estado_resultado=models.EstadoResultado.SIN_CORRER,
             execution_mode=models.ExecutionMode(run_execution_mode),
+            evidence_policy=evidence_policy_marker(public_evidence)["evidence_policy"],
+            dynamic_seed=case_dynamic.seed,
+            dynamic_variables={},
         )
         db.add(db_ejecucion)
         await db.flush()
         result_pasos = await db.execute(select(models.PasoPrueba).filter(models.PasoPrueba.caso_id == caso.id).order_by(models.PasoPrueba.numero_paso))
         pasos_orig = result_pasos.scalars().all()
         for p in pasos_orig:
+            resolved_data = p.datos
+            if caso.formato_prueba == models.FormatoPrueba.CLASICA and p.datos:
+                unsupported = extract_unsupported_dynamic_variable_names(p.datos)
+                if unsupported:
+                    raise ValueError(
+                        f"El caso {caso.codigo or caso.id} usa variables dinámicas no soportadas: "
+                        f"{', '.join(sorted(unsupported))}."
+                    )
+                resolved_data = resolve_variables(
+                    p.datos,
+                    case_variables,
+                    case_dynamic,
+                    source=f"classic.step.{p.numero_paso}",
+                )
             db_snapshot = models.SnapshotPaso(
                 ejecucion_caso_id=db_ejecucion.id,
                 paso_id=p.id,
                 numero_paso=p.numero_paso,
                 accion_congelada=p.accion,
                 datos_congelados=p.datos,
+                datos_resueltos=resolved_data,
                 resultado_esperado_congelado=p.resultado_esperado,
                 estado_paso=models.EstadoResultado.SIN_CORRER,
             )
             db.add(db_snapshot)
+        db_ejecucion.dynamic_variables = safe_dynamic_values(case_dynamic)
     db_run.datasets_resueltos = datasets_resueltos
     db_run.variables_resueltas = variables_resueltas
     await db.commit()
@@ -164,7 +205,7 @@ async def create_automation_runner(db: AsyncSession, payload: schemas.Automation
         select(models.AutomationRunnerRegistrationToken).filter(
             models.AutomationRunnerRegistrationToken.token_hash == _hash_token(payload.registration_token),
             models.AutomationRunnerRegistrationToken.used_at.is_(None),
-        )
+        ).with_for_update()
     )
     registration = token_result.scalar_one_or_none()
     if not registration:
@@ -218,6 +259,25 @@ async def create_automation_runner_pairing_request(
     if not payload.organizacion_id:
         raise ValueError("Debe indicar la solucion para vincular el worker")
     ttl = max(2, min(int(payload.ttl_minutes or 120), 120))
+    capabilities = schemas.redact_automation_capabilities(payload.capabilities or {})
+    worker_instance_id = capabilities.get("worker_instance_id") if isinstance(capabilities, dict) else None
+    # A worker may lose its local pending-request file during a recovery. Do
+    # not leave several approval cards for the same installation behind.
+    # New workers provide a stable instance id; the name fallback keeps the
+    # behavior safe for legacy 1.0.2 workers until they receive 1.0.3.
+    pending_result = await db.execute(
+        select(models.AutomationRunnerPairingRequest).filter(
+            models.AutomationRunnerPairingRequest.organizacion_id == payload.organizacion_id,
+            models.AutomationRunnerPairingRequest.estado == "PENDING",
+        ).order_by(models.AutomationRunnerPairingRequest.fecha_creacion.desc())
+    )
+    for existing in pending_result.scalars().all():
+        existing_capabilities = existing.capabilities or {}
+        existing_instance_id = existing_capabilities.get("worker_instance_id") if isinstance(existing_capabilities, dict) else None
+        same_worker = bool(worker_instance_id and existing_instance_id == worker_instance_id)
+        legacy_same_worker = not worker_instance_id and not existing_instance_id and existing.nombre == (payload.nombre or "Local Playwright Worker")
+        if same_worker or legacy_same_worker:
+            existing.estado = "EXPIRED"
     code = await _generate_pairing_code(db)
     pairing_token = f"qpair_{secrets.token_urlsafe(32)}"
     request = models.AutomationRunnerPairingRequest(
@@ -226,7 +286,7 @@ async def create_automation_runner_pairing_request(
         nombre=payload.nombre or "Local Playwright Worker",
         organizacion_id=payload.organizacion_id,
         tipo=payload.tipo or "LOCAL",
-        capabilities=schemas.redact_automation_capabilities(payload.capabilities or {}),
+        capabilities=capabilities,
         estado="PENDING",
         expires_at=utc_now() + timedelta(minutes=ttl),
     )
@@ -261,13 +321,33 @@ async def get_pending_automation_runner_pairing_requests(db: AsyncSession):
             changed = True
     if changed:
         await db.commit()
-    return [request for request in requests if request.estado == "PENDING" and not _is_expired(request.expires_at)]
+    visible = []
+    seen_identities = set()
+    for request in requests:
+        if request.estado != "PENDING" or _is_expired(request.expires_at):
+            continue
+        capabilities = request.capabilities or {}
+        identity = capabilities.get("worker_instance_id") if isinstance(capabilities, dict) else None
+        if not identity:
+            # Legacy 1.0.2 requests did not publish an instance id. Collapse
+            # duplicate cards from the same legacy worker while it migrates.
+            identity = f"legacy:{request.organizacion_id}:{request.nombre}"
+        if identity:
+            if identity in seen_identities:
+                request.estado = "EXPIRED"
+                changed = True
+                continue
+            seen_identities.add(identity)
+        visible.append(request)
+    if changed:
+        await db.commit()
+    return visible
 
 async def poll_automation_runner_pairing_request(db: AsyncSession, code: str, pairing_token: str):
     result = await db.execute(
         select(models.AutomationRunnerPairingRequest).filter(
             models.AutomationRunnerPairingRequest.code == code.upper()
-        )
+        ).with_for_update()
     )
     request = result.scalar_one_or_none()
     if not request or request.pairing_token_hash != _hash_token(pairing_token):
@@ -287,7 +367,7 @@ async def approve_automation_runner_pairing_request(db: AsyncSession, code: str,
     result = await db.execute(
         select(models.AutomationRunnerPairingRequest).filter(
             models.AutomationRunnerPairingRequest.code == code.upper()
-        )
+        ).with_for_update()
     )
     request = result.scalar_one_or_none()
     if not request:
@@ -328,7 +408,7 @@ async def deny_automation_runner_pairing_request(db: AsyncSession, code: str):
     result = await db.execute(
         select(models.AutomationRunnerPairingRequest).filter(
             models.AutomationRunnerPairingRequest.code == code.upper()
-        )
+        ).with_for_update()
     )
     request = result.scalar_one_or_none()
     if not request:
@@ -381,6 +461,27 @@ async def get_runner_by_token(db: AsyncSession, token: str):
     return result.scalar_one_or_none()
 
 async def update_runner_heartbeat(db: AsyncSession, runner: models.AutomationRunner, payload: schemas.AutomationRunnerHeartbeat):
+    now = utc_now()
+    if payload.current_job_id is not None:
+        job = await db.get(models.AutomationJob, payload.current_job_id, with_for_update=True)
+        if not job:
+            raise ValueError("El job informado por el heartbeat no existe")
+        if job.organizacion_id != runner.organizacion_id or job.runner_id != runner.id:
+            raise ValueError("El runner no es propietario del job informado por el heartbeat")
+        if job.estado not in {models.AutomationJobStatus.CLAIMED, models.AutomationJobStatus.RUNNING}:
+            raise ValueError("El job informado por el heartbeat ya no está activo")
+        if not payload.lease_token or payload.lease_token != job.lease_token:
+            raise ValueError("El lease del job informado por el heartbeat no es válido")
+        # Expiration makes the row eligible for recovery; it does not revoke
+        # the current owner by itself.  The row lock serializes this renewal
+        # with recovery: whichever transaction wins keeps or replaces the
+        # owner/token, and the loser validates that authoritative state.
+        job.lease_expires_at = now + timedelta(seconds=max(60, int(job.timeout_seconds or 300)))
+        if job.estado == models.AutomationJobStatus.CLAIMED:
+            job.estado = models.AutomationJobStatus.RUNNING
+            job.fecha_inicio = job.fecha_inicio or now
+    elif payload.lease_token is not None:
+        raise ValueError("No se puede renovar un lease sin indicar current_job_id")
     runner.estado = payload.estado or "ONLINE"
     capabilities = dict(runner.capabilities or {})
     if payload.capabilities is not None:
@@ -396,7 +497,7 @@ async def update_runner_heartbeat(db: AsyncSession, runner: models.AutomationRun
     if payload.uptime_seconds is not None:
         capabilities["uptime_seconds"] = payload.uptime_seconds
     runner.capabilities = capabilities
-    runner.ultimo_heartbeat = utc_now()
+    runner.ultimo_heartbeat = now
     await db.commit()
     await db.refresh(runner)
     return runner

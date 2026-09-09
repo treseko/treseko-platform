@@ -4,7 +4,7 @@ import { mapBackendBuildToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
 import { fromDateTimeLocalInput } from '../../shared/utils/dateTime'
 import type { TranslationKey } from '../../i18n'
-import { isBuildReadOnly } from '../../app/buildState'
+import { isBuildExecutable, isBuildReadOnly } from '../../app/buildState'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
@@ -64,7 +64,7 @@ export function createBuildActions({
     const mapped = mapBackendBuildToItem(updatedBuild)
     setBuildsList(prev => prev.map(item => {
       if (item.id === mapped.id) return { ...item, ...mapped }
-      if (mapped.active && item.componentId === mapped.componentId && (item.active || item.state === 'ACTIVA')) {
+      if (isBuildExecutable(mapped) && item.componentId === mapped.componentId && isBuildExecutable(item)) {
         return { ...item, active: false, state: 'HISTORICA' }
       }
       return item
@@ -158,7 +158,6 @@ export function createBuildActions({
     }
     const build = buildsList.find(item => item.id === buildId)
     if (!build) return
-    if (rejectInactiveWrite(buildId)) return
     let updatedBuild: any = null
     if (projectsSource === 'backend') {
       try {
@@ -222,13 +221,13 @@ export function createBuildActions({
       setBuildsList(prev => {
         const nextBuilds = prev.map(item => item.id === buildId ? { ...item, active: false, state: 'HISTORICA', endDate: now } : item)
         if (currentBuildId === buildId) {
-          const nextActiveBuild = nextBuilds.find(item => item.projectId === build.projectId && item.componentId === build.componentId && item.active)
+          const nextActiveBuild = nextBuilds.find(item => item.projectId === build.projectId && item.componentId === build.componentId && isBuildExecutable(item))
           setCurrentBuildId(nextActiveBuild?.id || '')
         }
         return nextBuilds
       })
     } else if (currentBuildId === buildId) {
-      const nextActiveBuild = buildsList.find(item => item.projectId === build.projectId && item.componentId === build.componentId && item.id !== buildId && item.active)
+      const nextActiveBuild = buildsList.find(item => item.projectId === build.projectId && item.componentId === build.componentId && item.id !== buildId && isBuildExecutable(item))
       setCurrentBuildId(nextActiveBuild?.id || '')
     }
     showFeedback(t('proyectos.buildDeactivated'), `${updatedBuild?.name || build.name || t('proyectos.theBuild')} ${t('proyectos.buildNoLongerActive')}`, 'success')
@@ -307,7 +306,7 @@ export function createBuildActions({
           const nextVisibleActiveBuild = nextBuilds.find(item =>
             item.projectId === build.projectId &&
             item.componentId === build.componentId &&
-            item.active &&
+            isBuildExecutable(item) &&
             !item.hidden
           )
           setCurrentBuildId(nextVisibleActiveBuild?.id || '')
@@ -319,7 +318,7 @@ export function createBuildActions({
         item.projectId === build.projectId &&
         item.componentId === build.componentId &&
         item.id !== buildId &&
-        item.active &&
+        isBuildExecutable(item) &&
         !item.hidden
       )
       setCurrentBuildId(nextVisibleActiveBuild?.id || '')
@@ -360,7 +359,7 @@ export function createBuildActions({
     setBuildsList(prev => {
       const nextBuilds = prev.filter(build => build.id !== buildId)
       if (currentBuildId === buildId) {
-        setCurrentBuildId(nextBuilds.find(build => build.projectId === managingProjectId && build.componentId === currentCompId && build.active)?.id || '')
+        setCurrentBuildId(nextBuilds.find(build => build.projectId === managingProjectId && build.componentId === currentCompId && isBuildExecutable(build))?.id || '')
       }
       return nextBuilds
     })

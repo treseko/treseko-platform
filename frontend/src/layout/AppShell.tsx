@@ -3,6 +3,7 @@ import type { CSSProperties, Dispatch, ReactNode, SetStateAction } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeft,
+  BookOpen,
   Building2,
   Check,
   ChevronRight,
@@ -21,6 +22,7 @@ import { useI18n } from '../i18n'
 import { isBuildReadOnly } from '../app/buildState'
 import { useAppNotifications } from './useAppNotifications'
 import { NotificationInbox } from './NotificationInbox'
+import { requestAdminGuideOpen } from '../features/onboarding/onboardingEvents'
 
 export type SidebarItem = {
   id: ModuleId
@@ -83,19 +85,23 @@ export function AppShell({
 }: AppShellProps) {
   const { t, locale } = useI18n()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
   const activeOrganizations = organizations.filter(org => org.active !== false)
-  const currentOrg = activeOrganizations.find(org => org.id === currentOrgId)
-  const currentProject = projectsList.find(project => project.id === currentProjectId)
-  const currentComponent = componentsList.find(component => component.id === currentCompId)
-  const currentBuild = buildsList.find(build => build.id === currentBuildId)
+  const currentOrg = activeOrganizations.find(org => sameId(org.id, currentOrgId))
+  const currentProject = projectsList.find(project => sameId(project.id, currentProjectId))
+  const currentComponent = componentsList.find(component => sameId(component.id, currentCompId))
+  const currentBuild = buildsList.find(build => sameId(build.id, currentBuildId))
   const currentVisibleBuild = currentBuild?.hidden ? undefined : currentBuild
   const currentBuildReadOnly = isBuildReadOnly(currentVisibleBuild)
-  const projectComponents = componentsList.filter(component => component.projectId === currentProjectId)
-  const currentOrgIsActive = activeOrganizations.some(org => org.id === currentOrgId)
-  const orgProjects = currentOrgIsActive ? projectsList.filter(project => project.orgId === currentOrgId) : []
-  const componentBuilds = buildsList.filter(build => build.projectId === currentProjectId && build.componentId === currentCompId)
-  const visibleBuilds = componentBuilds.filter(build => !build.hidden)
+  const projectComponents = componentsList.filter(component => sameId(component.projectId, currentProjectId))
+  const currentOrgIsActive = activeOrganizations.some(org => sameId(org.id, currentOrgId))
+  const projectsInCurrentOrg = projectsList.filter(project => sameId(project.orgId, currentOrgId))
+  const orgProjects = currentOrgIsActive && projectsInCurrentOrg.length > 0 ? projectsInCurrentOrg : projectsList
+  const componentBuilds = buildsList.filter(build => sameId(build.projectId, currentProjectId) && sameId(build.componentId, currentCompId))
+  const projectBuilds = buildsList.filter(build => sameId(build.projectId, currentProjectId))
+  const visibleBuilds = (componentBuilds.length > 0 ? componentBuilds : projectBuilds).filter(build => !build.hidden)
   const editionLabel = systemEdition === 'premium' ? 'Premium' : 'Community'
+  const isAdminSession = loggedUser.role === 'ADMIN'
   const brandName = branding.effective_brand_name || DEFAULT_BRANDING.effective_brand_name
   const brandLogoUrl = resolveAssetUrl(branding.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url
   const notificationState = useAppNotifications({ loggedUserId: loggedUser.id, loggedUserEmail: loggedUser.email, locale, t })
@@ -153,7 +159,7 @@ export function AppShell({
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {activeOrganizations.map(org => (
-                <Dropdown.Item key={org.id} active={org.id === currentOrgId} onClick={() => onOrgChange(org.id)}>
+                  <Dropdown.Item key={org.id} active={sameId(org.id, currentOrgId)} onClick={() => onOrgChange(org.id)}>
                   {org.name}
                 </Dropdown.Item>
               ))}
@@ -165,7 +171,7 @@ export function AppShell({
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {orgProjects.map(project => (
-                <Dropdown.Item key={project.id} active={project.id === currentProjectId} onClick={() => onProjectChange(project.id)}>
+                <Dropdown.Item key={project.id} active={sameId(project.id, currentProjectId)} onClick={() => onProjectChange(project.id)}>
                   {project.name}
                 </Dropdown.Item>
               ))}
@@ -178,7 +184,7 @@ export function AppShell({
             </Dropdown.Toggle>
             <Dropdown.Menu className="w-100">
               {sortBuildsNewestFirst(visibleBuilds).map(build => (
-                <Dropdown.Item key={build.id} active={build.id === currentBuildId} onClick={() => onBuildChange(build)}>
+                <Dropdown.Item key={build.id} active={sameId(build.id, currentBuildId)} onClick={() => onBuildChange(build)}>
                   {build.name}
                   {isBuildReadOnly(build) && <Badge bg="warning" text="dark" className="ms-2">{t('common.readOnly')}</Badge>}
                 </Dropdown.Item>
@@ -204,7 +210,7 @@ export function AppShell({
           })}
         </Nav>
 
-        <div className="mt-auto p-3 border-top border-secondary d-flex align-items-center gap-3">
+          <div className="mt-auto p-3 border-top border-secondary d-flex align-items-center gap-3">
           <div className="app-user-avatar rounded-circle bg-primary text-white d-flex justify-content-center align-items-center fw-bold flex-shrink-0 overflow-hidden position-relative" style={{ width: '38px', height: '38px' }}>
             <span>{loggedUser.avatar}</span>
             {loggedUser.avatarUrl ? (
@@ -215,6 +221,17 @@ export function AppShell({
             <div className="text-white fw-bold small text-truncate">{loggedUser.name}</div>
             <div className="text-secondary x-small text-truncate">{loggedUser.roleLabel || loggedUser.role}</div>
           </div>
+          {isAdminSession && (
+            <Button
+              variant="link"
+              className="text-secondary p-1 shadow-none"
+              title={t('onboarding.openAdminGuide')}
+              aria-label={t('onboarding.openAdminGuide')}
+              onClick={requestAdminGuideOpen}
+            >
+              <BookOpen size={16} aria-hidden="true" />
+            </Button>
+          )}
           <Button variant="link" className="text-secondary p-1 shadow-none" title={t('auth.logout')} aria-label={t('auth.logout')} onClick={onLogout}>
             <LogOut size={16} />
           </Button>
@@ -282,8 +299,8 @@ export function AppShell({
                   <Dropdown.Item
                     key={org.id}
                     onClick={() => onOrgChange(org.id)}
-                    active={org.id === currentOrgId}
-                    className={`sidebar-org-item text-white small py-2 d-flex align-items-center gap-2 ${org.id === currentOrgId ? 'bg-primary' : ''}`}
+                    active={sameId(org.id, currentOrgId)}
+                    className={`sidebar-org-item text-white small py-2 d-flex align-items-center gap-2 ${sameId(org.id, currentOrgId) ? 'bg-primary' : ''}`}
                   >
                     <Building2 size={14} />
                     <span>{org.name}</span>
@@ -309,6 +326,17 @@ export function AppShell({
               <div className="text-white fw-bold small text-truncate m-0 lh-1 mb-1">{loggedUser.name}</div>
               <div className="text-secondary fw-semibold x-small text-truncate m-0 lh-1">{loggedUser.roleLabel || loggedUser.role}</div>
             </div>
+          )}
+          {isAdminSession && (
+            <Button
+              variant="link"
+              className="text-secondary p-1 shadow-none"
+              title={t('onboarding.openAdminGuide')}
+              aria-label={t('onboarding.openAdminGuide')}
+              onClick={requestAdminGuideOpen}
+            >
+              <BookOpen size={16} aria-hidden="true" />
+            </Button>
           )}
           {!sidebarCollapsed && (
             <Button variant="link" className="text-secondary p-1 shadow-none" title={t('auth.logout')} aria-label={t('auth.logout')} onClick={onLogout}>
@@ -339,17 +367,17 @@ export function AppShell({
                 <Layers size={12} className="text-secondary" />
                 {t('common.component')}: <span className="text-primary">{currentComponent?.name || t('common.noComponent')}</span>
               </Dropdown.Toggle>
-              <Dropdown.Menu className="shadow-lg py-1 border text-start">
+              <Dropdown.Menu className="app-shell-component-menu shadow-lg py-1 border text-start">
                 <div className="px-3 py-1 text-muted x-small fw-bold border-bottom mb-1">{t('common.projectComponents')}</div>
                 {projectComponents.map(component => (
                   <Dropdown.Item
                     key={component.id}
                     onClick={() => onComponentChange(component.id)}
-                    active={component.id === currentCompId}
-                    className="x-small py-1 d-flex align-items-center gap-2"
+                    active={sameId(component.id, currentCompId)}
+                    className="app-shell-component-option x-small py-1 d-flex align-items-center gap-2"
                   >
-                    <Layers size={12} />
-                    {component.name}
+                    <Layers size={14} className="app-shell-component-icon" aria-hidden="true" />
+                    <span className="app-shell-component-name" title={component.name}>{component.name}</span>
                   </Dropdown.Item>
                 ))}
                 {projectComponents.length === 0 && (
@@ -371,7 +399,7 @@ export function AppShell({
                   <Dropdown.Item
                     key={project.id}
                     onClick={() => onProjectChange(project.id)}
-                    active={project.id === currentProjectId}
+                    active={sameId(project.id, currentProjectId)}
                     className="small py-2 d-flex align-items-center gap-2"
                   >
                     <Folders size={12} />
@@ -393,10 +421,10 @@ export function AppShell({
                   <Dropdown.Item
                     key={build.id}
                     onClick={() => onBuildChange(build)}
-                    active={build.id === currentBuildId}
+                    active={sameId(build.id, currentBuildId)}
                     className={`small py-2 d-flex align-items-center gap-2 ${!build.active ? 'text-muted' : ''}`}
                   >
-                    <Check size={12} className={build.id === currentBuildId ? 'text-primary' : 'text-transparent'} />
+                    <Check size={12} className={sameId(build.id, currentBuildId) ? 'text-primary' : 'text-transparent'} />
                     {build.name}
                     {!build.active && <Badge bg="light" text="secondary" className="ms-auto border">{t('common.inactive')}</Badge>}
                     {isBuildReadOnly(build) && <Badge bg="warning" text="dark" className="ms-auto">{t('common.readOnly')}</Badge>}

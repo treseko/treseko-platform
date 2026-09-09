@@ -1,5 +1,8 @@
 import { formatTime } from '../../shared/utils/dateTime'
-import type { AiEngineHealthState, IaLogEntry, IaLogLevel, IaRunStatus, MotorIaTranslator } from './motorIaTypes'
+import type { AiEngineHealthState, IaLogEntry, IaLogLevel, IaQueueItem, IaRunStatus, MotorIaTranslator } from './motorIaTypes'
+
+export const MAX_STORED_IA_LOGS = 500
+export const MAX_VISIBLE_IA_LOGS = 50
 
 export const nowIso = () => new Date().toISOString()
 
@@ -45,6 +48,31 @@ export const normalizeLog = (log: IaLogEntry | string): IaLogEntry => {
   return { ts: '', level: detectLegacyLevel(log), source: 'LEGACY', message: log }
 }
 
+const queueItemTimestamp = (item: IaQueueItem) => {
+  const value = item.endedAt || item.startedAt
+  const parsed = value ? new Date(value).getTime() : Number.NaN
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+export const getLatestQueueItem = (items: IaQueueItem[]) => items.reduce<IaQueueItem | null>((latest, item) => {
+  if (!latest) return item
+  return queueItemTimestamp(item) > queueItemTimestamp(latest) ? item : latest
+}, null)
+
+export const selectConsoleLogs = (
+  logs: IaLogEntry[],
+  latestItem: IaQueueItem | null,
+  includeAllRecent: boolean,
+  limit = MAX_VISIBLE_IA_LOGS,
+) => {
+  if (includeAllRecent || !latestItem) return logs.slice(-limit)
+  const scoped = logs.filter(log => (
+    (latestItem.executionId && log.executionId === latestItem.executionId)
+    || (latestItem.caseCode && log.caseCode === latestItem.caseCode)
+  ))
+  return (scoped.length > 0 ? scoped : logs).slice(-limit)
+}
+
 export const formatLogTime = (ts: string) => formatTime(ts) || '--:--:--'
 
 export const formatElapsed = (start?: string, end?: string, fallbackSeconds?: number) => {
@@ -71,6 +99,10 @@ export const getStatusMeta = (t: MotorIaTranslator): Record<IaRunStatus, { label
   BLOQUEADO: { label: t('motorIa.statusBloqueado'), bg: 'primary' },
   ERROR: { label: t('motorIa.statusError'), bg: 'danger' },
   STREAM_CERRADO: { label: t('motorIa.statusStreamCerrado'), bg: 'secondary' },
+  TIMEOUT: { label: t('motorIa.statusTimeout'), bg: 'danger' },
+  SKIPPED: { label: t('motorIa.statusSkipped'), bg: 'secondary' },
+  CANCELLED: { label: t('motorIa.statusCancelled'), bg: 'secondary' },
+  REQUIERE_REVISION: { label: t('motorIa.statusRequiresReview'), bg: 'warning', text: 'dark' },
 })
 
 export const logClass = (level: IaLogLevel) => {
@@ -126,6 +158,16 @@ const summarizeStartMessage = (t: MotorIaTranslator, message: string) => {
 
 const humanizeWorkflowMessage = (t: MotorIaTranslator, message: string, reason?: string) => {
   const value = message.trim()
+  const connectedMatch = value.match(/^Conectado a\s+(.+)$/i)
+  if (connectedMatch) return t('motorIa.connectedTo', { target: connectedMatch[1] })
+  const waitingMatch = value.match(/^(.+):\s*esperando turno$/i)
+  if (waitingMatch) return `${waitingMatch[1]}: ${t('motorIa.queueWaiting')}`
+  const startingMatch = value.match(/^(.+)\s+inicia ejecucion IA\.?$/i)
+  if (startingMatch) return `${startingMatch[1]} ${t('motorIa.executionStarting')}`
+  const finishedMatch = value.match(/^Finalizo con estado\s+(.+)\.?$/i)
+  if (finishedMatch) return t('motorIa.executionFinishedWithStatus', { status: finishedMatch[1] })
+  const updatedMatch = value.match(/^Estado actualizado:\s*(.+)$/i)
+  if (updatedMatch) return t('motorIa.statusUpdated', { status: updatedMatch[1] })
   if (/^Ejecutando workflow\s+/i.test(value)) return value.replace(/^Ejecutando workflow\s+/i, `${t('motorIa.workflowStarted')}: `)
   if (/^Context Resolver:\s*SUCCESS$/i.test(value)) return t('motorIa.contextResolved')
   if (/^Observer:\s*SUCCESS$/i.test(value)) return t('motorIa.observationCompleted')
@@ -144,6 +186,11 @@ const humanizeWorkflowMessage = (t: MotorIaTranslator, message: string, reason?:
 }
 
 export const formatConsoleMessage = (t: MotorIaTranslator, log: IaLogEntry) => humanizeWorkflowMessage(t, summarizeStartMessage(t, cleanDuplicateCasePrefix(log.message, log.caseCode)), log.reason)
+
+export const formatQueueMessage = (t: MotorIaTranslator, message?: string) => {
+  if (!message) return ''
+  return humanizeWorkflowMessage(t, message)
+}
 
 export const formatMetrics = (t: MotorIaTranslator, metrics?: Record<string, any>) => {
   if (!metrics) return ''

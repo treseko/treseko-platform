@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Alert, Badge, Button } from "react-bootstrap";
 import { AlertCircle, Bug, CheckCircle2, Clock, FileText, History, ImagePlus, Info, PlayCircle, User, XCircle } from "lucide-react";
 import type { AttachmentMeta } from "../../EvidenceUpload";
@@ -8,7 +9,42 @@ import { getBugPriorityPresentation } from "../bugs/bugPresentation";
 import { ExecutionHistoryPanel } from "./ExecutionHistoryPanel";
 
 export function ExecutionCaseDetailPanel({ options }: { options: any }) {
-  const { selectedTest, t, setSelectedTest, currentBuildId, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, getStatusColor: _getStatusColor, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs } = options;
+  const { selectedTest, t, setSelectedTest, currentBuildId, loadCasoExecutionHistory, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, getStatusColor: _getStatusColor, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs } = options;
+  const historyHydrationKey = useRef('');
+
+  useEffect(() => {
+    if (!selectedTest?.id || typeof loadCasoExecutionHistory !== 'function') return;
+    const key = `${selectedTest.id}:${currentBuildId || ''}`;
+    if (historyHydrationKey.current === key) return;
+    historyHydrationKey.current = key;
+    let cancelled = false;
+    void loadCasoExecutionHistory(selectedTest.id, currentBuildId).then((history: any[] & { total?: number; stats?: any }) => {
+      if (cancelled) return;
+      setSelectedTest((previous: any) => previous?.id === selectedTest.id
+        ? (() => {
+            const resolvedHistory = history.length > 0 || !Array.isArray(previous.history)
+              ? history
+              : previous.history;
+            const latest = resolvedHistory[0];
+            return {
+              ...previous,
+              history: resolvedHistory,
+              historyTotal: history.length > 0 ? (history.total ?? history.length) : (previous.historyTotal || resolvedHistory.length),
+              historyStats: history.length > 0 ? (history.stats || null) : (previous.historyStats || null),
+              ...(latest ? {
+                lastResult: latest.status,
+                lastExecutedAt: latest.date,
+                lastExecutedBy: latest.executedBy,
+                lastExecutedVersion: latest.versionExecuted,
+              } : {}),
+            };
+          })()
+        : previous);
+    }).catch(() => {
+      // Conserva el historial resumido que ya llegó con el caso.
+    });
+    return () => { cancelled = true; };
+  }, [selectedTest?.id, selectedTest?.historyStats, currentBuildId, loadCasoExecutionHistory, setSelectedTest]);
   if (!selectedTest) return null;
   return (
             <div

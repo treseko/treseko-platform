@@ -328,6 +328,7 @@ async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.B
         )
         if db_build.fecha_inicio is None:
             update_data["fecha_inicio"] = utc_now()
+        update_data["fecha_fin"] = None
     elif requested_state == "HISTORICA" and "fecha_fin" not in build_update.model_fields_set:
         update_data["fecha_fin"] = utc_now()
     for field, value in update_data.items():

@@ -1,26 +1,28 @@
-# Capacidades y permisos
+# Matriz de capabilities
 
-Esta referencia ayuda a los administradores a decidir qué acceso asignar. Las
-capacidades se aplican mediante roles y permisos de módulo; no es necesario
-configurar identificadores técnicos manualmente.
+Se evalúan junto con rol, nivel, alcance y licencia; no se editan manualmente
+como texto técnico.
 
-| Área | Capacidades habituales | Recomendación |
+| Área | Capabilities a revisar | Alcance |
 |---|---|---|
-| Proyectos | Portafolio, componentes, builds, equipo, ambientes, datasets, wiki, requisitos e historias | QA Lead para editar; Tester para consultar o colaborar según el rol. |
-| Casos | Suites, casos, pasos, versiones, adjuntos, scripts y trazabilidad | QA Lead y Tester con edición cuando diseñan pruebas. |
-| Ejecución | Ejecución manual, automatizada, IA, evidencias e historial | QA Lead y Tester según el método autorizado. |
-| Automatización | Workers, jobs, validación y funciones reutilizables | QA Lead o un rol técnico específico. |
-| Reportes | Métricas, exportación, compartir y trazabilidad | Lectura para quienes toman decisiones; edición solo cuando corresponda. |
-| Bugs | Crear, editar, asignar, comentar, adjuntar, triage y vínculos externos | Tester para reportar; QA Lead para triage y asignación. |
-| Configuración | Preferencias, perfil, usuarios, roles, licencia, IA y API keys | Administración restringida; cada usuario administra sus propias API keys. |
-| Notificaciones | Bandeja personal, reglas, plantillas, SMTP y auditoría | Usuarios para bandeja; administrador para configuración. |
+| Proyectos | Portfolio, componentes, builds, ambientes, datasets, historias | Organización/proyecto. |
+| Casos | Suites, casos, pasos, adjuntos, scripts, trazabilidad | Proyecto autorizado. |
+| Ejecución | ejecutar.manual, ejecutar.automatizada, ejecutar.ia | Formato y modalidad independientes. |
+| Automatización | Workers, jobs, validación, API declarativa | Worker aprobado y scope válido. |
+| Reportes | Lectura, exportación, snapshots, compartir, métricas | Algunas requieren Premium. |
+| Bugs/incidencias | Crear, editar, asignar, comentar, adjuntar, triage | Evidencia elegible. |
+| Historial | Runs, snapshots y auditoría histórica | Downgrade puede conservar lectura. |
+| IA | Perfiles, credenciales, workflows y revisión | No equivale a ejecutar todos los formatos. |
+| Integraciones | Provider, vínculos, notificaciones | Scope y capability del proyecto. |
+| Plugins | Catálogo, instalar, habilitar, configurar, portabilidad | Runner y entitlement. |
+| Configuración | Usuarios, roles, licencia, updates, API keys | Administración restringida. |
 
-## Aplicar el menor privilegio necesario
+Premium puede habilitar RBAC granular, SSO, multi-worker, scheduler, API externa
+avanzada, reportes/snapshots avanzados, bugs enterprise, integraciones,
+auditoría, métricas históricas, branding y updates.
 
-- Otorgá **Lector** si la persona solo necesita consultar información.
-- Otorgá **Editor** solo si debe crear, cambiar o administrar recursos.
-- Separá los roles de ejecución de los roles de configuración global.
-- Revisá los permisos luego de cambios de equipo o responsabilidades.
+## MCP
 
-Si una acción no aparece pese a tener acceso al módulo, revisá la edición,
-licencia, estado del proyecto y permisos específicos con un administrador.
+Está deshabilitado por defecto, usa API key separada del JWT y expone solo
+herramientas de lectura habilitadas por allowlist, con scope simultáneo de
+organización y proyecto.

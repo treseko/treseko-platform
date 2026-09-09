@@ -3,7 +3,7 @@ export default {
   recentExecutions: 'Recent executions', buildWindow: 'Build window', trendByBuild: 'Trend by build',
   openBugs: 'Open bugs', averageDuration: 'Average duration', averageDurationExecutions: '{count} executions', executionTypes: 'Execution types',
   recentFailedCases: 'Recent failures', widgetError: 'This widget could not be rendered.',
-  dashboardLoadError: 'The dashboard could not be loaded.', noData: 'No data.',
+  dashboardLoadError: 'The dashboard could not be loaded.', retry: 'Retry', noData: 'No data.',
   saveSuccessTitle: 'Dashboard saved', saveSuccessMessage: 'Your layout will apply to all your projects.',
   saveErrorTitle: 'Could not save', saveErrorMessage: 'Error saving dashboard.',
   failedExecutions: '{count} failed', activeBuild: 'No active build.',

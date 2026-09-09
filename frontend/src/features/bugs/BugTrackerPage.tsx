@@ -28,6 +28,9 @@ type BugTrackerPageProps = {
   onDeepLinkConsumed?: () => void
   modalOnly?: boolean
   onDetailClosed?: () => void
+  onOpenRelatedCase?: (bug: any) => void
+  onOpenRelatedExecution?: (bug: any) => void
+  initialFilters?: Record<string, any>
 }
 
 export function BugTrackerPage({
@@ -47,6 +50,9 @@ export function BugTrackerPage({
   onDeepLinkConsumed,
   modalOnly = false,
   onDetailClosed,
+  onOpenRelatedCase,
+  onOpenRelatedExecution,
+  initialFilters = {},
 }: BugTrackerPageProps) {
   const { t } = useI18n()
   const canUse = canAccessCapability || (() => true)
@@ -62,13 +68,23 @@ export function BugTrackerPage({
   const currentComponent = componentsList.find((item: any) => String(item.id) === String(currentCompId || ''))
   const currentBuildLabel = currentBuild?.name || currentBuild?.nombre || ''
   const currentComponentLabel = currentComponent?.name || currentComponent?.nombre || ''
+  const availableBuilds = buildsList.filter((build: any) => {
+    const buildProjectId = build.projectId || build.proyecto_id
+    const buildComponentId = build.componentId || build.componente_id
+    return (!currentProjectId || String(buildProjectId) === String(currentProjectId))
+      && (!currentCompId || String(buildComponentId) === String(currentCompId))
+  })
 
   const [bugs, setBugs] = useState<any[]>([])
   const [summary, setSummary] = useState<any>({})
   const [loading, setLoading] = useState(false)
   const [selectedBug, setSelectedBug] = useState<any | null>(null)
+  const [conversationalContext, setConversationalContext] = useState<any | null>(null)
+  const [conversationalContextLoading, setConversationalContextLoading] = useState(false)
+  const [apiContext, setApiContext] = useState<any | null>(null)
+  const [apiContextLoading, setApiContextLoading] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [filters, setFilters] = useState({ q: '', estado: '', severidad: '', prioridad: '' })
+  const [filters, setFilters] = useState({ q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported' })
   const [comment, setComment] = useState('')
   const [commentAttachments, setCommentAttachments] = useState<AttachmentMeta[]>([])
   const [externalForm, setExternalForm] = useState({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
@@ -82,7 +98,7 @@ export function BugTrackerPage({
   const loadedProjectIdRef = useRef<string | undefined>(undefined)
   const consumedDeepLinkBugRef = useRef('')
 
-  const loadBugs = async (options?: { silent?: boolean }) => {
+  const loadBugs = async (options?: { silent?: boolean }, filterOverride?: Record<string, any>) => {
     if (!currentProjectId || !canView) {
       setBugs([])
       setSummary({})
@@ -93,11 +109,11 @@ export function BugTrackerPage({
     if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams()
-      Object.entries(filters).forEach(([key, value]) => value && params.set(key, value))
+      Object.entries(filterOverride || filters).forEach(([key, value]) => value && params.set(key, value))
       params.set('limit', '100')
       const [listResponse, summaryResponse] = await Promise.all([
         fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/?${params.toString()}`),
-        fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/summary/`),
+        fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/summary/${filterOverride?.build_id || filters.build_id ? `?build_id=${encodeURIComponent(filterOverride?.build_id || filters.build_id)}&build_scope=${encodeURIComponent(filterOverride?.build_scope || filters.build_scope || 'reported')}` : ''}`),
       ])
       if (!listResponse.ok) throw new Error(await listResponse.text())
       const listPayload = await listResponse.json()
@@ -111,6 +127,17 @@ export function BugTrackerPage({
       if (!silent) setLoading(false)
     }
   }
+
+  const initialFiltersKey = JSON.stringify(initialFilters || {})
+
+  useEffect(() => {
+    if (!initialFiltersKey || initialFiltersKey === '{}') return
+    const nextFilters = { q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', ...initialFilters }
+    setFilters(nextFilters)
+    void loadBugs(undefined, nextFilters)
+    // Navigation from reports intentionally applies the complete filter set once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiltersKey])
 
   useEffect(() => {
     const sameProject = loadedProjectIdRef.current === currentProjectId
@@ -156,12 +183,79 @@ export function BugTrackerPage({
     setAdditionalContextRows(rows)
   }
 
+  const resolveBugDetail = async (bug: any) => {
+    const requestedId = String(bug?.id || '').trim()
+    if (!requestedId) throw new Error(t('bugs.errorOpenDetail'))
+
+    let response = await fetchWithAuth(`${API_BASE}/bugs/${requestedId}/`)
+    if (response.ok) return response
+
+    // Older conversational related-bug payloads could accidentally expose
+    // caso_id as id. Recover the real issue from the project collection only
+    // for that failed lookup; classic valid bug IDs keep their existing path.
+    if (response.status === 404 && currentProjectId) {
+      const fallbackResponse = await fetchWithAuth(
+        `${API_BASE}/proyectos/${currentProjectId}/bugs/?limit=200`,
+      )
+      if (fallbackResponse.ok) {
+        const payload = await fallbackResponse.json()
+        const items = Array.isArray(payload) ? payload : payload?.items || []
+        const requestedCode = String(bug?.codigo || '').trim()
+        const candidate = items.find((item: any) =>
+          (requestedCode && String(item?.codigo || '').trim() === requestedCode)
+          || String(item?.id || '') === requestedId,
+        ) || items.find((item: any) => String(item?.caso_id || '') === requestedId)
+        if (candidate?.id && String(candidate.id) !== requestedId) {
+          response = await fetchWithAuth(`${API_BASE}/bugs/${candidate.id}/`)
+        }
+      }
+    }
+    return response
+  }
+
   const openDetail = async (bug: any) => {
     try {
-      const response = await fetchWithAuth(`${API_BASE}/bugs/${bug.id}/`)
+      const response = await resolveBugDetail(bug)
       if (!response.ok) throw new Error(await apiErrorMessage(response))
       const payload = await response.json()
       setSelectedBug(payload)
+      setConversationalContext(null)
+      setApiContext(null)
+      // The backend can classify legacy bugs on demand. Keep the fallback for
+      // older responses that still expose CLASICO while they carry a case or
+      // execution reference to a Chatbot run.
+      const mayHaveConversationalEvidence = String(payload.tipo_contexto || '').toUpperCase() === 'CONVERSACIONAL'
+        || Boolean(payload.ejecucion_id)
+        || Boolean(payload.caso_id && String(payload.case_code || '').toUpperCase().startsWith('TC-CHAT'))
+      let loadedConversationalContext = false
+      if (mayHaveConversationalEvidence) {
+        setConversationalContextLoading(true)
+        try {
+          const contextResponse = await fetchWithAuth(`${API_BASE}/bugs/${payload.id}/conversational-context/`)
+          if (contextResponse.ok) {
+            const context = await contextResponse.json()
+            setConversationalContext(context)
+            loadedConversationalContext = true
+            if (String(payload.tipo_contexto || '').toUpperCase() !== 'CONVERSACIONAL') {
+              setSelectedBug({ ...payload, tipo_contexto: 'CONVERSACIONAL' })
+            }
+          }
+        } finally {
+          setConversationalContextLoading(false)
+        }
+      }
+      // API bugs use the same execution link as classic bugs, but their
+      // request/response evidence is stored in api_resultado. Try this
+      // resolver after the conversational compatibility check.
+      if (!loadedConversationalContext) {
+        setApiContextLoading(true)
+        try {
+          const apiResponse = await fetchWithAuth(`${API_BASE}/bugs/${payload.id}/api-context/`)
+          if (apiResponse.ok) setApiContext(await apiResponse.json())
+        } finally {
+          setApiContextLoading(false)
+        }
+      }
       hydrateDetailEditState(payload)
       setMarkdown('')
       setComment('')
@@ -169,6 +263,7 @@ export function BugTrackerPage({
       setExternalForm({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
       setDetailOpen(true)
     } catch (error: any) {
+      setConversationalContextLoading(false)
       showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorOpenDetail'), 'danger')
     }
   }
@@ -236,8 +331,13 @@ export function BugTrackerPage({
       .filter(row => row.key || row.value)
     setSavingDetail(true)
     try {
+      const isConversational = String(selectedBug.tipo_contexto || 'CLASICO').toUpperCase() === 'CONVERSACIONAL'
+      const managementFields = ['titulo', 'severidad', 'prioridad', 'criticidad', 'impacto_negocio', 'frecuencia', 'asignado_a', 'notas_qa', 'bloquea_release', 'bloquea_caso']
+      const changes = isConversational
+        ? Object.fromEntries(managementFields.filter(field => Object.prototype.hasOwnProperty.call(detailForm, field)).map(field => [field, detailForm[field]]))
+        : { ...detailForm }
       await updateSelectedBug({
-        ...detailForm,
+        ...changes,
         asignado_a: detailForm.asignado_a || null,
         metadata_json: {
           ...(selectedBug.metadata_json || {}),
@@ -409,6 +509,10 @@ export function BugTrackerPage({
     summary,
     loading,
     selectedBug,
+    conversationalContext,
+    apiContext,
+    apiContextLoading,
+    conversationalContextLoading,
     detailOpen,
     filters,
     comment,
@@ -421,6 +525,7 @@ export function BugTrackerPage({
     savingDetail,
     showStatusHelp,
     loadBugs,
+    buildsList: availableBuilds,
     onOpenManualBugDrawer,
     openDetail,
     transitionTarget,
@@ -434,6 +539,8 @@ export function BugTrackerPage({
     setShowStatusHelp,
     setDetailOpen,
     onDetailClosed,
+    onOpenRelatedCase,
+    onOpenRelatedExecution,
     updateDetailField,
     openEvidenceViewer,
     setComment,

@@ -92,6 +92,7 @@ export function SharedReportHistory(options: any) {
                 <Badge bg={item.activo ? (item.is_latest ? 'success' : 'secondary') : 'dark'}>
                   {!item.activo ? 'Revocado' : item.is_latest ? 'Vigente' : 'Anterior'}
                 </Badge>
+                {!item.activo && <div className="x-small text-muted">Revocado por {item.revoked_by_display || 'Usuario no disponible'}{item.revoked_at ? ` · ${formatDateTime(item.revoked_at)}` : ''}</div>}
                 {item.has_new_values && <Badge bg="warning" text="dark">{t('reportes.hasChanges')}</Badge>}
               </div>
             </td>
@@ -99,7 +100,7 @@ export function SharedReportHistory(options: any) {
             {isColumnVisible('sharedHistory', 'links') && (
             <td>
               <div className="d-flex flex-wrap gap-2">
-                {(['executive', 'development', 'internal'] as const).map((type) => (
+                {item.activo && (['executive', 'development', 'internal'] as const).map((type) => (
                   item.links?.[type] ? (
                     <Button key={type} variant="outline-primary" size="sm" onClick={() => openSharedReport(item.links[type], type)}>
                       {type === 'executive' ? 'Ejecutivo' : type === 'development' ? 'Desarrollo' : 'Interno'}
@@ -112,9 +113,7 @@ export function SharedReportHistory(options: any) {
             {isColumnVisible('sharedHistory', 'actions') && (
             <td className="text-end">
               <div className="d-flex justify-content-end gap-2">
-                <Button variant="outline-secondary" size="sm" onClick={() => copyLink(item.links?.executive, 'Link Ejecutivo')}>
-                  <Copy size={14} />
-                </Button>
+                {item.activo && <Button variant="outline-secondary" size="sm" onClick={() => copyLink(item.links?.executive, 'Link Ejecutivo')}><Copy size={14} /></Button>}
                 {canShareReports && item.activo && (
                   <Button variant="outline-danger" size="sm" onClick={() => revokeSharedBundle(item)}>
                     Revocar

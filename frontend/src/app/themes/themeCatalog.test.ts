@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BUILTIN_THEMES } from './themeCatalog'
+import { BUILTIN_THEMES, DEFAULT_THEME_ID } from './themeCatalog'
 import { graphiteTheme } from './packages/graphite'
 
 test('Grafito se registra como paquete aislado sin alterar los temas base', () => {
+  assert.equal(DEFAULT_THEME_ID, 'light')
   assert.deepEqual(
     BUILTIN_THEMES.map(theme => theme.id),
     ['system', 'light', 'dark', 'pink-panther', 'graphite'],

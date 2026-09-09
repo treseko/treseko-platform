@@ -2,7 +2,7 @@ import { API_BASE } from '../../app/constants'
 
 export const SHARED_REPORT_TYPES = [
   { type: 'executive', title: 'Informe ejecutivo', badge: 'Publico', description: 'Resumen para negocio, decision QA, estado general y riesgos principales.' },
-  { type: 'development', title: 'Informe para desarrollo', badge: 'Publico sanitizado', description: 'Detalle tecnico accionable para el equipo, sin exponer datos internos sensibles.' },
+  { type: 'development', title: 'Informe para desarrollo', badge: 'Publico sanitizado', description: 'Resultado de la versión, bugs detectados, históricos pendientes y correcciones verificadas.' },
   { type: 'internal', title: 'Informe interno actual', badge: 'Autenticado', description: 'Vista completa del informe que estas revisando, con mayor contexto operativo.' },
 ]
 

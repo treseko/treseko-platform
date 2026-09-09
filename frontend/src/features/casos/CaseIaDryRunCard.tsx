@@ -12,23 +12,23 @@ export function CaseIaDryRunCard({ context }: Props) {
     onRunAiDryRunFromEditor, uuidOrNull,
   } = context;
   return (
-    <>{newTestType !== 'Automatizada' && canUseIaDryRun && (
+    <>{newTestType === 'AI Agent' && canUseIaDryRun && (
       <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3">
         <Card.Body className="p-3 d-flex justify-content-between align-items-center">
           <div>
             <div className="fw-bold text-dark d-flex align-items-center gap-2">
-              <Cpu size={18} className="text-primary" /> Ejecutar prueba con IA
+              <Cpu size={18} className="text-primary" aria-hidden="true" /> {t('casos.aiDryRunTitle')}
             </div>
-            <div className="small text-muted">Muestra pasos, capturas y observaciones del Motor IA en tiempo real. No guarda historial.</div>
+            <div className="small text-muted">{t('casos.aiDryRunDescription')}</div>
           </div>
           <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-            <span className="x-small text-muted fw-bold">CONTEXTO IA</span>
-            <Form.Select size="sm" value={selectedDryRunEnvironment?.id || ''} onChange={event => { setDryRunEnvironmentId(event.target.value); setDryRunDatasetId('') }} aria-label="Ambiente para prueba con IA" title="Ambiente y URL que usara la IA" className="w-auto">
-              <option value="">Sin ambiente</option>
+            <span className="x-small text-muted fw-bold">{t('casos.aiContext')}</span>
+            <Form.Select size="sm" value={selectedDryRunEnvironment?.id || ''} onChange={event => { setDryRunEnvironmentId(event.target.value); setDryRunDatasetId('') }} aria-label={t('casos.aiEnvironmentLabel')} title={t('casos.aiEnvironmentHelp')} className="w-auto">
+              <option value="">{t('casos.noEnvironment')}</option>
               {projectEnvironments.map((environment: any) => <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>)}
             </Form.Select>
-            <Form.Select size="sm" value={selectedDryRunDataset?.id || ''} onChange={event => setDryRunDatasetId(event.target.value)} aria-label="Dataset para prueba con IA" title="Dataset que usara la IA" className="w-auto" disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}>
-              <option value="">Sin dataset</option>
+            <Form.Select size="sm" value={selectedDryRunDataset?.id || ''} onChange={event => setDryRunDatasetId(event.target.value)} aria-label={t('casos.aiDatasetLabel')} title={t('casos.aiDatasetHelp')} className="w-auto" disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}>
+              <option value="">{t('casos.noDataset')}</option>
               {dryRunDatasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>)}
             </Form.Select>
             <Button
@@ -57,7 +57,7 @@ export function CaseIaDryRunCard({ context }: Props) {
             })}
           >
             {aiDryRunRunning ? <RefreshCw size={14} className="me-1 animate-pulse" /> : <PlayCircle size={14} className="me-1" />}
-            {aiDryRunRunning ? 'Iniciando...' : 'Ejecutar con IA'}
+            {aiDryRunRunning ? t('casos.aiDryRunStarting') : t('casos.aiDryRunAction')}
             </Button>
           </div>
         </Card.Body>

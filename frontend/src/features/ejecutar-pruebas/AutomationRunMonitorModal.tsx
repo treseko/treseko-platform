@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Badge, Button, Modal, ProgressBar, Table } from 'react-bootstrap'
+import { Alert, Badge, Button, Modal, ProgressBar, Spinner, Table } from 'react-bootstrap'
 import { Activity, Clock, Download, ExternalLink, ServerCog } from 'lucide-react'
 import { useI18n } from '../../i18n'
 import { API_BASE } from '../../app/constants'
@@ -23,6 +23,7 @@ type AutomationRunMonitorModalProps = {
   run: any
   jobs: MonitorJob[]
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
+  setAutomationMonitor: (updater: any) => void
   canViewHistory: boolean
   onOpenWorkers: () => void
   onOpenHistory: () => void
@@ -80,6 +81,7 @@ export function AutomationRunMonitorModal({
   run,
   jobs,
   fetchWithAuth,
+  setAutomationMonitor,
   canViewHistory,
   onOpenWorkers,
   onOpenHistory,
@@ -99,13 +101,12 @@ export function AutomationRunMonitorModal({
   const isAiDryRun = isDryRun && jobs.some(job => (job as any).framework === 'ia')
 
   useEffect(() => {
-    if (!show) return
     setJobDetails({})
     setLastRefresh(null)
     setExpandedJobId(null)
     setSelectedArtifact(null)
     setAiLive({ status: 'RUNNING', steps: [], artifacts: [], timeline: [], resolvedContext: [], provider: '-', model: '-', observations: '' })
-  }, [show, jobIdsKey])
+  }, [jobIdsKey, run?.id, run?.nombre])
 
   const aiRunId = isAiDryRun ? String((jobs[0] as any)?.progressRunId || jobs[0]?.jobId || '') : ''
 
@@ -167,7 +168,7 @@ export function AutomationRunMonitorModal({
             next.model = event.model || next.model
           } else if (event.type === 'ERROR') {
             next.status = 'FALLO'
-            next.error = event.error_message || event.message || 'El Motor IA no pudo completar la prueba.'
+            next.error = event.error_message || event.message || t('ejecutarPruebas.aiExecutionError')
           }
           if (event.message && event.type !== 'STEP_RESULT') next.timeline.push({ type: event.type, agent: event.agent, level: event.level, message: event.message, step: event.step })
           return next
@@ -178,7 +179,7 @@ export function AutomationRunMonitorModal({
   }, [aiRunId, isAiDryRun, show])
 
   useEffect(() => {
-    if (!show || jobIds.length === 0 || isAiDryRun) return
+    if (jobIds.length === 0 || isAiDryRun) return
     let cancelled = false
     let shouldPoll = true
 
@@ -187,11 +188,11 @@ export function AutomationRunMonitorModal({
         try {
           const response = await fetchWithAuth(`${API_BASE}/automation-jobs/${jobId}`)
           if (!response.ok) {
-            return [jobId, { id: jobId, estado: 'ERROR', error_message: `Backend respondio ${response.status}` }]
+            return [jobId, { id: jobId, estado: 'ERROR', error_message: t('ejecutarPruebas.backendRespondedJob', { status: response.status }) }]
           }
           return [jobId, await response.json()]
         } catch (error: any) {
-          return [jobId, { id: jobId, estado: 'ERROR', error_message: error?.message || 'No se pudo consultar el job' }]
+          return [jobId, { id: jobId, estado: 'ERROR', error_message: error?.message || t('ejecutarPruebas.jobLookupFailed') }]
         }
       }))
       if (cancelled) return
@@ -210,7 +211,7 @@ export function AutomationRunMonitorModal({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [isAiDryRun, show, jobIdsKey, fetchWithAuth])
+  }, [isAiDryRun, jobIdsKey, fetchWithAuth, t])
 
   const rows = jobs.map(job => {
     const detail = job.jobId ? jobDetails[job.jobId] : null
@@ -221,7 +222,7 @@ export function AutomationRunMonitorModal({
       detail,
       status: isAiDryRun ? aiLive.status : job.error ? 'ERROR' : detail?.estado || job.status || 'PENDING',
       caseCode: job.caseCode || payload.case_code || '-',
-      caseTitle: job.caseTitle || payload.case_title || 'Caso automatizado',
+      caseTitle: job.caseTitle || payload.case_title || t('ejecutarPruebas.automatedDefault'),
       framework: detail?.required_framework || payload.framework || '-',
       language: detail?.required_language || payload.language || 'javascript',
       headless: metadata.headless ?? payload.headless ?? (payload.debug_mode ? false : undefined),
@@ -254,20 +255,34 @@ export function AutomationRunMonitorModal({
     .join('|')
 
   useEffect(() => {
-    if (!show || isDryRun || total === 0 || completed !== total) return
+    if (isDryRun || total === 0 || completed !== total) return
     const notificationKey = `${run?.id || run?.nombre || 'run'}:${completionKey}`
     if (settledNotificationKeyRef.current === notificationKey) return
     settledNotificationKeyRef.current = notificationKey
     onExecutionResultsSettled?.()
-  }, [completed, completionKey, isDryRun, onExecutionResultsSettled, run?.id, run?.nombre, show, total])
+  }, [completed, completionKey, isDryRun, onExecutionResultsSettled, run?.id, run?.nombre, total])
+
+  const hasActiveJobs = total > 0 && completed < total
 
   return (
     <>
+    {!show && !isDryRun && hasActiveJobs && (
+      <button
+        type="button"
+        className="btn btn-primary shadow d-flex align-items-center gap-2"
+        style={{ position: 'fixed', right: 24, top: 86, zIndex: 1040 }}
+        aria-label={t('ejecutarPruebas.reopenAutomated', { completed, total })}
+        onClick={() => setAutomationMonitor((previous: any) => ({ ...previous, show: true }))}
+      >
+        <Spinner animation="border" size="sm" />
+        {t('ejecutarPruebas.automatedProgress', { completed, total })}
+      </button>
+    )}
     <Modal show={show && !selectedArtifact} onHide={onHide} centered size="xl" backdrop="static">
-      <Modal.Header closeButton className="border-0 pb-0">
+      <Modal.Header closeButton closeLabel={t('ejecutarPruebas.closeModal')} className="border-0 pb-0">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <Activity size={22} className="text-primary" />
-          {isAiDryRun ? t('ejecutarPruebas.temporaryIaTest') : isDryRun ? 'Prueba temporal' : t('ejecutarPruebas.automationTracking')}
+          {isAiDryRun ? t('ejecutarPruebas.temporaryIaTest') : isDryRun ? t('ejecutarPruebas.temporaryRun') : t('ejecutarPruebas.automationTracking')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4">
@@ -275,24 +290,24 @@ export function AutomationRunMonitorModal({
           {isAiDryRun
             ? t('ejecutarPruebas.notInHistory')
             : isDryRun
-              ? 'No se guardara en historial, reportes ni build. Sirve para validar la prueba antes de guardar o asignar a una build.'
-            : 'Ejecucion automatizada enviada al worker. Puedes cerrar este modal; la ejecucion continuara en segundo plano.'}
+              ? t('ejecutarPruebas.temporaryRunNotice')
+            : t('ejecutarPruebas.automationBackgroundNotice')}
         </Alert>
 
         <div className="d-grid gap-3 mb-3" style={{ gridTemplateColumns: `repeat(${isAiDryRun ? 4 : 5}, minmax(0, 1fr))` }}>
           <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.total')}</div><div className="fs-4 fw-bold">{total}</div></div>
           <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.completed')}</div><div className="fs-4 fw-bold">{completed}</div></div>
           <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.passed')}</div><div className="fs-4 fw-bold text-success">{passed}</div></div>
-          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{isAiDryRun ? 'Fallos' : t('ejecutarPruebas.functionalFailures')}</div><div className="fs-4 fw-bold text-danger">{functionalFailures}</div></div>
-          {!isAiDryRun && <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">Runner/infra</div><div className="fs-4 fw-bold text-dark">{runnerProblems}</div></div>}
+          <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{isAiDryRun ? t('ejecutarPruebas.aiFailures') : t('ejecutarPruebas.functionalFailures')}</div><div className="fs-4 fw-bold text-danger">{functionalFailures}</div></div>
+          {!isAiDryRun && <div className="border rounded-3 p-3 bg-light"><div className="text-muted x-small">{t('ejecutarPruebas.runnerInfra')}</div><div className="fs-4 fw-bold text-dark">{runnerProblems}</div></div>}
         </div>
 
         <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
           <div className="small text-muted">
-            Run: <strong>{run?.nombre || run?.id || 'Automatizado'}</strong>
+            {t('ejecutarPruebas.runLabel')} <strong>{run?.nombre || run?.id || t('ejecutarPruebas.automatedDefault')}</strong>
             <span className="ms-3"><Clock size={14} /> {t('ejecutarPruebas.time')}: {elapsedLabel(oldestCreation)}</span>
           </div>
-          <div className="small text-muted">Ultima actualizacion: {formatTime(lastRefresh) || '-'}</div>
+          <div className="small text-muted">{t('ejecutarPruebas.lastUpdate')} {formatTime(lastRefresh) || '-'}</div>
         </div>
         <ProgressBar now={progress} label={`${progress}%`} className="mb-3" />
 
@@ -302,7 +317,7 @@ export function AutomationRunMonitorModal({
               <tr>
                 <th>{t('ejecutarPruebas.case')}</th>
                 <th>{t('ejecutarPruebas.status')}</th>
-                {isAiDryRun ? <><th>Pasos</th><th>Evidencia</th><th>Proveedor / modelo</th></> : <><th>{t('ejecutarPruebas.framework')}</th><th>{t('ejecutarPruebas.worker')}</th><th>{t('ejecutarPruebas.time')}</th></>}
+                {isAiDryRun ? <><th>{t('ejecutarPruebas.stepsLabel')}</th><th>{t('ejecutarPruebas.evidenceLabel')}</th><th>{t('ejecutarPruebas.providerModel')}</th></> : <><th>{t('ejecutarPruebas.framework')}</th><th>{t('ejecutarPruebas.worker')}</th><th>{t('ejecutarPruebas.time')}</th></>}
                 <th>{t('ejecutarPruebas.detail')}</th>
               </tr>
             </thead>
@@ -312,15 +327,15 @@ export function AutomationRunMonitorModal({
                 const steps = Array.isArray(row.steps) ? row.steps : (Array.isArray(row.detail?.metadata_resultado?.steps) ? row.detail.metadata_resultado.steps : [])
                 const artifacts = Array.isArray(row.artifacts) ? row.artifacts : []
                 const hasLog = Boolean(row.error || row.detail?.logs || row.log || row.observations || Object.keys(row.aiReport || {}).length || steps.length || artifacts.length || isAiDryRun)
-                const resultDetail = row.log || row.error || row.observations || (Object.keys(row.aiReport || {}).length ? JSON.stringify(row.aiReport, null, 2) : '') || 'El Motor IA no devolvio un detalle adicional para este fallo.'
+                const resultDetail = row.log || row.error || row.observations || (Object.keys(row.aiReport || {}).length ? JSON.stringify(row.aiReport, null, 2) : '') || t('ejecutarPruebas.noAiDetail')
                 const scriptFormat = row.detail?.metadata_resultado?.script_format || row.detail?.payload_congelado?.script_format
                 const responseLabel = isAiDryRun
-                  ? 'resultado IA'
+                  ? t('ejecutarPruebas.aiResult')
                   : scriptFormat === 'playwright_test'
-                  ? 'respuesta Playwright'
+                  ? t('ejecutarPruebas.playwrightResponse')
                   : row.framework && row.framework !== '-'
                     ? `log ${String(row.framework).toUpperCase()}`
-                    : 'log'
+                    : t('ejecutarPruebas.logLabel')
                 const isBlockedByRunner = row.status === 'BLOCKED_BY_RUNNER'
                 return (
                   <Fragment key={rowKey}>
@@ -332,7 +347,7 @@ export function AutomationRunMonitorModal({
                       <td><Badge bg={statusVariant(row.status)}>{statusLabel(row.status, t)}</Badge></td>
                       {isAiDryRun ? <>
                         <td>{steps.length || '-'}</td>
-                        <td>{artifacts.length ? `${artifacts.length} disponible${artifacts.length === 1 ? '' : 's'}` : 'Sin evidencia'}</td>
+                        <td>{artifacts.length ? `${artifacts.length} ${artifacts.length === 1 ? t('ejecutarPruebas.availableSingular') : t('ejecutarPruebas.availablePlural')}` : t('ejecutarPruebas.noEvidence')}</td>
                         <td className="small">
                           <div className="fw-semibold">{row.provider}</div>
                           <div className="text-muted text-break">{row.model}</div>
@@ -340,7 +355,7 @@ export function AutomationRunMonitorModal({
                       </> : <>
                         <td className="font-monospace small">
                           <div>{row.framework} + {languageLabel(row.language)}</div>
-                          <div className="text-muted">{row.headless === false ? 'headed/debug visual' : row.headless === true ? 'headless' : row.debugMode ? 'debug visual' : '-'}</div>
+                          <div className="text-muted">{row.headless === false ? t('ejecutarPruebas.headedDebugVisual') : row.headless === true ? t('ejecutarPruebas.headless') : row.debugMode ? t('ejecutarPruebas.debugVisual') : '-'}</div>
                         </td>
                         <td className="font-monospace small">{row.runner}</td>
                         <td>{row.elapsed}</td>
@@ -354,8 +369,8 @@ export function AutomationRunMonitorModal({
                             onClick={() => setExpandedJobId(expandedJobId === rowKey ? null : String(rowKey))}
                           >
                             {expandedJobId === rowKey
-                              ? `Ocultar ${responseLabel}`
-                              : `Ver ${responseLabel}`}
+                              ? t('ejecutarPruebas.hideResponse', { label: responseLabel })
+                              : t('ejecutarPruebas.viewResponse', { label: responseLabel })}
                           </Button>
                         ) : (
                           <span className="text-muted">{t('ejecutarPruebas.noLog')}</span>
@@ -398,7 +413,7 @@ export function AutomationRunMonitorModal({
                                         ? `data:${artifact.content_type || 'image/png'};base64,${artifact.base64}`
                                         : ''
                                   if (!href) return null
-                                  const label = `${artifact.type || 'evidencia'}${artifact.step_number ? ` paso ${artifact.step_number}` : ''}`
+                                  const label = `${artifact.type || t('ejecutarPruebas.evidenceItem')}${artifact.step_number ? ` ${t('ejecutarPruebas.stepSuffix', { step: artifact.step_number })}` : ''}`
                                   return (
                                     <div key={`${rowKey}-artifact-${artifact.id || index}`} className="border rounded-3 p-2 bg-light" style={{ width: 190 }}>
                                       {String(artifact.content_type || '').startsWith('image/') && (
@@ -412,10 +427,10 @@ export function AutomationRunMonitorModal({
                       className="x-small flex-grow-1"
                       onClick={() => setSelectedArtifact({ href, label, filename: artifact.filename || label })}
                     >
-                      Ver
+                      {t('ejecutarPruebas.view')}
                     </Button>
-                                        <a href={href} download={artifact.filename || `evidencia-${index + 1}`}                       className="btn btn-outline-secondary btn-sm x-small" title={t('ejecutarPruebas.download')}>
-                                          <Download size={13} />
+                                        <a href={href} download={artifact.filename || `${t('ejecutarPruebas.evidenceItem')}-${index + 1}`}                       className="btn btn-outline-secondary btn-sm x-small" title={t('ejecutarPruebas.download')} aria-label={t('ejecutarPruebas.download')}>
+                                          <Download size={13} aria-hidden="true" />
                                         </a>
                                       </div>
                                     </div>
@@ -457,7 +472,7 @@ export function AutomationRunMonitorModal({
                                     <span className="font-monospace">{t('common.stepLabel')} {step.number ?? step.numero_paso ?? index + 1}</span>
                                     <Badge bg={statusVariant(step.status ?? step.estado)}>{statusLabel(step.status ?? step.estado, t)}</Badge>
                                   </div>
-                                  <div className="mt-1"><strong>{t('common.agentLabel')}</strong> {step.agent || 'Motor IA'} <span className="ms-3"><strong>{t('common.categoryLabel')}</strong> {failureCategoryLabel(step.failure_category, t)}</span></div>
+                                  <div className="mt-1"><strong>{t('common.agentLabel')}</strong> {step.agent || t('ejecutarPruebas.iaAgentEngine')} <span className="ms-3"><strong>{t('common.categoryLabel')}</strong> {failureCategoryLabel(step.failure_category, t)}</span></div>
                                   <div><strong>{t('common.reasonLabel')}</strong> {step.reason || step.observations || step.observaciones || '-'}</div>
                                   <div><strong>{t('common.actionLabel')}</strong> {step.action_executed === false ? t('common.notExecutedValue') : step.action_summary || t('common.notSpecifiedValue')}</div>
                                 </div>
@@ -476,12 +491,12 @@ export function AutomationRunMonitorModal({
 
         {!canViewHistory && (
           <Alert variant="secondary" className="small mt-3 mb-0">
-            Podras revisar el resultado desde esta ejecucion o desde Automatizacion si tienes acceso.
+            {t('ejecutarPruebas.historyAccessNotice')}
           </Alert>
         )}
       </Modal.Body>
       <Modal.Footer className="border-0 pt-0">
-        <Button variant="outline-secondary" onClick={onHide}>Seguir en esta pantalla</Button>
+        <Button variant="outline-secondary" onClick={onHide}>{t('ejecutarPruebas.followOnScreen')}</Button>
         <Button variant="outline-primary" onClick={onOpenWorkers}>
           <ServerCog size={16} className="me-1" />
           {t('ejecutarPruebas.viewWorkers')}

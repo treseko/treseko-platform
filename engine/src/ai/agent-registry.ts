@@ -1,4 +1,5 @@
 import type { WorkflowDefinition } from './workflow.ts';
+import { validateUniversalAgentContract } from './universal-agent.ts';
 
 /** Runtime allowlist. UI metadata alone never makes a workflow block executable. */
 export const OPERATIONAL_AGENT_TYPES = new Set([
@@ -22,6 +23,12 @@ export const OPERATIONAL_AGENT_TYPES = new Set([
   'human_approval_agent',
   'mcp_tool_agent',
   'a2a_disabled_agent',
+  'chatbot_context_agent',
+  'chatbot_http_agent',
+  'chatbot_assertions_agent',
+  'chatbot_security_agent',
+  'chatbot_judge_agent',
+  'chatbot_reporter_agent',
 ]);
 
 /** Catalog key -> engine handler. The graph carries agent_key for legacy-safe snapshots. */
@@ -42,6 +49,15 @@ export function validateWorkflowRuntime(definition: WorkflowDefinition): string[
   const errors: string[] = [];
   for (const node of definition.nodes || []) {
     if (node.enabled === false) continue;
+    if (['universal_v2', 'universal_v3'].includes(String(definition.workflow?.workflow_format)) && node.universal_agent?.contract) {
+      try {
+        validateUniversalAgentContract(node.universal_agent.contract);
+        continue;
+      } catch (error: any) {
+        errors.push(`El agente universal ${node.name || node.id} no es ejecutable: ${error?.message || error}.`);
+        continue;
+      }
+    }
     const expectedHandler = CORE_AGENT_HANDLER_REGISTRY[String(node.agent_key || '')];
     if (expectedHandler && node.type !== expectedHandler) {
       errors.push(`El agente ${node.name || node.id} declara ${node.agent_key} pero apunta al handler ${node.type}; se esperaba ${expectedHandler}.`);

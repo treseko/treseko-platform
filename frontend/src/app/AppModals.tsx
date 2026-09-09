@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, Eye, Plus, RefreshCw } from 'lucide-react'
 import { AdminModals } from '../features/configuracion/AdminModals'
 import { ExecutionSelectorModal } from '../features/ejecutar-pruebas/ExecutionSelectorModal'
 import { AutomationRunMonitorModal } from '../features/ejecutar-pruebas/AutomationRunMonitorModal'
+import { ApiAutomationMonitorModal } from '../features/ejecutar-pruebas/ApiAutomationMonitorModal'
 import { IaSchedulerModal } from '../features/motor-ia/IaSchedulerModal'
 import { ExecutionRedmineReporter } from '../features/redmine/ExecutionRedmineReporter'
 import { BuildCasesModal } from '../features/proyectos/BuildCasesModal'
@@ -164,6 +165,7 @@ function RelatedBugDecisionModal(props: any) {
 
 export function AppModals(props: AppModalsProps) {
   const { t } = useI18n()
+  const dryRunMonitor = props.automationMonitor?.dryRun || { show: false, mode: 'dry-run', run: null, jobs: [] }
   return (
     <>
       <BuildCasesModal
@@ -234,6 +236,11 @@ export function AppModals(props: AppModalsProps) {
         show={props.showExecSelector}
         onHide={props.closeExecutionSelector}
         executionModalTests={props.executionModalTests}
+        executionModalCandidateTests={props.executionModalCandidateTests}
+        removeExecutionModalCase={props.removeExecutionModalCase}
+        restoreExecutionModalCases={props.restoreExecutionModalCases}
+        isChatbotSelection={props.executionModalTests.length > 0 && props.executionModalTests.every((test: any) => String(test?.format || test?.formato_prueba || '').toUpperCase() === 'CONVERSACIONAL')}
+        hasMixedChatbotSelection={props.executionModalTests.some((test: any) => String(test?.format || test?.formato_prueba || '').toUpperCase() === 'CONVERSACIONAL') && props.executionModalTests.some((test: any) => String(test?.format || test?.formato_prueba || '').toUpperCase() !== 'CONVERSACIONAL')}
         executionModalDiscardedCount={props.executionModalDiscardedCount}
         executionLoading={props.executionLoading}
         environments={props.currentProjectEnvironments}
@@ -254,23 +261,57 @@ export function AppModals(props: AppModalsProps) {
         onScheduleIa={props.openIaSchedulerFromExecutionSelector}
       />
 
+      {props.automationMonitor.mode === 'api' && <ApiAutomationMonitorModal
+          show={props.automationMonitor.show}
+          run={props.automationMonitor.run}
+          fetchWithAuth={props.fetchWithAuth}
+          setAutomationMonitor={props.setAutomationMonitor}
+          onHide={() => props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))}
+          onOpenHistory={() => {
+            props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))
+            props.openHistorialRuns({ build_id: props.currentBuildId }, props.automationMonitor.run?.run_id || props.automationMonitor.run?.id || '')
+          }}
+        />}
+
+      {props.automationMonitor.mode !== 'api' && <AutomationRunMonitorModal
+          show={props.automationMonitor.show}
+          onHide={() => props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))}
+          mode={props.automationMonitor.mode || 'execution'}
+          run={props.automationMonitor.run}
+          jobs={props.automationMonitor.jobs}
+          fetchWithAuth={props.fetchWithAuth}
+          setAutomationMonitor={props.setAutomationMonitor}
+          canViewHistory={props.canViewHistory}
+          onExecutionResultsSettled={props.refreshCurrentBuildExecutionStatus}
+          onOpenWorkers={() => {
+            props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))
+            props.setActiveTab('automatizacion')
+          }}
+          onOpenHistory={() => {
+            props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))
+            props.openHistorialRuns({ build_id: props.currentBuildId }, props.automationMonitor.run?.id || '')
+          }}
+        />}
+
       <AutomationRunMonitorModal
-        show={props.automationMonitor.show}
-        onHide={() => props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))}
-        mode={props.automationMonitor.mode || 'execution'}
-        run={props.automationMonitor.run}
-        jobs={props.automationMonitor.jobs}
+        show={dryRunMonitor.show === true}
+        onHide={() => props.setAutomationMonitor((previous: any) => ({
+          ...previous,
+          dryRun: { ...dryRunMonitor, show: false },
+        }))}
+        mode="dry-run"
+        run={dryRunMonitor.run}
+        jobs={dryRunMonitor.jobs || []}
         fetchWithAuth={props.fetchWithAuth}
-        canViewHistory={props.canViewHistory}
-        onExecutionResultsSettled={props.refreshCurrentBuildExecutionStatus}
-        onOpenWorkers={() => {
-          props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))
-          props.setActiveTab('automatizacion')
-        }}
-        onOpenHistory={() => {
-          props.setAutomationMonitor((prev: any) => ({ ...prev, show: false }))
-          props.openHistorialRuns({ build_id: props.currentBuildId }, props.automationMonitor.run?.id || '')
-        }}
+        setAutomationMonitor={(update: any) => props.setAutomationMonitor((previous: any) => {
+          const current = previous?.dryRun || dryRunMonitor
+          const next = typeof update === 'function' ? update(current) : update
+          return { ...previous, dryRun: next }
+        })}
+        canViewHistory={false}
+        onExecutionResultsSettled={() => undefined}
+        onOpenWorkers={() => undefined}
+        onOpenHistory={() => undefined}
       />
 
       <IaSchedulerModal
@@ -302,6 +343,7 @@ export function AppModals(props: AppModalsProps) {
         showDrawer={props.showRedmineDrawer}
         onHideDrawer={() => {
           props.setShowRedmineDrawer(false)
+          if (props.internalBugDraft?._context?.conversational) return
           props.setInternalBugDraft(null)
           props.setInternalBugEvidence([])
           props.setInternalBugAdditionalContext([])
@@ -309,6 +351,11 @@ export function AppModals(props: AppModalsProps) {
         currentExecutionCase={props.currentExecutionCase}
         selectedTest={props.selectedTest}
         onDefer={() => {
+          const isConversational = Boolean(props.internalBugDraft?._context?.conversational)
+          if (isConversational) {
+            props.setShowRedmineDrawer(false)
+            return
+          }
           props.setInternalBugDraft(null)
           props.setInternalBugEvidence([])
           props.setInternalBugAdditionalContext([])

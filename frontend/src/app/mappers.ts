@@ -3,6 +3,7 @@ import { dateTimeMs, formatDateTime } from '../shared/utils/dateTime'
 export { sortBuildsNewestFirst } from './buildSorting'
 import { DEV_ADMIN_EMAIL, MODULE_PERMISSIONS, ROLE_ACCESS } from './constants'
 import { CAPABILITY_TO_MODULE } from './rbac/rbacCatalog'
+import { DEFAULT_THEME_ID } from './themes/themeCatalog'
 import type { AuthMode, ModuleId, ModulePermissionMap, PermissionLevel, RoleKey, SessionUser } from './types'
 
 const VALID_BASE_ROLES: RoleKey[] = ['ADMIN', 'QA_LEAD', 'TESTER', 'VIEWER']
@@ -57,7 +58,7 @@ export const createSessionUser = (email: string, role: RoleKey = 'ADMIN', auth: 
   auth,
   avatar: getInitials(name || email),
   avatarProvider: 'gravatar',
-  personalTheme: 'system',
+  personalTheme: DEFAULT_THEME_ID,
   profileSettings: {},
   projectThemeOverrides: {},
   modules: MODULE_PERMISSIONS[role],
@@ -124,6 +125,7 @@ export const mapBackendEnvironmentToItem = (environment: any) => ({
     version: environment.version || '',
     active: environment.activo !== false,
     variables: environment.variables || {},
+    chatbotConfig: environment.configuracion_chatbot || {},
     datasets: Array.isArray(environment.datasets) ? environment.datasets.filter((dataset: any) => dataset.activo !== false).map((dataset: any) => ({
     id: dataset.id,
     environmentId: dataset.entorno_id,
@@ -174,7 +176,7 @@ export const mapBackendUserToSession = (user: any): SessionUser => ({
   avatar: getInitials(user.nombre_completo || user.email),
   avatarUrl: user.avatar_url || '',
   avatarProvider: user.avatar_provider || 'gravatar',
-  personalTheme: user.personal_theme || 'system',
+  personalTheme: user.personal_theme || DEFAULT_THEME_ID,
   profileSettings: user.profile_settings || {},
   projectThemeOverrides: user.project_theme_overrides || {},
   modules: modulesFromPermissionsAndCapabilities(backendUserPermissions(user), user.permisos_detallados || {}),
@@ -231,9 +233,12 @@ export const buildCaseEditorSnapshot = (values: {
   criticality: string
   status: string
   type: string
+  format?: string
   script: string
   framework: string
   tags?: string[]
+  chatbotConfig?: Record<string, any>
+  apiConfig?: Record<string, any>
   steps: { action: string, data: string, expected: string, actionImg: string, expectedImg: string, actionAttachments?: AttachmentMeta[], expectedAttachments?: AttachmentMeta[] }[]
 }) => JSON.stringify({
   suiteId: values.suiteId || '',
@@ -247,9 +252,12 @@ export const buildCaseEditorSnapshot = (values: {
   criticality: values.criticality || '',
   status: values.status || '',
   type: values.type || '',
+  format: values.format || 'CLASICA',
   script: values.script || '',
   framework: values.framework || '',
   tags: (values.tags || []).map(tag => String(tag || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+  chatbotConfig: values.chatbotConfig || {},
+  apiConfig: values.apiConfig || {},
   steps: values.steps.map(step => ({
     action: step.action || '',
     data: step.data || '',

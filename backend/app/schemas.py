@@ -14,9 +14,11 @@ from .schema_sections.automation import *
 from .schema_sections.ai import *
 from .schema_sections.reports import *
 from .schema_sections.bugs import *
+from .schema_sections.bug_conversational import *
 from .schema_sections.external_api import *
 from .schema_sections.extensions import *
 from .schema_sections.system import *
+from .schema_sections.api_testing import *
 
 from pydantic import BaseModel
 

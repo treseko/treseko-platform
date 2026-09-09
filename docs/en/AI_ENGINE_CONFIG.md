@@ -6,11 +6,15 @@ The AI Engine helps generate stories and cases, and run assisted tests.
 This guide explains what an administrator configures from Treseko and what to
 review before using it.
 
+Case generation, assisted classic execution and conversational evaluation are
+different workflows. Choose the workflow according to the case format; a
+generation workflow is not an executor.
+
 ## Before configuring
 
-You need edit permissions in **Settings → AI-Powered Testing** and a
-compatible provider available for the instance. In Community, the AI Engine
-is included with weekly quotas for executions and case generation.
+You need edit permissions in **Settings → AI-Powered Testing** and a compatible
+provider available for the instance. In Community, the AI Engine is included
+with weekly quotas for executions and case generation.
 
 ## Configure a provider and model
 
@@ -38,17 +42,25 @@ The screen lets you query the models exposed by the provider and choose them
 without saving an accidental configuration. Workflows are selected by their
 use: story generation, test case generation or assisted execution.
 
-A workflow marked as **Experimental** may depend on capabilities that are
-not present in all providers. Test it first with non-critical data and review
-the result before using it in an operational flow.
+A workflow marked as **Experimental** may depend on capabilities that are not
+present in all providers. Test it first with non-critical data and review the
+result before using it in an operational flow.
+
+The `chatbot-evaluation` workflow applies to `CONVERSACIONAL` cases: it keeps
+the frozen configuration, turns, evaluation, traces and available metrics. Its
+execution depends on the catalog, provider and instance permissions.
+
+`API` cases can be run manually with the declarative runner or automatically
+through the unified worker. The AI mode remains subject to the route and
+evidence certified by the instance.
 
 ## If the AI Engine does not work
 
 1. Check that the endpoint and credentials are correct.
-2. Confirm the model exists and supports the required capabilities.
-3. Verify there is quota available and that the user has permissions.
+2. Confirm that the model exists and supports the required capabilities.
+3. Verify that quota is available and that the user has permission.
 4. Check Monitor and the execution detail to see the error message.
 5. Try with a small case before repeating an extensive execution.
 
-Dry-runs help validate readiness without creating an execution,
-evidence or project history.
+Dry-runs help validate readiness without creating an execution, evidence or
+project history.

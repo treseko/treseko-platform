@@ -3,7 +3,7 @@ export default {
   recentExecutions: 'Últimas ejecuciones', buildWindow: 'Ventana de build', trendByBuild: 'Tendencia por build',
   openBugs: 'Bugs abiertos', averageDuration: 'Duración promedio', averageDurationExecutions: '{count} ejecuciones', executionTypes: 'Tipos de ejecución',
   recentFailedCases: 'Fallos recientes', widgetError: 'No se pudo renderizar este widget.',
-  dashboardLoadError: 'No se pudo cargar el dashboard.', noData: 'Sin datos.',
+  dashboardLoadError: 'No se pudo cargar el dashboard.', retry: 'Reintentar', noData: 'Sin datos.',
   saveSuccessTitle: 'Dashboard guardado', saveSuccessMessage: 'Tu layout se aplicará a todos tus proyectos.',
   saveErrorTitle: 'No se pudo guardar', saveErrorMessage: 'Error guardando dashboard.',
   failedExecutions: '{count} fallidas', activeBuild: 'Sin build activa.',

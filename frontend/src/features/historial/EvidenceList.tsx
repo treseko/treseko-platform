@@ -15,15 +15,16 @@ export function EvidenceList({ items, onOpenEvidence }: { items: any[], onOpenEv
             key={attachment.id}
             type="button"
             className="border rounded-2 bg-white p-0"
-            title={attachment.filename_original}
+            title={attachment.filename_original || t('historial.file')}
+            aria-label={attachment.filename_original || t('historial.file')}
             onClick={() => onOpenEvidence(attachment)}
           >
-            <img src={resolveAssetUrl(attachment.public_url)} alt={attachment.filename_original} className="rounded-2" style={{ width: 32, height: 32, objectFit: 'cover' }} />
+            <img src={resolveAssetUrl(attachment.public_url)} alt={attachment.filename_original || t('historial.file')} className="rounded-2" style={{ width: 32, height: 32, objectFit: 'cover' }} />
           </button>
         ) : (
-          <Button key={attachment.id} variant={isEvidenceAvailable(attachment) ? 'outline-secondary' : 'outline-warning'} size="sm" className="x-small py-0 px-1" title={attachment.filename_original} onClick={() => onOpenEvidence(attachment)}>
-            <FileText size={12} /> {attachment.filename_original || 'Archivo'}
-            {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark" className="ms-1">Archivo no disponible</Badge>}
+          <Button key={attachment.id} variant={isEvidenceAvailable(attachment) ? 'outline-secondary' : 'outline-warning'} size="sm" className="x-small py-0 px-1" title={attachment.filename_original || t('historial.file')} aria-label={attachment.filename_original || t('historial.file')} onClick={() => onOpenEvidence(attachment)}>
+            <FileText size={12} /> {attachment.filename_original || t('historial.file')}
+            {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark" className="ms-1">{t('historial.unavailableFile')}</Badge>}
           </Button>
         )
       ))}

@@ -18,9 +18,9 @@ export function CaseManagementModals({ context }: Props) {
   return (
     <>
 <Modal show={showLocationModal} onHide={() => setShowLocationModal(false)} centered fullscreen="sm-down">
-  <Modal.Header closeButton className="bg-light border-bottom text-dark">
+  <Modal.Header closeButton closeLabel={t('casos.closeModal')} className="bg-light border-bottom text-dark">
     <Modal.Title className="fw-bold fs-6 d-flex align-items-center gap-2">
-      <Folders size={18} className="text-primary" /> Cambiar carpeta destino
+      <Folders size={18} className="text-primary" /> {t('casos.changeDestinationFolder')}
     </Modal.Title>
   </Modal.Header>
   <Modal.Body className="text-start">
@@ -28,7 +28,7 @@ export function CaseManagementModals({ context }: Props) {
     <div className="fw-semibold text-dark border rounded-2 bg-light p-2 mb-3 text-break">{currentSuiteBreadcrumb}</div>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">{t('casos.newFolder').toUpperCase()}</Form.Label>
-      <Form.Select name="a11y-casemanagementmodalstsx-31" aria-label="Campo de formulario"
+      <Form.Select name="a11y-casemanagementmodalstsx-31" aria-label={t('casos.formField')}
         value={currentSuiteId}
         onChange={(event) => selectSuiteTarget(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -50,9 +50,9 @@ export function CaseManagementModals({ context }: Props) {
   </Modal.Footer>
 </Modal>
 <Modal show={Boolean(cloneSourceCase)} onHide={() => setCloneSourceCase(null)} centered fullscreen="sm-down">
-  <Modal.Header closeButton className="bg-light border-bottom text-dark">
+  <Modal.Header closeButton closeLabel={t('casos.closeModal')} className="bg-light border-bottom text-dark">
     <Modal.Title className="fw-bold fs-6 d-flex align-items-center gap-2">
-      <FileText size={18} className="text-primary" /> Copiar como nueva prueba
+      <FileText size={18} className="text-primary" /> {t('casos.copyAsNewTest')}
     </Modal.Title>
   </Modal.Header>
   <Modal.Body className="text-start">
@@ -63,14 +63,14 @@ export function CaseManagementModals({ context }: Props) {
     </div>
     <Form.Group>
       <Form.Label className="fw-bold x-small text-muted">{t('casos.destinationSuite').toUpperCase()}</Form.Label>
-      <Form.Select name="a11y-casemanagementmodalstsx-66" aria-label="Campo de formulario"
+      <Form.Select name="a11y-casemanagementmodalstsx-66" aria-label={t('casos.formField')}
         value={cloneTargetSuiteId}
         onChange={(event) => setCloneTargetSuiteId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
       >
         {cloneDestinationSuites.map((suite: any) => (
           <option key={suite.id} value={suite.id}>
-            {suite.id === cloneSourceCase?.suiteId ? 'Misma suite - ' : ''}{'- '.repeat(getSuiteDepth(suite.id))}{suite.nombre}
+            {suite.id === cloneSourceCase?.suiteId ? `${t('casos.sameSuite')} - ` : ''}{'- '.repeat(getSuiteDepth(suite.id))}{suite.nombre}
           </option>
         ))}
       </Form.Select>
@@ -92,20 +92,20 @@ export function CaseManagementModals({ context }: Props) {
   </Modal.Footer>
 </Modal>
 <Modal show={Boolean(moveSourceCase)} onHide={() => { if (!movingCase) setMoveSourceCase(null) }} centered fullscreen="sm-down">
-  <Modal.Header closeButton className="bg-light border-bottom text-dark">
+  <Modal.Header closeButton closeLabel={t('casos.closeModal')} className="bg-light border-bottom text-dark">
     <Modal.Title className="fw-bold fs-6 d-flex align-items-center gap-2">
-      <FileText size={18} className="text-primary" /> Mover prueba
+      <FileText size={18} className="text-primary" /> {t('casos.moveTest')}
     </Modal.Title>
   </Modal.Header>
   <Modal.Body className="text-start">
     <div className="border rounded-3 bg-light p-3 mb-3">
       <div className="font-monospace x-small fw-bold text-secondary">{moveSourceCase?.code || moveSourceCase?.id}</div>
       <div className="fw-bold text-dark">{moveSourceCase?.title}</div>
-      <div className="small text-muted mt-1">La prueba se movera sin cambiar builds, ejecuciones ni historial.</div>
+      <div className="small text-muted mt-1">{t('casos.moveTestDescription')}</div>
     </div>
     <Form.Group>
-      <Form.Label className="fw-bold x-small text-muted">SUITE DESTINO</Form.Label>
-      <Form.Select name="a11y-casemanagementmodalstsx-108" aria-label="Campo de formulario"
+      <Form.Label className="fw-bold x-small text-muted">{t('casos.destinationSuite').toUpperCase()}</Form.Label>
+      <Form.Select name="a11y-casemanagementmodalstsx-108" aria-label={t('casos.formField')}
         value={moveTargetSuiteId}
         onChange={(event) => setMoveTargetSuiteId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
@@ -113,7 +113,7 @@ export function CaseManagementModals({ context }: Props) {
         <option value="">{t('casos.selectSuite')}</option>
         {moveCaseDestinationSuites.map((suite: any) => (
           <option key={suite.id} value={suite.id} disabled={suite.id === moveSourceCase?.suiteId}>
-            {suite.id === moveSourceCase?.suiteId ? 'Actual - ' : ''}{'- '.repeat(getSuiteDepth(suite.id))}{suite.nombre}
+            {suite.id === moveSourceCase?.suiteId ? `${t('casos.currentSuite')} - ` : ''}{'- '.repeat(getSuiteDepth(suite.id))}{suite.nombre}
           </option>
         ))}
       </Form.Select>
@@ -134,41 +134,41 @@ export function CaseManagementModals({ context }: Props) {
       onClick={confirmMoveCase}
     >
       {movingCase && <Spinner animation="border" size="sm" aria-hidden="true" />}
-      {movingCase ? t('common.loading') : 'Mover prueba'}
+      {movingCase ? t('common.loading') : t('casos.moveTest')}
     </Button>
   </Modal.Footer>
 </Modal>
 <Modal show={Boolean(cloneSourceSuite)} onHide={() => setCloneSourceSuite(null)} centered fullscreen="sm-down">
-  <Modal.Header closeButton className="bg-light border-bottom text-dark">
+  <Modal.Header closeButton closeLabel={t('casos.closeModal')} className="bg-light border-bottom text-dark">
     <Modal.Title className="fw-bold fs-6 d-flex align-items-center gap-2">
-      <Folders size={18} className="text-primary" /> Copiar suite completa
+      <Folders size={18} className="text-primary" /> {t('casos.copyFullSuite')}
     </Modal.Title>
   </Modal.Header>
   <Modal.Body className="text-start">
     <div className="border rounded-3 bg-light p-3 mb-3">
-      <div className="small text-muted">Suite origen</div>
+      <div className="small text-muted">{t('casos.sourceSuite')}</div>
       <div className="fw-bold text-dark">{cloneSourceSuite?.nombre}</div>
       <div className="small text-muted mt-1">
-        Se copiaran {cloneSuiteIds.size} suite(s) y {cloneSuiteCasesCount} caso(s). No se copian builds, ejecuciones ni evidencias.
+        {t('casos.copySuitesSummary', { suites: cloneSuiteIds.size, cases: cloneSuiteCasesCount })}
       </div>
     </div>
     <Form.Group className="mb-3">
-      <Form.Label className="fw-bold x-small text-muted">NOMBRE DE LA COPIA</Form.Label>
-      <Form.Control name="a11y-casemanagementmodalstsx-150" aria-label="Campo de formulario"
+      <Form.Label className="fw-bold x-small text-muted">{t('casos.copyName').toUpperCase()}</Form.Label>
+      <Form.Control name="a11y-casemanagementmodalstsx-150" aria-label={t('casos.formField')}
         value={cloneSuiteName}
         onChange={(event) => setCloneSuiteName(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
-        placeholder="Copia de suite"
+        placeholder={t('casos.copySuitePlaceholder')}
       />
     </Form.Group>
     <Form.Group>
-      <Form.Label className="fw-bold x-small text-muted">SUITE PADRE DESTINO</Form.Label>
-      <Form.Select name="a11y-casemanagementmodalstsx-159" aria-label="Campo de formulario"
+      <Form.Label className="fw-bold x-small text-muted">{t('casos.destinationParentSuite').toUpperCase()}</Form.Label>
+      <Form.Select name="a11y-casemanagementmodalstsx-159" aria-label={t('casos.formField')}
         value={cloneSuiteParentId}
         onChange={(event) => setCloneSuiteParentId(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
       >
-        <option value="">Raiz del componente</option>
+        <option value="">{t('casos.componentRoot')}</option>
         {cloneSuiteDestinationSuites.map((suite: any) => (
           <option key={suite.id} value={suite.id}>
             {'- '.repeat(getSuiteDepth(suite.id))}{suite.nombre}
@@ -182,7 +182,7 @@ export function CaseManagementModals({ context }: Props) {
       {t('common.cancel')}
     </Button>
     <Button variant="primary" className="fw-bold rounded-pill px-4" disabled={!cloneSuiteName.trim()} onClick={confirmCloneSuite}>
-      Copiar suite
+      {t('casos.copySuite')}
     </Button>
   </Modal.Footer>
 </Modal>

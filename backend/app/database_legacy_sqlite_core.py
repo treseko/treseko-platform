@@ -67,6 +67,10 @@ async def migrate_identity_and_project_schema(conn, get_columns, get_column_info
         await conn.execute(text("ALTER TABLE entornos ADD COLUMN activo BOOLEAN DEFAULT 1 NOT NULL"))
     if entorno_columns and "ultima_verificacion" not in entorno_columns:
         await conn.execute(text("ALTER TABLE entornos ADD COLUMN ultima_verificacion DATETIME"))
+    if entorno_columns and "configuracion_chatbot" not in entorno_columns:
+        await conn.execute(text("ALTER TABLE entornos ADD COLUMN configuracion_chatbot JSON DEFAULT '{}'"))
+    if entorno_columns and "configuracion_api" not in entorno_columns:
+        await conn.execute(text("ALTER TABLE entornos ADD COLUMN configuracion_api JSON DEFAULT '{}'"))
     await conn.execute(text(
         "CREATE TABLE IF NOT EXISTS entorno_datasets ("
         "id CHAR(32) NOT NULL PRIMARY KEY, "
@@ -113,7 +117,7 @@ async def migrate_identity_and_project_schema(conn, get_columns, get_column_info
     if usuario_columns and "profile_settings" not in usuario_columns:
         await conn.execute(text("ALTER TABLE usuarios ADD COLUMN profile_settings JSON DEFAULT '{}' NOT NULL"))
     if usuario_columns and "personal_theme" not in usuario_columns:
-        await conn.execute(text("ALTER TABLE usuarios ADD COLUMN personal_theme VARCHAR(64) DEFAULT 'system' NOT NULL"))
+        await conn.execute(text("ALTER TABLE usuarios ADD COLUMN personal_theme VARCHAR(64) DEFAULT 'light' NOT NULL"))
     if usuario_columns and "project_theme_overrides" not in usuario_columns:
         await conn.execute(text("ALTER TABLE usuarios ADD COLUMN project_theme_overrides JSON DEFAULT '{}' NOT NULL"))
 

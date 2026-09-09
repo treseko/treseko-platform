@@ -24,12 +24,14 @@ class AdapterResult:
     warnings: list[str] = field(default_factory=list)
     source_fields: list[str] = field(default_factory=list)
     ignored_fields: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def diagnostics(self) -> dict[str, Any]:
         return {
             "warnings": list(dict.fromkeys(self.warnings)),
             "source_fields": self.source_fields,
             "ignored_fields": sorted(set(self.ignored_fields)),
+            **self.metadata,
         }
 
 

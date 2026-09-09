@@ -2,6 +2,13 @@
 
 El **Motor IA** concentra las tareas asistidas por IA y su seguimiento. La disponibilidad depende de la configuración de la instancia, los permisos y las capacidades habilitadas.
 
+## Qué puede hacer y qué no se debe asumir
+
+El motor puede participar en generación de historias/casos, ejecución asistida
+y evaluación conversacional. Cada tarea tiene un workflow, un snapshot y una
+salida propios. Que un modelo esté disponible no certifica por sí solo una
+ejecución API, conversacional o clásica completa.
+
 ## Antes de usarlo
 
 1. Confirmá que el proveedor, modelo o workflow requerido esté configurado en **Configuración → Pruebas con IA**.
@@ -22,3 +29,8 @@ La IA puede asistir en generación, análisis o ejecución, pero no reemplaza la
 Revisá el mensaje mostrado, la configuración del proveedor y los límites de la instancia. Si la tarea corresponde a una ejecución, consultá también [Historial Runs](RUN_HISTORY_GUIDE.md). No repitas en masa una operación hasta entender la causa.
 
 Para la configuración técnica, consultá [Configuración del Motor IA](AI_ENGINE_CONFIG.md).
+
+Los resultados IA requieren revisión humana antes de crear un bug o aprobar
+una build. En Chatbot, completá primero la conexión, los turnos y las
+expectativas; la evaluación no debe inventar evidencia que el endpoint no haya
+devuelto.

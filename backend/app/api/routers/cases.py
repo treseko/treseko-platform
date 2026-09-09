@@ -83,7 +83,10 @@ async def _publish_case_change(
     current_user: models.Usuario,
     payload: dict | None = None,
 ):
-    estado_caso = caso.estado_caso.value if hasattr(caso.estado_caso, "value") else caso.estado_caso
+    estado_caso_value = getattr(caso, "estado_caso", None)
+    tipo_prueba_value = getattr(caso, "tipo_prueba", None)
+    formato_prueba_value = getattr(caso, "formato_prueba", None)
+    estado_caso = estado_caso_value.value if hasattr(estado_caso_value, "value") else estado_caso_value
     case_payload = {
         "case": {
             "id": str(caso.id),
@@ -92,6 +95,8 @@ async def _publish_case_change(
             "titulo": caso.titulo,
             "version": caso.version,
             "estado": estado_caso,
+            "tipo_prueba": tipo_prueba_value.value if hasattr(tipo_prueba_value, "value") else tipo_prueba_value,
+            "formato_prueba": formato_prueba_value.value if hasattr(formato_prueba_value, "value") else formato_prueba_value,
         },
         **(payload or {}),
     }
@@ -213,8 +218,10 @@ async def read_casos_proyecto(
 @router.get("/casos/{caso_id}/historial")
 async def get_caso_historial(
     caso_id: UUID,
+    skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     build_id: Optional[UUID] = None,
+    include_total: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_module("ejecutar", "read"))
 ):
@@ -224,7 +231,7 @@ async def get_caso_historial(
         db_build = await access_control.require_build_access(db, current_user, build_id, "read")
         if db_build.proyecto_id != caso.proyecto_id:
             raise HTTPException(status_code=404, detail="Build no encontrado para el caso")
-    ejecuciones = await crud.get_caso_execution_history(db, caso_id, limit, build_id=build_id)
+    ejecuciones = await crud.get_caso_execution_history(db, caso_id, limit, build_id=build_id, skip=skip)
     execution_ids = [ejec.id for ejec in ejecuciones]
     user_ids = {ejec.ejecutado_por for ejec in ejecuciones if ejec.ejecutado_por}
     run_ids = {ejec.test_run_id for ejec in ejecuciones if ejec.test_run_id}
@@ -310,7 +317,18 @@ async def get_caso_historial(
             "evidencias": details.get("evidencias", []),
             "observaciones": details["observaciones"] or ejec.observaciones,
         })
-    return historial
+    if not include_total:
+        return historial
+
+    stats = await crud.get_caso_execution_history_stats(db, caso_id, build_id=build_id)
+    return {
+        "items": historial,
+        "total": stats["total"],
+        "limit": limit,
+        "skip": skip,
+        "has_more": skip + len(historial) < stats["total"],
+        "stats": stats,
+    }
 
 @router.get("/casos/{master_id}/versions", response_model=List[schemas.CasoVersion])
 async def read_caso_versions(
