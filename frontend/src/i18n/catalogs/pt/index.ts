@@ -1,3 +1,4 @@
+import spanishCatalog from '../es'
 import auth from './auth'
 import common from './common'
 import navigation from './navigation'
@@ -15,7 +16,29 @@ import dashboard from './dashboard'
 import onboarding from './onboarding'
 import notifications from './notifications'
 import forcePasswordChange from './forcePasswordChange'
-import incidencias from '../es/incidencias'
 
-const catalog = { auth, common, navigation, proyectos, casos, ejecutarPruebas, historial, automatizacion, bugs, reportes, motorIa, inventario, configuracion, dashboard, onboarding, notifications, forcePasswordChange, incidencias } as const
+// Portuguese modules can be incrementally translated without dropping newer keys.
+// Missing entries intentionally use the Spanish catalog until translated.
+const catalog = {
+  auth: { ...spanishCatalog.auth, ...auth },
+  common: { ...spanishCatalog.common, ...common },
+  navigation: { ...spanishCatalog.navigation, ...navigation },
+  proyectos: { ...spanishCatalog.proyectos, ...proyectos },
+  casos: { ...spanishCatalog.casos, ...casos },
+  ejecutarPruebas: { ...spanishCatalog.ejecutarPruebas, ...ejecutarPruebas },
+  historial: { ...spanishCatalog.historial, ...historial },
+  automatizacion: { ...spanishCatalog.automatizacion, ...automatizacion },
+  bugs: { ...spanishCatalog.bugs, ...bugs },
+  reportes: { ...spanishCatalog.reportes, ...reportes },
+  motorIa: { ...spanishCatalog.motorIa, ...motorIa },
+  inventario: { ...spanishCatalog.inventario, ...inventario },
+  configuracion: { ...spanishCatalog.configuracion, ...configuracion },
+  dashboard: { ...spanishCatalog.dashboard, ...dashboard },
+  redmine: spanishCatalog.redmine,
+  onboarding: { ...spanishCatalog.onboarding, ...onboarding },
+  notifications: { ...spanishCatalog.notifications, ...notifications },
+  forcePasswordChange: { ...spanishCatalog.forcePasswordChange, ...forcePasswordChange },
+  incidencias: spanishCatalog.incidencias,
+} as const
+
 export default catalog

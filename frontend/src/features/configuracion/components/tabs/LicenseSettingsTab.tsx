@@ -69,11 +69,12 @@ const COMMUNITY_LIMITS_BASE: Record<string, number> = {
 }
 
 const LIMIT_LABEL_KEYS: Record<string, string> = {
-  max_organizations: 'licenseLimitOrganizations', max_users: 'licenseLimitUsers', max_projects: 'licenseLimitProjects', max_workers: 'licenseLimitWorkers',
+  max_organizations: 'licenseLimitOrganizations', max_users: 'licenseLimitUsersRegistered', max_projects: 'licenseLimitProjects', max_workers: 'licenseLimitWorkers',
   max_automated_runs_per_week: 'licenseLimitAutomatedRuns', max_ai_runs_per_week: 'licenseLimitAiRuns', max_ai_case_generations_per_week: 'licenseLimitAiCaseGenerations', max_storage_mb: 'licenseLimitStorage',
 }
 
 const LIMIT_NOTE_KEYS: Record<string, string> = {
+  max_users: 'licenseNoteUsers',
   max_automated_runs_per_week: 'licenseNoteAutomatedRuns', max_ai_runs_per_week: 'licenseNoteAiRuns', max_ai_case_generations_per_week: 'licenseNoteAiCaseGenerations', max_workers: 'licenseNoteWorkers', max_storage_mb: 'licenseNoteStorage',
 }
 

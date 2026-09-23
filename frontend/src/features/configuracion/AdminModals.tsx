@@ -1,12 +1,13 @@
 ﻿import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react'
-import { Alert, Badge, Button, Col, Form, Modal, Row } from 'react-bootstrap'
+import { Alert, Badge, Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { Search, Save, ShieldCheck, Trash2, Users } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
-import { RBAC_CAPABILITIES } from '../../app/rbac/rbacCatalog'
+import { RBAC_CAPABILITIES, type RbacCapabilityGroup } from '../../app/rbac/rbacCatalog'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import type { CapabilityId, PermissionLevel, RoleKey } from '../../app/types'
 import { useI18n } from '../../i18n'
 import { RoleModal } from './RoleModal'
+import { PasswordVisibilityField } from '../../shared/ui/PasswordVisibilityField'
 
 type AdminModalsProps = {
   showRoleModal: boolean
@@ -14,8 +15,9 @@ type AdminModalsProps = {
   editingRoleId: string | null
   roleForm: any
   setRoleForm: Dispatch<SetStateAction<any>>
-  setRoleModulePermission: (moduleId: string, permission: PermissionLevel) => void
+  setRoleModulePermission: (moduleId: string, permission: PermissionLevel, capabilityIds?: string[]) => void
   setRoleCapabilityPermission: (capabilityId: CapabilityId, permission: PermissionLevel) => void
+  applyRolePreset: (permission: PermissionLevel) => void
   handleSaveRole: (event: FormEvent) => void
   showUserModal: boolean
   setShowUserModal: (show: boolean) => void
@@ -31,7 +33,7 @@ type AdminModalsProps = {
   setShowProjectMemberModal: (show: boolean) => void
   projectMemberForm: any
   setProjectMemberForm: Dispatch<SetStateAction<any>>
-  handleSubmitProjectMember: (event: FormEvent) => void
+  handleSubmitProjectMember: (event: FormEvent) => Promise<{ ok?: boolean; error?: string } | void>
   projectsList: any[]
   managingProjectId: string
   assignableUsers: any[]
@@ -48,6 +50,7 @@ export function AdminModals({
   setRoleForm,
   setRoleModulePermission,
   setRoleCapabilityPermission,
+  applyRolePreset,
   handleSaveRole,
   showUserModal,
   setShowUserModal,
@@ -73,11 +76,14 @@ export function AdminModals({
 }: AdminModalsProps) {
   const { t } = useI18n()
   const [projectMemberUserText, setProjectMemberUserText] = useState('')
+  const [projectMemberSubmitting, setProjectMemberSubmitting] = useState(false)
+  const [projectMemberSubmitError, setProjectMemberSubmitError] = useState('')
   const [rolePermissionGroupKey, setRolePermissionGroupKey] = useState('')
   const [adLookupQuery, setAdLookupQuery] = useState('')
   const [adLookupLoading, setAdLookupLoading] = useState(false)
   const [adLookupMessage, setAdLookupMessage] = useState('')
   const [adLookupResults, setAdLookupResults] = useState<any[]>([])
+  const [remoteRolePermissionGroups, setRemoteRolePermissionGroups] = useState<Array<RbacCapabilityGroup & { groupKey: string }> | null>(null)
   const activeAssignableUsers = useMemo(() => assignableUsers.filter(user => user.status !== 'Inactivo'), [assignableUsers])
   const getAssignableUserLabel = (user: any) => `${user.name || user.email || user.id} - ${user.email || t('configuracion.noEmail')}${user.role || user.baseRole ? ` (${user.role || user.baseRole})` : ''}`
   const getCapabilityLabel = (capability: { id: string; label: string }) => {
@@ -129,15 +135,36 @@ export function AdminModals({
     if (providerLabels[capability.id]) return t(providerLabels[capability.id] as any)
     return bugLabels[capability.id] ? t(bugLabels[capability.id] as any) : capability.label
   }
-  const rolePermissionGroups = useMemo(
-    () => RBAC_CAPABILITIES.map((group, index) => ({ ...group, groupKey: `${group.module}:${index}` })),
-    []
-  )
+  const rolePermissionGroups = remoteRolePermissionGroups || RBAC_CAPABILITIES.map((group, index) => ({ ...group, groupKey: `${group.module}:${index}` }))
+
+  useEffect(() => {
+    if (!showRoleModal) return
+    void fetchWithAuth(`${API_BASE}/roles/catalog/`)
+      .then(async response => {
+        if (!response.ok) throw new Error(`Backend respondió ${response.status}`)
+        const payload = await response.json()
+        const groups = Array.isArray(payload?.groups) ? payload.groups : []
+        if (!groups.length) throw new Error('El catálogo RBAC llegó vacío')
+        setRemoteRolePermissionGroups(groups.map((group: RbacCapabilityGroup & { module_label?: string; module_description?: string }, index: number) => ({
+          module: group.module,
+      moduleLabel: group.moduleLabel || group.module_label || group.module,
+          moduleDescription: group.moduleDescription || group.module_description || 'Permisos disponibles para esta área.',
+      capabilities: group.capabilities,
+          groupKey: `${group.module}:${index}`,
+        })))
+      })
+      .catch(error => console.warn('No se pudo cargar el catálogo RBAC del backend:', error))
+    // The static catalog is only a render fallback while the authenticated
+    // backend catalog is loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRoleModal])
   const selectedRolePermissionGroup = rolePermissionGroups.find(group => group.groupKey === rolePermissionGroupKey) || rolePermissionGroups[0]
 
   useEffect(() => {
     if (!showProjectMemberModal) return
     setProjectMemberUserText('')
+    setProjectMemberSubmitError('')
+    setProjectMemberSubmitting(false)
     setProjectMemberForm((current: any) => ({ ...current, userId: '' }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showProjectMemberModal])
@@ -228,11 +255,15 @@ export function AdminModals({
         setRoleForm,
         setRoleModulePermission,
         setRoleCapabilityPermission,
+        applyRolePreset,
         handleSaveRole,
         rolePermissionGroups,
         selectedRolePermissionGroup,
         setRolePermissionGroupKey,
         getCapabilityLabel,
+        affectedUserCount: editingRoleId?.startsWith('system:')
+          ? assignableUsers.filter((user: any) => user.baseRole === editingRoleId.replace('system:', '')).length
+          : 0,
       }} />
 
       <Modal show={showUserModal} onHide={() => setShowUserModal(false)} centered size="lg" backdrop="static">
@@ -319,13 +350,14 @@ export function AdminModals({
               <Col md={6}>
                 <Form.Group>
                   <Form.Label className="x-small fw-bold text-muted">{t('configuracion.localPassword')}</Form.Label>
-                  <Form.Control name="a11y-adminmodalstsx-322" aria-label="Campo de formulario"
-                    type="password"
+                  <PasswordVisibilityField name="a11y-adminmodalstsx-322" aria-label="Campo de formulario"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value, saveError: '' })}
                     disabled={userForm.auth === 'AD'}
                     className="bg-light shadow-sm"
                     placeholder={userForm.auth === 'AD' ? t('configuracion.adPasswordValidated') : editingUserId ? t('configuracion.passwordKeepExisting') : t('configuracion.initialPassword')}
+                    showLabel={t('common.showPassword')}
+                    hideLabel={t('common.hidePassword')}
                   />
                 </Form.Group>
               </Col>
@@ -406,7 +438,16 @@ export function AdminModals({
             <Users size={20} className="text-primary" /> {t('configuracion.assignProjectUser')}
           </Modal.Title>
         </Modal.Header>
-        <Form onSubmit={handleSubmitProjectMember}>
+        <Form onSubmit={async (event) => {
+          setProjectMemberSubmitError('')
+          setProjectMemberSubmitting(true)
+          try {
+            const result = await handleSubmitProjectMember(event)
+            if (result && result.ok === false) setProjectMemberSubmitError(result.error || 'No se pudo asignar el usuario.')
+          } finally {
+            setProjectMemberSubmitting(false)
+          }
+        }}>
           <Modal.Body className="p-4 text-start">
             <div className="mb-3 p-3 rounded-3 bg-light border">
               <div className="x-small fw-bold text-muted text-uppercase">{t('configuracion.project')}</div>
@@ -441,11 +482,17 @@ export function AdminModals({
             {assignableUsers.length === 0 && (
               <div className="small text-danger mt-3">{t('configuracion.noAssignableUsers')}</div>
             )}
+            {projectMemberSubmitError && (
+              <Alert variant="danger" className="mt-3 mb-0" role="alert">
+                {projectMemberSubmitError}
+              </Alert>
+            )}
           </Modal.Body>
           <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4">
             <Button variant="outline-secondary" onClick={() => setShowProjectMemberModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('configuracion.cancel')}</Button>
-            <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4" disabled={!projectMemberForm.userId}>
-              <Users size={16} className="me-2" /> {t('configuracion.assignUser')}
+            <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4" disabled={!projectMemberForm.userId || projectMemberSubmitting}>
+              {projectMemberSubmitting ? <Spinner animation="border" size="sm" className="me-2" /> : <Users size={16} className="me-2" />}
+              {projectMemberSubmitting ? 'Asignando…' : t('configuracion.assignUser')}
             </Button>
           </Modal.Footer>
         </Form>

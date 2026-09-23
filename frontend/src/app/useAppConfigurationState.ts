@@ -33,7 +33,8 @@ export function useAppConfigurationState({ options }: { options: any }) {
       !isAuthenticated ||
       activeTab !== "configuracion" ||
       configTab !== "clients" ||
-      projectsSource !== "backend"
+      projectsSource !== "backend" ||
+      !canAccessCapability("configuracion.clientes", "read")
     )
       return;
     loadOrganizationsFromBackend({ includeInactive: false });
@@ -45,7 +46,8 @@ export function useAppConfigurationState({ options }: { options: any }) {
       !isAuthenticated ||
       activeTab !== "configuracion" ||
       configTab !== "clients" ||
-      !selectedOrganizationId
+      !selectedOrganizationId ||
+      !canAccessCapability("configuracion.clientes", "read")
     )
       return;
     const key = `${projectsSource}:${selectedOrganizationId}`;
@@ -65,13 +67,23 @@ export function useAppConfigurationState({ options }: { options: any }) {
     if (!isAuthenticated) return;
     let cancelled = false;
     const run = async () => {
-      await Promise.allSettled([
-        getEnvironmentActions().loadEnvironmentsForProject(currentProjectId),
-        getWikiActions().loadWikiForProject(currentProjectId),
-        loadUsersFromBackend(),
-        loadRolesFromBackend(),
-        getProjectMemberActions().loadProjectMembers(currentProjectId),
-      ]);
+      const loads: Promise<unknown>[] = [];
+      if (canAccessCapability("proyectos.ambientes", "read")) {
+        loads.push(getEnvironmentActions().loadEnvironmentsForProject(currentProjectId));
+      }
+      if (canAccessCapability("proyectos.wiki", "read")) {
+        loads.push(getWikiActions().loadWikiForProject(currentProjectId));
+      }
+      if (canAccessCapability("configuracion.usuarios", "read")) {
+        loads.push(loadUsersFromBackend());
+      }
+      if (canAccessCapability("configuracion.roles", "read")) {
+        loads.push(loadRolesFromBackend());
+      }
+      if (canAccessCapability("proyectos.equipo", "read")) {
+        loads.push(getProjectMemberActions().loadProjectMembers(currentProjectId));
+      }
+      await Promise.allSettled(loads);
       if (cancelled) return;
     };
     run();
@@ -79,7 +91,7 @@ export function useAppConfigurationState({ options }: { options: any }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProjectId, projectsSource, isAuthenticated]);
+  }, [currentProjectId, projectsSource, isAuthenticated, canAccessCapability]);
 
   useEffect(() => {
     if (selectedTest && selectedTest.projectId !== currentProjectId) {
@@ -149,6 +161,7 @@ export function useAppConfigurationState({ options }: { options: any }) {
     showFeedback,
     loadProjectMetrics,
     setActiveTab,
+    canAccessCapability,
   });
   const {
     executionRunDetail,
@@ -200,6 +213,7 @@ export function useAppConfigurationState({ options }: { options: any }) {
     defaultAttachmentConfig,
     showFeedback,
     confirmAction,
+    canAccessCapability,
   });
   const {
     attachmentConfig,
@@ -270,12 +284,13 @@ export function useAppConfigurationState({ options }: { options: any }) {
     if (
       !isAuthenticated ||
       activeTab !== "configuracion" ||
-      configTab !== "users"
+      configTab !== "users" ||
+      !canAccessCapability("configuracion.usuarios", "read")
     )
       return;
     loadUsersFromBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, activeTab, configTab, projectsSource]);
+  }, [isAuthenticated, activeTab, configTab, projectsSource, canAccessCapability]);
 
   useLiveRefresh({
     enabled:

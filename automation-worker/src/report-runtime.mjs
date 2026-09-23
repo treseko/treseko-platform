@@ -68,7 +68,7 @@ function normalizeJobStatus(status) {
   if (["FAIL", "FALLO", "FAILED"].includes(value)) return "FAILED";
   if (["BLOCK", "BLOQUEADO", "BLOCKED"].includes(value)) return "BLOCKED";
   if (["ERROR", "TIMEOUT", "CANCELLED"].includes(value)) return value;
-  return "PASSED";
+  return "ERROR";
 }
 
 function normalizeStepStatus(status) {

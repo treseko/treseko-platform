@@ -13,6 +13,7 @@ type UseHistorialControllerParams = {
   showFeedback: (title: string, message: string, variant?: string) => void
   loadProjectMetrics: () => Promise<void> | void
   setActiveTab: (tab: string) => void
+  canAccessCapability?: (capability: string, level?: string) => boolean
 }
 
 export function useHistorialController({
@@ -26,6 +27,7 @@ export function useHistorialController({
   showFeedback,
   loadProjectMetrics,
   setActiveTab,
+  canAccessCapability = () => true,
 }: UseHistorialControllerParams) {
   const { t } = useI18n()
   const [runHistory, setRunHistory] = useState(initialRunHistory)
@@ -48,10 +50,10 @@ export function useHistorialController({
   })
 
   useEffect(() => {
-    if (activeTab !== 'historial') return
+    if (activeTab !== 'historial' || !canAccessCapability('historial.ver', 'read')) return
     loadProjectRunHistory(historialInitialFilters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, currentProjectId, currentBuildId, projectsSource, JSON.stringify(historialInitialFilters)])
+  }, [activeTab, currentProjectId, currentBuildId, projectsSource, canAccessCapability, JSON.stringify(historialInitialFilters)])
 
   const openHistorialRuns = (filters: Record<string, any> = {}, runId = '') => {
     setHistorialInitialFilters(filters)

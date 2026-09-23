@@ -211,10 +211,6 @@ def detailed_permissions_for_user(user: models.Usuario):
 def get_capability_permission(user: models.Usuario, capability_id: str):
     if capability_id not in ALL_CAPABILITIES:
         return None
-    # Perfil es una superficie de autopreferencias. Cada usuario activo puede
-    # editar su propia identidad visual sin recibir permisos administrativos.
-    if capability_id == "configuracion.perfil":
-        return "edit"
     detailed = detailed_permissions_for_user(user)
     if capability_id in detailed:
         return detailed[capability_id]
@@ -232,6 +228,13 @@ def get_capability_permission(user: models.Usuario, capability_id: str):
     legacy_level = legacy_capability_level(module_permissions, capability_id)
     if legacy_level:
         return legacy_level
+    # Module permissions are the safe default for capabilities that were
+    # introduced after a role was created.  An explicitly stored capability
+    # (including ``none``) still wins above, so administrators can narrow a
+    # module after enabling it.
+    module_level = module_permissions.get(module_id)
+    if module_level in {"read", "edit"}:
+        return module_level
     return None
 
 

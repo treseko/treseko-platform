@@ -344,12 +344,12 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                   <Dropdown.Item onClick={() => setExpandedBuildDetails(prev => ({ ...prev, [build.id]: !prev[build.id] }))}>
                                                     {isBuildExpanded ? t('proyectos.hideDetails') : t('proyectos.showDetails')}
                                                   </Dropdown.Item>
-                                                  {canEditProjectBuilds && (
+                                                  {canEditProjectBuildsEffective && (
                                                     <Dropdown.Item onClick={() => handleToggleBuildHidden(build.id)}>
                                                       {build.hidden ? t('proyectos.showBuild') : t('proyectos.hideBuild')}
                                                     </Dropdown.Item>
                                                   )}
-                                                  {canEditProjectBuilds ? (
+                                                  {canEditProjectBuildsEffective ? (
                                                     buildIsExecutable ? (
                                                       <Dropdown.Item onClick={() => handleSetInactiveBuild(build.id)}>
                                                         {t('proyectos.deactivateBuild')}
@@ -360,7 +360,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                       </Dropdown.Item>
                                                     )
                                                   ) : null}
-                                                  {canEditProjectBuilds && !isBuildReadOnly(build) && (
+                                                  {canEditProjectBuildsEffective && !isBuildReadOnly(build) && (
                                                     <>
                                                       <Dropdown.Divider />
                                                       <Dropdown.Item className="text-danger" onClick={() => handleDeleteBuild(build.id)}>
@@ -368,7 +368,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                                       </Dropdown.Item>
                                                     </>
                                                   )}
-                                                  {canEditProjectBuilds && isBuildReadOnly(build) && (
+                                                  {canEditProjectBuildsEffective && isBuildReadOnly(build) && (
                                                     <Dropdown.Item disabled title={t('proyectos.historicalBuildReadOnly')}>
                                                       {t('proyectos.removeBuild')}
                                                     </Dropdown.Item>
@@ -377,7 +377,7 @@ export function ProjectComponentsTab({ context }: { context: any }) {
                                               </Dropdown>
                                             </div>
                                           </div>
-                                          {isBuildExpanded && canEditProjectBuilds && !isBuildReadOnly(build) && (
+                                          {isBuildExpanded && canEditProjectBuildsEffective && !isBuildReadOnly(build) && (
                                             <Form
                                               key={`${build.id}:${build.startDate || ''}:${build.endDate || ''}:${build.changeContext || ''}`}
                                               className="mt-3 border-top pt-3 build-row-detail"

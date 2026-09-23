@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { advanceValidatedGraphStep, runLlmAgent } from './custom-agents.ts';
+import { advanceValidatedGraphStep, runLlmAgent, runWebhookAgent } from './custom-agents.ts';
 
 const input = {
   executionId: 'execution-1',
@@ -11,6 +11,44 @@ const input = {
 };
 
 describe('custom LLM agents', () => {
+  it('blocks an unknown agent status instead of treating it as success', async () => {
+    const result = await runLlmAgent({
+      runWorkflowAgent: async () => ({ data: { status: 'UNRECOGNIZED_EXTERNAL_STATUS' }, metrics: {} }),
+    } as any, {
+      id: 'agent', name: 'Agent', type: 'Agent', agent_key: 'agent', enabled: true,
+      config_json: {},
+    } as any, input as any);
+    assert.equal(result.status, 'BLOCKED');
+  });
+
+  it('blocks a webhook when DNS returns a private or mapped address', async () => {
+    let calls = 0;
+    const result = await runWebhookAgent({
+      id: 'webhook', name: 'Webhook', type: 'Webhook', agent_key: 'webhook', enabled: true,
+      config_json: { url: 'https://hooks.example.test/notify', allowlist: ['hooks.example.test'], timeout_ms: 1000 },
+    } as any, input, {
+      resolveHost: async () => ['::ffff:127.0.0.1'],
+      fetchImpl: (async () => { calls += 1; throw new Error('must not connect'); }) as typeof fetch,
+    });
+    assert.equal(result.status, 'BLOCKED');
+    assert.equal(calls, 0);
+  });
+
+  it('sends a webhook to the validated IP and preserves authority', async () => {
+    let requested: string | URL | undefined;
+    let headers: any;
+    const result = await runWebhookAgent({
+      id: 'webhook', name: 'Webhook', type: 'Webhook', agent_key: 'webhook', enabled: true,
+      config_json: { url: 'https://hooks.example.test/notify', allowlist: ['hooks.example.test'], timeout_ms: 1000 },
+    } as any, input, {
+      resolveHost: async () => ['93.184.216.34'],
+      fetchImpl: (async (url, init) => { requested = url as string | URL; headers = init?.headers; return new Response('ok', { status: 200 }); }) as typeof fetch,
+    });
+    assert.equal(result.status, 'SUCCESS');
+    assert.match(String(requested), /93\.184\.216\.34/);
+    assert.equal(headers.host, 'hooks.example.test');
+  });
+
   it('turns a flat V3 planner response into a canonical planned action', async () => {
     const ai = {
       runWorkflowAgent: async () => ({

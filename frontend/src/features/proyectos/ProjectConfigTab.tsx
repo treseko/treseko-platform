@@ -1,6 +1,7 @@
 import { Badge, Button, Card, Col, Form, ListGroup, Row } from 'react-bootstrap'
 import { Image as ImageIcon, Info, Trash2 } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
+import { resolveAssetUrl } from '../../shared/utils/assets'
 
 export function ProjectConfigTab({
   t, canEditProjectPortfolio, canReadProjectTeam, canEditProject, projectsList, managingProjectId,
@@ -19,7 +20,7 @@ export function ProjectConfigTab({
                               <div className="d-flex align-items-center gap-3 mb-3">
                                 <div className="project-avatar">
                                   {projectsList.find(p => p.id === managingProjectId)?.imageUrl ? (
-                                    <img src={projectsList.find(p => p.id === managingProjectId)?.imageUrl} alt={projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
+                                    <img src={resolveAssetUrl(projectsList.find(p => p.id === managingProjectId)?.imageUrl)} alt={projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
                                   ) : (
                                     <ImageIcon size={22} className="text-primary" />
                                   )}

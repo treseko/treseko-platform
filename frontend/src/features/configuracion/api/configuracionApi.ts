@@ -52,6 +52,87 @@ export async function revokeUserApiKey(fetchWithAuth: FetchWithAuth, apiKeyId: s
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
 
+export type McpTool = {
+  name: string
+  description: string
+  version?: string
+  capability: string
+  required_scope: string
+  read_only: boolean
+  operation: string
+}
+
+export type McpCredential = {
+  id: string
+  nombre: string
+  key_prefix: string
+  activo: boolean
+  fecha_creacion: string
+  ultimo_uso?: string | null
+  expires_at?: string | null
+  scopes_json: string[]
+  purpose: 'mcp'
+}
+
+export type McpCredentialCreated = McpCredential & { api_key: string }
+
+export type McpConfiguration = {
+  enabled: boolean
+  status: 'available' | 'disabled'
+  endpoint: string
+  protocol_version: string
+  authentication: { header: string; browser_session: boolean }
+  tools: McpTool[]
+  scope_catalog?: McpScope[]
+  effective_capabilities?: Record<string, 'read' | 'edit'>
+  correlation_id?: string
+}
+
+export type McpScopeTool = {
+  name: string
+  capability: string
+  required_level: 'read' | 'edit'
+  operation: string
+}
+
+export type McpScope = {
+  scope: string
+  user_level: 'none' | 'read' | 'edit'
+  selectable: boolean
+  tools: McpScopeTool[]
+}
+
+export async function fetchMcpConfiguration(fetchWithAuth: FetchWithAuth) {
+  const response = await fetchWithAuth(`${API_BASE}/mcp/configuration`)
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpConfiguration>
+}
+
+export async function updateMcpConfiguration(fetchWithAuth: FetchWithAuth, enabled: boolean) {
+  const response = await fetchWithAuth(`${API_BASE}/mcp/configuration`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<Pick<McpConfiguration, 'enabled' | 'status'>>
+}
+
+export async function listMcpCredentials(fetchWithAuth: FetchWithAuth) {
+  const response = await fetchWithAuth(`${API_BASE}/users/me/mcp-credentials/`)
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpCredential[]>
+}
+
+export async function createMcpCredential(fetchWithAuth: FetchWithAuth, payload: { nombre: string; scopes: string[]; expires_at?: string }) {
+  const response = await fetchWithAuth(`${API_BASE}/users/me/mcp-credentials/`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpCredentialCreated>
+}
+
+export async function revokeMcpCredential(fetchWithAuth: FetchWithAuth, credentialId: string) {
+  const response = await fetchWithAuth(`${API_BASE}/users/me/mcp-credentials/${encodeURIComponent(credentialId)}/`, { method: 'DELETE' })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpCredential>
+}
+
 export async function fetchAiEngineConfig(fetchWithAuth: FetchWithAuth) {
   const response = await fetchWithAuth(`${API_BASE}/ai-engine/config`)
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)

@@ -410,6 +410,8 @@ def _postman_request(request: Any) -> dict[str, Any]:
     if auth_type in {"bearer", "basic", "apikey", "oauth2"}:
         values = {str(item.get("key")): _postman_value(item.get("value")) for item in (auth.get(auth_type) or []) if isinstance(item, dict)}
         if auth_type == "apikey":
+            if str(values.get("value") or "").strip():
+                raise PortabilityError("La colección Postman contiene una API key; quitá la credencial antes de importar")
             auth_config = {"type": "api_key", "header": values.get("key") or "X-API-Key", "value": values.get("value") or ""} if str(values.get("in") or "header") == "header" else {"type": "api_key", "query": values.get("key") or "api_key", "value": values.get("value") or ""}
         elif auth_type == "oauth2":
             auth_config = {"type": "oauth2", "flow": values.get("grant_type") or values.get("accessTokenUrl") or "imported", "token": values.get("accessToken") or values.get("accessToken") or ""}

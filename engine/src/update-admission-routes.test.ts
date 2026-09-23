@@ -109,6 +109,10 @@ test("async run-task lease survives response and pending terminal callback", asy
   const callbackPort = (callbackServer.address() as import("node:net").AddressInfo).port;
   registerRunRoutes(app, deps(admission, async () => ({ status: "PASO", execution_id: "async-1" })));
   const { server, port } = await listen(app);
+  const previousPrivateNetworkSetting = process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS;
+  const previousCallbackAllowlist = process.env.ENGINE_CALLBACK_ALLOWLIST;
+  process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS = "true";
+  process.env.ENGINE_CALLBACK_ALLOWLIST = "127.0.0.1";
   try {
     const response = await request(port, "/run-task", { task: "test", testId: "async-1", callback_url: `http://127.0.0.1:${callbackPort}/callback` });
     assert.equal(response.status, 200);
@@ -118,6 +122,10 @@ test("async run-task lease survives response and pending terminal callback", asy
     for (let i = 0; i < 20 && admission.status().active_leases !== 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(admission.status().active_leases, 0);
   } finally {
+    if (previousPrivateNetworkSetting === undefined) delete process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS;
+    else process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS = previousPrivateNetworkSetting;
+    if (previousCallbackAllowlist === undefined) delete process.env.ENGINE_CALLBACK_ALLOWLIST;
+    else process.env.ENGINE_CALLBACK_ALLOWLIST = previousCallbackAllowlist;
     server.close();
     callbackServer.close();
   }
@@ -203,6 +211,28 @@ test("external route matching covers case and trailing slash, and fence blocks b
     assert.equal((await request(port, "/GENERATE-STORIES-SYNC/", {})).status, 503);
     assert.equal((await request(port, "/generate-stories-sync", {})).status, 503);
     assert.equal(calls, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test("passes the server-injected MCP runtime into both execution modes", async () => {
+  const admission = new UpdateAdmission(directory());
+  const app = express();
+  app.use(express.json());
+  const runtime = { resolveCredential: async () => "never-serialized", trace: () => undefined };
+  let received: any;
+  const routeDeps = deps(admission, async (...args: any[]) => {
+    received = args[8];
+    return { status: "PASO", execution_id: "runtime-test" };
+  });
+  (routeDeps as any).mcpRuntime = runtime;
+  registerRunRoutes(app, routeDeps);
+  const { server, port } = await listen(app);
+  try {
+    const result = await request(port, "/run-task-sync", { task: "test", testId: "runtime-test" });
+    assert.equal(result.status, 200);
+    assert.equal(received.mcpRuntime, runtime);
   } finally {
     server.close();
   }

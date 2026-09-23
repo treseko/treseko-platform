@@ -15,6 +15,7 @@ import { AIClient } from "./ai/client.ts";
 import { shouldReuseCaseGenerationScenarios } from "./ai/case-generation-flow.ts";
 import { traceEntry, traceRequestId } from "./test-trace.ts";
 import { OpenCodeDriver } from "./ai/opencode-driver.ts";
+import { createMcpRuntimeServices } from "./ai/mcp-runtime.ts";
 import { ProviderRequestError } from "./ai/provider-adapters.ts";
 import { UpdateAdmission, registerUpdateAdmissionRoute, registerExternalAdmissionMiddleware } from "./update-admission.ts";
 import {
@@ -442,7 +443,7 @@ app.post("/provider-health", async (req, res) => {
 
 registerGenerationRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks, traceEntry, traceRequestId, ENGINE_INTERNAL_TOKEN });
 registerQualityDiagnosisRoutes(app, { protectedStoryEndpoint, sendPublicError, sendProviderFailure, allowedEndpoint, allowedFallbacks });
-registerRunRoutes(app, { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission });
+registerRunRoutes(app, { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission, mcpRuntime: createMcpRuntimeServices() });
 io.on("connection", (socket) => {
   console.log("Client connected to Engine:", socket.id);
   traceEntry("ws_event", { action: "connection", socket_id: socket.id });

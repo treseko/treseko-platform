@@ -11,6 +11,15 @@ import {
   getSuiteParentMap
 } from './testRepositoryUtils'
 
+test('orden visual y de ejecución honra orden persistido en raíces y anidación', () => {
+  const suites = [
+    { id: 'root-b', nombre: 'Alpha', orden: 1, children: [{ id: 'child-b', nombre: 'Zeta', orden: 1, children: [] }, { id: 'child-a', nombre: 'Alpha', orden: 0, children: [] }] },
+    { id: 'root-a', nombre: 'Zulu', orden: 0, children: [] },
+  ]
+  const cases = ['root-a', 'child-a', 'child-b', 'root-b'].map((suiteId, index) => ({ id: String(index), suiteId, orden: 0, title: suiteId }))
+  assert.deepEqual(orderTestsBySuiteTree(cases, suites).map(item => item.suiteId), ['root-a', 'child-a', 'child-b', 'root-b'])
+})
+
 type SuiteNode = {
   id: string
   name: string

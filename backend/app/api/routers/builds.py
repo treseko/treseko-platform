@@ -250,7 +250,7 @@ async def update_build_casos(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.build_scope", "edit"))
 ):
     db_build = await access_control.require_build_access(db, current_user, build_id, "edit")
-    if not access_control.is_build_active(db_build):
+    if not access_control.is_build_active(db_build) and getattr(db_build, "estado", None) != "PREPARACION":
         raise HTTPException(status_code=409, detail="La build está inactiva y no permite modificar su alcance de casos")
     ok, message, casos = await crud.set_build_casos(db=db, build_id=build_id, caso_ids=payload.caso_ids)
     if not ok:

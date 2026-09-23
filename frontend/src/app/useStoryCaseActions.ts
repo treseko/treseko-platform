@@ -1,15 +1,15 @@
 import { API_BASE } from "./constants";
 
 export function useStoryCaseActions(options: any): any {
-  const { setEditingCasoMasterId, setSelectedTest, setNewTestSuite, setNewTestSuiteSub, setNewTestTitle, setNewTestDescription, setNewTestPre, setNewTestPost, setNewTestData, setNewTestTags, setNewTestPriority, setNewTestCriticality, setNewTestStatus, setNewTestType, setNewTestFormat, setNewTestSteps, setNewTestComponent, setNewTestScript, setNewTestFramework, setNewTestLanguage, setPendingTraceabilityStoryIds, setCaseEditorBaseline, setCaseEditorOpen, setActiveTab, setProjectSyncMessage, casosList, currentProjectId, fetchWithAuth, mapBackendCasoToTest, setCasosList, openEditCase, showFeedback, t } = options;
-  const handleCreateCaseFromStory = (story: any, requirement: any) => {
+  const { setEditingCasoMasterId, setSelectedTest, setNewTestSuite, setNewTestSuiteSub, setNewTestTitle, setNewTestDescription, setNewTestPre, setNewTestPost, setNewTestData, setNewTestTags, setNewTestPriority, setNewTestCriticality, setNewTestStatus, setNewTestType, setNewTestFormat, setNewTestSteps, setNewTestComponent, setNewTestScript, setNewTestFramework, setNewTestLanguage, setPendingTraceabilityStoryIds, setCaseEditorBaseline, setCaseEditorOpen, setActiveTab, setProjectSyncMessage, confirmLeavingWithUnsavedChanges, casosList, currentProjectId, fetchWithAuth, mapBackendCasoToTest, setCasosList, openEditCase, showFeedback, t } = options;
+  const handleCreateCaseFromStory = async (story: any, requirement: any) => {
+    if (!(await confirmLeavingWithUnsavedChanges())) return;
     const affectedComponents = requirement?.componente_ids || [];
     const componentId = affectedComponents.length === 1 ? String(affectedComponents[0]) : "";
     setEditingCasoMasterId(null); setSelectedTest(null); setNewTestSuite(""); setNewTestSuiteSub("");
     setNewTestTitle(story?.titulo || ""); setNewTestDescription(story?.descripcion_markdown || ""); setNewTestPre(""); setNewTestPost(""); setNewTestData(""); setNewTestTags([]); setNewTestPriority(story?.prioridad || "MEDIA"); setNewTestCriticality("MEDIA"); setNewTestStatus("ACTIVO"); setNewTestType("Manual"); setNewTestFormat("CLASICA"); setNewTestSteps([]); setNewTestComponent(componentId); setNewTestScript(""); setNewTestFramework("playwright"); setNewTestLanguage("javascript"); setPendingTraceabilityStoryIds(story?.id ? [String(story.id)] : []); setCaseEditorBaseline(""); setCaseEditorOpen(true); setActiveTab("crear_pruebas"); setProjectSyncMessage("Nuevo caso abierto desde la historia. La trazabilidad se guardara junto con el caso.");
   };
   const handleOpenLinkedCaseFromStory = async (masterId: string) => {
-    setActiveTab("crear_pruebas");
     try {
       let test = casosList.find((item: any) => String(item.masterId || item.master_id || "") === String(masterId));
       if (!test && currentProjectId) {
@@ -23,6 +23,8 @@ export function useStoryCaseActions(options: any): any {
         }
       }
       if (!test) throw new Error(t('common.linkedCaseUnavailable'));
+      if (!(await confirmLeavingWithUnsavedChanges())) return;
+      setActiveTab("crear_pruebas");
       openEditCase(test);
     } catch (error: any) {
       showFeedback("No se pudo abrir el caso", error?.message || t('common.tryAgain'), "danger");

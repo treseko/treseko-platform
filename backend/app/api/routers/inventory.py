@@ -62,6 +62,14 @@ def _asset_response(asset):
     }
 
 
+async def _require_asset_project_access(db, current_user, asset_id, level="read"):
+    asset = await crud.get_inventory_asset(db, asset_id=asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
+    await access_control.require_project_access(db, current_user, asset.proyecto_id, level)
+    return asset
+
+
 @router.get("/infraestructura/activos/", response_model=List[schemas.InventoryAsset])
 async def read_inventory_assets(
     proyecto_id: UUID,
@@ -76,6 +84,7 @@ async def read_inventory_assets(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "read"))
 ):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
     assets = await crud.get_inventory_assets(
         db,
         proyecto_id=proyecto_id,
@@ -98,6 +107,7 @@ async def create_inventory_asset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
     created = await crud.create_inventory_asset(db, proyecto_id=proyecto_id, asset=asset)
     if created is None:
         raise HTTPException(status_code=422, detail="parent_id invalido o pertenece a otro proyecto")
@@ -110,9 +120,7 @@ async def read_inventory_asset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "read"))
 ):
-    asset = await crud.get_inventory_asset(db, asset_id=asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
+    asset = await _require_asset_project_access(db, current_user, asset_id)
     return _asset_response(asset)
 
 
@@ -123,6 +131,7 @@ async def update_inventory_asset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    await _require_asset_project_access(db, current_user, asset_id, "edit")
     updated = await crud.update_inventory_asset(db, asset_id=asset_id, asset_update=asset_update)
     if updated is False:
         raise HTTPException(status_code=422, detail="parent_id invalido o pertenece a otro proyecto")
@@ -137,6 +146,7 @@ async def delete_inventory_asset(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    await _require_asset_project_access(db, current_user, asset_id, "edit")
     deleted = await crud.delete_inventory_asset(db, asset_id=asset_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
@@ -150,6 +160,7 @@ async def create_inventory_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    await _require_asset_project_access(db, current_user, asset_id, "edit")
     created = await crud.create_inventory_endpoint(db, asset_id=asset_id, endpoint=endpoint)
     if not created:
         raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
@@ -163,6 +174,10 @@ async def update_inventory_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    endpoint = await db.get(models.InventoryEndpoint, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Endpoint de inventario no encontrado")
+    await _require_asset_project_access(db, current_user, endpoint.asset_id, "edit")
     updated = await crud.update_inventory_endpoint(db, endpoint_id=endpoint_id, endpoint_update=endpoint_update)
     if not updated:
         raise HTTPException(status_code=404, detail="Endpoint de inventario no encontrado")
@@ -175,6 +190,10 @@ async def delete_inventory_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
+    endpoint = await db.get(models.InventoryEndpoint, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail="Endpoint de inventario no encontrado")
+    await _require_asset_project_access(db, current_user, endpoint.asset_id, "edit")
     deleted = await crud.delete_inventory_endpoint(db, endpoint_id=endpoint_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Endpoint de inventario no encontrado")

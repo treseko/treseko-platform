@@ -237,6 +237,8 @@ async def provision_or_sync_user(db: AsyncSession, config: dict[str, Any], claim
     if not user:
         if not config.get("auto_provision"):
             raise ValueError("Usuario no provisionado y auto_provision esta deshabilitado")
+        from ..edition.user_limits import enforce_active_user_limit
+        await enforce_active_user_limit(db)
         was_provisioned = True
         user = models.Usuario(
             email=email,

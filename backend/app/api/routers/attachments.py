@@ -314,7 +314,12 @@ async def link_snapshot_attachment(
 async def list_snapshot_attachments(
     snapshot_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("ejecutar.evidencias", "read"))
+    # La evidencia se consulta desde Ejecución o desde Historial. Ambos
+    # caminos son exclusivamente de lectura.
+    current_user: models.Usuario = Depends(auth.check_any_capability(
+        ("ejecutar.evidencias", "read"),
+        ("historial.evidencias", "read"),
+    ))
 ):
     await _require_snapshot_access(db, current_user, snapshot_id, "read")
     return await crud.get_snapshot_attachments(db, snapshot_id)
@@ -324,7 +329,12 @@ async def list_snapshot_attachments(
 async def list_execution_snapshot_attachments(
     ejecucion_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("ejecutar.evidencias", "read")),
+    # Este endpoint alimenta el detalle del Historial y puede reutilizarse en
+    # Ejecución; no concede permisos de edición.
+    current_user: models.Usuario = Depends(auth.check_any_capability(
+        ("ejecutar.evidencias", "read"),
+        ("historial.evidencias", "read"),
+    )),
 ):
     """Carga las evidencias de una ejecución en una sola consulta HTTP."""
     await _require_execution_access(db, current_user, ejecucion_id, "read")

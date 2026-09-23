@@ -129,6 +129,23 @@ export const normalizeCaseTags = (tags: any): string[] => {
     })
 }
 
+export const normalizeCaseTitle = (title: any) => String(title || '').trim().replace(/\s+/g, ' ')
+
+export const hasDuplicateCaseTitle = (cases: any[] = [], suiteId: any, title: any, excludedMasterId?: any) => {
+  const normalizedTitle = normalizeCaseTitle(title)
+  if (!normalizedTitle || suiteId === undefined || suiteId === null || suiteId === '') return false
+  const excludedId = excludedMasterId === undefined || excludedMasterId === null ? '' : String(excludedMasterId)
+  return cases.some(item => {
+    const itemSuiteId = item?.suiteId ?? item?.suite_id
+    const itemId = item?.masterId ?? item?.master_id ?? item?.id
+    const status = String(item?.caseStatus ?? item?.estado_caso ?? item?.status ?? '').toUpperCase()
+    if (status === 'ARCHIVADO' || status === 'ARCHIVED') return false
+    if (String(itemSuiteId ?? '') !== String(suiteId)) return false
+    if (excludedId && String(itemId ?? '') === excludedId) return false
+    return normalizeCaseTitle(item?.title ?? item?.titulo) === normalizedTitle
+  })
+}
+
 export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], fallbackProjectId = '') => {
   const componentId = caso.componente_id || ''
   const component = componentsSnapshot.find(c => String(c.id) === String(componentId))
@@ -141,6 +158,9 @@ export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], 
     masterId: caso.master_id,
     suiteId: caso.suite_id || '',
     subSuiteId: caso.suite_id || '',
+    orden: caso.orden ?? 0,
+    order: caso.orden ?? 0,
+    position: caso.orden ?? 0,
     title: caso.titulo,
     status: 'none',
     type: backendTestTypeToEditor(caso.tipo_prueba),

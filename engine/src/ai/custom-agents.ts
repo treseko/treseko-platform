@@ -1,12 +1,13 @@
 import vm from 'node:vm';
 import net from 'node:net';
+import { createPinnedFetch, isForbiddenAddress, resolveSafeAddress, type SecureFetchServices } from './mcp-secure-transport.ts';
 import type { AIClient } from './client.ts';
 import type { AgentInput, AgentOutput, WorkflowNode } from './workflow.ts';
 
 function normalizeOutput(raw: any, fallbackReason: string): AgentOutput {
   const status = String(raw?.status || 'SUCCESS').toUpperCase();
   return {
-    status: ['SUCCESS', 'FAILED', 'BLOCKED', 'SKIPPED'].includes(status) ? status as AgentOutput['status'] : 'SUCCESS',
+    status: ['SUCCESS', 'FAILED', 'BLOCKED', 'SKIPPED'].includes(status) ? status as AgentOutput['status'] : 'BLOCKED',
     decision: raw?.decision,
     confidence: Number(raw?.confidence ?? 80),
     reason: raw?.reason || fallbackReason,
@@ -389,7 +390,7 @@ export async function runReporterAgent(node: WorkflowNode, input: AgentInput): P
 }
 
 function allowedWebhookHost(url: URL, allowlist: string[]): boolean {
-  return allowlist.some((item) => item === '*' || item.toLowerCase() === url.hostname.toLowerCase());
+  return allowlist.some((item) => item.toLowerCase() === url.hostname.toLowerCase());
 }
 
 function isPrivateOrBlockedHost(hostname: string): boolean {
@@ -414,7 +415,7 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
   )));
 }
 
-export async function runWebhookAgent(node: WorkflowNode, input: AgentInput): Promise<AgentOutput> {
+export async function runWebhookAgent(node: WorkflowNode, input: AgentInput, services: SecureFetchServices = {}): Promise<AgentOutput> {
   const config = node.config_json || {};
   let target: URL;
   try {
@@ -434,6 +435,19 @@ export async function runWebhookAgent(node: WorkflowNode, input: AgentInput): Pr
   if (isPrivateOrBlockedHost(target.hostname) && config.allow_private_networks !== true && process.env.WEBHOOK_AGENT_ALLOW_PRIVATE_NETWORKS !== 'true') {
     return { status: 'BLOCKED', reason: `Host webhook privado/local bloqueado: ${target.hostname}`, confidence: 100, events: [] };
   }
+  let pinnedUrl = target;
+  let pinnedFetch = services.fetchImpl || fetch;
+  if (config.allow_private_networks !== true && process.env.WEBHOOK_AGENT_ALLOW_PRIVATE_NETWORKS !== 'true') {
+    try {
+      const resolvedAddress = await resolveSafeAddress(target, services.resolveHost);
+      if (!resolvedAddress || isForbiddenAddress(resolvedAddress)) return { status: 'BLOCKED', reason: `Destino webhook resuelto a red privada: ${target.hostname}`, confidence: 100, events: [] };
+      pinnedUrl = new URL(target.toString());
+      pinnedUrl.hostname = resolvedAddress;
+      pinnedFetch = createPinnedFetch(pinnedFetch, pinnedUrl, target.host, { allowInsecureHttp: target.protocol === 'http:', pinNetwork: pinnedFetch === globalThis.fetch });
+    } catch {
+      return { status: 'BLOCKED', reason: 'No se pudo resolver el destino webhook', confidence: 100, events: [] };
+    }
+  }
   if (!config.timeout_ms) {
     return { status: 'BLOCKED', reason: 'Webhook requiere timeout_ms obligatorio', confidence: 100, events: [] };
   }
@@ -448,8 +462,9 @@ export async function runWebhookAgent(node: WorkflowNode, input: AgentInput): Pr
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
     const headers = { 'Content-Type': 'application/json', ...safeConfiguredHeaders };
-    const response = await fetch(target, {
+    const response = await pinnedFetch(pinnedUrl, {
       method: String(config.method || 'POST').toUpperCase(),
+      redirect: 'error',
       headers,
       body: JSON.stringify({ input, sharedMemory: input.sharedMemory, node: { id: node.id, name: node.name, type: node.type } }),
       signal: controller.signal,

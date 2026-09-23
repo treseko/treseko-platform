@@ -1,13 +1,38 @@
 import copy
+import json
 
 from .repository_context import *
 from .dataset_variables import native_environment_variables
-from .suites_cases import clone_case_traceability, update_caso_metadata_versioned
+from .suites_cases import (
+    _ensure_case_code_available,
+    clone_case_traceability,
+    generate_case_code,
+    generate_unique_case_title,
+    get_caso,
+    update_caso_metadata_versioned,
+)
 
 
 class CaseArchiveConflict(ValueError):
     """Raised when a case is still part of the active evaluation scope."""
 
+
+class CaseOrganizationConflict(ValueError):
+    """Raised when the client reordered a stale sibling snapshot."""
+
+
+def organization_revision(rows) -> str:
+    payload = [[str(row.id), str(row.suite_id) if row.suite_id else None, int(row.orden or 0)] for row in rows]
+    value = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    digest = 2166136261
+    for char in value:
+        digest ^= ord(char)
+        digest = (digest * 16777619) & 0xffffffff
+    return f"{digest:08x}"
+
+
+def organization_lock_suite_ids(source_suite_id, destination_suite_id):
+    return tuple(sorted({suite_id for suite_id in (source_suite_id, destination_suite_id) if suite_id is not None}, key=str))
 
 async def _active_builds_for_case_master(db: AsyncSession, master_id: UUID):
     versions_result = await db.execute(
@@ -58,13 +83,19 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
         if not original.componente_id and target_suite.componente_id:
             raise ValueError("No se puede copiar un caso sin componente a una suite con componente")
 
+    cloned_code = await generate_case_code(db)
+    await _ensure_case_code_available(db, original.proyecto_id, cloned_code)
+    cloned_title = await generate_unique_case_title(
+        db, target_suite_id, original.titulo, for_copy=True
+    )
+
     cloned = models.CasoPrueba(
         master_id=uuid.uuid4(),
-        codigo=await generate_case_code(db),
+        codigo=cloned_code,
         proyecto_id=original.proyecto_id,
         suite_id=target_suite_id,
         componente_id=original.componente_id,
-        titulo=original.titulo,
+        titulo=cloned_title,
         descripcion=original.descripcion,
         precondiciones=original.precondiciones,
         postcondiciones=original.postcondiciones,
@@ -187,7 +218,11 @@ async def search_casos(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    items_query = base_query.offset(skip)
+    items_query = base_query.order_by(
+        models.CasoPrueba.suite_id,
+        models.CasoPrueba.orden,
+        models.CasoPrueba.id,
+    ).offset(skip)
     if limit is not None:
         items_query = items_query.limit(limit)
     items_result = await db.execute(items_query)
@@ -240,26 +275,120 @@ async def move_caso(db: AsyncSession, caso_id: UUID, suite_id: UUID):
     db_caso = await get_caso(db, caso_id)
     if not db_caso:
         return None
+    if not db_caso.activo or db_caso.estado_caso == models.EstadoCaso.ARCHIVADO:
+        raise ValueError("No se pueden mover casos archivados o inactivos")
+    if db_caso.suite_id:
+        source_result = await db.execute(select(models.Suite).where(models.Suite.id == db_caso.suite_id))
+        source_suite = source_result.scalar_one_or_none()
+        if not source_suite or not source_suite.activo or source_suite.archivado:
+            raise ValueError("La suite origen no existe o esta inactiva o archivada")
     suite_result = await db.execute(
         select(models.Suite).filter(
             models.Suite.id == suite_id,
-            models.Suite.activo == True
+            models.Suite.activo == True,
+            models.Suite.archivado == False,
         )
     )
     target_suite = suite_result.scalar_one_or_none()
     if not target_suite:
-        raise ValueError("La suite destino no existe o esta inactiva")
+        raise ValueError("La suite destino no existe o esta inactiva o archivada")
     if target_suite.proyecto_id != db_caso.proyecto_id:
         raise ValueError("La suite destino no pertenece al proyecto del caso")
     if db_caso.componente_id and target_suite.componente_id != db_caso.componente_id:
         raise ValueError("No se puede mover un caso a una suite de otro componente")
     if not db_caso.componente_id and target_suite.componente_id:
         raise ValueError("No se puede mover un caso sin componente a una suite con componente")
+    sibling_result = await db.execute(select(models.CasoPrueba).where(
+        models.CasoPrueba.proyecto_id == db_caso.proyecto_id,
+        models.CasoPrueba.suite_id.in_({db_caso.suite_id, suite_id}),
+        models.CasoPrueba.activo == True,
+        models.CasoPrueba.estado_caso != models.EstadoCaso.ARCHIVADO,
+    ).order_by(models.CasoPrueba.suite_id, models.CasoPrueba.orden, models.CasoPrueba.id).with_for_update())
+    siblings = sibling_result.scalars().all()
+    source = [row for row in siblings if row.suite_id == db_caso.suite_id and row.id != db_caso.id]
+    destination = [row for row in siblings if row.suite_id == suite_id and row.id != db_caso.id]
+    for index, row in enumerate(source):
+        row.orden = index
+    for index, row in enumerate(destination):
+        row.orden = index
+    db_caso.orden = len(destination)
+    update_data = {"suite_id": suite_id}
     return await update_caso_metadata_versioned(
         db=db,
         caso_id=caso_id,
-        update=schemas.CasoPruebaUpdateMetadata(suite_id=suite_id),
+        update=schemas.CasoPruebaUpdateMetadata(**update_data),
     )
+
+
+async def reorder_casos(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID], orden: list[UUID], orden_origen: Optional[list[UUID]] = None, revision: Optional[str] = None):
+    """Atomically assign dense order and optionally move the latest case."""
+    if len(orden) != len(set(orden)):
+        raise ValueError("La lista de casos contiene duplicados")
+    case = await get_caso(db, caso_id)
+    if not case:
+        return None
+    if not case.activo or case.estado_caso == models.EstadoCaso.ARCHIVADO:
+        raise ValueError("No se pueden organizar casos archivados o inactivos")
+    if case.suite_id:
+        source_suite = (await db.execute(select(models.Suite).where(models.Suite.id == case.suite_id))).scalar_one_or_none()
+        if not source_suite or not source_suite.activo or source_suite.archivado:
+            raise ValueError("La suite origen no existe o esta inactiva")
+    destination_id = suite_id or case.suite_id
+    if destination_id is None:
+        raise ValueError("Los casos sin suite no se pueden organizar")
+    target = (await db.execute(select(models.Suite).where(models.Suite.id == destination_id, models.Suite.activo == True, models.Suite.archivado == False))).scalar_one_or_none()
+    if not target or target.proyecto_id != case.proyecto_id:
+        raise ValueError("La suite destino no pertenece al proyecto del caso")
+    if target.componente_id != case.componente_id:
+        raise ValueError("No se puede mover un caso a una suite de otro componente")
+    lock_suite_ids = organization_lock_suite_ids(case.suite_id, destination_id)
+    sibling_result = await db.execute(select(models.CasoPrueba).where(
+        models.CasoPrueba.proyecto_id == case.proyecto_id,
+        models.CasoPrueba.suite_id.in_(lock_suite_ids),
+        models.CasoPrueba.activo == True,
+        models.CasoPrueba.estado_caso != models.EstadoCaso.ARCHIVADO,
+    ).order_by(models.CasoPrueba.suite_id, models.CasoPrueba.orden, models.CasoPrueba.id).with_for_update())
+    locked_siblings = sibling_result.scalars().all()
+    destination = [row for row in locked_siblings if row.suite_id == destination_id]
+    source = [row for row in locked_siblings if row.suite_id == case.suite_id]
+    current_rows = list(locked_siblings)
+    expected_revision = organization_revision(sorted(current_rows, key=lambda row: (str(row.suite_id), int(row.orden or 0), str(row.id))))
+    if revision is not None and revision != expected_revision:
+        raise CaseOrganizationConflict("La organización cambió; recarga y vuelve a intentarlo")
+    destination_ids = {row.id for row in destination}
+    if destination_id != case.suite_id:
+        destination_ids.add(case.id)
+    if set(orden) != destination_ids:
+        raise ValueError("La lista completa de casos hermanos es obligatoria")
+    if destination_id != case.suite_id:
+        source_ids = [row.id for row in source]
+        if (
+            len(orden_origen or source_ids) != len(set(orden_origen or source_ids))
+            or set(orden_origen or source_ids) != set(source_ids)
+            or case.id not in set(source_ids)
+        ):
+            raise ValueError("La lista completa de casos hermanos es obligatoria")
+        for index, item_id in enumerate(orden_origen or source_ids):
+            row = next((row for row in source if row.id == item_id), None)
+            if row is None:
+                raise ValueError("La lista completa de casos hermanos es obligatoria")
+            row.orden = index
+    elif orden_origen is not None and (
+        len(orden_origen) != len(set(orden_origen))
+        or set(orden_origen) != {row.id for row in destination}
+    ):
+        raise ValueError("La lista completa de casos hermanos es obligatoria")
+    by_id = {row.id: row for row in destination}
+    for index, item_id in enumerate(orden):
+        row = by_id.get(item_id) or (case if item_id == case.id else None)
+        if row is None:
+            raise ValueError("La lista completa de casos hermanos es obligatoria")
+        row.suite_id = destination_id
+        row.orden = index
+    await db.flush()
+    await db.refresh(case)
+    return case
+
 
 def _normalize_dataset(dataset: Any) -> List[Dict[str, str]]:
     if not dataset:

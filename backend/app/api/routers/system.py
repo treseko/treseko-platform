@@ -43,6 +43,7 @@ from ...services.edition.update_manager import (
 )
 from ...services.updater import configured_community_update_channel, get_update_service, version_gt
 from ...services.edition.usage_limits import WEEKLY_USAGE_WINDOW_DAYS, count_weekly_executions
+from ...services.edition.user_limits import count_active_registered_users
 from ...time_utils import utc_now
 from ...version import COMMUNITY_RELEASE_TAG, PRODUCT_EDITION_BASE, PRODUCT_NAME, PRODUCT_VERSION, RELEASE_CHANNEL
 from .system_support import (
@@ -298,15 +299,11 @@ async def read_system_license_usage(
         ).scalar()
         or 0
     )
+    # max_users is an instance/tenant seat limit. Count active users, not
+    # organization membership rows: a user can belong to many organizations,
+    # and SSO can provision a user before organization assignment.
+    users_count = await count_active_registered_users(db)
     if organization_id:
-        users_count = int(
-            (
-                await db.execute(
-                    select(func.count()).select_from(models.OrganizacionMiembro).filter(models.OrganizacionMiembro.organizacion_id == organization_id)
-                )
-            ).scalar()
-            or 0
-        )
         projects_count = int(
             (
                 await db.execute(
@@ -356,7 +353,6 @@ async def read_system_license_usage(
             or 0
         )
     else:
-        users_count = int((await db.execute(select(func.count()).select_from(models.Usuario))).scalar() or 0)
         projects_count = int(
             (
                 await db.execute(

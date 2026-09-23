@@ -59,12 +59,12 @@ export function LicenseSettingsView({ options }: { options: any }) {
                       {license.edition === 'premium' ? t('configuracion.licensePremiumActive') : t('configuracion.licenseCommunityLocal')}
                     </Badge>
                   </div>
-                  <Table size="sm" responsive className="align-middle small mb-0">
+                  <Table size="sm" responsive className="align-middle small mb-0 license-limits-table">
                     <thead>
                       <tr>
                         <th>{t('configuracion.licenseLimit')}</th>
                         <th style={{ minWidth: 220 }}>{t('configuracion.licenseCurrentUsage')}</th>
-                        <th className="text-end">{t('configuracion.licenseCurrent')}</th>
+                        <th className="text-end license-current-limit">{t('configuracion.licenseCurrent')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -91,7 +91,7 @@ export function LicenseSettingsView({ options }: { options: any }) {
                               {formatUsageValue(row.key, row.usage?.used, locale)} {t('configuracion.licenseUsed')}
                             </div>
                           </td>
-                          <td className="text-end fw-bold">{formatLimitValue(row.key, row.currentValue, locale, t)}</td>
+                          <td className="text-end fw-bold license-current-limit">{formatLimitValue(row.key, row.currentValue, locale, t)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -194,9 +194,9 @@ export function LicenseSettingsView({ options }: { options: any }) {
             </Card.Body>
           </Card>
 
-          <Row className="g-3 mt-1">
+          <Row className="g-3 mt-1 license-feature-comparison">
             <Col lg={6}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
+              <Card className="border-0 shadow-sm rounded-4 bg-white h-100 license-feature-card">
                 <Card.Body>
                   <div className="d-flex align-items-center gap-2 mb-2">
                     <ShieldCheck size={18} className="text-primary" />
@@ -206,7 +206,7 @@ export function LicenseSettingsView({ options }: { options: any }) {
                   <div className="small text-muted mb-2">
                     {t('configuracion.licenseCommunityDescription')}
                   </div>
-                  <Table size="sm" responsive className="align-middle small mb-0">
+                  <Table size="sm" responsive className="align-middle small mb-0 license-feature-table">
                     <tbody>
                       {communityFeatures.map(feature => (
                         <tr key={feature.id}>
@@ -220,7 +220,7 @@ export function LicenseSettingsView({ options }: { options: any }) {
               </Card>
             </Col>
             <Col lg={6}>
-              <Card className="border-0 shadow-sm rounded-4 bg-white h-100">
+              <Card className="border-0 shadow-sm rounded-4 bg-white h-100 license-feature-card">
                 <Card.Body>
                   <div className="d-flex align-items-center gap-2 mb-2">
                     <Crown size={18} className="text-warning" />
@@ -229,12 +229,12 @@ export function LicenseSettingsView({ options }: { options: any }) {
                       {enabledPremiumCount}/{premiumFeatures.length}
                     </Badge>
                   </div>
-                  <Alert variant={license.edition === 'premium' ? 'info' : 'light'} className="border small mb-2">
+                  <Alert variant={license.edition === 'premium' && disabledPremiumCount === 0 ? 'success' : license.edition === 'premium' ? 'info' : 'light'} className="border small mb-2">
                     {license.edition === 'premium'
-                      ? t('configuracion.licenseEntitlementPartial')
+                      ? (disabledPremiumCount === 0 ? t('configuracion.licensePremiumActive') : t('configuracion.licenseEntitlementPartial'))
                       : t('configuracion.licenseEntitlementRequired')}
                   </Alert>
-                  <Table size="sm" responsive className="align-middle small mb-0">
+                  <Table size="sm" responsive className="align-middle small mb-0 license-feature-table">
                     <tbody>
                       {premiumFeatures.map(feature => (
                         <tr key={feature.id}>

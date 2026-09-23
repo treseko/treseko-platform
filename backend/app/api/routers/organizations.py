@@ -28,7 +28,12 @@ async def read_organizaciones(
     limit: int = Query(100, ge=1, le=500),
     include_inactive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_module("clientes", "read"))
+    # El listado está limitado a las organizaciones donde el usuario es
+    # miembro. No es una operación administrativa: es el contexto de trabajo
+    # necesario para que un usuario vea la solución que le fue asignada.
+    # Crear, editar, listar inactivos y administrar miembros siguen protegidos
+    # por las capacidades administrativas de configuración.
+    current_user: models.Usuario = Depends(auth.get_current_active_user)
 ):
     if include_inactive and current_user.rol != models.Rol.ADMIN:
         raise HTTPException(status_code=403, detail="Solo ADMIN puede listar soluciones inactivas")
@@ -77,7 +82,7 @@ async def read_organizacion_miembros(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_module("clientes", "read"))
+    current_user: models.Usuario = Depends(auth.check_capability("configuracion.clientes", "read"))
 ):
     await access_control.require_organization_access(db, current_user, org_id, "read")
     return await crud.get_organizacion_miembros(db=db, org_id=org_id, skip=skip, limit=limit)
@@ -93,24 +98,9 @@ async def add_organizacion_miembro(
     user = await crud.get_user(db, miembro.usuario_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    existing_member = await db.execute(
-        select(models.OrganizacionMiembro.id).filter(
-            models.OrganizacionMiembro.organizacion_id == org_id,
-            models.OrganizacionMiembro.usuario_id == miembro.usuario_id,
-        )
-    )
-    if not existing_member.scalar_one_or_none():
-        count_result = await db.execute(
-            select(func.count())
-            .select_from(models.OrganizacionMiembro)
-            .filter(models.OrganizacionMiembro.organizacion_id == org_id)
-        )
-        await enforce_limit(
-            db,
-            "max_users",
-            int(count_result.scalar() or 0),
-            tenant_id=str(org_id),
-        )
+    # max_users is enforced when an active account is created or reactivated.
+    # Assigning an existing account to another organization must not consume a
+    # second seat or apply the instance limit to membership rows.
     return await crud.add_organizacion_miembro(db=db, org_id=org_id, miembro=miembro)
 
 @router.delete("/organizaciones/{org_id}/miembros/{usuario_id}")

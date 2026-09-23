@@ -1,10 +1,11 @@
 import { memo, useMemo, useState, type CSSProperties } from 'react'
 import { Button, Dropdown } from 'react-bootstrap'
-import { Archive, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
-import { compareTestsBySuiteOrder } from './testOrdering'
+import { Archive, ArrowDown, ArrowUp, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
+import { compareSuitesByOrder, compareTestsBySuiteOrder } from './testOrdering'
 import { UNSUITED_CASES_ROOT_ID } from './testRepositoryUtils'
 import { useI18n } from './i18n'
 import { caseCreationFormats, caseFormatPresentation, normalizeCaseFormat, type CaseFormat } from './features/casos/caseFormat'
+import { stopCaseDropPropagation } from './features/casos/caseOrganization'
 
 type SuiteTreeProps = {
   suites: any[]
@@ -13,6 +14,7 @@ type SuiteTreeProps = {
   selectedSubSuiteId: string | null
   selectedTest: any
   casosList: any[]
+  organizationCases?: any[]
   currentCompId: string
   testSearchQuery: string
   onSelectSuite: (suiteId: string) => void
@@ -29,6 +31,8 @@ type SuiteTreeProps = {
   onEditCase: (test: any) => void
   onCloneCase?: (test: any) => void
   onMoveCase?: (test: any) => void
+  onOrganizeCase?: (test: any, targetSuiteId: string | null, position: number) => Promise<boolean | void> | boolean | void
+  onAnnounce?: (message: string) => void
   onArchiveCase?: (test: any) => void
   onRestoreCase?: (test: any) => void
   onViewVersions?: (test: any) => void
@@ -55,9 +59,7 @@ const naturalCompare = (left: any, right: any) =>
     sensitivity: 'base'
   })
 
-const compareSuitesByName = (left: any, right: any) =>
-  naturalCompare(left.nombre || left.name, right.nombre || right.name)
-  || naturalCompare(left.id, right.id)
+const compareSuitesByName = compareSuitesByOrder
 
 const normalizeForSearch = (value: unknown) => String(value || '')
   .normalize('NFD')
@@ -131,6 +133,8 @@ const SuiteTreeNode = ({
   visited?: Set<string>
 }) => {
   const { t } = useI18n()
+  const [dragOverCase, setDragOverCase] = useState<{ id: string, after: boolean } | null>(null)
+  const [dragOverSuite, setDragOverSuite] = useState(false)
   if (!suite?.id || visited.has(suite.id)) return null
   const isUnsuitedRoot = suite.id === UNSUITED_CASES_ROOT_ID
   const childVisited = new Set(visited)
@@ -141,6 +145,7 @@ const SuiteTreeNode = ({
     selectedSubSuiteId,
     selectedTest,
     casosList,
+    organizationCases,
     currentCompId,
     testSearchQuery,
     onSelectSuite,
@@ -158,6 +163,8 @@ const SuiteTreeNode = ({
     onCloneCase,
     onMoveCase,
     onArchiveCase,
+    onOrganizeCase,
+    onAnnounce,
     onRestoreCase,
     onViewVersions,
     onDeleteCase,
@@ -180,6 +187,18 @@ const SuiteTreeNode = ({
     .filter(test => testMatchesQuery(test, query))
     .sort(compareTestsBySuiteOrder)
   const hasChildSuites = (suite.children || []).length > 0
+  const organizationAvailable = Boolean(onOrganizeCase)
+  const organizationRows = (organizationCases || casosList).filter(test => test?.activo !== false && test?.caseStatus !== 'ARCHIVADO' && test?.estado_caso !== 'ARCHIVADO')
+  const canOrganize = organizationAvailable
+  const canonicalPositionForVisibleIndex = (targetSuiteId: string, visibleIndex: number) => {
+    const target = suiteTests[visibleIndex]
+    if (!target) return organizationRows.filter(item => (item.suiteId ?? item.suite_id) === targetSuiteId).length
+    const targetRows = organizationRows
+      .filter(item => (item.suiteId ?? item.suite_id) === targetSuiteId)
+      .sort(compareTestsBySuiteOrder)
+    const index = targetRows.findIndex(item => String(item.id) === String(target.id))
+    return index < 0 ? targetRows.length : index
+  }
   const hasExpandableContent = hasChildSuites || suiteTests.length > 0
   // Selection identifies the active suite; only expansion controls its contents.
   const shouldShowTests = isExpanded || query !== ''
@@ -211,11 +230,45 @@ const SuiteTreeNode = ({
     if (['blocked', 'bloqueado'].includes(raw)) return { bg: '#EFF6FF', border: '#0D6EFD', icon: 'text-primary' }
     return { bg: '#FFFFFF', border: '#E9ECEF', icon: 'text-muted' }
   }
+  const organize = async (test: any, targetSuiteId: string | null, position: number) => {
+    if (!onOrganizeCase || !organizationAvailable) return false
+    try {
+      const result = await onOrganizeCase(test, targetSuiteId, position)
+      onAnnounce?.(result === false ? t('casos.caseOrganizationFailed') : t('casos.caseOrganizationSaved'))
+      return result !== false
+    } catch {
+      onAnnounce?.(t('casos.caseOrganizationFailed'))
+      return false
+    }
+  }
+  const dropCase = (event: React.DragEvent, targetSuiteId: string | null, _position: number, targetCaseId?: string, insertAfter = false) => {
+    event.preventDefault()
+    stopCaseDropPropagation(event)
+    setDragOverCase(null)
+    setDragOverSuite(false)
+    if (!canOrganize) return
+    const sourceId = event.dataTransfer.getData('text/case-id') || event.dataTransfer.getData('text/plain')
+    const source = organizationRows.find(item => String(item.id) === sourceId)
+    if (!source) return
+    const targetRows = organizationRows
+      .filter(item => (item.suiteId ?? item.suite_id ?? null) === targetSuiteId && String(item.id) !== sourceId)
+      .sort(compareTestsBySuiteOrder)
+    const targetPosition = targetCaseId
+      ? targetRows.findIndex(item => String(item.id) === targetCaseId) + (insertAfter ? 1 : 0)
+      : targetRows.length
+    void organize(source, targetSuiteId, targetPosition < 0 ? targetRows.length : targetPosition)
+  }
 
   return (
     <div className="mb-1">
       <div
         onClick={handleSuiteToggle}
+        onDragEnter={(event) => {
+          if (canOrganize && !isUnsuitedRoot && !isExpanded) onToggleSuite(suite.id)
+        }}
+        onDragOver={(event) => { if (canOrganize && !isUnsuitedRoot) { event.preventDefault(); setDragOverSuite(true); setDragOverCase(null) } }}
+        onDragLeave={() => setDragOverSuite(false)}
+        onDrop={(event) => { if (!isUnsuitedRoot) dropCase(event, suite.id, suiteTests.length) }}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
@@ -224,10 +277,11 @@ const SuiteTreeNode = ({
         role="button"
         tabIndex={0}
         aria-expanded={hasExpandableContent ? isExpanded : undefined}
-        className={`suite-tree-suite-row p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${isSelected ? 'is-selected border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
+        className={`suite-tree-suite-row p-2 rounded-3 cursor-pointer d-flex align-items-center transition-all border ${dragOverSuite ? 'border-primary bg-primary-subtle' : isSelected ? 'is-selected border-primary text-primary fw-bold shadow-sm' : 'border-transparent hover-bg-light text-dark'}`}
         style={{ marginLeft: level * 16, minHeight: '38px', '--suite-color': suiteColor, cursor: 'pointer' } as CSSProperties}
-        title={suiteMenuOpen ? undefined : suiteTooltip}
-        aria-label={suiteTooltip}
+        title={suiteMenuOpen ? undefined : (isUnsuitedRoot ? t('casos.unsuitedOrganizationDisabled') : suiteTooltip)}
+        aria-label={isUnsuitedRoot ? t('casos.unsuitedOrganizationDisabled') : suiteTooltip}
+        aria-disabled={isUnsuitedRoot || undefined}
       >
         <span className="flex-shrink-0 d-flex align-items-center justify-content-center me-2" style={{ width: '16px' }}>
           {hasExpandableContent ? (
@@ -307,7 +361,7 @@ const SuiteTreeNode = ({
 
       {isExpanded && hasChildSuites && (
         <div className="mt-1 border-start ms-3 ps-2 border-light-subtle">
-          {suite.children.slice().sort(compareSuitesByName)
+          {suite.children.slice().sort(compareSuitesByOrder)
             .filter((child: any) => child?.id !== suite.id && !childVisited.has(child?.id))
             .filter((child: any) => !query || suiteMatchesQuery(child, props, query, childVisited))
             .map((child: any) => (
@@ -317,14 +371,27 @@ const SuiteTreeNode = ({
       )}
 
       {shouldShowTests && suiteTests.length > 0 && (
-        <div className="mt-1 d-flex flex-column gap-1" style={{ marginLeft: (level * 16) + 28 }}>
-          {suiteTests.map(test => {
+        <div
+          className="mt-1 d-flex flex-column gap-1"
+          style={{ marginLeft: (level * 16) + 28 }}
+          onDragOver={(event) => {
+            if (canOrganize && !isUnsuitedRoot && event.target === event.currentTarget) {
+              event.preventDefault()
+              setDragOverCase(null)
+              setDragOverSuite(true)
+            }
+          }}
+          onDrop={(event) => {
+            if (!isUnsuitedRoot && event.target === event.currentTarget) dropCase(event, suite.id, suiteTests.length)
+          }}
+        >
+          {suiteTests.map((test, testIndex) => {
             const tone = getTestTone(test)
             const isSelectedTest = selectedTest?.id === test.id
             const testCode = test.code || test.id.slice(0, 8).toUpperCase()
             const testFullName = String(test.title || t('common.noName'))
             const format = normalizeCaseFormat(test.format)
-            const CaseIcon = caseFormatPresentation[format].icon
+
             const formatLabel = t(caseFormatPresentation[format].labelKey)
             const testTooltip = `${testCode} - ${testFullName} · ${formatLabel}`
             const visibleTags = (test.tags || []).slice(0, 2)
@@ -336,23 +403,39 @@ const SuiteTreeNode = ({
                 e.stopPropagation()
                 onSelectTest(test, suite.id)
               }}
+              draggable={canOrganize && test.caseStatus !== 'ARCHIVADO' && test.estado_caso !== 'ARCHIVADO' && test.activo !== false}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('text/case-id', String(test.id))
+                event.dataTransfer.setData('text/plain', String(test.id))
+                event.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragEnd={() => {
+                setDragOverCase(null)
+                setDragOverSuite(false)
+              }}
+              onDragOver={(event) => {
+                if (!canOrganize || isUnsuitedRoot) return
+                event.preventDefault()
+                const bounds = event.currentTarget.getBoundingClientRect()
+                const after = event.clientY > bounds.top + bounds.height / 2
+                setDragOverCase({ id: String(test.id), after })
+                setDragOverSuite(false)
+              }}
+              onDragLeave={() => setDragOverCase(null)}
+              onDrop={(event) => {
+                if (!isUnsuitedRoot) {
+                  const bounds = event.currentTarget.getBoundingClientRect()
+                  const after = event.clientY > bounds.top + bounds.height / 2
+                  dropCase(event, suite.id, testIndex, String(test.id), after)
+                }
+              }}
               className={`py-1 px-2 rounded-2 d-flex align-items-center gap-1 cursor-pointer border text-dark suite-tree-case-row ${isSelectedTest ? 'is-selected shadow-sm' : ''}`}
-              style={{ minHeight: '28px', '--case-tone-border': tone.border } as CSSProperties}
-              title={testTooltip}
+              style={{ minHeight: '28px', position: 'relative', '--case-tone-border': tone.border } as CSSProperties}
+              title={organizationAvailable ? testTooltip : `${testTooltip} · ${t('casos.caseOrganizationFilteredDisabled')}`}
               aria-label={testTooltip}
+              aria-disabled={!organizationAvailable || undefined}
             >
-              <span
-                className={`suite-tree-case-format-icon flex-shrink-0 ${isSelectedTest ? 'is-selected' : ''}`}
-                style={{
-                  color: isSelectedTest ? 'var(--app-primary)' : caseFormatPresentation[format].color,
-                  backgroundColor: isSelectedTest ? 'rgba(13, 110, 253, 0.1)' : `${caseFormatPresentation[format].color}14`,
-                  borderColor: isSelectedTest ? 'rgba(13, 110, 253, 0.35)' : `${caseFormatPresentation[format].color}55`
-                }}
-                aria-label={formatLabel}
-                title={formatLabel}
-              >
-                <CaseIcon size={14} strokeWidth={2.2} aria-hidden="true" />
-              </span>
+              {dragOverCase?.id === String(test.id) && !dragOverCase.after && <span className="position-absolute start-0 end-0 bg-primary" style={{ height: '3px', top: '-2px' }} aria-hidden="true" />}
               <span className="font-monospace x-small fw-bold text-secondary flex-shrink-0">{testCode}</span>
               <span className="x-small text-truncate flex-grow-1" title={testTooltip} aria-label={testTooltip}>{testFullName}</span>
               <span className="suite-tree-case-tags d-inline-flex align-items-center gap-1">
@@ -396,6 +479,12 @@ const SuiteTreeNode = ({
                       <ClipboardCopy size={14} /> {t('common.copyAsNewTest')}
                     </Dropdown.Item>
                   )}
+                  {onOrganizeCase && (
+                    <>
+                      <Dropdown.Item disabled={!canOrganize || isUnsuitedRoot || testIndex === 0} onClick={() => void organize(test, suite.id, canonicalPositionForVisibleIndex(suite.id, testIndex - 1))} className="d-flex align-items-center gap-2 text-dark"><ArrowUp size={14} /> {t('casos.moveCaseUp')}</Dropdown.Item>
+                      <Dropdown.Item disabled={!canOrganize || isUnsuitedRoot || testIndex === suiteTests.length - 1} onClick={() => void organize(test, suite.id, canonicalPositionForVisibleIndex(suite.id, testIndex + 1))} className="d-flex align-items-center gap-2 text-dark"><ArrowDown size={14} /> {t('casos.moveCaseDown')}</Dropdown.Item>
+                    </>
+                  )}
                   {onMoveCase && (
                     <Dropdown.Item onClick={() => onMoveCase(test)} className="d-flex align-items-center gap-2 text-dark">
                       <MoveRight size={14} /> {t('common.moveTest')}
@@ -421,8 +510,10 @@ const SuiteTreeNode = ({
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>}
+              {dragOverCase?.id === String(test.id) && dragOverCase.after && <span className="position-absolute start-0 end-0 bg-primary" style={{ height: '3px', bottom: '-2px' }} aria-hidden="true" />}
             </div>
           )})}
+          {dragOverSuite && <span className="bg-primary w-100" style={{ height: '3px' }} aria-hidden="true" />}
         </div>
       )}
     </div>
@@ -433,13 +524,23 @@ export const SuiteTree = memo((props: SuiteTreeProps) => {
   const { t } = useI18n()
   const [localOpenTestDropdown, setLocalOpenTestDropdown] = useState<string | null>(null)
   const [localOpenSuiteDropdown, setLocalOpenSuiteDropdown] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const toggleTestDropdown = (id: string | null) => {
+    setLocalOpenTestDropdown(id)
+    if (id) setLocalOpenSuiteDropdown(null)
+  }
+  const toggleSuiteDropdown = (id: string | null) => {
+    setLocalOpenSuiteDropdown(id)
+    if (id) setLocalOpenTestDropdown(null)
+  }
 
   const mergedProps: SuiteTreeProps = useMemo(() => ({
     ...props,
     openTestDropdown: props.openTestDropdown ?? localOpenTestDropdown,
-    onToggleTestDropdown: props.onToggleTestDropdown ?? setLocalOpenTestDropdown,
+    onToggleTestDropdown: props.onToggleTestDropdown ?? toggleTestDropdown,
     openSuiteDropdown: props.openSuiteDropdown ?? localOpenSuiteDropdown,
-    onToggleSuiteDropdown: props.onToggleSuiteDropdown ?? setLocalOpenSuiteDropdown,
+    onToggleSuiteDropdown: props.onToggleSuiteDropdown ?? toggleSuiteDropdown,
+    onAnnounce: props.onAnnounce ?? setAnnouncement,
   }), [props, localOpenTestDropdown, localOpenSuiteDropdown])
 
   const hasUnsuitedCases = props.casosList.some(test =>
@@ -460,8 +561,9 @@ export const SuiteTree = memo((props: SuiteTreeProps) => {
 
   return (
     <>
+      <div className="visually-hidden" aria-live="polite" aria-atomic="true">{announcement}</div>
       {hasUnsuitedCases && (!query || suiteMatchesQuery(unsuitedRoot, mergedProps, query)) && <SuiteTreeNode suite={unsuitedRoot} level={0} props={mergedProps} />}
-      {filteredSuites.slice().sort(compareSuitesByName).map((suite: any) => (
+      {filteredSuites.slice().sort(compareSuitesByOrder).map((suite: any) => (
         <SuiteTreeNode key={suite.id} suite={suite} level={0} props={mergedProps} />
       ))}
     </>

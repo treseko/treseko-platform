@@ -4,6 +4,9 @@ Call before quiescing any service. The caller owns the immutable stage and must
 not admit unverified sources. No stop/start/compose/cleanup operation is issued.
 An uncertain build is never repeated automatically: adopt its uniquely tagged
 image when available, otherwise retain the pending receipt for reconciliation.
+A build that returned a definite non-zero exit status is recorded as failed;
+an explicit later prepare may retry that known failure without confusing it
+with an orphaned build whose outcome is still uncertain.
 """
 import hashlib
 import json
@@ -70,6 +73,27 @@ class DockerImagePreparation:
             raise TransactionFailure("Prepared image identity or architecture mismatch")
         return record["Id"]
 
+    def _build(self, directory, receipt, state, tag, owner, recipe, context):
+        attempt = int(state.get("attempts") or 0) + 1
+        state.update(status="pending", image=None, attempts=attempt)
+        state.pop("last_exit_code", None)
+        save_json(receipt, state)
+        log_name = "image-build.log" if attempt == 1 else f"image-build.retry-{attempt}.log"
+        descriptor = os.open(directory / log_name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "wb") as log:
+            try:
+                result = subprocess.run([self.docker, "build", "--platform", self.platform,
+                                         "--tag", tag, "--label", "io.treseko.prepared-image=" + owner,
+                                         "--file", str(recipe), str(context)],
+                                        stdout=log, stderr=subprocess.STDOUT, timeout=1800)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise TransactionFailure("Image build uncertain; retain preparation receipt") from exc
+        if result.returncode:
+            state.update(status="failed", image=None, last_exit_code=result.returncode)
+            save_json(receipt, state)
+            raise TransactionFailure("Image build failed; private log retained, no services stopped")
+        return self._inspect(tag, owner)
+
     def prepare(self, directory: Path):
         with exclusive_lock(directory / ".image-build.lock"):
             context, recipe, scope = self._scope()
@@ -80,23 +104,16 @@ class DockerImagePreparation:
                 state = json.loads(receipt.read_text())
                 if state["scope"] != scope or state["owner"] != owner:
                     raise TransactionFailure("Prepared image inputs changed")
-                image = self._inspect(state.get("image") or tag, owner)
+                try:
+                    image = self._inspect(state.get("image") or tag, owner)
+                except TransactionFailure:
+                    if state.get("status") != "failed":
+                        raise
+                    image = self._build(directory, receipt, state, tag, owner, recipe, context)
             else:
                 state = {"schema": 1, "scope": scope, "owner": owner, "tag": tag,
-                         "status": "pending", "image": None}
-                save_json(receipt, state)
-                descriptor = os.open(directory / "image-build.log", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                with os.fdopen(descriptor, "wb") as log:
-                    try:
-                        result = subprocess.run([self.docker, "build", "--platform", self.platform,
-                                                 "--tag", tag, "--label", "io.treseko.prepared-image=" + owner,
-                                                 "--file", str(recipe), str(context)],
-                                                stdout=log, stderr=subprocess.STDOUT, timeout=1800)
-                    except (OSError, subprocess.TimeoutExpired) as exc:
-                        raise TransactionFailure("Image build uncertain; retain preparation receipt") from exc
-                    if result.returncode:
-                        raise TransactionFailure("Image build failed; private log retained, no services stopped")
-                image = self._inspect(tag, owner)
+                         "status": "pending", "image": None, "attempts": 0}
+                image = self._build(directory, receipt, state, tag, owner, recipe, context)
             state.update(status="prepared", image=image)
             save_json(receipt, state)
             return {"image": image, "platform": self.platform, "component": self.component,

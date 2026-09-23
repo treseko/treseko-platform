@@ -12,7 +12,7 @@ type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type CreateCaseEditorActionsParams = {
   t: I18nContextValue['t']
   newTestSteps: any[]; newTestTitle: string; newTestSuite: string; newTestSuiteSub: string; newTestComponent: string
-  newTestDescription: string; newTestPre: string; newTestPost: string; newTestData: string; newTestTags: string[]
+  newTestDescription: string; newTestPre: string; newTestPost: string; newTestData: string; newTestTags: string[]; tagDraft?: string
   newTestPriority: string; newTestCriticality: string; newTestStatus: string; newTestType: string; newTestFormat: string
   newTestChatbotConfig: Record<string, any>; newTestApiConfig: Record<string, any>
   newTestScript: string; newTestFramework: string; newTestLanguage: string
@@ -41,6 +41,7 @@ type CreateCaseEditorActionsParams = {
   setNewTestPost: (value: string) => void
   setNewTestData: (value: string) => void
   setNewTestTags: Dispatch<SetStateAction<string[]>>
+  setTagDraft?: (value: string) => void
   setNewTestPriority: (value: string) => void
   setNewTestCriticality: (value: string) => void
   setNewTestStatus: (value: string) => void
@@ -77,6 +78,7 @@ export function createCaseEditorActions({
   newTestPost,
   newTestData,
   newTestTags,
+  tagDraft: _tagDraft,
   newTestPriority,
   newTestCriticality,
   newTestStatus,
@@ -112,6 +114,7 @@ export function createCaseEditorActions({
   setNewTestPost,
   setNewTestData,
   setNewTestTags,
+  setTagDraft: _setTagDraft,
   setNewTestPriority,
   setNewTestCriticality,
   setNewTestStatus,
@@ -324,6 +327,23 @@ export function createCaseEditorActions({
         ...(formStep.expectedAttachments || []).map(attachment => ({ attachment, tipo: 'EXPECTED_REFERENCE' }))
       ].filter(link => link.attachment?.id).map(link => [`${link.attachment.id}:${link.tipo}`, link]))
       const links = Array.from(linksByKey.values())
+      const existingLinksResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/`)
+      if (!existingLinksResponse.ok) {
+        throw new Error(`No se pudieron sincronizar los adjuntos del paso ${index + 1}`)
+      }
+      const existingLinks = await existingLinksResponse.json().catch(() => [])
+      const existingAttachmentIds = new Set<string>()
+      for (const existingLink of existingLinks) {
+        const attachmentId = existingLink.attachment_id || existingLink.attachment?.id
+        if (!attachmentId || existingAttachmentIds.has(attachmentId)) continue
+        existingAttachmentIds.add(attachmentId)
+        const deleteResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/${attachmentId}/`, {
+          method: 'DELETE'
+        })
+        if (!deleteResponse.ok) {
+          throw new Error(`No se pudo eliminar un adjunto anterior del paso ${index + 1}`)
+        }
+      }
       for (const link of links) {
         const linkResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/`, {
           method: 'POST',
@@ -339,6 +359,11 @@ export function createCaseEditorActions({
   const handleSaveTest = async (e: FormEvent) => {
     e.preventDefault()
     if (!newTestTitle || caseEditorSaving) return
+    const selectedSuiteId = newTestSuiteSub || newTestSuite
+
+    const form = e.currentTarget as HTMLFormElement
+    const currentTagDraft = (form.elements.namedItem('a11y-casemetadatacardtsx-52') as HTMLInputElement | null)?.value || ''
+    const effectiveTags = normalizeCaseTags([...newTestTags, ...currentTagDraft.split(/[,;\n]/)])
     const resetTestForm = () => {
       setNewTestTitle('')
       setNewTestDescription('')
@@ -421,7 +446,7 @@ export function createCaseEditorActions({
           dataset: parseDatasetInput(newTestData),
           configuracion_chatbot: newTestFormat === 'CONVERSACIONAL' ? newTestChatbotConfig : {},
           configuracion_api: newTestFormat === 'API' ? newTestApiConfig : {},
-          etiquetas: normalizeCaseTags(newTestTags),
+          etiquetas: effectiveTags,
           script_automatizado: newTestType === 'Automatizada' ? newTestScript : null,
           framework: newTestType === 'Automatizada' ? composeFrameworkLanguage(newTestFramework, newTestLanguage) : null,
           pasos: pasosValidos
@@ -488,7 +513,7 @@ export function createCaseEditorActions({
       pre: newTestPre || 'N/A',
       post: newTestPost || 'N/A',
       data: newTestData || 'N/A',
-      tags: normalizeCaseTags(newTestTags),
+      tags: effectiveTags,
       description: newTestDescription,
       priority: newTestPriority,
       criticality: newTestCriticality,

@@ -28,6 +28,7 @@ type SuiteTreeRendererOptions = {
   getSuiteExecutionMetrics: any
   handleSelectTestForExecution: any
   showFeedback: any
+  organizeCase?: (test: any, targetSuiteId: string | null, position: number) => Promise<boolean | void> | boolean | void
 }
 
 export const createSuiteTreeRenderers = (options: SuiteTreeRendererOptions) => {
@@ -38,7 +39,7 @@ export const createSuiteTreeRenderers = (options: SuiteTreeRendererOptions) => {
     setExpandedSuites, openCreateCaseInSuite, openCreateSuiteModal, openEditSuiteModal,
     openMoveSuiteModal, updateSuiteArchiveStatus, handleDeleteSuite, openEditCase,
     updateCaseArchiveStatus, loadCasoVersions, handleDeleteCaso, getSuiteExecutionMetrics,
-    handleSelectTestForExecution, showFeedback,
+    handleSelectTestForExecution, showFeedback, organizeCase,
   } = options
   const canEditSuite = canAccessCapability('crear_pruebas.suites', 'edit')
   const canEditCase = canAccessCapability('crear_pruebas.casos', 'edit')
@@ -48,11 +49,12 @@ export const createSuiteTreeRenderers = (options: SuiteTreeRendererOptions) => {
     openCloneCaseModal?: (test: any) => void,
     openCloneSuiteModal?: (suite: any) => void,
     openMoveCaseModal?: (test: any) => void,
+    beforeOpenEditCase?: (test: any) => boolean | Promise<boolean>,
   ) => (
     <AuthoringSuiteTreeView
       suites={suites} expandedSuites={expandedSuites} selectedSuiteId={selectedSuiteId}
       selectedSubSuiteId={selectedSubSuiteId} selectedTest={selectedTest}
-      casosList={visibleAuthoringCases} currentCompId={currentCompId}
+      casosList={visibleAuthoringCases} organizationCases={currentProjectCases} currentCompId={currentCompId}
       testSearchQuery={testSearchQuery} selectSuiteTarget={selectSuiteTarget}
       setExpandedSuites={setExpandedSuites}
       openCreateCaseInSuite={canEditCase ? openCreateCaseInSuite : () => undefined}
@@ -64,8 +66,10 @@ export const createSuiteTreeRenderers = (options: SuiteTreeRendererOptions) => {
       handleRestoreSuite={canEditSuite ? (suite) => updateSuiteArchiveStatus(suite, false) : undefined}
       handleDeleteSuite={canEditSuite ? handleDeleteSuite : () => undefined}
       openEditCase={canEditCase ? openEditCase : () => undefined}
+      beforeOpenEditCase={beforeOpenEditCase}
       openCloneCaseModal={openCloneCaseModal || (() => undefined)}
       openMoveCaseModal={openMoveCaseModal || (() => undefined)}
+      organizeCase={canEditCase ? organizeCase : undefined}
       handleArchiveCaso={canEditCase ? (test) => updateCaseArchiveStatus(test, 'ARCHIVADO') : undefined}
       handleRestoreCaso={canEditCase ? (test) => updateCaseArchiveStatus(test, 'ACTIVO') : undefined}
       loadCasoVersions={canAccessCapability('crear_pruebas.versiones', 'read') ? loadCasoVersions : () => undefined}

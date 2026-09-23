@@ -90,6 +90,7 @@ export function useAdminUserRolesConfig({
     confirmAction,
     t,
   })
+
   const assignableUsers = projectsSource === 'backend' ? appUsers.filter(user => isValidUUID(user.id)) : appUsers
   const systemRoleItems = createSystemRoleItems(actions.getRoleModules, actions.getRoleAccess)
 

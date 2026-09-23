@@ -144,6 +144,16 @@ export function WorkersManager({
     return { online, busy, total: runners.length }
   }, [runners])
 
+  const visiblePairingRequests = useMemo(() => {
+    const seen = new Set<string>()
+    return pairingRequests.filter(request => {
+      const identity = String(request.capabilities?.worker_instance_id || `legacy:${request.nombre || 'worker'}`).trim()
+      if (seen.has(identity)) return false
+      seen.add(identity)
+      return true
+    })
+  }, [pairingRequests])
+
   const approvePairing = async (request: PairingRequest) => {
     setPairingActionCode(request.code)
     try {
@@ -227,13 +237,13 @@ export function WorkersManager({
               <RefreshCw size={14} className="me-1" /> {t('automatizacion.requests')}
             </Button>
           </div>
-          {pairingRequests.length === 0 ? (
+          {visiblePairingRequests.length === 0 ? (
             <Alert variant="light" className="border small mb-0">
               {t('automatizacion.noWorkersWaiting', { cmd: 'npm start', dir: 'automation-worker/' })}
             </Alert>
           ) : (
             <div className="d-flex flex-column gap-2">
-              {pairingRequests.map(request => (
+              {visiblePairingRequests.map(request => (
                 <div key={request.id} className="border rounded-3 p-3 bg-light">
                   <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                     <div>
@@ -246,6 +256,9 @@ export function WorkersManager({
                       </div>
                       <div className="small text-muted">
                         Node {request.capabilities?.node_version || t('automatizacion.notAvailable')} · Playwright {request.capabilities?.playwright_version || request.capabilities?.versions?.playwright || t('automatizacion.notAvailable')}
+                      </div>
+                      <div className="small text-muted">
+                        {t('automatizacion.workerVersion')}: {request.capabilities?.worker_version || request.capabilities?.component_version || t('automatizacion.notAvailable')} · {t('automatizacion.workerInstance')}: {request.capabilities?.worker_instance_id || t('automatizacion.notAvailable')}
                       </div>
                     </div>
                     <div className="d-flex gap-2">
@@ -300,6 +313,12 @@ export function WorkersManager({
                 <td>
                   <div className="fw-bold">{runner.nombre}</div>
                   <div className="small text-muted">{runner.tipo} · {runner.id.slice(0, 8)}</div>
+                  <div className="small text-muted">
+                    {t('automatizacion.workerVersion')}: {runner.capabilities?.worker_version || runner.capabilities?.component_version || t('automatizacion.notAvailable')}
+                  </div>
+                  <div className="small text-muted">
+                    {t('automatizacion.workerHost')}: {runner.capabilities?.hostname || runner.capabilities?.local_ips?.[0] || t('automatizacion.notAvailable')}
+                  </div>
                 </td>
                 <td><Badge bg={statusVariant(status)}>{statusLabel(status)}</Badge></td>
                 <td className="small">

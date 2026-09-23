@@ -2,9 +2,56 @@ from fastapi import APIRouter
 from typing import Annotated
 
 from ...main_context import *
+from ...rbac_catalog import RBAC_CAPABILITIES, capability_metadata
+from ...services.integrations.registry import get_registered_capabilities as get_integration_capabilities
+from ...services.plugins.registry import get_registered_capabilities as get_plugin_capabilities
 
 
 router = APIRouter(tags=["Roles"])
+
+
+def _rbac_catalog_response() -> dict:
+    """Return the canonical RBAC catalog, merging repeated module groups."""
+    groups: dict[str, dict] = {}
+    for source_group in RBAC_CAPABILITIES:
+        module = source_group["module"]
+        target = groups.setdefault(module, {
+            "module": module,
+            "module_label": source_group["module_label"],
+            "module_description": source_group.get("module_description", "Permisos disponibles para esta área."),
+            "capabilities": [],
+        })
+        known_ids = {item["id"] for item in target["capabilities"]}
+        for capability in source_group["capabilities"]:
+            if capability["id"] not in known_ids:
+                target["capabilities"].append({
+                    "id": capability["id"], "label": capability["label"],
+                    **capability_metadata(capability["id"], module, capability["label"]),
+                })
+                known_ids.add(capability["id"])
+
+    for registered in (get_integration_capabilities(), get_plugin_capabilities()):
+        for capability in registered.values():
+            module = capability["module"]
+            target = groups.setdefault(module, {
+                "module": module,
+                "module_label": module.replace("_", " ").title(),
+                "module_description": "Capacidades registradas para esta área.",
+                "capabilities": [],
+            })
+            if not any(item["id"] == capability["id"] for item in target["capabilities"]):
+                target["capabilities"].append({
+                    "id": capability["id"], "label": capability["label"],
+                    **capability_metadata(capability["id"], module, capability["label"]),
+                    "provider_id": capability.get("provider_id"),
+                })
+
+    return {"schema_version": "treseko.rbac/v1", "groups": list(groups.values())}
+
+
+@router.get("/roles/catalog/", dependencies=[Depends(auth.check_capability("configuracion.roles", "read"))])
+async def read_rbac_catalog():
+    return _rbac_catalog_response()
 
 def _require_global_admin_for_role_mutation(current_user: models.Usuario):
     if current_user.rol != models.Rol.ADMIN:

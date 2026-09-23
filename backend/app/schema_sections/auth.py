@@ -9,3 +9,4 @@ from .auth_common import (
 )
 from .auth_oidc import *
 from .auth_users import *
+from .auth_api_keys import *

@@ -7,6 +7,7 @@ import { ProjectComponentsTab } from './ProjectComponentsTab'
 import { ProjectEnvironmentsTab } from './ProjectEnvironmentsTab'
 import { ProjectWikiTab } from './ProjectWikiTab'
 import { ProjectTicketsTab } from './ProjectTicketsTab'
+import { resolveAssetUrl } from '../../shared/utils/assets'
 
 export function ProjectAdminWorkspace({ context }: { context: any }) {
   const { t,
@@ -19,6 +20,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
     projectInnerTab,
     setProjectInnerTab,
     canEditProjectPortfolio,
+    canEditCurrentProject,
     canReadProjectTeam,
     canEditProject,
     handleUpdateProject,
@@ -141,7 +143,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                 </Button>
                 <div className="project-avatar project-avatar-sm flex-shrink-0">
                   {projectsList.find(p => p.id === managingProjectId)?.imageUrl ? (
-                    <img src={projectsList.find(p => p.id === managingProjectId)?.imageUrl} alt={projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
+                    <img src={resolveAssetUrl(projectsList.find(p => p.id === managingProjectId)?.imageUrl)} alt={projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
                   ) : (
                     <span>{projectInitials(projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback'))}</span>
                   )}
@@ -293,7 +295,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                       projectId={managingProjectId}
                       components={componentsList}
                       fetchWithAuth={fetchWithAuth}
-                      canEdit={canEditTraceability && buildWriteEnabled}
+                      canEdit={canEditCurrentProject && canEditTraceability && buildWriteEnabled}
                       active={projectInnerTab === 'traceability'}
                       refreshToken={traceabilityRefreshToken}
                       confirmAction={confirmAction}

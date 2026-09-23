@@ -97,6 +97,18 @@ tenga acceso. Para listar builds, cambiá `name` por `treseko.builds.list`.
   validación, allowlist o límite ocurren antes de crear ese registro.
 - El límite es de 30 llamadas por minuto.
 - Cada solicitud admite hasta 64 KiB y cada respuesta hasta 256 KiB.
+- Declarà `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` para un único
+  proceso, o `shared_redis` junto con `REDIS_URL` (o
+  `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) para múltiples workers/réplicas. Una
+  topología ausente, inválida o ambigua deshabilita MCP.
+- El backend comprueba Redis compartido con timeout corto y caché segura. Si
+  Redis no responde, todas las rutas MCP (incluidos initialize, discovery y
+  autenticación) fallan cerradas hasta recuperar salud.
+- El cuerpo de la solicitud se lee por chunks y se corta al superar 64 KiB; no
+  se debe depender sólo de un límite posterior del proxy.
+- Cada handler devuelve un resultado JSON seguro y acotado por herramienta.
+  Cadenas, listas, profundidad y bytes se truncan o rechazan antes de construir
+  el sobre JSON-RPC.
 - El resultado completo no se guarda en el audit log; la respuesta se entrega
   al cliente MCP y el registro conserva el estado `success`.
 - Revocar la API key o deshabilitar MCP bloquea las llamadas siguientes.

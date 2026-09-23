@@ -235,7 +235,8 @@ def _markdown_common_bug_context(
         ("Dispositivo", bug.get("dispositivo") or "N/D"),
         ("Resolución", bug.get("resolucion") or "N/D"),
         ("Sistema operativo", bug.get("sistema_operativo") or "N/D"),
-        ("Versión de la aplicación", bug.get("version_app") or "N/D"),
+        ("Build de origen", bug.get("version_app") or bug.get("build_detectado") or "N/D"),
+        ("Versión de Treseko", bug.get("platform_version") or "N/D"),
         ("URL afectada", bug.get("url_afectada") or "N/D"),
     ]
     return [f"- {label}: {_markdown_bug_identifier(value) if label in {'ID del ambiente', 'ID del dataset', 'Ejecución', 'Run'} else _markdown_bug_value(bug, value)}" for label, value in rows]
@@ -850,11 +851,6 @@ def _shared_report_markdown(snapshot: models.SharedReportSnapshot, has_new_value
                     lines.append(f"- {severity}: {count}")
             else:
                 lines.append("No hay bugs abiertos asociados.")
-            open_bug_details = [bug for bug in bugs if str(bug.get("estado") or "").upper() not in {"CERRADO", "RESUELTO", "CLOSED", "DONE", "RESOLVED"}]
-            if open_bug_details:
-                lines.extend(["", "## Incidentes relevantes para reproducir"])
-                for bug in open_bug_details[:10]:
-                    lines.extend(["", f"### {_md(bug.get('codigo'))} - {_md(bug.get('titulo'))}", *_markdown_bug_reproduction(bug, compact=True)])
     return "\n".join(lines) + "\n"
 
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createConfigurationActions } from '../configurationActions'
+import { useMcpConfiguration } from './useMcpConfiguration'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type ConfirmAction = (options: { title: string; message: string; variant?: 'danger' | 'warning' | 'info'; confirmLabel?: string; cancelLabel?: string | null }) => Promise<boolean>
@@ -11,6 +12,7 @@ type UseGeneralConfigurationParams = {
   defaultAttachmentConfig: any
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
+  canAccessCapability: (capabilityId: string, level?: string) => boolean
 }
 
 export function useGeneralConfiguration({
@@ -20,6 +22,7 @@ export function useGeneralConfiguration({
   defaultAttachmentConfig,
   showFeedback,
   confirmAction,
+  canAccessCapability,
 }: UseGeneralConfigurationParams) {
   const [apiKeys, setApiKeys] = useState<any[]>([])
   const [apiKeysLoading, setApiKeysLoading] = useState(false)
@@ -51,6 +54,16 @@ export function useGeneralConfiguration({
     setAttachmentConfigLoading,
     showFeedback,
     confirmAction,
+  })
+
+  const mcpConfiguration = useMcpConfiguration({
+    isAuthenticated,
+    fetchWithAuth,
+    canRead: canAccessCapability('mcp.usar', 'read'),
+    canEdit: canAccessCapability('mcp.usar', 'edit'),
+    confirmAction,
+    showFeedback,
+    t,
   })
 
   const loadAttachmentConfig = useCallback(async () => {
@@ -87,6 +100,7 @@ export function useGeneralConfiguration({
     createUserApiKey,
     revokeUserApiKey,
     handleApiKeyEnabledChange,
+    ...mcpConfiguration,
   }
 }
 

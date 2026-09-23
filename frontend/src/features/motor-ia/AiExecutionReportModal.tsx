@@ -353,7 +353,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                     <Card key={trace.id || `${trace.node_id}-${index}`} className="border p-3">
                       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                         <div className="d-flex flex-wrap align-items-center gap-2">
-                          <Badge bg="dark">{trace.node_name || trace.node_id || t('motorIa.workflow')}</Badge>
+                          <Badge bg="dark">{trace.node_name || trace.node_id || t('motorIa.aiWorkflow')}</Badge>
                           <Badge bg={statusColor(trace.status)}>{executionStatusLabel(trace.status, t)}</Badge>
                           {trace.node_type && <span className="x-small text-muted">{trace.node_type}</span>}
                         </div>

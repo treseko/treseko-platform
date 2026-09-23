@@ -23,6 +23,10 @@ describe('app entry presentation', () => {
     expect(readInternalReportTokenFromLocation({ search: '', pathname: '/otra-ruta/token' })).toBe('')
   })
 
+  it('returns no token for malformed percent-encoding in the internal route', () => {
+    expect(readInternalReportTokenFromLocation({ search: '', pathname: '/informes-internos/p/b/%E0%A4%A' })).toBe('')
+  })
+
   it('restaura únicamente una sesión activa con token vigente', () => {
     const values = new Map([['qa_session_active', 'true'], ['qa_access_token', 'token'], ['qa_session_expires_at', '2030-01-01T00:00:00.000Z']])
     const storage = { getItem: (key: string) => values.get(key) || null, removeItem: (key: string) => values.delete(key) }

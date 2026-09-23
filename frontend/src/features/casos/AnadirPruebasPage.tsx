@@ -61,6 +61,8 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     setCaseEditorOpen,
     setEditingCasoMasterId,
     setSelectedTest,
+    hasUnsavedCaseChanges,
+    confirmAction,
     testSearchQuery,
     openCreateSuiteModal,
     authoringInitialLoading,
@@ -115,7 +117,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     newTestTags,
     setNewTestTags,
     showFeedback,
-    confirmAction,
     newTestSteps,
     addStepInput,
     handleStepInputChange,
@@ -140,7 +141,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     aiDryRunRunning,
     canSaveCaseEditor,
     caseEditorSaving,
-    hasUnsavedCaseChanges,
     environments,
     setEnvironments,
     setComponentsList,
@@ -179,6 +179,9 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   const [cloneSuiteName, setCloneSuiteName] = useState('')
   const [cloneSuiteParentId, setCloneSuiteParentId] = useState('')
   const [tagDraft, setTagDraft] = useState('')
+  useEffect(() => {
+    if (!caseEditorOpen) setTagDraft('')
+  }, [caseEditorOpen])
   const [scriptValidationDetails, setScriptValidationDetails] = useState<ScriptValidationDetails | null>(null)
   const [automationRunners, setAutomationRunners] = useState<any[]>([])
   const [dryRunDebugMode, setDryRunDebugMode] = useState(false)
@@ -286,13 +289,24 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     if (!cloneSourceSuite) return 0
     return (authoringCases || []).filter((test: any) => cloneSuiteIds.has(test.suiteId)).length
   }, [authoringCases, cloneSourceSuite, cloneSuiteIds])
-  const commitTagDraft = () => {
-    const nextTags = normalizeCaseTags([...newTestTags, ...tagDraft.split(/[,;\n]/)])
+  const commitTagDraft = (draft = tagDraft) => {
+    const nextTags = normalizeCaseTags([...newTestTags, ...draft.split(/[,;\n]/)])
     setNewTestTags(nextTags)
     setTagDraft('')
   }
   const removeTag = (tagToRemove: string) => {
     setNewTestTags((current: string[]) => current.filter(tag => tag.toLowerCase() !== tagToRemove.toLowerCase()))
+  }
+
+  const confirmLeavingWithUnsavedChanges = async () => {
+    if (!hasUnsavedCaseChanges) return true
+    return confirmAction({
+      title: t('casos.unsavedChangesTitle'),
+      message: t('casos.unsavedChangesMessage'),
+      variant: 'warning',
+      confirmLabel: t('casos.discardChanges'),
+      cancelLabel: t('casos.continueEditing'),
+    })
   }
 
   const insertFunctionUsage = (snippet: string) => {
@@ -389,12 +403,14 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     currentSuiteBreadcrumb, canSaveCurrentCase, cloneDestinationSuites, cloneTargetSuiteValid,
     moveCaseDestinationSuites, moveTargetSuiteValid, cloneSuiteIds, cloneSuiteDestinationSuites,
     cloneSuiteCasesCount, cloneSuiteName, setCloneSuiteName, cloneSuiteParentId, setCloneSuiteParentId,
+    confirmLeavingWithUnsavedChanges,
     showLocationModal, setShowLocationModal,
     cloneSourceCase, setCloneSourceCase, cloneTargetSuiteId, setCloneTargetSuiteId,
     moveSourceCase, setMoveSourceCase, moveTargetSuiteId, setMoveTargetSuiteId,
     movingCase,
     cloneSourceSuite, setCloneSourceSuite,
     commitTagDraft, removeTag, insertFunctionUsage, openCloneCaseModal,
+    tagDraft, setTagDraft,
     openMoveCaseModal, confirmCloneCase, confirmMoveCase, openCloneSuiteModal, confirmCloneSuite,
     uuidOrNull, mobileExplorerOpen, setMobileExplorerOpen,
     setShowFunctionsModal, setShowVariablesModal, setDryRunEnvironmentId, setDryRunDatasetId,

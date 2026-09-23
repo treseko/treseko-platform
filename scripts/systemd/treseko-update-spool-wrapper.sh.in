@@ -1,0 +1,14 @@
+#!/bin/sh
+# Installed host adapter.  The installer substitutes the three @...@ values;
+# requests never supply argv, commands, images or paths.
+set -eu
+
+HELPER='@TRESEKO_UPDATE_BRIDGE_HELPER@'
+
+[ "$#" -eq 0 ] || { echo 'coordinated update bridge adapter takes no arguments' >&2; exit 2; }
+case "$HELPER" in
+  /*) ;;
+  *) echo 'coordinated update bridge helper path must be absolute' >&2; exit 78 ;;
+esac
+
+exec "$HELPER"

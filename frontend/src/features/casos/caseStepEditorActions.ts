@@ -5,7 +5,14 @@ type StepField = 'action' | 'data' | 'expected' | 'actionImg' | 'expectedImg'
 type AttachmentField = 'actionAttachments' | 'expectedAttachments'
 
 export function createCaseStepEditorActions(newTestSteps: any[], setNewTestSteps: Dispatch<SetStateAction<any[]>>) {
-  const addStepInput = () => setNewTestSteps([...newTestSteps, { action: '', expected: '', data: '', actionImg: '', expectedImg: '' }])
+  const addStepInput = (afterIndex?: number) => {
+    const emptyStep = { action: '', expected: '', data: '', actionImg: '', expectedImg: '' }
+    if (afterIndex === undefined || afterIndex < 0 || afterIndex >= newTestSteps.length) {
+      setNewTestSteps([...newTestSteps, emptyStep])
+      return
+    }
+    setNewTestSteps([...newTestSteps.slice(0, afterIndex + 1), emptyStep, ...newTestSteps.slice(afterIndex + 1)])
+  }
   const removeStepInput = (index: number) => setNewTestSteps(newTestSteps.filter((_, itemIndex) => itemIndex !== index))
   const duplicateStepInput = (index: number) => {
     const source = newTestSteps[index]
@@ -25,8 +32,14 @@ export function createCaseStepEditorActions(newTestSteps: any[], setNewTestSteps
     updated[index][field] = value
     setNewTestSteps(updated)
   }
-  const updateStepAttachments = (index: number, field: AttachmentField, attachments: AttachmentMeta[]) => {
-    setNewTestSteps(previous => previous.map((step, itemIndex) => itemIndex === index ? { ...step, [field]: attachments } : step))
+  const updateStepAttachments = (index: number, field: AttachmentField, attachments: AttachmentMeta[] | ((current: AttachmentMeta[]) => AttachmentMeta[])) => {
+    const legacyField = field === 'actionAttachments' ? 'actionImg' : 'expectedImg'
+    setNewTestSteps(previous => previous.map((step, itemIndex) => {
+      if (itemIndex !== index) return step
+      const current = Array.isArray(step[field]) ? step[field] : []
+      const nextAttachments = typeof attachments === 'function' ? attachments(current) : attachments
+      return { ...step, [field]: nextAttachments, [legacyField]: '' }
+    }))
   }
   return { addStepInput, removeStepInput, duplicateStepInput, moveStepInput, handleStepInputChange, updateStepAttachments }
 }

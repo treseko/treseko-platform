@@ -95,6 +95,10 @@ class ApiKey(Base):
     nombre = Column(String(100), nullable=False)
     key_hash = Column(String(128), unique=True, nullable=False, index=True)
     key_prefix = Column(String(20), nullable=False, index=True)
+    # Legacy keys retain their original endpoint semantics.
+    purpose = Column(String(30), nullable=False, default="legacy", server_default="legacy", index=True)
+    expires_at = Column(UTCDateTime(), nullable=True, index=True)
+    scopes_json = Column(JSON, nullable=False, default=list, server_default="[]")
     activo = Column(Boolean, default=True, nullable=False)
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
     ultimo_uso = Column(UTCDateTime(), nullable=True)

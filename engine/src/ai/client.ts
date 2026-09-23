@@ -485,7 +485,7 @@ Responde JSON: { "approved": true/false, "reason": "Breve explicación en ESPAÑ
       return await this.sendWithRetry<{ approved: boolean, reason: string }>(messages, 0);
     } catch (error: any) {
       return {
-        data: { approved: true, reason: 'Error en QA Guard, permitiendo por defecto: ' + error.message },
+        data: { approved: false, reason: 'Error en QA Guard, acción bloqueada por defecto: ' + error.message },
         metrics: { latencyMs: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 },
         prompt: messages,
         rawResponse: error.message

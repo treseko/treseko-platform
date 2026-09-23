@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import es from './catalogs/es/index.ts'
 import en from './catalogs/en/index.ts'
+import pt from './catalogs/pt/index.ts'
 import { interpolate } from './index.tsx'
 
 function flatten(value: Record<string, unknown>, prefix = '', result: Record<string, string> = {}) {
@@ -15,6 +16,10 @@ function flatten(value: Record<string, unknown>, prefix = '', result: Record<str
 
 test('English and Spanish catalogs keep the same translation keys', () => {
   assert.deepEqual(Object.keys(flatten(en)).sort(), Object.keys(flatten(es)).sort())
+})
+
+test('Portuguese catalog keeps the same translation keys as English', () => {
+  assert.deepEqual(Object.keys(flatten(en)).sort(), Object.keys(flatten(pt)).sort())
 })
 
 test('English catalog does not contain known Spanish UI examples', () => {

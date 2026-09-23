@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap'
 import { Edit, Info, Plus, Trash2 } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
+import { PasswordVisibilityField } from '../../shared/ui/PasswordVisibilityField'
 
 export function ProjectEnvironmentsTab({ context }: { context: any }) {
   const [showVariableHelp, setShowVariableHelp] = useState(false)
@@ -104,11 +105,11 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                           </Col>
                           <Col md={3}>
                             <Form.Label className="x-small fw-bold text-muted">{t('proyectos.envPassword')}</Form.Label>
-                            <Form.Control name="envPASSWORD" size="sm" type="password" placeholder={t('proyectos.passwordPlaceholder')} />
+                            <PasswordVisibilityField name="envPASSWORD" size="sm" placeholder={t('proyectos.passwordPlaceholder')} showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} />
                           </Col>
                           <Col md={3}>
                             <Form.Label className="x-small fw-bold text-muted">{t('proyectos.envToken')}</Form.Label>
-                            <Form.Control name="envTOKEN" size="sm" type="password" placeholder={t('proyectos.envTokenPlaceholder')} />
+                            <PasswordVisibilityField name="envTOKEN" size="sm" placeholder={t('proyectos.envTokenPlaceholder')} showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} />
                           </Col>
                           <Col md={3}>
                             <Form.Label className="x-small fw-bold text-muted">{t('proyectos.envTenant')}</Form.Label>

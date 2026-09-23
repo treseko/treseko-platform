@@ -24,6 +24,7 @@ from .services.error_contract import (
 from .services.installation_telemetry import send_installation_ping_once
 from .services import audit_context
 from .services.update_backend_lifecycle import install_backend_startup
+from .services.schema_readiness import ensure_schema_ready
 
 
 def _configure_logging() -> None:
@@ -186,6 +187,7 @@ def _find_forbidden_query_control_char(query_params) -> str | None:
 
 
 async def startup_initialize_database():
+    await ensure_schema_ready()
     await initialize_database()
     async with AsyncSessionLocal() as db:
         await crud.ensure_default_ai_workflow(db)

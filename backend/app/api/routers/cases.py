@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from ...main_context import *
 from ...services.case_search import resolve_dataset, search_cases
-from ...repositories.cases_datasets import CaseArchiveConflict
+from ...repositories.cases_datasets import CaseArchiveConflict, CaseOrganizationConflict, organization_revision
 
 
 router = APIRouter(tags=["Casos"])
@@ -118,6 +118,24 @@ async def _publish_case_change(
         case_id=caso.id,
         payload={"source": event_type},
     )
+
+
+async def _publish_case_change_nonfatal(
+    event_type: str,
+    caso: models.CasoPrueba,
+    current_user: models.Usuario,
+    payload: dict | None = None,
+) -> None:
+    """Publish after commit without turning a committed mutation into a failure.
+
+    Realtime is a cache/invalidation side effect. The database and audit commit
+    are authoritative, so publication outages are logged and reconciled by the
+    next read rather than reported as a failed mutation to the client.
+    """
+    try:
+        await _publish_case_change(event_type, caso, current_user, payload)
+    except Exception:
+        logger.warning("Realtime publication failed after committed case mutation", exc_info=True)
 
 @router.post("/casos/", response_model=schemas.CasoPrueba)
 async def create_caso_prueba(
@@ -384,6 +402,48 @@ async def update_caso_metadata(
 
     return updated
 
+@router.patch("/casos/reorder", response_model=schemas.CasoReorderResponse)
+async def reorder_casos(
+    request: Request,
+    reorder_request: schemas.CasoReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.casos", "edit")),
+):
+    case_context = await _require_case_access(db, current_user, reorder_request.caso_id, "edit")
+    if not case_context:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    try:
+        updated = await crud.reorder_casos(
+            db, reorder_request.caso_id, reorder_request.suite_id,
+            reorder_request.orden, reorder_request.orden_origen, reorder_request.revision,
+        )
+    except CaseOrganizationConflict as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        await crud.create_audit_log(
+            db=db, usuario_id=current_user.id, accion="REORDER", recurso="caso",
+            recurso_id=updated.id, detalles={"suite_id": str(updated.suite_id), "orden": [str(i) for i in reorder_request.orden]},
+            ip_address=request.client.host if request.client else "unknown", commit=False,
+        )
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="No se pudo guardar la organización; no se aplicaron cambios") from exc
+    affected_suite_ids = {suite_id for suite_id in (case_context.suite_id, updated.suite_id) if suite_id is not None}
+    canonical_result = await db.execute(select(models.CasoPrueba).where(
+        models.CasoPrueba.suite_id.in_(list(affected_suite_ids)),
+        models.CasoPrueba.activo == True,
+        models.CasoPrueba.estado_caso != models.EstadoCaso.ARCHIVADO,
+    ).order_by(models.CasoPrueba.suite_id, models.CasoPrueba.orden, models.CasoPrueba.id))
+    canonical_cases = canonical_result.scalars().all()
+    await _publish_case_change_nonfatal("case.reordered", updated, current_user, {"orden": updated.orden})
+    revision_rows = sorted(canonical_cases, key=lambda row: (str(row.suite_id), int(row.orden or 0), str(row.id)))
+    return {"cases": canonical_cases, "revision": organization_revision(revision_rows)}
+
 @router.patch("/casos/{caso_id}/move", response_model=schemas.CasoPrueba)
 async def move_caso(
     request: Request,
@@ -401,16 +461,19 @@ async def move_caso(
         raise HTTPException(status_code=404, detail="Caso no encontrado")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
-        db=db,
-        usuario_id=current_user.id,
-        accion="MOVE",
-        recurso="caso",
-        recurso_id=caso_id,
-        detalles={"suite_id": str(move_request.suite_id)},
-        ip_address=client_ip
-    )
-    await _publish_case_change("case.moved", moved, current_user, {"suite_id": str(move_request.suite_id) if move_request.suite_id else None})
+    try:
+        await crud.create_audit_log(
+            db=db,
+            usuario_id=current_user.id,
+            accion="MOVE",
+            recurso="caso",
+            recurso_id=caso_id,
+            detalles={"suite_id": str(move_request.suite_id)},
+            ip_address=client_ip
+        )
+    except Exception:
+        logger.warning("Audit publication failed after committed legacy case move", exc_info=True)
+    await _publish_case_change_nonfatal("case.moved", moved, current_user, {"suite_id": str(move_request.suite_id) if move_request.suite_id else None})
 
     return moved
 

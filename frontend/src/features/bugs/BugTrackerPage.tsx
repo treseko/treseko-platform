@@ -10,8 +10,10 @@ import { BUG_PRIORITY_OPTIONS } from './bugPresentation'
 import { apiErrorMessage, EXTERNAL_ISSUE_PROVIDERS, bugBuildOriginLabel, bugComponentLabel, compactUnique } from './bugTrackerHelpers'
 import { BugTransitionModal } from './BugTransitionModal'
 import { useBugTransitions } from './useBugTransitions'
+import type { BugListScope } from '../../app/types'
 
 type BugTrackerPageProps = {
+  currentUserId?: string
   currentProjectId?: string
   currentBuildId?: string
   currentCompId?: string
@@ -34,6 +36,7 @@ type BugTrackerPageProps = {
 }
 
 export function BugTrackerPage({
+  currentUserId: currentUserIdProp,
   currentProjectId,
   currentBuildId = '',
   currentCompId = '',
@@ -60,6 +63,10 @@ export function BugTrackerPage({
   const canCreate = canView && canUse('bugs.crear', 'edit')
   const canEdit = canUse('bugs.editar', 'edit')
   const canTriage = canUse('bugs.triage', 'edit')
+  const canAssign = canUse('bugs.asignar', 'edit')
+  const canTake = canUse('bugs.tomar', 'edit')
+  const canResolve = canUse('bugs.resolver', 'edit')
+  const canClose = canUse('bugs.cerrar', 'edit')
   const canComment = canUse('bugs.comentar', 'edit')
   const canAttachBugEvidence = canUse('bugs.adjuntos', 'edit')
   const canLinkExternal = canUse('bugs.vincular_externo', 'edit')
@@ -84,7 +91,7 @@ export function BugTrackerPage({
   const [apiContext, setApiContext] = useState<any | null>(null)
   const [apiContextLoading, setApiContextLoading] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [filters, setFilters] = useState({ q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported' })
+  const [filters, setFilters] = useState({ q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', scope: 'all' as BugListScope })
   const [comment, setComment] = useState('')
   const [commentAttachments, setCommentAttachments] = useState<AttachmentMeta[]>([])
   const [externalForm, setExternalForm] = useState({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
@@ -98,6 +105,23 @@ export function BugTrackerPage({
   const loadedProjectIdRef = useRef<string | undefined>(undefined)
   const consumedDeepLinkBugRef = useRef('')
 
+  const currentUserId = currentUserIdProp || (() => {
+    if (typeof window === 'undefined') return ''
+    try {
+      const stored = JSON.parse(window.localStorage.getItem('qa_session_user') || '{}')
+      return String(stored?.id || '').trim()
+    } catch {
+      return ''
+    }
+  })()
+
+  const canTransitionTo = (estado: string) => {
+    const normalized = String(estado || '').toUpperCase()
+    if (normalized === 'RESUELTO') return canResolve
+    if (normalized === 'CERRADO') return canClose
+    return canTriage
+  }
+
   const loadBugs = async (options?: { silent?: boolean }, filterOverride?: Record<string, any>) => {
     if (!currentProjectId || !canView) {
       setBugs([])
@@ -109,7 +133,12 @@ export function BugTrackerPage({
     if (!silent) setLoading(true)
     try {
       const params = new URLSearchParams()
-      Object.entries(filterOverride || filters).forEach(([key, value]) => value && params.set(key, value))
+      const activeFilters = filterOverride || filters
+      Object.entries(activeFilters).forEach(([key, value]) => {
+        if (key !== 'scope' && value) params.set(key, value)
+      })
+      if (activeFilters.scope === 'mine' && currentUserId) params.set('asignado_a', currentUserId)
+      if (activeFilters.scope === 'unassigned') params.set('sin_asignar', 'true')
       params.set('limit', '100')
       const [listResponse, summaryResponse] = await Promise.all([
         fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/?${params.toString()}`),
@@ -132,7 +161,7 @@ export function BugTrackerPage({
 
   useEffect(() => {
     if (!initialFiltersKey || initialFiltersKey === '{}') return
-    const nextFilters = { q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', ...initialFilters }
+    const nextFilters = { q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', scope: 'all' as BugListScope, ...initialFilters }
     setFilters(nextFilters)
     void loadBugs(undefined, nextFilters)
     // Navigation from reports intentionally applies the complete filter set once.
@@ -301,11 +330,11 @@ export function BugTrackerPage({
   const getBugDisplayComponent = bugComponentLabel
 
   const transitionBug = async (estado: string) => {
-    if (selectedBug) requestTransition(selectedBug, estado)
+    if (selectedBug && canTransitionTo(estado)) requestTransition(selectedBug, estado)
   }
 
   const transitionBugInline = async (bug: any, estado: string) => {
-    if (!bug?.id || !canTriage || estado === bug.estado) return
+    if (!bug?.id || !canTransitionTo(estado) || estado === bug.estado) return
     requestTransition(bug, estado)
   }
 
@@ -324,6 +353,16 @@ export function BugTrackerPage({
     onBugsChanged?.()
   }
 
+  const takeBug = async (bug: any) => {
+    if (!bug?.id || !currentUserId || !canTake || bug.asignado_a) return
+    try {
+      await updateSelectedBug({ asignado_a: currentUserId })
+      showFeedback(t('bugs.assignmentUpdated'), t('bugs.takenByMe'), 'success')
+    } catch (error: any) {
+      showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorUpdate'), 'danger')
+    }
+  }
+
   const saveSelectedBugDetails = async () => {
     if (!selectedBug || !canEdit) return false
     const additionalContext = additionalContextRows
@@ -336,9 +375,11 @@ export function BugTrackerPage({
       const changes = isConversational
         ? Object.fromEntries(managementFields.filter(field => Object.prototype.hasOwnProperty.call(detailForm, field)).map(field => [field, detailForm[field]]))
         : { ...detailForm }
+      if (!canAssign) delete changes.asignado_a
+      const assignment = canAssign ? (detailForm.asignado_a || null) : undefined
       await updateSelectedBug({
         ...changes,
-        asignado_a: detailForm.asignado_a || null,
+        ...(assignment !== undefined ? { asignado_a: assignment } : {}),
         metadata_json: {
           ...(selectedBug.metadata_json || {}),
           additional_context: additionalContext,
@@ -498,6 +539,11 @@ export function BugTrackerPage({
     canCreate,
     canEdit,
     canTriage,
+    canAssign,
+    canTake,
+    canResolve,
+    canClose,
+    canTransitionTo,
     canComment,
     canAttachBugEvidence,
     canLinkExternal,
@@ -557,6 +603,7 @@ export function BugTrackerPage({
     updateAdditionalContextRow,
     transitionBug,
     transitionBugInline,
+    takeBug,
     modalOnly,
     linkingBug,
     setLinkingBug,

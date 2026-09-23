@@ -18,7 +18,7 @@ COMMUNITY_LIMITS: dict[str, int] = {
 
 LIMIT_CATALOG: dict[str, dict[str, str]] = {
     "max_organizations": {"label": "Organizaciones", "category": "workspace"},
-    "max_users": {"label": "Usuarios", "category": "workspace"},
+    "max_users": {"label": "Usuarios activos registrados", "category": "workspace"},
     "max_projects": {"label": "Proyectos", "category": "workspace"},
     "max_workers": {"label": "Workers", "category": "automation"},
     "max_automated_runs_per_week": {"label": "Ejecuciones automatizadas por semana", "category": "automation"},

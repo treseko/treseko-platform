@@ -26,6 +26,7 @@ import {
   redact,
   replacePlaceholders,
   safeJsonParse,
+  sanitizeChildEnv,
 } from "./worker.mjs";
 
 const jobStatuses = new Map([
@@ -48,6 +49,11 @@ for (const [input, expected] of jobStatuses) {
     });
   }
 }
+
+test("los estados desconocidos no se convierten en PASSED", () => {
+  assert.equal(normalizeJobStatus("resultado-no-reconocido"), "ERROR");
+});
+
 
 const stepStatuses = new Map([
   ["PASS", "PASO"], ["PASSED", "PASO"], ["PASO", "PASO"], ["OK", "PASO"],
@@ -96,6 +102,14 @@ test("redacción cubre secretos comunes sin destruir el resto", () => {
   const value = "password=uno token=dos secret=tres key=cuatro visible=cinco";
   assert.equal(redact(value), "password=[redacted] token=[redacted] secret=[redacted] key=[redacted] visible=cinco");
   assert.equal(redact("https://service.test/run?access_token=uno&visible=cinco"), "https://service.test/run?access_token=[redacted]&visible=cinco");
+});
+
+test("los procesos hijos no heredan secretos del worker", () => {
+  const env = sanitizeChildEnv({ PATH: "/bin", QA_RUNNER_TOKEN: "secret", API_KEY: "secret", SAFE_FLAG: "1" });
+  assert.equal(env.PATH, "/bin");
+  assert.equal(env.SAFE_FLAG, "1");
+  assert.equal(env.QA_RUNNER_TOKEN, undefined);
+  assert.equal(env.API_KEY, undefined);
 });
 
 test("el contrato del worker conserva correlación en resultados y errores públicos", () => {
@@ -157,10 +171,18 @@ test("framework y lenguaje respetan aliases controlados", () => {
 });
 
 test("artefactos vacíos o sobredimensionados se rechazan", () => {
+  assert.equal(artifactFromBuffer({ filename: "missing.txt", contentType: "text/plain" }), null);
   assert.equal(artifactFromBuffer({ filename: "empty.png", buffer: Buffer.alloc(0) }), null);
   assert.equal(artifactFromBuffer({ filename: "large.png", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) }), null);
   const artifact = artifactFromBuffer({ filename: "ok.txt", contentType: "text/plain", buffer: Buffer.from("ok"), type: "evidence", stepNumber: 2 });
   assert.deepEqual(artifact, { type: "evidence", filename: "ok.txt", content_type: "text/plain", base64: "b2s=", step_number: 2 });
+});
+
+test("artefactos textuales se redactan antes de codificarse", () => {
+  const artifact = artifactFromBuffer({ filename: "report.json", contentType: "application/json", buffer: Buffer.from('{"token":"secret-value","visible":"ok"}'), type: "report" });
+  const decoded = Buffer.from(artifact.base64, "base64").toString("utf8");
+  assert.doesNotMatch(decoded, /secret-value/);
+  assert.match(decoded, /\[redacted\]/);
 });
 
 test("parsers JSON controlados", () => {

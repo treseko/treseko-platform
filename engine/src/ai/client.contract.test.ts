@@ -65,3 +65,10 @@ test('vision probe does not trust a model that answers both images the same way'
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test('QA Guard fails closed when the provider is unavailable', async () => {
+  const client = new AIClient({ provider: 'openai-compatible', endpoint: 'http://127.0.0.1:1/v1', model: 'guard-test', maxRetries: 1 });
+  const result = await client.validateAction('abrir login', { action: 'click', reason: 'test', confidence: 90, elementId: 'login' }, 'button login');
+  assert.equal(result.data.approved, false);
+  assert.match(result.data.reason, /error en qa guard/i);
+});

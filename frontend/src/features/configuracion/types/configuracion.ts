@@ -17,6 +17,20 @@ export type ConfiguracionPageProps = {
   revokeUserApiKey: (id: string) => void
   handleApiKeyEnabledChange: (enabled: boolean) => void
   copyToClipboard: (text: string, label?: string) => void
+  mcpTools: any[]
+  mcpCredentials: any[]
+  mcpLoading: boolean
+  mcpError: string | null
+  mcpRawCredential: string | null
+  mcpEnabled: boolean
+  mcpStatus: 'available' | 'disabled'
+  mcpEndpoint: string
+  mcpScopeCatalog: any[]
+  mcpEffectiveCapabilities: Record<string, 'read' | 'edit'>
+  dismissMcpRawCredential: () => void
+  createMcpCredential: (name: string, scopes: string[], expiresAt?: string) => void
+  revokeMcpCredential: (credential: any) => void
+  toggleMcp: (enabled: boolean) => void
   attachmentConfig: any
   setAttachmentConfig: (config: any) => void
   attachmentConfigLoading: boolean

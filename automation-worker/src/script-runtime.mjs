@@ -130,15 +130,16 @@ function runCommand(command, args, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.env || process.env,
+      env: sanitizeChildEnv(options.env || process.env),
       windowsHide: true,
+      detached: process.platform !== "win32",
     });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      terminateProcessTree(child, process);
     }, options.timeoutMs || 300000);
 
     child.stdout.on("data", (chunk) => {
@@ -156,6 +157,22 @@ function runCommand(command, args, options = {}) {
       resolve({ code: code ?? 1, stdout, stderr, timedOut });
     });
   });
+}
+
+function sanitizeChildEnv(source = {}) {
+  const secretName = /(TOKEN|SECRET|PASSWORD|API[_-]?KEY|CREDENTIAL|PRIVATE[_-]?KEY|AUTHORIZATION)/i;
+  return Object.fromEntries(Object.entries(source).filter(([key]) => !secretName.test(key)));
+}
+
+function terminateProcessTree(child, runtimeProcess) {
+  if (runtimeProcess.platform === "win32") {
+    try { child.kill("SIGTERM"); } catch { /* already exited */ }
+    return;
+  }
+  try { runtimeProcess.kill(-child.pid, "SIGTERM"); } catch { try { child.kill("SIGTERM"); } catch { /* already exited */ } }
+  setTimeout(() => {
+    try { runtimeProcess.kill(-child.pid, "SIGKILL"); } catch { /* already exited */ }
+  }, 1000).unref?.();
 }
 
 function executableScriptFile(script) {
@@ -218,7 +235,7 @@ function prepareSeleniumPythonSource(script, variables, job) {
     getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
     playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
     getPlaywrightCliPath, getPackageBinPath, getPlaywrightTestRequirePath,
-    preparePlaywrightTestSource, runCommand, executableScriptFile, scriptFileForJob,
+    preparePlaywrightTestSource, runCommand, sanitizeChildEnv, executableScriptFile, scriptFileForJob,
     serializeJsonForSource, prepareNodeScriptSource, prepareSeleniumPythonSource,
   };
 }

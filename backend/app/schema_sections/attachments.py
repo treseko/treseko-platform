@@ -54,7 +54,7 @@ MAX_ATTACHMENT_LINK_TYPE_LENGTH = 80
 
 class AttachmentConfig(BaseModel):
     allowed_mime_types: List[str] = Field(default_factory=lambda: list(DEFAULT_ALLOWED_ATTACHMENT_MIME_TYPES), max_length=MAX_ATTACHMENT_MIME_TYPES)
-    max_file_size_mb: int = Field(default=10, ge=1, le=100)
+    max_file_size_mb: int = Field(default=100, ge=1, le=100)
     max_files_per_step: int = Field(default=5, ge=0, le=50)
     max_files_per_snapshot: int = Field(default=10, ge=0, le=100)
     enable_clipboard_paste: bool = True

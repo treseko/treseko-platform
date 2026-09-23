@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, Dispatch, ReactNode, SetStateAction } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -85,6 +85,48 @@ export function AppShell({
 }: AppShellProps) {
   const { t, locale } = useI18n()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null)
+  const mobileDrawerRef = useRef<HTMLDivElement>(null)
+  const mobileCloseButtonRef = useRef<HTMLButtonElement>(null)
+  const wasMobileMenuOpenRef = useRef(false)
+  const closeMobileMenu = () => setMobileMenuOpen(false)
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      if (wasMobileMenuOpenRef.current) mobileMenuButtonRef.current?.focus()
+      wasMobileMenuOpenRef.current = false
+      return
+    }
+    wasMobileMenuOpenRef.current = true
+    mobileCloseButtonRef.current?.focus()
+    const drawer = mobileDrawerRef.current
+    if (!drawer) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMobileMenu()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(element => !element.hasAttribute('disabled'))
+      if (focusable.length === 0) {
+        event.preventDefault()
+        drawer.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    drawer.addEventListener('keydown', onKeyDown)
+    return () => drawer.removeEventListener('keydown', onKeyDown)
+  }, [mobileMenuOpen])
   const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
   const activeOrganizations = organizations.filter(org => org.active !== false)
   const currentOrg = activeOrganizations.find(org => sameId(org.id, currentOrgId))
@@ -117,6 +159,7 @@ export function AppShell({
         <Button
           variant="dark"
           className="app-mobile-menu-button border border-secondary shadow-none"
+          ref={mobileMenuButtonRef}
           onClick={() => setMobileMenuOpen(true)}
           aria-label={t('common.openMenu')}
         >
@@ -135,18 +178,26 @@ export function AppShell({
       </div>
 
       {mobileMenuOpen && <button type="button" className="app-mobile-scrim" aria-label={t('common.closeMenu')} onClick={() => setMobileMenuOpen(false)} />}
-      <div className={`app-mobile-drawer bg-dark text-white ${mobileMenuOpen ? 'is-open' : ''}`}>
+      <div
+        ref={mobileDrawerRef}
+        className={`app-mobile-drawer bg-dark text-white ${mobileMenuOpen ? 'is-open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="app-mobile-drawer-title"
+        aria-hidden={!mobileMenuOpen}
+        tabIndex={-1}
+      >
         <div className="d-flex align-items-center justify-content-between p-3 border-bottom border-secondary">
           <div className="d-flex align-items-center gap-2 min-w-0">
             <span className="app-brand-mark app-brand-mark-sm flex-shrink-0" aria-hidden="true">
               <img src={brandLogoUrl} alt="" className="app-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
             </span>
             <div className="min-w-0">
-              <div className="fw-bold text-white text-truncate">{brandName}</div>
+              <div id="app-mobile-drawer-title" className="fw-bold text-white text-truncate">{brandName}</div>
               <div className="app-edition-text text-truncate">{editionLabel}</div>
             </div>
           </div>
-          <Button variant="dark" size="sm" className="border border-secondary shadow-none" onClick={() => setMobileMenuOpen(false)} aria-label={t('common.closeMenu')}>
+          <Button ref={mobileCloseButtonRef} variant="dark" size="sm" className="border border-secondary shadow-none" onClick={closeMobileMenu} aria-label={t('common.closeMenu')}>
             <X size={18} />
           </Button>
         </div>

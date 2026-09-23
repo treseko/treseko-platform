@@ -74,7 +74,7 @@ export const defaultAttachmentConfig = {
     'video/webm',
     'application/octet-stream',
   ],
-  max_file_size_mb: 10,
+  max_file_size_mb: 100,
   max_files_per_step: 5,
   max_files_per_snapshot: 10,
   enable_clipboard_paste: true,

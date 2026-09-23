@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from ...main_context import *
 from ...main_context import _issue_auth_tokens
+from ...services.mcp_governance import validate_scopes_for_user
 from . import users_admin
 
 
@@ -111,12 +112,69 @@ async def create_my_api_key(
     )
 
 
+@router.post("/users/me/mcp-credentials/", response_model=schemas.McpApiKeyCreated)
+async def create_my_mcp_credential(
+    request: Request,
+    payload: schemas.McpApiKeyCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("mcp.usar", "edit")),
+):
+    try:
+        payload.scopes = validate_scopes_for_user(payload.scopes, current_user)
+        db_key, raw_key = await crud.create_mcp_api_key(db, current_user.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="MCP_CREDENTIAL_CREATE",
+        recurso="mcp_credential", recurso_id=db_key.id,
+        detalles={"nombre": db_key.nombre, "key_prefix": db_key.key_prefix,
+                  "purpose": db_key.purpose,
+                  "expires_at": db_key.expires_at.isoformat() if db_key.expires_at else None,
+                  "scopes": list(db_key.scopes_json or [])},
+        ip_address=request.client.host if request.client else "unknown",
+    )
+    return schemas.McpApiKeyCreated.model_validate({
+        "id": db_key.id, "nombre": db_key.nombre, "key_prefix": db_key.key_prefix,
+        "activo": db_key.activo, "fecha_creacion": db_key.fecha_creacion,
+        "ultimo_uso": db_key.ultimo_uso, "purpose": db_key.purpose,
+        "expires_at": db_key.expires_at, "scopes_json": db_key.scopes_json,
+        "api_key": raw_key,
+    })
+
+
 @router.get("/users/me/api-keys/", response_model=List[schemas.ApiKey])
 async def list_my_api_keys(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.api_keys", "read"))
 ):
     return await crud.get_api_keys_for_user(db, current_user.id)
+
+
+@router.get("/users/me/mcp-credentials/", response_model=List[schemas.McpApiKey])
+async def list_my_mcp_credentials(
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("mcp.usar", "read")),
+):
+    return await crud.get_mcp_api_keys_for_user(db, current_user.id)
+
+
+@router.delete("/users/me/mcp-credentials/{api_key_id}/", response_model=schemas.McpApiKey)
+async def revoke_my_mcp_credential(
+    request: Request,
+    api_key_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("mcp.usar", "edit")),
+):
+    db_key = await crud.revoke_api_key(db, current_user.id, api_key_id, purpose="mcp")
+    if not db_key:
+        raise HTTPException(status_code=404, detail="Credencial MCP no encontrada")
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="MCP_CREDENTIAL_REVOKE",
+        recurso="mcp_credential", recurso_id=db_key.id,
+        detalles={"nombre": db_key.nombre, "key_prefix": db_key.key_prefix, "purpose": db_key.purpose},
+        ip_address=request.client.host if request.client else "unknown",
+    )
+    return db_key
 
 
 @router.delete("/users/me/api-keys/{api_key_id}/", response_model=schemas.ApiKey)
@@ -126,7 +184,7 @@ async def revoke_my_api_key(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.api_keys", "edit"))
 ):
-    db_key = await crud.revoke_api_key(db, current_user.id, api_key_id)
+    db_key = await crud.revoke_api_key(db, current_user.id, api_key_id, purpose="legacy")
     if not db_key:
         raise HTTPException(status_code=404, detail="API key no encontrada")
     client_ip = request.client.host if request.client else "unknown"

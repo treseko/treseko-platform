@@ -19,6 +19,7 @@ export default {
   severity_BLOCKER: 'Blocker', severity_CRITICA: 'Critical', severity_ALTA: 'High', severity_MEDIA: 'Medium', severity_BAJA: 'Low', severity_COSMETICA: 'Cosmetic',
   priority_ALTA: 'High', priority_MEDIA: 'Medium', priority_BAJA: 'Low',
   priorityFilter: 'Priority',
+  scopeFilter: 'View', allIncidents: 'All incidents', myIncidents: 'My incidents', unassignedIncidents: 'Unassigned', takeIncident: 'Take incident', assignmentUpdated: 'Assignment updated', takenByMe: 'The incident is now assigned to you',
   priority_P0: 'Urgent', priority_P1: 'High', priority_P2: 'Medium', priority_P3: 'Low', priority_P4: 'Minimal',
   filter: 'Filter',
   contextTypeFilter: 'Bug type', classicType: 'Classic', conversationalType: 'Conversational',

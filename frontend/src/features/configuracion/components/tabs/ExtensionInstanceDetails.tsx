@@ -2,6 +2,7 @@ import { Badge, Button, Col, Form, Row } from 'react-bootstrap'
 import { KeyRound, Power, RefreshCw, Settings2, ShieldCheck } from 'lucide-react'
 import { PremiumGate } from '../../../premium/PremiumGate'
 import { useI18n } from '../../../../i18n'
+import { PasswordVisibilityField } from '../../../../shared/ui/PasswordVisibilityField'
 import type { ExtensionItem } from './IntegrationsSettingsTab'
 
 type Draft = { url: string, project_key: string, notes: string }
@@ -66,7 +67,7 @@ export function ExtensionInstanceDetails({
 
     <section>
       <h6 className="fw-bold text-secondary small text-uppercase"><KeyRound size={14} className="me-1" /> {t('configuracion.extensionSecrets')}</h6>
-      <div className="d-flex flex-column flex-md-row gap-2"><Form.Control name="a11y-extensioninstancedetailstsx-69" aria-label="Campo de formulario" size="sm" type="password" value={secretDraft} placeholder={t('configuracion.extensionSecretPlaceholder')} onChange={event => setSecretDraft(event.target.value)} disabled={!canManageSecrets || premiumBlocked} /><Button size="sm" variant="outline-primary" className="app-save-button text-nowrap" onClick={onSaveSecret} disabled={saving || !canManageSecrets || !secretDraft.trim() || premiumBlocked}>{t('configuracion.extensionSaveSecret')}</Button></div>
+      <div className="d-flex flex-column flex-md-row gap-2"><PasswordVisibilityField name="a11y-extensioninstancedetailstsx-69" aria-label="Campo de formulario" size="sm" value={secretDraft} placeholder={t('configuracion.extensionSecretPlaceholder')} onChange={event => setSecretDraft(event.target.value)} disabled={!canManageSecrets || premiumBlocked} showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} /><Button size="sm" variant="outline-primary" className="app-save-button text-nowrap" onClick={onSaveSecret} disabled={saving || !canManageSecrets || !secretDraft.trim() || premiumBlocked}>{t('configuracion.extensionSaveSecret')}</Button></div>
       <div className="d-flex flex-wrap gap-1 mt-2">
         {Object.entries(instance.secrets_configured || {}).map(([key, value]: any) => <Badge key={key} bg="light" text="dark" className="border">{key}: {value?.fingerprint ? `huella ...${value.fingerprint}` : 'configurado'}</Badge>)}
         {Object.keys(instance.secrets_configured || {}).length === 0 && <span className="small text-muted">Sin secretos configurados.</span>}

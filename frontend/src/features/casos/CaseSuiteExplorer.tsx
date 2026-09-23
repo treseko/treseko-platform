@@ -11,6 +11,7 @@ export function CaseSuiteExplorer({ context }: Props) {
     openCreateSuiteModal, authoringInitialLoading, visibleSuiteTree, authoringRefreshing,
     renderAuthoringSuiteTree, canEditCases, openCloneCaseModal, canEditSuites: canEditSuitesValue,
     openCloneSuiteModal, openMoveCaseModal, startSuiteExplorerResize, setMobileExplorerOpen,
+    confirmLeavingWithUnsavedChanges,
   } = context;
   const canCreateSuites = canEditSuitesValue ?? canEditSuites;
   return (
@@ -47,7 +48,8 @@ export function CaseSuiteExplorer({ context }: Props) {
             ))}
           </Dropdown.Menu>
         </Dropdown>
-        <Button variant="link" size="sm" className="p-0 text-decoration-none x-small fw-bold text-secondary hover-text-primary" onClick={() => {
+        <Button variant="link" size="sm" className="p-0 text-decoration-none x-small fw-bold text-secondary hover-text-primary" onClick={async () => {
+          if (!(await confirmLeavingWithUnsavedChanges?.())) return;
           setSelectedSubSuiteId(null); setTestSearchQuery(''); setCaseEditorOpen(false); setEditingCasoMasterId(null); setSelectedTest(null);
         }}>{t('casos.clear')}</Button>
       </div>

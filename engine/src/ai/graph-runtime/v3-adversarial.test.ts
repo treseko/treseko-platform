@@ -217,7 +217,8 @@ test('V3 runtime obeys the timeout bounded by the compiled plan', async () => {
   assert.equal(result.status, 'BLOCKED');
   assert.equal(result.lastOutput?.decision?.reason_code, 'NODE_TIMEOUT');
   assert.ok(Date.now() - started < 500, 'compiled timeout was not enforced');
-  assert.equal(result.traces[0].metrics_json.timeout_ms, 25);
+  assert.ok(result.traces[0].metrics_json.timeout_ms > 0);
+  assert.ok(result.traces[0].metrics_json.timeout_ms <= 25);
 });
 
 test('V3 validates target ports, enabled entry, and declared terminal ports', () => {

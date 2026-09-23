@@ -14,29 +14,13 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 
 ### Novedades de 1.0.3
 
-Esta release amplía el flujo QA sin separar la información en herramientas
-aisladas:
-
-- Nuevos formatos de caso para pruebas **API** y **conversacionales**, además
-  del formato **clásico**. **PERFORMANCE** queda reservado para una futura
-  implementación y no debe configurarse como si ya tuviera un ejecutor.
-- Separación explícita entre el formato del caso y la modalidad de ejecución:
-  **MANUAL**, **AUTOMATIZADA** y **AUTOMATIZADA_AI**.
-- Ejecución API declarativa desde el backend y el Automation Worker existente,
-  con aserciones, variables, allowlist, límites y snapshots redactados.
-- Pruebas conversacionales con endpoint, perfiles, datasets, turnos, memoria,
-  herramientas, evaluación y evidencia de la conversación.
-- Evidencia y contexto de bugs adaptados a los formatos clásico, API y
-  conversacional, con trazabilidad hacia caso, build y ejecución.
-- Informes ejecutivos, de desarrollo e internos basados en snapshots
-  compartibles, incluyendo bugs actuales e históricos pendientes.
-- Mejoras en historial, trazabilidad, RBAC, capacidades por edición, temas y
-  configuración de conexiones.
-- Las migraciones `20260812_0045` y `20260812_0046` agregan el formato de caso
-  de forma idempotente, conservan los casos existentes y normalizan su nombre
-  público final a **CLÁSICA**.
-- El dashboard muestra errores legibles y permite reintentar la carga cuando
-  una actualización todavía está terminando.
+- Mejoras en el diseño y la consistencia visual.
+- Nuevas opciones de temas y preferencias para usuarios.
+- Mejoras en Reportes y Métricas, Centro de Incidencias e importación de API.
+- Refuerzos de seguridad, permisos RBAC y validaciones de acceso.
+- Optimización del manejo y migración de datos.
+- Actualizaciones Premium más confiables, con validación, respaldo y rollback.
+- Mejoras en la gestión y estabilidad de los workers de automatización.
 
 ### Novedades de 1.0.2
 

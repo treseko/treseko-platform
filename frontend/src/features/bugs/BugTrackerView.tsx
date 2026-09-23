@@ -4,6 +4,7 @@ import { Bug, Clipboard, ExternalLink, FileText, Info, Link as LinkIcon, Message
 import { EvidenceUpload, type AttachmentMeta } from '../../EvidenceUpload'
 import { EvidenceViewerModal } from '../../shared/components/EvidenceViewerModal'
 import { isEvidenceAvailable } from '../../shared/utils/evidenceAvailability'
+import { isImageAsset, resolveAssetUrl } from '../../shared/utils/assets'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { BugTransitionModal } from './BugTransitionModal'
 import {
@@ -21,6 +22,11 @@ type BugTrackerViewContext = {
   canCreate: any,
   canEdit: any,
   canTriage: any,
+  canAssign: any,
+  canTake: any,
+  canResolve: any,
+  canClose: any,
+  canTransitionTo: (status: string) => boolean,
   canComment: any,
   canAttachBugEvidence: any,
   canLinkExternal: any,
@@ -96,11 +102,12 @@ type BugTrackerViewContext = {
   setViewerEvidence: any,
   setExternalForm: any,
   setFilters: any,
+  takeBug: (bug: any) => void,
   onOpenRelatedCase?: (bug: any) => void,
   onOpenRelatedExecution?: (bug: any) => void,
 }
 export function BugTrackerView({ context }: { context: BugTrackerViewContext }) {
-  const { t, canUse, canCreate, canEdit, canTriage, canComment, canAttachBugEvidence, canLinkExternal, canExport, currentBuildLabel, currentComponentLabel, buildsList, appUsers, bugs, summary, loading, selectedBug, conversationalContext, conversationalContextLoading, apiContext, apiContextLoading, detailOpen, filters, comment, commentAttachments, externalForm, markdown, detailForm, additionalContextRows, viewerEvidence, savingDetail, showStatusHelp, loadBugs, onOpenManualBugDrawer, openDetail, transitionTarget, transitionForm, compatibleBuilds, quickTransitioningBugId, isCorrected, setTransitionForm, setTransitionTarget, confirmTransition, setShowStatusHelp, setDetailOpen, onDetailClosed, updateDetailField, openEvidenceViewer, setComment, setCommentAttachments, addComment, createExternalLink, generatePreview, copyMarkdown, bugGeneralAttachments, addBugEvidence, removeBugEvidence, saveSelectedBugDetails, setAdditionalContextRows, updateAdditionalContextRow, transitionBug, transitionBugInline, modalOnly, linkingBug, setLinkingBug, linkComment, setLinkComment, linkingBugId, onViewRelatedBug, canLinkCurrentExecution, onLinkExecutionToBug, creatingInternalBugContextId, relatedCaseBugs, relatedCaseBugsLoading, onCreateInternalBugFromExecution, getBugDisplayBuild, getBugDisplayComponent, setViewerEvidence, setExternalForm, setFilters, onOpenRelatedCase, onOpenRelatedExecution } = context
+  const { t, canUse, canCreate, canEdit, canTriage, canAssign, canTake, canResolve, canClose, canTransitionTo, canComment, canAttachBugEvidence, canLinkExternal, canExport, currentBuildLabel, currentComponentLabel, buildsList, appUsers, bugs, summary, loading, selectedBug, conversationalContext, conversationalContextLoading, apiContext, apiContextLoading, detailOpen, filters, comment, commentAttachments, externalForm, markdown, detailForm, additionalContextRows, viewerEvidence, savingDetail, showStatusHelp, loadBugs, onOpenManualBugDrawer, openDetail, transitionTarget, transitionForm, compatibleBuilds, quickTransitioningBugId, isCorrected, setTransitionForm, setTransitionTarget, confirmTransition, setShowStatusHelp, setDetailOpen, onDetailClosed, updateDetailField, openEvidenceViewer, setComment, setCommentAttachments, addComment, createExternalLink, generatePreview, copyMarkdown, bugGeneralAttachments, addBugEvidence, removeBugEvidence, saveSelectedBugDetails, setAdditionalContextRows, updateAdditionalContextRow, transitionBug, transitionBugInline, takeBug, modalOnly, linkingBug, setLinkingBug, linkComment, setLinkComment, linkingBugId, onViewRelatedBug, canLinkCurrentExecution, onLinkExecutionToBug, creatingInternalBugContextId, relatedCaseBugs, relatedCaseBugsLoading, onCreateInternalBugFromExecution, getBugDisplayBuild, getBugDisplayComponent, setViewerEvidence, setExternalForm, setFilters, onOpenRelatedCase, onOpenRelatedExecution } = context
   const { status: statusLabel, severity: severityLabel, priority: priorityLabel } = createBugLocalizedLabels(t)
   const selectedBugType = bugDisplayType(selectedBug, Boolean(apiContext))
   const isConversationalBug = selectedBugType === 'CONVERSACIONAL'
@@ -172,6 +179,7 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
             <Card.Header className="bg-white border-bottom">
               <Row className="g-2 bug-filter-row">
                 <Col md={5}><Form.Control id="bugs-search" name="bugsSearch" aria-label={t('bugs.searchPlaceholder')} size="sm" placeholder={t('bugs.searchPlaceholder')} value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} /></Col>
+                <Col md={3}><Form.Select id="bugs-scope-filter" name="bugsScope" aria-label={t('bugs.scopeFilter')} size="sm" value={filters.scope || 'all'} onChange={(e) => setFilters({ ...filters, scope: e.target.value })}><option value="all">{t('bugs.allIncidents')}</option><option value="mine">{t('bugs.myIncidents')}</option><option value="unassigned">{t('bugs.unassignedIncidents')}</option></Form.Select></Col>
                 <Col md={2}><Form.Select id="bugs-status-filter" name="bugsStatus" aria-label={t('bugs.statusFilter')} size="sm" value={filters.estado} onChange={(e) => setFilters({ ...filters, estado: e.target.value })}><option value="">{t('bugs.statusFilter')}</option>{statusOptions.map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}</Form.Select></Col>
                 <Col md={2}><Form.Select id="bugs-severity-filter" name="bugsSeverity" aria-label={t('bugs.severityFilter')} size="sm" value={filters.severidad} onChange={(e) => setFilters({ ...filters, severidad: e.target.value })}><option value="">{t('bugs.severityFilter')}</option>{severityOptions.map(item => <option key={item} value={item}>{severityLabel(item)}</option>)}</Form.Select></Col>
                 <Col md={2}><Form.Select id="bugs-priority-filter" name="bugsPriority" aria-label={t('bugs.priorityFilter')} size="sm" value={filters.prioridad} onChange={(e) => setFilters({ ...filters, prioridad: e.target.value })}><option value="">{t('bugs.priorityFilter')}</option>{priorityOptions.map(item => <option key={item} value={item}>{item} · {priorityLabel(item)}</option>)}</Form.Select></Col>
@@ -221,7 +229,7 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                                   disabled={quickTransitioningBugId === bug.id}
                                   onChange={(event) => transitionBugInline(bug, event.target.value)}
                                 >
-                                  {statusOptions.map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
+                                  {statusOptions.filter(item => canTransitionTo(item)).map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
                                 </Form.Select>
                               )}
                               <Button size="sm" variant="outline-primary" onClick={() => openDetail(bug)}>{t('bugs.view')}</Button>
@@ -390,9 +398,9 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 <Row className="g-2 mb-2">
                   <Col md={4}>
                     <Form.Label htmlFor="bug-detail-status" className="x-small text-muted fw-bold">{t('bugs.statusCol')}</Form.Label>
-                    {canTriage ? (
+                    {canTriage || canResolve || canClose ? (
                       <Form.Select id="bug-detail-status" name="bugStatus" size="sm" value={selectedBug.estado} onChange={(e) => transitionBug(e.target.value)}>
-                        {statusOptions.map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
+                        {statusOptions.filter(item => canTransitionTo(item)).map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
                       </Form.Select>
                     ) : (
                       <Form.Control id="bug-detail-status" name="bugStatus" size="sm" value={selectedBug.estado ? statusLabel(selectedBug.estado) : t('common.notAvailable')} readOnly />
@@ -418,11 +426,12 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                   </Col>
                   <Col md={12}>
                     <Form.Label htmlFor="bug-detail-assignee" className="x-small text-muted fw-bold">{t('bugs.assignedTo')}</Form.Label>
-                    <Form.Select id="bug-detail-assignee" name="bugAssignee" size="sm" value={detailForm.asignado_a || ''} disabled={!detailEditing} onChange={(e) => updateDetailField('asignado_a', e.target.value || '')}>
+                    <Form.Select id="bug-detail-assignee" name="bugAssignee" size="sm" value={detailForm.asignado_a || ''} disabled={!detailEditing || !canAssign} onChange={(e) => updateDetailField('asignado_a', e.target.value || '')}>
                       <option value="">{t('bugs.unassignedLabel')}</option>
                       {appUsers.map((item: any) => <option value={item.id} key={item.id}>{item.name || item.nombre_completo || item.email}</option>)}
                     </Form.Select>
                   </Col>
+                  {canTake && !selectedBug.asignado_a && <Col md={12}><Button size="sm" variant="outline-success" onClick={() => takeBug(selectedBug)}>{t('bugs.takeIncident')}</Button></Col>}
                 </Row>
 
                 <div className="border rounded p-3 bg-light small">
@@ -469,6 +478,24 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                     {canExport && <div className="d-flex align-items-center gap-2 mb-2"><Button size="sm" variant="outline-dark" onClick={generatePreview}>{t('bugs.generatePreview')}</Button><Button size="sm" variant="outline-secondary" title={t('bugs.copyMarkdownTitle')} aria-label={t('bugs.copyMarkdownTitle')} onClick={copyMarkdown}><Clipboard size={14} /></Button><OverlayTrigger trigger={['hover', 'focus', 'click']} placement="right" overlay={<Tooltip>{t('bugs.previewInfo')}</Tooltip>}><Button size="sm" variant="link" className="p-0 text-primary" aria-label={t('bugs.previewInfoAria')}><Info size={15} /></Button></OverlayTrigger></div>}
                     {markdown && <Form.Control name="a11y-bugtrackerviewtsx-426" aria-label={t('common.formField')} as="textarea" rows={8} value={markdown} readOnly className="small font-monospace mb-3" />}
                     <h6>{t('bugs.evidence')}</h6>
+                    {bugGeneralAttachments.length > 0 && <div className="d-flex flex-column gap-2 mb-2" aria-label={t('bugs.evidence')}>
+                      {bugGeneralAttachments.map((attachment: AttachmentMeta) => (
+                        <Button
+                          key={attachment.id}
+                          variant={isEvidenceAvailable(attachment) ? 'light' : 'outline-warning'}
+                          size="sm"
+                          className="border d-flex align-items-center gap-2 text-start p-2"
+                          onClick={() => openEvidenceViewer(attachment)}
+                          disabled={!isEvidenceAvailable(attachment)}
+                        >
+                          <span className="border rounded bg-white d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 64, height: 48, overflow: 'hidden' }}>
+                            {isEvidenceAvailable(attachment) && isImageAsset(attachment) ? <img src={resolveAssetUrl(attachment.public_url)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <FileText size={18} className="text-secondary" />}
+                          </span>
+                          <span className="text-truncate flex-grow-1">{attachment.filename_original || t('bugs.evidence')}</span>
+                          {!isEvidenceAvailable(attachment) && <Badge bg="warning" text="dark">{t('bugs.attachmentUnavailable')}</Badge>}
+                        </Button>
+                      ))}
+                    </div>}
                     {canUse('bugs.adjuntos', 'edit') ? <EvidenceUpload compact label={t('bugs.attachEvidence')} uploadScope="BUG_EVIDENCE" currentAttachments={bugGeneralAttachments} onUploadComplete={addBugEvidence} onRemoveAttachment={removeBugEvidence} /> : <div className="small text-muted">{t('bugs.permissionAttachEvidence')}</div>}
                   </Col>
                 </Row>

@@ -185,6 +185,8 @@ async def auth_ad_password_login(
         auth.login_rate_limiter.record_failure(rate_limit_key)
         await crud.create_audit_log(db, usuario_id=None, accion="AD_LDAP_LOGIN_FAILED", recurso="auth", detalles={"error": sanitize_external_error(exc)}, ip_address=client_ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contrasena AD invalidos")
+    except HTTPException:
+        raise
     except Exception as exc:
         await crud.create_audit_log(db, usuario_id=None, accion="AD_LDAP_LOGIN_FAILED", recurso="auth", detalles={"error": sanitize_external_error(exc)}, ip_address=client_ip)
         raise HTTPException(status_code=400, detail=sanitize_external_error(exc))

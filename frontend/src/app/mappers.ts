@@ -49,6 +49,9 @@ export const getInitials = (nameOrEmail: string) => {
     .join('') || 'US'
 }
 
+export const backendUserDisplayName = (user: any) =>
+  String(user?.display_name || user?.nombre_completo || user?.email || '').trim()
+
 export const createSessionUser = (email: string, role: RoleKey = 'ADMIN', auth: AuthMode = 'local', name?: string): SessionUser => ({
   id: email,
   name: name || (email === DEV_ADMIN_EMAIL ? 'Admin QA' : email.split('@')[0]),
@@ -151,7 +154,7 @@ export const mapBackendWikiToItem = (page: any) => ({
 
 export const mapBackendUserToItem = (user: any) => ({
   id: user.id,
-  name: user.nombre_completo || user.email,
+  name: backendUserDisplayName(user),
   email: user.email,
   role: user.rol_nombre || user.rol,
   baseRole: user.rol,
@@ -167,13 +170,13 @@ export const mapBackendUserToItem = (user: any) => ({
 
 export const mapBackendUserToSession = (user: any): SessionUser => ({
   id: user.id,
-  name: user.nombre_completo || user.email,
+  name: backendUserDisplayName(user),
   email: user.email,
   role: normalizeSessionRole(user.rol),
   roleLabel: user.rol_nombre || user.rol,
   roleCustomId: user.rol_custom_id || '',
   auth: user.auth_provider === 'ad' ? 'ad' : 'local',
-  avatar: getInitials(user.nombre_completo || user.email),
+  avatar: getInitials(backendUserDisplayName(user)),
   avatarUrl: user.avatar_url || '',
   avatarProvider: user.avatar_provider || 'gravatar',
   personalTheme: user.personal_theme || DEFAULT_THEME_ID,

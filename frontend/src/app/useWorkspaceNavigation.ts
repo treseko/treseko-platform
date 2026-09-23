@@ -15,6 +15,7 @@ export function useWorkspaceNavigation(options: any) {
     showFeedback, consumeDeepLinkBug, internalReportToken,
     activeTab, currentOrgId, currentProjectId, currentCompId, currentBuildId, configTab,
     managingProjectId, projectInnerTab, sidebarCollapsed, collapsedSections,
+    confirmLeavingWithUnsavedChanges,
   } = options
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export function useWorkspaceNavigation(options: any) {
   }, [isAuthenticated, loggedUser.id, loggedUser.email])
 
   useEffect(() => {
+    const applyDeepLink = async () => {
     const urlBugId = new URLSearchParams(window.location.search).get('bug_id') || ''
     const targetBugId = urlBugId || deepLinkBugId
     if (!targetBugId) { bugLinkDestination.current = 'bugs'; return }
@@ -87,7 +89,10 @@ export function useWorkspaceNavigation(options: any) {
       consumeDeepLinkBug()
       return
     }
+    if (destination !== activeTab && !(await confirmLeavingWithUnsavedChanges())) return
     setActiveTab(destination)
+    }
+    void applyDeepLink()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, workspacePreferencesHydrated, deepLinkBugId, loggedUser.id, loggedUser.email])
 

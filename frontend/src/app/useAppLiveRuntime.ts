@@ -224,6 +224,7 @@ export function useAppLiveRuntime({ options }: { options: any }) {
     hasUnsavedCaseChanges,
     historialInitialFilters,
     environmentActions,
+    canAccessCapability,
     loadOpenBugsByCase,
     loadProjectRunHistory,
     refreshCurrentTestContext,

@@ -4,6 +4,7 @@ import { PremiumGate } from '../premium/PremiumGate'
 import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { isBuildExecutable } from '../../app/buildState'
+import { resolveAssetUrl } from '../../shared/utils/assets'
 
 export function ProjectPortfolioGrid({ context }: { context: any }) {
   const {
@@ -109,7 +110,7 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                           <div className="d-flex align-items-center gap-3 min-w-0">
                             <div className="project-avatar flex-shrink-0">
                               {p.imageUrl ? (
-                                <img src={p.imageUrl} alt={p.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />
+                                <img src={resolveAssetUrl(p.imageUrl)} alt={p.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />
                               ) : (
                                 <span>{projectInitials(p.name)}</span>
                               )}

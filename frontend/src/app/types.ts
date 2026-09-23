@@ -2,6 +2,7 @@ export type AuthMode = 'local' | 'ad'
 export type RoleKey = 'ADMIN' | 'QA_LEAD' | 'TESTER' | 'VIEWER'
 export type ModuleId = 'dashboard' | 'ejecutar' | 'crear_pruebas' | 'proyectos' | 'inventario' | 'reportes' | 'bugs' | 'incidencias' | 'motor_ia' | 'redmine' | 'historial' | 'configuracion' | 'automatizacion' | 'clientes' | 'integraciones' | 'plugins' | 'notificaciones'
 export type PermissionLevel = 'none' | 'read' | 'edit'
+export type BugListScope = 'all' | 'mine' | 'unassigned'
 export type ModulePermissionMap = Partial<Record<ModuleId, Exclude<PermissionLevel, 'none'>>>
 export type CoreCapabilityId =
   | 'dashboard.ver' | 'dashboard.personalizar'
@@ -11,13 +12,13 @@ export type CoreCapabilityId =
   | 'proyectos.portfolio' | 'proyectos.componentes' | 'proyectos.builds' | 'proyectos.build_scope' | 'proyectos.equipo' | 'proyectos.ambientes' | 'proyectos.datasets' | 'proyectos.wiki'
   | 'inventario.ambientes' | 'inventario.dispositivos' | 'inventario.nodos' | 'inventario.categorias'
   | 'reportes.ver' | 'reportes.exportar' | 'reportes.compartir' | 'reportes.configurar'
-  | 'bugs.ver' | 'bugs.crear' | 'bugs.editar' | 'bugs.triage' | 'bugs.asignar' | 'bugs.comentar' | 'bugs.adjuntos' | 'bugs.vincular_externo' | 'bugs.exportar' | 'bugs.admin'
+  | 'bugs.ver' | 'bugs.crear' | 'bugs.editar' | 'bugs.triage' | 'bugs.asignar' | 'bugs.tomar' | 'bugs.resolver' | 'bugs.cerrar' | 'bugs.comentar' | 'bugs.adjuntos' | 'bugs.vincular_externo' | 'bugs.exportar' | 'bugs.admin'
   | 'incidencias.ver'
   | 'motor_ia.ver' | 'motor_ia.configuracion' | 'motor_ia.workflows' | 'motor_ia.logs' | 'motor_ia.scheduler'
   | 'redmine.ver' | 'redmine.configuracion' | 'redmine.reportar' | 'redmine.vinculos'
   | 'notificaciones.ver' | 'notificaciones.inbox' | 'notificaciones.configuracion' | 'notificaciones.reglas' | 'notificaciones.plantillas' | 'notificaciones.auditoria' | 'notificaciones.admin'
   | 'historial.ver' | 'historial.detalle' | 'historial.evidencias'
-  | 'configuracion.preferencias' | 'configuracion.perfil' | 'configuracion.clientes' | 'configuracion.usuarios' | 'configuracion.roles' | 'configuracion.integraciones' | 'configuracion.pruebas_ia' | 'configuracion.monitor' | 'configuracion.api_keys' | 'configuracion.sesion' | 'configuracion.adjuntos' | 'settings.evidence_sanitization.manage' | 'configuracion.licencia'
+  | 'configuracion.preferencias' | 'configuracion.perfil' | 'configuracion.clientes' | 'configuracion.usuarios' | 'configuracion.roles' | 'configuracion.integraciones' | 'configuracion.pruebas_ia' | 'configuracion.monitor' | 'configuracion.api_keys' | 'mcp.usar' | 'configuracion.sesion' | 'configuracion.adjuntos' | 'settings.evidence_sanitization.manage' | 'configuracion.licencia' | 'configuracion.actualizaciones'
   | 'integraciones.catalogo' | 'integraciones.ver_estado' | 'integraciones.test_conexion' | 'integraciones.configurar' | 'integraciones.secretos' | 'integraciones.webhooks' | 'integraciones.auditoria'
   | 'plugins.catalogo' | 'plugins.instalar' | 'plugins.desinstalar' | 'plugins.habilitar' | 'plugins.configurar' | 'plugins.gestionar_secretos' | 'plugins.auditoria'
 export type DynamicCapabilityId =

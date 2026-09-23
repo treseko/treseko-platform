@@ -26,6 +26,26 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# These tables belong to the historical SQLite/vehicle catalog bootstrap and
+# are intentionally retained in existing PostgreSQL databases for compatibility
+# even though they are no longer part of the SQLAlchemy runtime metadata. They
+# must not be interpreted as implicit DROP operations by ``alembic check``.
+LEGACY_REFLECTED_TABLES = {
+    "schema_migrations",
+    "vehicle_catalog_images",
+    "vehicle_colors",
+    "vehicle_makes",
+    "vehicle_models",
+    "vehicle_types",
+    "vehicle_versions",
+}
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    if reflected and type_ == "table" and name in LEGACY_REFLECTED_TABLES:
+        return False
+    return True
+
 
 def database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
@@ -55,6 +75,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -67,6 +88,7 @@ def do_run_migrations(connection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         render_as_batch=connection.dialect.name == "sqlite",
+        include_object=include_object,
     )
 
     with context.begin_transaction():

@@ -1,12 +1,14 @@
+// @vitest-environment jsdom
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 
 import { WorkspaceAccessEmptyState } from './WorkspaceAccessEmptyState'
 import { I18nProvider } from '../i18n'
 
 const renderWithI18n = (ui: ReactNode) => {
-  window.localStorage.setItem('treseko.ui.locale', 'es')
+  const storage = { getItem: () => 'es', setItem: vi.fn(), removeItem: vi.fn() }
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: storage })
   return render(<I18nProvider>{ui}</I18nProvider>)
 }
 

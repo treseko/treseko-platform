@@ -18,7 +18,7 @@ async def get_rol_personalizado_by_name(db: AsyncSession, nombre: str):
     return result.scalar_one_or_none()
 
 async def create_rol_personalizado(db: AsyncSession, role: schemas.RolPersonalizadoCreate):
-    from .auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
     permisos = _strip_non_assignable_user_permissions(normalize_permissions(models.Rol.TESTER, role.permisos))
     permisos_detallados = _strip_non_assignable_user_capabilities(normalize_capability_permissions(models.Rol.TESTER, role.permisos_detallados))
     modulos = _modules_from_permissions_and_capabilities(permisos, permisos_detallados) if (permisos or permisos_detallados) else _strip_non_assignable_user_modules(normalize_modules(models.Rol.TESTER, role.modulos))
@@ -36,7 +36,7 @@ async def create_rol_personalizado(db: AsyncSession, role: schemas.RolPersonaliz
     return db_role
 
 async def update_rol_personalizado(db: AsyncSession, role_id: UUID, role_update: schemas.RolPersonalizadoUpdate):
-    from .auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
     db_role = await get_rol_personalizado(db, role_id)
     if not db_role:
         return None
@@ -79,7 +79,9 @@ async def get_user_by_email(db: AsyncSession, email: str):
     return result.scalar_one_or_none()
 
 async def create_user(db: AsyncSession, user: schemas.UsuarioCreate, hashed_password: str):
-    from .auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..services.edition.user_limits import enforce_active_user_limit
+    await enforce_active_user_limit(db)
     custom_role = await get_rol_personalizado(db, user.rol_custom_id) if user.rol_custom_id else None
     if user.rol_custom_id and not custom_role:
         raise ValueError("El rol personalizado indicado no existe")
@@ -106,7 +108,10 @@ async def create_user(db: AsyncSession, user: schemas.UsuarioCreate, hashed_pass
     return await get_user(db, db_user.id)
 
 async def create_user_admin(db: AsyncSession, user: schemas.UsuarioAdminCreate, hashed_password: Optional[str] = None):
-    from .auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    if user.activo is not False:
+        from ..services.edition.user_limits import enforce_active_user_limit
+        await enforce_active_user_limit(db)
     custom_role = await get_rol_personalizado(db, user.rol_custom_id) if user.rol_custom_id else None
     if user.rol_custom_id and not custom_role:
         raise ValueError("El rol personalizado indicado no existe")
@@ -133,13 +138,15 @@ async def create_user_admin(db: AsyncSession, user: schemas.UsuarioAdminCreate, 
     await db.commit()
     return await get_user(db, db_user.id)
 
-async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(
-        select(models.Usuario)
-        .options(selectinload(models.Usuario.rol_personalizado))
-        .offset(skip)
-        .limit(limit)
-    )
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100, query: str | None = None):
+    statement = select(models.Usuario).options(selectinload(models.Usuario.rol_personalizado))
+    if query:
+        pattern = f"%{query.strip()}%"
+        statement = statement.filter(
+            (models.Usuario.email.ilike(pattern))
+            | (models.Usuario.nombre_completo.ilike(pattern))
+        )
+    result = await db.execute(statement.offset(skip).limit(limit))
     return result.scalars().all()
 
 async def get_user(db: AsyncSession, user_id: UUID):
@@ -151,11 +158,14 @@ async def get_user(db: AsyncSession, user_id: UUID):
     return result.scalar_one_or_none()
 
 async def update_user(db: AsyncSession, user_id: UUID, user_update: schemas.UsuarioUpdate, hashed_password: Optional[str] = None):
-    from .auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
+    from ..auth import modules_from_permissions, normalize_capability_permissions, normalize_modules, normalize_permissions
     db_user = await get_user(db, user_id)
     if not db_user:
         return None
     update_data = user_update.model_dump(exclude_unset=True, exclude={"password"})
+    if update_data.get("activo") is True and not db_user.activo:
+        from ..services.edition.user_limits import enforce_active_user_limit
+        await enforce_active_user_limit(db)
     custom_role = None
     if "rol_custom_id" in update_data and update_data["rol_custom_id"]:
         custom_role = await get_rol_personalizado(db, update_data["rol_custom_id"])
@@ -342,25 +352,54 @@ async def create_api_key(db: AsyncSession, user_id: UUID, payload: schemas.ApiKe
         nombre=payload.nombre,
         key_hash=_hash_api_key(raw_key),
         key_prefix=raw_key[:12],
+        purpose="legacy",
+        scopes_json=[],
     )
     db.add(db_key)
     await db.commit()
     await db.refresh(db_key)
     return db_key, raw_key
 
-async def get_api_keys_for_user(db: AsyncSession, user_id: UUID):
+async def create_mcp_api_key(db: AsyncSession, user_id: UUID, payload: schemas.McpApiKeyCreate):
+    from ..services.mcp_governance import validate_scopes
+    scopes = validate_scopes(payload.scopes)
+    active_count_result = await db.execute(
+        select(func.count()).select_from(models.ApiKey).filter(
+            models.ApiKey.usuario_id == user_id,
+            models.ApiKey.purpose == "mcp",
+            models.ApiKey.activo == True,
+        )
+    )
+    if int(active_count_result.scalar() or 0) >= schemas.MAX_ACTIVE_API_KEYS_PER_USER:
+        raise ValueError(f"No puedes tener mas de {schemas.MAX_ACTIVE_API_KEYS_PER_USER} credenciales MCP activas")
+    raw_key = generate_raw_api_key()
+    db_key = models.ApiKey(
+        usuario_id=user_id, nombre=payload.nombre, key_hash=_hash_api_key(raw_key),
+        key_prefix=raw_key[:12], purpose="mcp", expires_at=payload.expires_at,
+        scopes_json=scopes,
+    )
+    db.add(db_key)
+    await db.commit()
+    await db.refresh(db_key)
+    return db_key, raw_key
+
+async def get_api_keys_for_user(db: AsyncSession, user_id: UUID, purpose: str = "legacy"):
     result = await db.execute(
         select(models.ApiKey)
-        .filter(models.ApiKey.usuario_id == user_id)
+        .filter(models.ApiKey.usuario_id == user_id, models.ApiKey.purpose == purpose)
         .order_by(models.ApiKey.fecha_creacion.desc())
     )
     return result.scalars().all()
 
-async def revoke_api_key(db: AsyncSession, user_id: UUID, api_key_id: UUID):
+async def get_mcp_api_keys_for_user(db: AsyncSession, user_id: UUID):
+    return await get_api_keys_for_user(db, user_id, purpose="mcp")
+
+async def revoke_api_key(db: AsyncSession, user_id: UUID, api_key_id: UUID, *, purpose: str):
     result = await db.execute(
         select(models.ApiKey).filter(
             models.ApiKey.id == api_key_id,
             models.ApiKey.usuario_id == user_id,
+            *([models.ApiKey.purpose == purpose] if purpose is not None else []),
         )
     )
     db_key = result.scalar_one_or_none()
@@ -378,6 +417,7 @@ async def get_user_by_api_key(db: AsyncSession, api_key: str):
     result = await db.execute(
         select(models.ApiKey).filter(
             models.ApiKey.key_hash == _hash_api_key(normalized_api_key),
+            models.ApiKey.purpose == "legacy",
             models.ApiKey.activo == True,
         )
     )
@@ -388,6 +428,30 @@ async def get_user_by_api_key(db: AsyncSession, api_key: str):
     if not user or not user.activo:
         return None
     db_key.ultimo_uso = utc_now()
+    await db.commit()
+    return user
+
+async def get_user_by_mcp_api_key(db: AsyncSession, api_key: str):
+    normalized_api_key = _normalize_api_key_for_lookup(api_key)
+    if not normalized_api_key:
+        return None
+    now = utc_now()
+    result = await db.execute(select(models.ApiKey).filter(
+        models.ApiKey.key_hash == _hash_api_key(normalized_api_key),
+        models.ApiKey.purpose == "mcp", models.ApiKey.activo == True,
+        or_(models.ApiKey.expires_at.is_(None), models.ApiKey.expires_at > now),
+    ))
+    db_key = result.scalar_one_or_none()
+    if not db_key:
+        return None
+    if db_key.expires_at is not None and db_key.expires_at <= now:
+        return None
+    user = await get_user(db, db_key.usuario_id)
+    if not user or not user.activo:
+        return None
+    user.mcp_scopes = list(db_key.scopes_json or [])
+    user.mcp_key_prefix = db_key.key_prefix
+    db_key.ultimo_uso = now
     await db.commit()
     return user
 

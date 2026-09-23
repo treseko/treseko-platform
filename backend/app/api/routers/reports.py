@@ -440,12 +440,22 @@ def _shared_report_bundle_response(bundle: dict, request: Request):
     executive = next((snapshot for snapshot in snapshots if _snapshot_report_type(snapshot) == "executive"), None)
     response_snapshots = []
     for snapshot in snapshots:
-        data = schemas.SharedReportSnapshotResponse.model_validate(snapshot).model_dump()
-        data["public_url"] = _snapshot_url(snapshot, request)
-        revoker = getattr(snapshot, "revoker", None) or getattr(snapshot, "_revocation_actor", None)
-        data["revoked_by_display"] = (revoker.nombre_completo or revoker.email) if revoker else None
-        data["has_new_values"] = False
-        response_snapshots.append(data)
+        # Do not return ``payload`` here: it contains the complete frozen
+        # report and can become very large as executions/evidence grow. The
+        # report endpoints load it on demand for the selected token.
+        response_snapshots.append({
+            "token": snapshot.token,
+            "report_type": _snapshot_report_type(snapshot),
+            "title": snapshot.title,
+            "description": snapshot.description,
+            "public_url": _snapshot_url(snapshot, request),
+            "build_id": snapshot.build_id,
+            "componente_id": snapshot.componente_id,
+            "created_at": snapshot.created_at,
+            "expires_at": snapshot.expires_at,
+            "activo": snapshot.activo,
+            "has_new_values": False,
+        })
     created_at = min((snapshot.created_at for snapshot in snapshots), default=utc_now())
     expires_at = next((snapshot.expires_at for snapshot in snapshots if snapshot.expires_at), None)
     metadata = ((snapshots[0].payload or {}).get("metadata") or {}) if snapshots else {}

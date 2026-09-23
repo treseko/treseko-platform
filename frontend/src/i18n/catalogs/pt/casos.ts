@@ -40,6 +40,14 @@ const casos = {
   model: 'Modelo',
   modelPlaceholder: 'Ex.: gpt-4o-mini',
   modelHelp: 'Obrigatório para APIs compatíveis com OpenAI; também pode ser herdado do ambiente ou dataset.',
+  duplicateCaseTitle: 'Já existe um caso de teste com o mesmo nome.',
+  dragToOrganize: 'Arraste para reordenar ou mover',
+  moveCaseUp: 'Mover caso para cima',
+  moveCaseDown: 'Mover caso para baixo',
+  caseOrganizationSaved: 'Ordem dos casos salva.',
+  caseOrganizationFailed: 'Não foi possível salvar a ordem. A ordem anterior foi restaurada.',
+  caseOrganizationFilteredDisabled: 'A organização fica desativada enquanto filtros de busca ou componente estiverem ativos.',
+  unsuitedOrganizationDisabled: 'Casos sem suite não podem ser reordenados aqui; mova o caso para uma suite primeiro.',
 }
 
 export default casos

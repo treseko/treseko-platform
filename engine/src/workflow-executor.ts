@@ -4,6 +4,7 @@ import { validateWorkflowRuntime } from './ai/agent-registry.ts';
 import { advanceValidatedGraphStep, runLlmAgent, runReporterAgent, runRuleAgent, runScriptAgent, runValidatorAgent, runWebhookAgent } from './ai/custom-agents.ts';
 import { interpretStepData } from './automation/context-data-interpreter.ts';
 import { graphRunResultFromMemory } from './ai/graph-runtime/graph-run-result.ts';
+import { executeMcpToolAgent } from './ai/mcp-tool-agent.ts';
 
 export async function executeConfiguredWorkflow(context: any): Promise<any> {
   const { options, testId, task, expected, url, urlCandidate, manualSteps, qaSteps, ai, page, emit, emitAgent, navigateToResolvedBaseUrl, runQaSteps, runResult: initialRunResult, normalizeEngineUrl, firstStepUrl, performFinalAudit, workflowTimeoutMs } = context;
@@ -290,11 +291,7 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
           reason: `Aprobacion humana pendiente para ${node.name}`,
           events: [{ type: 'human_approval_requested', node_id: node.id }],
         }),
-        'universal-mcp/v1': async (node) => ({
-          status: 'BLOCKED', confidence: 100,
-          reason: `La herramienta MCP de ${node.name} no esta autorizada en esta instalacion`,
-          events: [{ type: 'mcp_tool_blocked', node_id: node.id }],
-        }),
+        'universal-mcp/v1': async (node, input) => executeMcpToolAgent(node, input, options.mcpRuntime),
         'universal-a2a-disabled/v1': async (node) => ({
           status: 'BLOCKED', confidence: 100,
           reason: `A2A permanece deshabilitado para ${node.name} hasta configurar identidad y confianza remota`,
@@ -339,13 +336,7 @@ export async function executeConfiguredWorkflow(context: any): Promise<any> {
           reason: `Aprobacion humana pendiente para ${node.name}`,
           events: [{ type: 'human_approval_requested', node_id: node.id }],
         }),
-        mcp_tool_agent: async (node) => ({
-          // MCP stays disabled until an installed tool is explicitly
-          // allowlisted. This is safer than treating it as an LLM request.
-          status: 'BLOCKED', confidence: 100,
-          reason: `La herramienta MCP de ${node.name} no esta autorizada en esta instalacion`,
-          events: [{ type: 'mcp_tool_blocked', node_id: node.id }],
-        }),
+        mcp_tool_agent: async (node, input) => executeMcpToolAgent(node, input, options.mcpRuntime),
         a2a_disabled_agent: async (node) => ({
           status: 'BLOCKED', confidence: 100,
           reason: `A2A permanece deshabilitado para ${node.name} hasta configurar identidad y confianza remota`,

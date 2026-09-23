@@ -8,6 +8,7 @@ type AuthoringSuiteTreeViewProps = {
   selectedSubSuiteId: string | null
   selectedTest: any
   casosList: any[]
+  organizationCases?: any[]
   currentCompId: string
   testSearchQuery: string
   selectSuiteTarget: (suiteId: string) => void
@@ -21,8 +22,10 @@ type AuthoringSuiteTreeViewProps = {
   handleRestoreSuite?: (suite: any) => void
   handleDeleteSuite: (suiteId: string) => void
   openEditCase: (test: any) => void
+  beforeOpenEditCase?: (test: any) => boolean | Promise<boolean>
   openCloneCaseModal: (test: any) => void
   openMoveCaseModal: (test: any) => void
+  organizeCase?: (test: any, targetSuiteId: string | null, position: number) => Promise<boolean | void> | boolean | void
   handleArchiveCaso?: (test: any) => void
   handleRestoreCaso?: (test: any) => void
   loadCasoVersions: (masterId: string, test?: any) => void
@@ -36,6 +39,7 @@ export function AuthoringSuiteTreeView({
   selectedSubSuiteId,
   selectedTest,
   casosList,
+  organizationCases,
   currentCompId,
   testSearchQuery,
   selectSuiteTarget,
@@ -49,8 +53,10 @@ export function AuthoringSuiteTreeView({
   handleRestoreSuite,
   handleDeleteSuite,
   openEditCase,
+  beforeOpenEditCase,
   openCloneCaseModal,
   openMoveCaseModal,
+  organizeCase,
   handleArchiveCaso,
   handleRestoreCaso,
   loadCasoVersions,
@@ -64,7 +70,8 @@ export function AuthoringSuiteTreeView({
       selectedSubSuiteId={selectedSubSuiteId}
       selectedTest={selectedTest}
       casosList={casosList}
-      currentCompId=""
+      organizationCases={organizationCases}
+      currentCompId={currentCompId}
       testSearchQuery={testSearchQuery}
       onSelectSuite={selectSuiteTarget}
       onToggleSuite={(suiteId) => setExpandedSuites(prev => ({ ...prev, [suiteId]: !prev[suiteId] }))}
@@ -76,13 +83,18 @@ export function AuthoringSuiteTreeView({
       onArchiveSuite={handleArchiveSuite}
       onRestoreSuite={handleRestoreSuite}
       onDeleteSuite={handleDeleteSuite}
-      onSelectTest={(test, suiteId) => {
+      onSelectTest={async (test, suiteId) => {
+        if (beforeOpenEditCase && !(await beforeOpenEditCase(test))) return
         selectSuiteTarget(suiteId)
         openEditCase(test)
       }}
-      onEditCase={openEditCase}
+      onEditCase={async (test) => {
+        if (beforeOpenEditCase && !(await beforeOpenEditCase(test))) return
+        openEditCase(test)
+      }}
       onCloneCase={openCloneCaseModal}
       onMoveCase={openMoveCaseModal}
+      onOrganizeCase={organizeCase}
       onArchiveCase={handleArchiveCaso}
       onRestoreCase={handleRestoreCaso}
       onViewVersions={(test) => loadCasoVersions(test.masterId, test)}

@@ -3,7 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import test from 'node:test';
 import path from 'node:path';
-import { deliverTerminalResult, persistPendingTerminalDelivery, terminalDeliveryId } from './terminal-callback.ts';
+import { deliverTerminalResult, persistPendingTerminalDelivery, terminalDeliveryId, validateTerminalCallbackUrl } from './terminal-callback.ts';
+
+test('callback URL exige allowlist y rechaza destinos privados', () => {
+  assert.equal(validateTerminalCallbackUrl('https://backend.example.test/result', 'backend.example.test').hostname, 'backend.example.test');
+  assert.throws(() => validateTerminalCallbackUrl('https://evil.example.test/result', 'backend.example.test'), /allowlist/i);
+  assert.throws(() => validateTerminalCallbackUrl('http://127.0.0.1:8000/result', '127.0.0.1'), /privada/i);
+});
 
 test('persiste la entrega terminal pendiente en el runtime privado del Engine', () => {
   const previousDir = process.env.ENGINE_PENDING_DELIVERIES_DIR;
@@ -47,8 +53,34 @@ test('reintenta con el mismo id y acepta solo un ACK persistido', async () => {
   };
   const ack = await deliverTerminalResult({
     url: 'http://backend.test/result', executionId, payload: { status: 'PASO', metadata: {} },
-    attempts: 2, timeoutMs: 1000, fetchImpl: fetchImpl as typeof fetch,
+    attempts: 2, timeoutMs: 1000, resolveHost: async () => ['93.184.216.34'], fetchImpl: fetchImpl as typeof fetch,
   });
   assert.equal(ack.attempts, 2);
   assert.equal(calls, 2);
+});
+
+test('rechaza un callback cuyo hostname cambia a una red privada antes de conectar', async () => {
+  let calls = 0;
+  await assert.rejects(() => deliverTerminalResult({
+    url: 'https://backend.example.test/result', executionId: 'dns-rebinding', payload: {},
+    attempts: 1, timeoutMs: 1000,
+    resolveHost: async () => ['93.184.216.34', '127.0.0.1'],
+    fetchImpl: (async () => { calls += 1; throw new Error('must not connect'); }) as typeof fetch,
+  }), /destino|privad|segur/i);
+  assert.equal(calls, 0);
+});
+
+test('fija el callback al IP validado aunque el fetch vuelva a resolver el hostname', async () => {
+  let requested: string | URL | undefined;
+  const ack = await deliverTerminalResult({
+    url: 'https://backend.example.test/result', executionId: 'dns-pinned', payload: {},
+    attempts: 1, timeoutMs: 1000,
+    resolveHost: async () => ['93.184.216.34'],
+    fetchImpl: (async (input) => {
+      requested = input as string | URL;
+      return new Response(JSON.stringify({ execution_id: 'dns-pinned', acknowledged: true, report_complete: true, terminal_delivery_id: 'ai-terminal:dns-pinned' }), { status: 200 });
+    }) as typeof fetch,
+  });
+  assert.equal(ack.acknowledged, true);
+  assert.match(String(requested), /93\.184\.216\.34/);
 });

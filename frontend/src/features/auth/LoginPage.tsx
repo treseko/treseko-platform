@@ -10,6 +10,7 @@ import traceabilityHero from '../../assets/marketing/login-hero-traceability.svg
 import automationHero from '../../assets/marketing/login-hero-automation.svg'
 import reportingHero from '../../assets/marketing/login-hero-reporting.svg'
 import { useI18n } from '../../i18n'
+import { PasswordVisibilityField } from '../../shared/ui/PasswordVisibilityField'
 
 type LoginFormState = {
   email: string
@@ -244,7 +245,7 @@ export function LoginPage({
                         </Form.Group>
                         <Form.Group className="mb-3">
                           <Form.Label className="small fw-bold text-muted">{t('auth.password')}</Form.Label>
-                          <Form.Control name="a11y-loginpagetsx-247" aria-label="Campo de formulario" type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required />
+                          <PasswordVisibilityField name="a11y-loginpagetsx-247" aria-label="Campo de formulario" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} />
                         </Form.Group>
                       </>
                     ) : (

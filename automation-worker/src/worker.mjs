@@ -119,7 +119,7 @@ function clearRunnerCredentials() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const { contentTypeForFile, artifactFromBuffer, artifactFromFile, collectArtifacts } = createArtifactRuntime({
-  fs, path, ARTIFACT_MAX_BYTES, ARTIFACT_EXTENSIONS,
+  fs, path, ARTIFACT_MAX_BYTES, ARTIFACT_EXTENSIONS, redactTraceText,
 });
 
 const { traceRequestId, safeJsonParse, formatErrorDetail: formatErrorDetailRuntime, errorFromResponse, isDebugMode, shouldRunHeadless } = createWorkerValues({
@@ -228,6 +228,7 @@ const {
   getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
   playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
   getPlaywrightCliPath, getPackageBinPath, preparePlaywrightTestSource, runCommand,
+  sanitizeChildEnv,
   scriptFileForJob, serializeJsonForSource, prepareNodeScriptSource,
   prepareSeleniumPythonSource,
 } = createScriptRuntime({ capabilities, require, path, spawn, process });
@@ -499,6 +500,7 @@ export {
   redact,
   replacePlaceholders,
   safeJsonParse,
+  sanitizeChildEnv,
 };
 
 const invokedAsMain = process.argv[1]

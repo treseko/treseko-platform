@@ -9,6 +9,7 @@ import { ADMIN_GUIDE_ACTION_EVENT, type AdminGuideAction } from '../features/onb
 
 export function AppWorkspaceView({ options }: { options: any }) {
   const { setCurrentExecutionCase } = options;
+  const confirmLeavingWithUnsavedChanges = options.confirmLeavingWithUnsavedChanges;
   const executionModalCandidateTests = options.executionModalCandidateTests || [];
   const { activeBuildResultsLoaded,activeBuildResultsLoading,activeExecutionTests,activeTab,addStepInput,adminUserRolesConfiguration,agents,aiDryRunRunning,aiEngineConfiguration,allAuthoringCases,allVisibleExecutionTestsSelected,appUsers,archivedAuthoringCases,assignPreviousFailedCases,assignableUsers,attachmentConfig,authoringInitialLoading,authoringRefreshing,automationMonitor,backToRelatedBugDecisionList,belongsToCurrentComponent,bugTrackerRefreshToken,buildActions,buildCaseDraftIds,buildCaseIds,buildCaseSearch,buildsList,canAccessCapability,canAccessModule,canEditCurrentProject,canRenderActiveModule,canSaveCaseEditor,caseArchiveView,caseEditorOpen,caseEditorSaving,caseVersions,closeConfirmDialog,closeExecutionRunDetail,closeExecutionSelector,closeRelatedBugDecision,collapsedSections,componentActions,componentForm,componentSearchQuery,componentsList,configTab,confirmAction,confirmDialog,consumeDeepLinkBug,copyToClipboard,creatingInternalBugContextId,currentAuthoringCases,currentBuildId,currentBuildIsReadOnly,currentCompId,currentComponentCases,currentComponentName,currentExecutionCase,currentExecutionRun,currentOrgId,currentProjectAgents,currentProjectCases,currentProjectCustomInventoryItems,currentProjectDevices,currentProjectEnvironments,currentProjectIaQueue,currentProjectId,currentProjectInventoryCategories,currentProjectRedmineBugs,currentProjectRunHistory,customInventoryItems,customRoles,deepLinkBugId,deferRedmineReportAndContinue,devices,duplicateStepInput,editingBuildCasesId,editingCasoMasterId,editingRoleId,editingSuiteId,editingUserId,environmentActions,environments,execName,executionBugDetailId,executionDatasetPreview,executionDatasetPreviewLoading,executionInitialLoading,executionLoading,executionModalDiscardedCount,executionModalTests,executionRefreshing,executionRunDetail,executionRunDetailError,executionRunDetailLoading,executionSnapshots,executionSuiteTree,expandedMetricSuites,feedbackModal,fetchWithAuth,filteredTests,firstRunLoaded,firstRunState,focusedExecutionId,folderConfig,generalConfiguration,generalExecutionAttachments,generalExecutionNote,generalExecutionSnapshot,generalExecutionStatus,generateBugDescription,getCasoVersionRows,getExecutionActionLabel,getExecutionCaseLabel,getExecutionCompletionPlan,getExecutionReferenceCount,getExecutionStatusKey,getSnapshotReferences,getSnapshotStatus,getSuiteDepth,handleAssignOrganizationMember,handleCloneCaso,handleCloneSuite,handleCompleteCase,handleComponentChange,handleCreateCaseFromStory,handleCreateInternalBugFromCaseHistory,handleCreateInternalBugFromExecution,handleCreateOrganization,handleCreateSuite,handleGeneralExecutionAttachmentUpload,handleInternalBugDraftChange,handleLaunchIaMission,handleLoggedUserPreferencesUpdated,handleLoggedUserUpdated,handleLogout,handleModuleNavigation,handleMoveCaso,handleMoveSuite,handleOpenLinkedCaseFromStory,handleOrgChange,handleProjectChange,handleRemoveGeneralExecutionAttachment,handleRemoveOrganizationMember,handleRemoveSnapshotAttachment,handleRunAiDryRunFromEditor,handleRunSavedAutomatedCaseFromEditor,handleSaveRole,handleSaveTest,handleSaveUser,handleSelectTestForExecution,handleSetOrganizationActive,handleSnapshotAttachmentUpload,handleSnapshotNoteBlur,handleSnapshotNoteChange,handleSnapshotStatusChange,handleStartExecution,handleStepInputChange,handleSubmitInternalBugReport,handleUpdateOrganization,handleUpdateSuite,handleUserCustomRoleChange,handleUserRoleChange,hasOrganizationAccess,hasSystemFeature,hasUnsavedCaseChanges,historialInitialFilters,iaExecutionStreams,iaLogs,iaProvider,iaStatus,internalBugAdditionalContext,internalBugDraft,internalBugEvidence,invModalConfig,inventoryCategories,isOutdatedExecutionCase,linkBugFromDecision,linkExecutionToExistingBug,loadCasosFromBackend,loadOrganizationsFromBackend,loadProjectMetrics,loadProjectRunHistory,loadRelatedBugsForSelectedCase,loadTestRunDetail,lockedBuildCaseIds,loggedUser,managingProjectId,markHistorialAiReviewed,metricsLoading,moveStepInput,moveSuiteParentId,movingSuiteId,newTestApiConfig,newTestComponent,newTestCriticality,newTestData,newTestDescription,newTestFormat,newTestFramework,newTestLanguage,newTestPost,newTestPre,newTestPriority,newTestScript,newTestStatus,newTestSteps,newTestSuite,newTestSuiteSub,newTestTags,newTestTitle,newTestType,openBugsByCase,openBugsLoading,openBuildCasesModal,openCreateSuiteModal,openExecutionRunDetail,openExecutionSelector,openHistorialRuns,openIaSchedulerFromExecutionSelector,openIaSchedulerFromWorkflowBuilder,openInternalBugReportFromPrompt,openManualInternalBugDrawer,openRedmineReportFromPrompt,openSingleCaseExecutionSelector,organizationMemberForm,organizationMembers,organizations,pendingHistorialRunDetailId,pendingTraceabilityStoryIds,persistAccessToken,projectActions,projectInnerTab,projectMemberActions,projectMemberForm,projectMemberRemoval,projectMembers,projectMetrics,projectSyncMessage,projectVersion,projectsList,projectsLoading,projectsSource,redmineUrl,refreshCurrentBuildExecutionStatus,relatedBugDecision,relatedCaseBugs,relatedCaseBugsLoading,removeStepInput,renderAuthoringSuiteTree,renderCaseReferences,renderExecutionSuiteTree,returnToExecutionList,roleForm,saveBuildCases,scheduledTime,schedulerSearch,scriptTestResult,scriptTesting,selectSuiteTarget,selectedCompareVersionId,selectedExecutionDatasetId,selectedExecutionEnvironmentId,selectedExecutionTestIds,selectedExecutionTests,selectedOrganizationId,selectedSuiteId,selectedTest,selectedTestsForIa,selectedWiki,sessionConfiguration,setActiveTab,setAgents,setAutomationMonitor,setBranding,setBugTrackerRefreshToken,setBuildCaseDraftIds,setBuildCaseSearch,setCaseArchiveView,setCaseEditorOpen,setCollapsedSections,setComponentForm,setComponentSearchQuery,setComponentsList,setConfigTab,setCurrentBuildId,setCustomInventoryItems,setDevices,setEditingCasoMasterId,setEditingSuiteId,setEnvironments,setExecName,setExecutionBugDetailId,setExpandedMetricSuites,setExpandedSuites,setFeedbackModal,setFirstRunState,setGeneralExecutionNote,setGeneralExecutionStatus,setIaExecutionStreams,setIaLogs,setIaQueue,setIaSchedulerOpenedFromBuilder,setInternalBugAdditionalContext,setInternalBugDraft,setInternalBugEvidence,setInvModalConfig,setInventoryCategories,setManagingProjectId,setMoveSuiteParentId,setMovingSuiteId,setNewTestApiConfig,setNewTestComponent,setNewTestCriticality,setNewTestData,setNewTestDescription,setNewTestFormat,setNewTestFramework,setNewTestLanguage,setNewTestPost,setNewTestPre,setNewTestPriority,setNewTestScript,setNewTestStatus,setNewTestTags,setNewTestTitle,setNewTestType,setOrganizationMemberForm,setPendingHistorialRunDetailId,setPendingTraceabilityStoryIds,setProjectInnerTab,setProjectMemberForm,setProjectMemberRemoval,setRoleCapabilityPermission,setRoleForm,setRoleModulePermission,setScheduledTime,setSchedulerSearch,setScriptTestResult,setScriptTesting,setSelectedCompareVersionId,setSelectedExecutionDatasetId,setSelectedExecutionEnvironmentId,setSelectedExecutionTestIds,setSelectedOrganizationId,setSelectedSubSuiteId,setSelectedTest,setSelectedTestsForIa,setSelectedWiki,setShowAddFolderModal,setShowBuildCasesModal,setShowComponentModal,setShowIaScheduler,setShowMoveSuiteModal,setShowProjectMemberModal,setShowRedmineDrawer,setShowRedminePrompt,setShowRoleModal,setShowSuiteModal,setShowUserModal,setShowVersionsModal,setSuiteForm,setTestSearchQuery,setUserForm,setWikiFormData,setWikiMode,setZoomImage,showAddFolderModal,showBuildCasesModal,showComponentModal,showExecSelector,showFeedback,showIaScheduler,showMoveSuiteModal,showProjectMemberModal,showRedmineDrawer,showRedminePrompt,showRoleModal,showSuiteModal,showUserModal,showVersionsModal,showWorkspaceAccessGate,snapshotAttachments,snapshotNotes,startSuiteExplorerResize,suiteExplorerWidth,suiteForm,suitesTree,systemEdition,testSearchQuery,toggleExecutionSelection,toggleVisibleExecutionSelection,traceabilityRefreshToken,updateMaintenanceState,updateStepAttachments,userForm,versionsCase,viewMode,viewRelatedBugFromDecision,visibleAuthoringCases,visibleAuthoringSuiteTree,visibleSuiteTree,wikiActions,wikiFormData,wikiMode,wikiPages,zoomImage
  } = options;
@@ -17,6 +18,59 @@ export function AppWorkspaceView({ options }: { options: any }) {
   const findOpenBugForExecutionContext = options.findOpenBugForExecutionContext; const requestRelatedBugDecision = options.requestRelatedBugDecision;
   const sortBuildsNewestFirst = providedSortBuildsNewestFirst || defaultSortBuildsNewestFirst;
   const visibleSidebarItems = sidebarItems || allSidebarItems.filter(item => canAccessModule(item.id));
+
+  const guardedModuleNavigation = async (moduleId: any) => {
+    if (moduleId !== activeTab && !(await confirmLeavingWithUnsavedChanges())) return;
+    handleModuleNavigation(moduleId);
+  };
+
+  const guardedOrgChange = async (orgId: string) => {
+    if (String(orgId) !== String(currentOrgId) && !(await confirmLeavingWithUnsavedChanges())) return;
+    handleOrgChange(orgId);
+  };
+
+  const guardedProjectChange = async (projectId: string) => {
+    if (String(projectId) !== String(currentProjectId) && !(await confirmLeavingWithUnsavedChanges())) return;
+    handleProjectChange(projectId);
+  };
+
+  const guardedComponentChange = async (componentId: string) => {
+    if (String(componentId) !== String(currentCompId) && !(await confirmLeavingWithUnsavedChanges())) return;
+    handleComponentChange(componentId);
+  };
+
+  const guardedBuildChange = async (build: any) => {
+    if (String(build?.id) !== String(currentBuildId) && !(await confirmLeavingWithUnsavedChanges())) return;
+    setCurrentBuildId(build.id);
+  };
+
+  const guardedLogout = async () => {
+    if (!(await confirmLeavingWithUnsavedChanges())) return;
+    handleLogout();
+  };
+
+  const guardedRenderAuthoringSuiteTree = (
+    suites: any[],
+    openCloneCaseModal?: (test: any) => void,
+    openCloneSuiteModal?: (suite: any) => void,
+    openMoveCaseModal?: (test: any) => void,
+  ) => renderAuthoringSuiteTree(
+    suites,
+    openCloneCaseModal,
+    openCloneSuiteModal,
+    openMoveCaseModal,
+    confirmLeavingWithUnsavedChanges,
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedCaseChanges) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedCaseChanges]);
 
   useEffect(() => {
     const focusGuideTarget = (targetName: string) => {
@@ -31,7 +85,7 @@ export function AppWorkspaceView({ options }: { options: any }) {
     }
 
     const goToProjects = (targetName?: string) => {
-      handleModuleNavigation('proyectos')
+      guardedModuleNavigation('proyectos')
       setManagingProjectId(null)
       setProjectInnerTab('config')
       if (targetName) focusGuideTarget(targetName)
@@ -43,7 +97,7 @@ export function AppWorkspaceView({ options }: { options: any }) {
 
       const hasActiveOrganization = organizations.some((organization: any) => organization.active !== false)
       if (action === 'solution' || (action === 'project' && !hasActiveOrganization)) {
-        handleModuleNavigation('configuracion')
+        guardedModuleNavigation('configuracion')
         setConfigTab('clients')
         return
       }
@@ -58,7 +112,7 @@ export function AppWorkspaceView({ options }: { options: any }) {
           goToProjects('project-create')
           return
         }
-        handleModuleNavigation('proyectos')
+        guardedModuleNavigation('proyectos')
         setManagingProjectId(currentProjectId)
         setProjectInnerTab('components')
         focusGuideTarget(action === 'build' && currentCompId ? 'build-create' : 'component-create')
@@ -66,28 +120,28 @@ export function AppWorkspaceView({ options }: { options: any }) {
       }
 
       if (action === 'suite' || action === 'case') {
-        handleModuleNavigation('crear_pruebas')
+        guardedModuleNavigation('crear_pruebas')
         focusGuideTarget('suite-create')
         return
       }
 
       if (action === 'execution') {
-        handleModuleNavigation('ejecutar')
+        guardedModuleNavigation('ejecutar')
         return
       }
 
       if (action === 'evidence') {
-        handleModuleNavigation('historial')
+        guardedModuleNavigation('historial')
         return
       }
 
       if (action === 'bug') {
-        handleModuleNavigation('bugs')
+        guardedModuleNavigation('bugs')
         return
       }
 
       if (action === 'report') {
-        handleModuleNavigation('reportes')
+        guardedModuleNavigation('reportes')
       }
     }
 
@@ -104,24 +158,22 @@ export function AppWorkspaceView({ options }: { options: any }) {
         setSidebarCollapsed={setSidebarCollapsed}
         sidebarItems={visibleSidebarItems}
         activeTab={activeTab}
-        onModuleNavigation={handleModuleNavigation}
+        onModuleNavigation={guardedModuleNavigation}
         organizations={organizations}
         currentOrgId={currentOrgId}
-        onOrgChange={handleOrgChange}
+        onOrgChange={guardedOrgChange}
         loggedUser={loggedUser}
-        onLogout={handleLogout}
+        onLogout={guardedLogout}
         projectsList={projectsList}
         currentProjectId={currentProjectId}
-        onProjectChange={handleProjectChange}
+        onProjectChange={guardedProjectChange}
         componentsList={componentsList}
         currentCompId={currentCompId}
-        onComponentChange={handleComponentChange}
+        onComponentChange={guardedComponentChange}
         buildsList={buildsList}
         currentBuildId={currentBuildId}
         sortBuildsNewestFirst={sortBuildsNewestFirst}
-        onBuildChange={(build) => {
-          setCurrentBuildId(build.id);
-        }}
+        onBuildChange={guardedBuildChange}
         canAccessConfig={canAccessModule("configuracion")}
         systemEdition={systemEdition}
         branding={branding}
@@ -319,7 +371,7 @@ export function AppWorkspaceView({ options }: { options: any }) {
               relatedCaseBugs,
               relatedCaseBugsLoading,
               removeStepInput,
-              renderAuthoringSuiteTree,
+              renderAuthoringSuiteTree: guardedRenderAuthoringSuiteTree,
               renderCaseReferences,
               renderExecutionSuiteTree, requestRelatedBugDecision, returnToExecutionList,
               scriptTestResult,

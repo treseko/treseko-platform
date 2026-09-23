@@ -240,6 +240,7 @@ class CasoPruebaCreate(CasoPruebaBase):
         return value
 
 class CasoPruebaUpdateMetadata(BaseModel):
+    titulo: Optional[str] = Field(default=None, min_length=1, max_length=255)
     prioridad: Optional[Prioridad] = None
     criticidad: Optional[Criticidad] = None
     estado_caso: Optional[EstadoCaso] = None
@@ -255,11 +256,19 @@ class CasoPruebaUpdateMetadata(BaseModel):
 class CasoMoveRequest(BaseModel):
     suite_id: UUID
 
+class CasoReorderRequest(BaseModel):
+    caso_id: UUID
+    suite_id: Optional[UUID] = None
+    orden: List[UUID] = Field(..., min_length=1, max_length=MAX_SUITE_REORDER_ITEMS)
+    orden_origen: Optional[List[UUID]] = Field(default=None, max_length=MAX_SUITE_REORDER_ITEMS)
+    revision: str = Field(..., min_length=1, max_length=128)
+
 class CasoPrueba(CasoPruebaBase):
     id: UUID
     master_id: UUID
     proyecto_id: UUID
     version: int
+    orden: int = 0
     latest_version: Optional[int] = None
     latest_case_id: Optional[UUID] = None
     is_outdated_version: bool = False
@@ -276,6 +285,11 @@ class CasoPrueba(CasoPruebaBase):
 
 class CasoPruebaConPasos(CasoPrueba):
     pasos: List[Paso] = Field(default_factory=list)
+
+class CasoReorderResponse(BaseModel):
+    """Canonical active sibling order returned after an organization change."""
+    cases: List[CasoPrueba]
+    revision: str
 
 class CasoVersion(BaseModel):
     id: UUID

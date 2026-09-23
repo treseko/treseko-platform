@@ -1,0 +1,11 @@
+[Unit]
+Description=Treseko coordinated update spool recovery timer
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=30s
+Persistent=true
+Unit=treseko-update-spool.service
+
+[Install]
+WantedBy=timers.target

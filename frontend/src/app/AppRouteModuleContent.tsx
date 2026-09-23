@@ -51,8 +51,9 @@ export function AppRouteModuleContent({ options }: { options: any }) {
     setWikiFormData, setWikiMode, setZoomImage, showFeedback, snapshotAttachments, snapshotNotes, startSuiteExplorerResize, suiteExplorerWidth,
     suitesTree, testSearchQuery, toggleExecutionSelection, toggleVisibleExecutionSelection, traceabilityRefreshToken, updateStepAttachments, viewMode, visibleAuthoringCases,
     visibleAuthoringSuiteTree, visibleSuiteTree, wikiActions, wikiFormData, wikiMode, wikiPages,
+    confirmLeavingWithUnsavedChanges,
   } = options
-  const openBugCase = (bug: any) => {
+  const openBugCase = async (bug: any) => {
     const caseId = String(bug?.caso_id || '')
     const caseCode = String(bug?.case_code || '').trim()
     const caseItem = [...(currentProjectCases || []), ...(allAuthoringCases || [])].find((item: any) =>
@@ -63,6 +64,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       showFeedback('Bug Tracker', 'No se encontró el caso de prueba asociado.', 'warning')
       return
     }
+    if (!(await confirmLeavingWithUnsavedChanges())) return
     setSelectedTest(caseItem)
     setEditingCasoMasterId(caseItem.master_id || caseItem.masterId || caseItem.id)
     setCaseEditorOpen(true)
@@ -147,6 +149,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       {activeTab === "bugs" && (
         <BugTrackerPage
           currentProjectId={currentProjectId}
+          currentUserId={loggedUser?.id}
           currentBuildId={currentBuildId}
           currentCompId={currentCompId}
           buildsList={buildsList}
@@ -218,7 +221,11 @@ export function AppRouteModuleContent({ options }: { options: any }) {
           currentProjectCases={currentProjectCases}
           currentProjectEnvironments={currentProjectEnvironments}
           openSingleCaseExecutionSelector={openSingleCaseExecutionSelector}
-          openCaseEditor={selectedTest => { setSelectedTest(selectedTest); setActiveTab('crear_pruebas') }}
+          openCaseEditor={async (nextTest: any) => {
+            if (!(await confirmLeavingWithUnsavedChanges())) return
+            setSelectedTest(nextTest)
+            setActiveTab('crear_pruebas')
+          }}
           fetchWithAuth={fetchWithAuth}
           showFeedback={showFeedback}
           setActiveTab={setActiveTab}

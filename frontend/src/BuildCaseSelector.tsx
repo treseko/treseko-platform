@@ -114,7 +114,7 @@ const SuiteNode = memo(({
           )}
         </span>
 
-        <input name="a11y-buildcaseselectortsx-116" aria-label="Campo de formulario"
+        <input name="a11y-buildcaseselectortsx-116" aria-label={t('motorIa.selectAll')}
           type="checkbox"
           className="form-check-input flex-shrink-0 m-0"
           style={{ cursor: 'pointer' }}

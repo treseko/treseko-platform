@@ -1,0 +1,15 @@
+[Unit]
+Description=Treseko host-owned coordinated update spool consumer
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_CONFIG@
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_WRAPPER@
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=@TRESEKO_UPDATE_BRIDGE_WRAPPER@
+TimeoutStartSec=3600
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

@@ -89,7 +89,6 @@ Artefactos esperados en `dist/`:
 | Windows x64 | `windows-2022` | `Treseko-Installer-v<VERSION>-windows-x64.exe` |
 | Linux x64 | `ubuntu-24.04` | `Treseko-Installer-v<VERSION>-linux-x64.AppImage` |
 | macOS arm64 | `macos-14` | `Treseko-Installer-v<VERSION>-macos-arm64.app` |
-| macOS x64 | `macos-13` | `Treseko-Installer-v<VERSION>-macos-x64.app` |
 
 En macOS, descargá el artefacto correspondiente a la arquitectura de tu Mac,
 descomprimilo y abrí `Treseko-Installer-v<VERSION>-macos-<arch>.app` con doble

@@ -106,7 +106,6 @@ def _render_qa_decision(qa_summary: dict):
         recommendation = "Build apta para avanzar segun la evidencia congelada."
     else:
         recommendation = "No liberar hasta resolver riesgos altos."
-    conversation_content = turn_cards or "<p class='muted-text'>No hay turnos conservados en este snapshot.</p>"
     return (
         "<div class='callout'>"
         f"<strong>Diagnóstico de calidad: {html.escape(_qa_decision_label(qa_summary.get('decision')))}</strong><br/>"
@@ -328,14 +327,15 @@ def _render_traceable_bugs(request: Request, bugs: list, *, target: str = "bugs"
             "<tr>"
                 f"<td><strong>{html.escape(development_bug_code(bug))}</strong>{view_link}<br/><span class='muted-text'>{_report_html(bug.get('titulo'), fallback='Sin título', max_len=300)}</span></td>"
                 f"<td>{html.escape(development_case_code(bug))}<br/><span class='muted-text'>{html.escape(str(bug.get('suite') or 'Sin suite'))}</span></td>"
-            f"<td>{html.escape(str(bug.get('severidad') or ''))}<br/><span class='muted-text'>Prioridad {html.escape(str(bug.get('prioridad') or ''))}</span></td>"
-                f"<td>{html.escape(str(bug.get('estado') or ''))}<br/><span class='muted-text'>{'Abierto' if is_open else 'Cerrado'}</span></td>"
-            f"<td>{html.escape(_fmt_report_hours(timing))}<br/><span class='muted-text'>{timing_label}</span></td>"
+            f"<td><span class='pill fail'>{html.escape(str(bug.get('severidad') or 'N/D'))}</span> "
+                f"<span class='muted-text'>Prioridad {html.escape(str(bug.get('prioridad') or 'N/D'))}</span><br/>"
+                f"{html.escape(str(bug.get('estado') or 'N/D'))} · {'Abierto' if is_open else 'Cerrado'}<br/>"
+                f"<span class='muted-text'>{html.escape(_fmt_report_hours(timing))} · {timing_label}</span></td>"
                 f"<td><span class='muted-text'>Origen: {html.escape(development_build_name(bug))}<br/>Verificación actual: {html.escape(development_current_build_verification(bug))}</span></td>"
                 f"<td>{html.escape(evidence)}<br/><span class='muted-text'>Resp.: {html.escape(development_responsible_name(bug))}</span></td>"
             "</tr>"
         )
-    return f"<table><thead><tr><th>Bug</th><th>Caso / suite</th><th>Severidad</th><th>Estado</th><th>Tiempo del bug</th><th>Build (origen / corrección)</th><th>Evidencia / responsable</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    return f"<table class='report-bugs-table'><thead><tr><th>Bug</th><th>Caso / suite</th><th>Severidad, estado y tiempo</th><th>Build de origen / corrección</th><th>Evidencia / responsable</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
 
 def _conversation_json(value: Any, *, max_len: int = 7000) -> str:
@@ -483,7 +483,8 @@ def _render_common_bug_context(bug: dict, *, case: dict | None = None, execution
         ("Dispositivo", bug.get("dispositivo") or "No registrado"),
         ("Resolución", bug.get("resolucion") or "No registrado"),
         ("Sistema operativo", bug.get("sistema_operativo") or "No registrado"),
-        ("Versión de la aplicación", bug.get("version_app") or "No registrado"),
+        ("Build de origen", bug.get("version_app") or bug.get("build_detectado") or "No registrado"),
+        ("Versión de Treseko", bug.get("platform_version") or "No registrada"),
         ("URL afectada", bug.get("url_afectada") or "No registrado"),
     ]
     rows_html = "".join(
@@ -553,6 +554,7 @@ def _render_conversational_bug_details(request: Request, bug: dict) -> str:
     for label, value in (("Herramientas", technical.get("tools")), ("Comprobaciones de memoria", technical.get("memory_checks")), ("Trazas técnicas", technical.get("request_response") or technical.get("conversation"))):
         if value:
             technical_blocks.append(f"<details><summary>{label}</summary><pre class='report-pre'>{html.escape(context_json_without_internal_ids(value)[:9000])}</pre></details>")
+    conversation_content = turn_cards or "<p class='muted-text'>No hay turnos conservados en este snapshot.</p>"
     return (
         "<div class='conversation-report'>"
         f"<p><span class='pill muted'>CONVERSACIONAL</span> <span class='pill {_report_badge_class(evaluation.get('status') or bug.get('estado'))}'>{html.escape(str(evaluation.get('status') or bug.get('estado') or 'N/D'))}</span> "
@@ -737,7 +739,7 @@ def _render_bug_reproduction_details(request: Request, bugs: list, *, compact: b
                 + _render_common_bug_fields(bug)
             )
         cards.append(
-            "<div class='subcard'>"
+            "<div class='subcard report-detail-card'>"
             f"<h3>{html.escape(str(bug.get('codigo') or 'Bug'))} · {_report_html(bug.get('titulo'), fallback='Sin título', max_len=320)}{view_link}</h3>"
             f"<p><span class='pill fail'>{html.escape(str(bug.get('severidad') or ''))}</span> "
             f"<span class='pill warning'>{html.escape(str(bug.get('prioridad') or ''))}</span> "
@@ -752,7 +754,7 @@ def _render_development_bug_details(request: Request, bugs: list):
     count = len(bugs)
     return (
         f"<p><strong>Fichas técnicas disponibles: {count}</strong></p>"
-        f"<details><summary>Ver fichas técnicas ({count})</summary>"
+        f"<details open><summary>Ver fichas técnicas ({count})</summary>"
         f"{_render_bug_reproduction_details(request, bugs, target='incidencias')}"
         "</details>"
     )

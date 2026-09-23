@@ -1,5 +1,5 @@
 export function createArtifactRuntime(deps) {
-  const { fs, path, ARTIFACT_MAX_BYTES, ARTIFACT_EXTENSIONS } = deps;
+  const { fs, path, ARTIFACT_MAX_BYTES, ARTIFACT_EXTENSIONS, redactTraceText = (value) => String(value) } = deps;
 
 function contentTypeForFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -25,12 +25,16 @@ function contentTypeForFile(filePath) {
 }
 
 function artifactFromBuffer({ filename, contentType = "image/png", buffer, type = "screenshot", stepNumber = null }) {
-  if (!buffer?.length || buffer.length > ARTIFACT_MAX_BYTES) return null;
+  if (!buffer?.length) return null;
+  const safeBuffer = /^text\//.test(contentType) || contentType === "application/json" || contentType === "application/xml"
+    ? Buffer.from(redactTraceText(Buffer.from(buffer).toString("utf8")), "utf8")
+    : Buffer.from(buffer);
+  if (!safeBuffer.length || safeBuffer.length > ARTIFACT_MAX_BYTES) return null;
   return {
     type,
     filename,
     content_type: contentType,
-    base64: Buffer.from(buffer).toString("base64"),
+    base64: safeBuffer.toString("base64"),
     step_number: stepNumber,
   };
 }

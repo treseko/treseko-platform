@@ -30,6 +30,19 @@ export function useSharedReportState(options: any) {
   const reusableSharedReport = findReusableSharedReport(sharedReportHistory)
   const hasOutdatedSharedReport = sharedReportHistory.some((item) => item?.activo && item?.has_new_values)
   const buildDefinitionRequiresComment = ['RECHAZADA', 'BLOQUEADA', 'APROBADA_CON_OBSERVACIONES', 'PENDIENTE_DE_VALIDACION'].includes(buildDefinition)
+  const isTransientNetworkError = (error: any) => {
+    const message = String(error?.message || error || '').toLowerCase()
+    return error instanceof TypeError || message.includes('load failed') || message.includes('failed to fetch') || message.includes('networkerror')
+  }
+  const retryAfterNetworkError = async (request: () => Promise<Response>) => {
+    try {
+      return await request()
+    } catch (error) {
+      if (!isTransientNetworkError(error)) throw error
+      await new Promise(resolve => setTimeout(resolve, 800))
+      return request()
+    }
+  }
   const normalizeSharedReportFromHistory = (item: any) => ({ ...item, reused: true, reusedFromHistory: true, links: item.links || {}, tokens: item.tokens || {}, snapshots: item.snapshots || [] })
   const loadSharedReportHistory = useCallback(async () => {
     const emptyResult = { items: [] as any[], buildId: null as string | null }
@@ -67,7 +80,7 @@ export function useSharedReportState(options: any) {
     if (buildDefinitionRequiresComment && !qaComment.trim()) { showFeedback(t('reportes.commentRequiredTitle'), t('reportes.commentRequired'), 'warning'); return }
     setSharingReport(true)
     try {
-      const response = await fetchWithAuth(`${API_BASE}/reports/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proyecto_id: currentProjectId, build_id: projectMetrics.build_id || currentBuildId || null, requested_report_type: 'all', build_definition: buildDefinition, qa_comment: qaComment.trim() || null }) })
+      const response = await retryAfterNetworkError(() => fetchWithAuth(`${API_BASE}/reports/share`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proyecto_id: currentProjectId, build_id: projectMetrics.build_id || currentBuildId || null, requested_report_type: 'all', build_definition: buildDefinition, qa_comment: qaComment.trim() || null }) }))
       if (!response.ok) throw new Error(humanizePremiumError(await response.text()))
       const data = await response.json(); setSharedReport(data); setShareAcknowledged(true); setShowShareModal(true)
       showFeedback(data?.reused ? 'Snapshot reutilizado' : 'Paquete compartible creado', data?.reused ? 'No hubo cambios; se reutilizo el snapshot existente.' : 'Se generaron links Ejecutivo, Desarrollo e Interno.', 'success'); loadSharedReportHistory()

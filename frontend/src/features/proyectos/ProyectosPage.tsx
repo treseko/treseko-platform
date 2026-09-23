@@ -132,13 +132,15 @@ export function ProyectosPage(props: ProyectosPageProps) {
     transitionTarget, transitionForm, setTransitionForm, setTransitionTarget, compatibleBuilds,
     requestTransition, confirmTransition, quickTransitioningBugId, isCorrected } = useProjectBugIssues({ managingProjectId, projectInnerTab, fetchWithAuth, showFeedback, t, buildsList })
   const canEditProject = canEditCurrentProject && canEditProjectPortfolio && buildWriteEnabled
-  const canEditProjectComponentsEffective = canEditProjectComponents && buildWriteEnabled
-  const canEditProjectBuildsEffective = canEditProjectBuilds && buildWriteEnabled
-  const canEditProjectTeamEffective = canEditProjectTeam && buildWriteEnabled
-  const canEditProjectEnvironmentsEffective = canEditProjectEnvironments && buildWriteEnabled
-  const canEditProjectDatasetsEffective = canEditProjectDatasets && buildWriteEnabled
-  const canEditProjectWikiEffective = canEditProjectWiki && buildWriteEnabled
-  const canEditProjectTicketsEffective = canEditProjectTickets && buildWriteEnabled
+  const canEditProjectComponentsEffective = canEditCurrentProject && canEditProjectComponents && buildWriteEnabled
+  const canEditProjectBuildsEffective = canEditCurrentProject && canEditProjectBuilds && buildWriteEnabled
+  // The backend also requires project-level write access for team mutations.
+  // Keep the assign/remove controls aligned with that server-side guard.
+  const canEditProjectTeamEffective = canEditCurrentProject && canEditProjectTeam && buildWriteEnabled
+  const canEditProjectEnvironmentsEffective = canEditCurrentProject && canEditProjectEnvironments && buildWriteEnabled
+  const canEditProjectDatasetsEffective = canEditCurrentProject && canEditProjectDatasets && buildWriteEnabled
+  const canEditProjectWikiEffective = canEditCurrentProject && canEditProjectWiki && buildWriteEnabled
+  const canEditProjectTicketsEffective = canEditCurrentProject && canEditProjectTickets && buildWriteEnabled
   const projectAdminTabs = [
     { id: 'config', label: canReadProjectTeam ? t('proyectos.tabConfigTeam') : t('proyectos.tabConfig'), icon: Sliders, visible: canEditProjectPortfolio || canReadProjectTeam },
     { id: 'components', label: t('proyectos.tabComponentsBuilds'), icon: Layers, visible: canReadProjectComponents || canReadProjectBuilds || canReadProjectBuildScope },
@@ -386,6 +388,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
               projectInnerTab,
               setProjectInnerTab,
               canEditProjectPortfolio,
+              canEditCurrentProject,
               canReadProjectTeam,
               canEditProject,
               handleUpdateProject,

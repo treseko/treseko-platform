@@ -1,6 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { API_BASE, ROLE_ACCESS } from '../../app/constants'
 import { mapBackendRoleToItem, mapBackendUserToItem, modulesFromPermissions, modulesFromPermissionsAndCapabilities, permissionsFromModules } from '../../app/mappers'
+import { RBAC_CAPABILITIES } from '../../app/rbac/rbacCatalog'
 import type { CapabilityId, CapabilityPermissionMap, ModuleId, ModulePermissionMap, PermissionLevel, RoleKey } from '../../app/types'
 import type { TranslationKey } from '../../i18n'
 
@@ -320,17 +321,30 @@ export function createAdminUserRoleActions({
     setShowRoleModal(true)
   }
 
-  const setRoleModulePermission = (moduleId: ModuleId, level: PermissionLevel) => {
+  const setRoleModulePermission = (moduleId: ModuleId, level: PermissionLevel, catalogCapabilityIds: string[] = []) => {
     const nextPermissions = { ...roleForm.permissions }
+    const capabilityIds = new Set([
+      ...RBAC_CAPABILITIES.flatMap(group => group.capabilities
+        .filter(capability => group.module === moduleId)
+        .map(capability => capability.id)),
+      ...catalogCapabilityIds,
+      ...Object.keys(roleForm.capabilities || {}).filter(capability => capability.startsWith(`${moduleId}.`)),
+    ])
+    const nextCapabilities = { ...(roleForm.capabilities || {}) }
     if (level === 'none') {
       delete nextPermissions[moduleId]
+      capabilityIds.forEach(capabilityId => delete nextCapabilities[capabilityId])
     } else {
       nextPermissions[moduleId] = level
+      capabilityIds.forEach(capabilityId => {
+        nextCapabilities[capabilityId] = level
+      })
     }
     setRoleForm({
       ...roleForm,
       permissions: nextPermissions,
-      modules: modulesFromPermissionsAndCapabilities(nextPermissions, roleForm.capabilities || {}),
+      capabilities: nextCapabilities,
+      modules: modulesFromPermissionsAndCapabilities(nextPermissions, nextCapabilities),
     })
   }
 
@@ -344,16 +358,42 @@ export function createAdminUserRoleActions({
     })
   }
 
+  const applyRolePreset = (level: PermissionLevel) => {
+    const nextPermissions: ModulePermissionMap = {}
+    const nextCapabilities: CapabilityPermissionMap = {}
+    if (level !== 'none') {
+      RBAC_CAPABILITIES.forEach(group => {
+        nextPermissions[group.module] = level
+        group.capabilities.forEach(capability => {
+          nextCapabilities[capability.id] = level
+        })
+      })
+    }
+    setRoleForm({
+      ...roleForm,
+      permissions: stripClientAccessPermission(nextPermissions),
+      capabilities: nextCapabilities,
+      modules: modulesFromPermissionsAndCapabilities(nextPermissions, nextCapabilities),
+    })
+  }
+
   const handleSaveRole = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const cleanPermissions = stripClientAccessPermission(roleForm.permissions)
     const cleanModules = stripClientAccessModule(modulesFromPermissionsAndCapabilities(cleanPermissions, roleForm.capabilities || {}))
     if (editingRoleId?.startsWith('system:')) {
       const role = editingRoleId.replace('system:', '') as RoleKey
+      const affectedUsers = appUsers.filter((user: any) => user.baseRole === role)
+      const confirmed = await confirmAction({
+        title: t('configuracion.updateSystemRoleTitle', { role }),
+        message: t('configuracion.updateSystemRoleMessage', { count: affectedUsers.length, role }),
+        variant: 'warning',
+        confirmLabel: t('configuracion.updateSystemRole'),
+      })
+      if (!confirmed) return
       const next = { ...systemRoleOverrides, [role]: cleanPermissions }
       setSystemRoleOverrides(next)
       localStorage.setItem('qa_system_role_overrides', JSON.stringify(next))
-      const affectedUsers = appUsers.filter((user: any) => user.baseRole === role)
       await Promise.all(affectedUsers.map(user => fetchWithAuth(`${API_BASE}/usuarios/${user.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
@@ -446,6 +486,7 @@ export function createAdminUserRoleActions({
     openRoleModal,
     setRoleModulePermission,
     setRoleCapabilityPermission,
+    applyRolePreset,
     handleSaveRole,
     handleDeactivateRole
   }

@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 import re
 import csv
 import io
@@ -62,8 +63,12 @@ def _shared_report_html(
     latest_url: Optional[str] = None,
     branding: Optional[dict] = None,
 ) -> str:
-    payload = snapshot.payload or {}
+    # Render from a copy so legacy snapshots can receive presentation-only
+    # context without changing their immutable stored payload.
+    payload = deepcopy(snapshot.payload or {})
     meta = payload.get("metadata") or {}
+    platform_version = meta.get("app_version")
+    _annotate_report_platform_version(payload, platform_version)
     metrics = payload.get("metrics") or {}
     stats = metrics.get("stats") or {}
     bugs = payload.get("bugs") or []
@@ -147,10 +152,10 @@ def _shared_report_html(
         body = (
             f"{header}"
             f"{_render_section_if(development_section_enabled(payload, 'failures'), 'Excepciones sin bug abierto', _render_development_failures(request, payload, only_without_bug=True, categories=development_categories))}"
-            f"{_render_section_if(bugs_enabled, 'Bugs nuevos detectados', _render_traceable_bugs(request, new_bugs, target='incidencias'))}"
-            f"{_render_section_if(bugs_enabled, 'Bugs sin clasificar', _render_traceable_bugs(request, unclassified_bugs, target='incidencias'))}"
-            f"{_render_section_if(tracking_enabled, 'Históricos pendientes y reincidencias', _render_traceable_bugs(request, historical_bugs, target='incidencias'))}"
-            f"{_render_section_if(corrected_enabled, 'Correcciones verificadas', _render_development_corrected_bugs(corrected_bugs))}"
+            f"{_render_section_if(bugs_enabled, f'Bugs nuevos detectados ({len(new_bugs)})', _render_traceable_bugs(request, new_bugs, target='incidencias'))}"
+            f"{_render_section_if(bugs_enabled, f'Bugs sin clasificar ({len(unclassified_bugs)})', _render_traceable_bugs(request, unclassified_bugs, target='incidencias'))}"
+            f"{_render_section_if(tracking_enabled, f'Históricos pendientes y reincidencias ({len(historical_bugs)})', _render_traceable_bugs(request, historical_bugs, target='incidencias'))}"
+            f"{_render_section_if(corrected_enabled, f'Correcciones verificadas ({len(corrected_bugs)})', _render_development_corrected_bugs(corrected_bugs))}"
             f"{_render_section_if(details_enabled, 'Fichas técnicas de las categorías habilitadas', _render_development_bug_details(request, detail_bugs))}"
             f"{_render_section_if(development_section_enabled(payload, 'actions'), 'Acciones recomendadas', _render_development_actions(payload))}"
         )
@@ -166,7 +171,6 @@ def _shared_report_html(
             f"{trend_block}"
             f"</section>"
             f"{_render_section_if(_report_section_enabled(payload, 'executive', 'findings'), 'Top hallazgos relevantes', _render_executive_issues(cases))}"
-            f"{_render_section_if(_report_section_enabled(payload, 'executive', 'risks'), 'Incidentes relevantes para reproducir', _render_bug_reproduction_details(request, [bug for bug in bugs if _report_render_bug_is_active(bug)], compact=True))}"
         )
     footer_version = meta.get("app_version")
     footer = (
@@ -177,6 +181,30 @@ def _shared_report_html(
     watermark_items = "".join(f"<span>{brand_name}</span>" for _ in range(256))
     watermark = f"<div class='report-watermark' aria-hidden='true'>{watermark_items}</div>"
     return f"{head}{body}{footer}</main>{watermark}</div></body></html>"
+
+
+def _annotate_report_platform_version(payload: dict, platform_version: object) -> None:
+    """Expose the frozen Treseko version separately from the evaluated build.
+
+    Older snapshots store ``version_app`` on a bug as the QA build label
+    (for example ``V1.0.0``).  That value must not be presented as the
+    platform installation version.  This annotation is render-only and keeps
+    historical snapshots immutable.
+    """
+    if platform_version in (None, ""):
+        return
+    containers = [payload.get("bugs")]
+    development = payload.get("development")
+    if isinstance(development, dict):
+        containers.extend(development.get(name) for name in (
+            "bugs", "new_bugs", "historical_bugs", "corrected_bugs", "unclassified_bugs",
+        ))
+    for container in containers:
+        if not isinstance(container, list):
+            continue
+        for bug in container:
+            if isinstance(bug, dict):
+                bug.setdefault("platform_version", platform_version)
 
 def _shared_report_csv(snapshot: models.SharedReportSnapshot) -> str:
     payload = snapshot.payload or {}

@@ -1,6 +1,5 @@
 from .repository_context import *
 from ..project_status import PROJECT_ACTIVE_STATUSES, normalize_project_status
-from ..services.edition.entitlement_service import enforce_limit
 from ..time_utils import utc_now
 
 
@@ -135,17 +134,6 @@ async def ensure_project_user_organization_membership(db: AsyncSession, proyecto
     )
     if result.scalar_one_or_none():
         return
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(models.OrganizacionMiembro)
-        .filter(models.OrganizacionMiembro.organizacion_id == project.organizacion_id)
-    )
-    await enforce_limit(
-        db,
-        "max_users",
-        int(count_result.scalar() or 0),
-        tenant_id=str(project.organizacion_id),
-    )
     db.add(models.OrganizacionMiembro(
         organizacion_id=project.organizacion_id,
         usuario_id=usuario_id,

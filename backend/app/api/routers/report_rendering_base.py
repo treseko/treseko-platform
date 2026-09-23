@@ -117,11 +117,16 @@ def _report_render_bug_is_active(bug: dict) -> bool:
     return str((bug or {}).get("estado") or "").upper() not in REPORT_RENDER_CLOSED_BUG_STATUSES
 
 def _report_frontend_base_url(request: Request) -> str:
-    # Never trust the browser Origin header or the backend container hostname.
-    # The shared resolver uses the configured public frontend origin and falls
-    # back to the local Vite host/port used by the development launcher.
-    # Production deployments must set FRONTEND_PUBLIC_URL explicitly.
-    return frontend_public_url()
+    # Never trust the browser Origin header. Prefer an explicitly configured
+    # public origin, but do not emit the local Vite fallback from a deployed
+    # report: behind a reverse proxy the request host is the public app host.
+    configured = frontend_public_url()
+    parsed = urlparse(configured)
+    if parsed.hostname in {"127.0.0.1", "localhost", "::1"}:
+        request_origin = urlparse(str(request.base_url))
+        if request_origin.scheme in {"http", "https"} and request_origin.netloc and request_origin.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            return f"{request_origin.scheme}://{request_origin.netloc}"
+    return configured
 
 def _report_bug_tracker_url(request: Request, bug: dict, *, target: str = "bugs") -> Optional[str]:
     bug_id = (bug or {}).get("id")

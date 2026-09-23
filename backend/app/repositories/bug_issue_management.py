@@ -5,6 +5,32 @@ from .bug_context_filters import apply_bug_context_filter, mark_legacy_chatbot_i
 from ..services.chatbot_turns import find_executed_turn
 
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
+BUG_SELF_RESOLUTION_STATES = {"RESUELTO"}
+BUG_LEAD_CLOSURE_STATES = {"CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
+
+
+def bug_patch_capabilities(payload: schemas.BugIssueUpdate, bug, user_id: UUID) -> tuple[str, ...]:
+    """Return capabilities required by assignment changes in a bug PATCH.
+
+    ``exclude_unset`` is intentional: PATCH with ``asignado_a: null`` is a
+    real unassignment and must not be confused with an omitted field.
+    """
+    updates = payload.model_dump(exclude_unset=True)
+    if "asignado_a" not in updates or updates["asignado_a"] == bug.asignado_a:
+        return ()
+    if bug.asignado_a is None and updates["asignado_a"] == user_id:
+        return ("bugs.tomar",)
+    return ("bugs.asignar",)
+
+
+def bug_transition_policy(next_state: str) -> tuple[str, str | None]:
+    """Return (capability, role restriction) for a status transition."""
+    normalized = str(next_state or "").strip().upper()
+    if normalized in BUG_SELF_RESOLUTION_STATES:
+        return "bugs.resolver", "assignee"
+    if normalized in BUG_LEAD_CLOSURE_STATES:
+        return "bugs.cerrar", "leader_or_admin"
+    return "bugs.triage", None
 
 def _summarize_bug_items(bugs):
     def count_by(field):
@@ -50,6 +76,8 @@ def _apply_bug_filters(query, filters: Dict[str, Any]):
             if field in {"tipo_contexto", "chatbot_finding_type"}:
                 value = str(value).strip().upper()
             query = query.filter(getattr(models.BugIssue, field) == value)
+    if filters.get("sin_asignar"):
+        query = query.filter(models.BugIssue.asignado_a.is_(None))
     if filters.get("build_id") is not None:
         build_id = filters["build_id"]
         if str(filters.get("build_scope") or "").lower() == "historical":

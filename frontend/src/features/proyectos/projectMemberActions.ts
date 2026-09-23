@@ -67,11 +67,11 @@ export function createProjectMemberActions({
 
   const handleSubmitProjectMember = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!managingProjectId || !projectMemberForm.userId) return
+    if (!managingProjectId || !projectMemberForm.userId) return { ok: false, error: 'Selecciona un usuario válido.' }
     const user = assignableUsers.find(item => item.id === projectMemberForm.userId)
     if (!user) {
       setProjectSyncMessage(t('proyectos.memberUserNotFound'))
-      return
+      return { ok: false, error: t('proyectos.memberUserNotFound') }
     }
     const localMember = {
       id: `pm${Date.now()}`,
@@ -102,10 +102,12 @@ export function createProjectMemberActions({
         setProjectsList(prev => prev.map(project => project.id === managingProjectId ? { ...project, team: nextMembers.filter(item => item.projectId === managingProjectId).length } : project))
         setProjectSyncMessage(t('proyectos.memberAssignedBackend'))
         setShowProjectMemberModal(false)
+        return { ok: true }
       } catch (error: any) {
-        setProjectSyncMessage(`${t('proyectos.memberAssignError')}: ${error.message}.`)
+        const message = `${t('proyectos.memberAssignError')}: ${error.message}.`
+        setProjectSyncMessage(message)
+        return { ok: false, error: message }
       }
-      return
     }
 
     const nextMembers = [
@@ -116,6 +118,7 @@ export function createProjectMemberActions({
     setProjectsList(prev => prev.map(project => project.id === managingProjectId ? { ...project, team: nextMembers.filter(item => item.projectId === managingProjectId).length } : project))
     setProjectSyncMessage(t('proyectos.memberAssignedLocal'))
     setShowProjectMemberModal(false)
+    return { ok: true }
   }
 
   const handleRemoveProjectMember = (userId: string) => {

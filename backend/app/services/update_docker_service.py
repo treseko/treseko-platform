@@ -92,7 +92,9 @@ class DockerServiceImageSwitch:
                 raise TransactionFailure("Installed Compose cannot faithfully replay the captured configuration")
             state = {"schema": 1, "project": self.project, "service": self.service,
                      "original": current["Id"], "current": current["Id"], "model": model,
-                     "original_image": current["Image"], "snapshot_image": None, "pending": None,
+                     "original_image": current["Image"],
+                     "original_reference": current["Config"]["Image"],
+                     "snapshot_image": None, "pending": None,
                      "snapshot_mode": self.snapshot_mode}
             save_json(directory / "service.json", state)
             return state
@@ -258,3 +260,78 @@ class DockerServiceImageSwitch:
             if current is None or state["pending"]:
                 raise TransactionFailure("Replacement has not been reconciled")
             self._run(["start", current["Id"]])
+
+    def verify_original_running(self, directory: Path):
+        """Verify a pre-apply recovery without recreating the original service.
+
+        A coordinator can choose rollback after another participant fails in
+        ``prepare``.  In that case this service was quiesced and restarted, but
+        it was never snapshotted or replaced.  Treating that no-op recovery as
+        a writable-layer rollback is both unnecessary and unsafe: there is no
+        private snapshot or mutable-directory inventory to canonicalize.
+        """
+        with exclusive_lock(directory / ".service.lock"):
+            state = self._load(directory)
+            if state.get("snapshot_image") is not None:
+                raise TransactionFailure("Original verification is only valid before snapshot")
+            if state.get("pending") is not None:
+                raise TransactionFailure("Original service still has a pending replacement")
+            current = self._current()
+            self._reconcile(state, current)
+            if (not current or not current["State"]["Running"]
+                    or current["Id"] != state["original"]
+                    or current["Image"] != state["original_image"]):
+                raise TransactionFailure("Pre-apply rollback did not preserve the original service")
+            desired_hash = self._hash()
+            if current["Config"]["Labels"].get("com.docker.compose.config-hash") != desired_hash:
+                raise TransactionFailure("Installed Compose model changed during pre-apply rollback")
+            reference = state.get("original_reference")
+            if not isinstance(reference, str) or not reference:
+                raise TransactionFailure("Original image reference is unavailable")
+            inspected = json.loads(self._run(["image", "inspect", reference]))
+            if len(inspected) != 1 or inspected[0].get("Id") != state["original_image"]:
+                raise TransactionFailure("Original image reference changed during pre-apply rollback")
+            return current["Id"]
+
+    def canonicalize_running(self, directory: Path):
+        """Return a verified rollback to the installed Compose model.
+
+        Snapshot images preserve a stopped container's writable layer, but a
+        container recreated from that private image has a different Compose
+        hash.  Once rollback verification has succeeded, immutable services
+        with no declared mutable directories can safely return to their exact
+        original image/reference and canonical model while ingress is fenced.
+        """
+        with exclusive_lock(directory / ".service.lock"):
+            state = self._load(directory)
+            current = self._current()
+            self._reconcile(state, current)
+            if not current or not current["State"]["Running"]:
+                raise TransactionFailure("Verified rollback service must be running")
+            if state.get("mutable_directories") != []:
+                raise TransactionFailure("Rollback with mutable writable-layer data cannot be canonicalized")
+            reference = state.get("original_reference")
+            if not isinstance(reference, str) or not reference:
+                raise TransactionFailure("Original image reference is unavailable")
+            inspected = json.loads(self._run(["image", "inspect", reference]))
+            if len(inspected) != 1 or inspected[0].get("Id") != state["original_image"]:
+                raise TransactionFailure("Original image reference changed after rollback")
+            model = copy.deepcopy(state["model"])
+            config = directory / "canonical-compose.json"
+            save_json(config, model)
+            desired_hash = self._hash([config])
+            if desired_hash != self._hash():
+                raise TransactionFailure("Installed Compose model changed during rollback")
+            state["pending"] = {"image": state["original_image"], "hash": desired_hash}
+            save_json(directory / "service.json", state)
+            self._compose(["up", "-d", "--no-deps", "--force-recreate", "--no-build",
+                           "--pull", "never", self.service], [config])
+            current = self._current()
+            if (not current or not current["State"]["Running"]
+                    or current["Image"] != state["original_image"]
+                    or current["Config"]["Labels"].get("com.docker.compose.config-hash") != desired_hash):
+                raise TransactionFailure("Canonical rollback service did not converge")
+            state.update(current=current["Id"], pending=None,
+                         active_config=str(config), canonicalized=True)
+            save_json(directory / "service.json", state)
+            return current["Id"]

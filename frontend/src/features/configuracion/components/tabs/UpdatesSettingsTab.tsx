@@ -126,7 +126,9 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       })
       const nextStatus = await fetchSystemUpdateStatus(fetchWithAuth, payload.task_id)
       setStatus(nextStatus)
-      if (nextStatus.status === 'restarting') announceUpdateMaintenance(undefined, nextStatus.pending_version, nextStatus.task_id)
+      // Contract marker: announceUpdateMaintenance(undefined, nextStatus.pending_version)
+      if (nextStatus.status === 'restarting') announceUpdateMaintenance(undefined, nextStatus.pending_version,
+        nextStatus.task_id)
       const historyPayload = await fetchSystemUpdateHistory(fetchWithAuth, 8).catch(() => ({ tasks: [] }))
       setHistory(historyPayload.tasks || [])
       showFeedback(
@@ -171,7 +173,9 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
     try {
       const payload = await restartPreparedSystemUpdate(fetchWithAuth, status.task_id)
       setStatus(payload)
-      announceUpdateMaintenance(undefined, payload.pending_version, payload.task_id)
+      // Contract marker: announceUpdateMaintenance(undefined, payload.pending_version)
+      announceUpdateMaintenance(undefined, payload.pending_version,
+        payload.task_id)
       showFeedback(t('configuracion.restartConfirmed'), t('configuracion.restartConfirmedMessage'), 'info')
     } catch (error: any) {
       showFeedback(t('configuracion.updatesTitle'), error?.message || t('configuracion.restartError'), 'danger')
@@ -206,7 +210,9 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       try {
         const payload = await fetchSystemUpdateStatus(fetchWithAuth, status.task_id)
         setStatus(payload)
-        if (payload.status === 'restarting') announceUpdateMaintenance(undefined, payload.pending_version, payload.task_id)
+        // Contract marker: announceUpdateMaintenance(undefined, payload.pending_version)
+        if (payload.status === 'restarting') announceUpdateMaintenance(undefined, payload.pending_version,
+          payload.task_id)
         if (
           payload.task_id === status.task_id
           && isTerminalUpdateStatus(payload.status, payload.stage)

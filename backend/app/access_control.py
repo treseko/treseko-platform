@@ -158,3 +158,18 @@ def project_access_filter(user: models.Usuario):
     if is_global_admin(user):
         return None
     return models.ProyectoMiembro.usuario_id == user.id
+
+
+async def accessible_organization_ids(db: AsyncSession, user: models.Usuario):
+    """Return active solutions visible to the user; None means global admin."""
+    if is_global_admin(user):
+        return None
+    result = await db.execute(
+        select(models.OrganizacionMiembro.organizacion_id)
+        .join(models.Organizacion, models.Organizacion.id == models.OrganizacionMiembro.organizacion_id)
+        .filter(
+            models.OrganizacionMiembro.usuario_id == user.id,
+            models.Organizacion.activo.is_(True),
+        )
+    )
+    return list(result.scalars().all())

@@ -124,7 +124,9 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Preparando paquete local..."
-COPYFILE_DISABLE=1 tar \
+# GNU tar y bsdtar aceptan --no-xattrs. Evita transportar metadata privada de
+# macOS que el host Linux no puede interpretar y que ensucia cada instalacion.
+COPYFILE_DISABLE=1 tar --no-xattrs \
   --exclude .git \
   --exclude '._*' \
   --exclude '*/._*' \
@@ -144,10 +146,9 @@ scp -P "$SSH_PORT" "$ARCHIVE" "${TARGET}:${REMOTE_ARCHIVE}"
 
 echo "Instalando Treseko en ${TARGET}:${REMOTE_DIR}..."
 ssh -p "$SSH_PORT" "$TARGET" \
-  "TRESEKO_REMOTE_DIR=$(shell_quote "$REMOTE_DIR") TRESEKO_HTTP_PORT=$(shell_quote "$HTTP_PORT") TRESEKO_INSTALL_DOCKER=$(shell_quote "$INSTALL_DOCKER") TRESEKO_WORKER_BROWSERS=$(shell_quote "$WORKER_BROWSERS") TRESEKO_WORKER_INSTALL_CYPRESS=$(shell_quote "$WORKER_INSTALL_CYPRESS") TRESEKO_WORKER_INSTALL_PUPPETEER=$(shell_quote "$WORKER_INSTALL_PUPPETEER") TRESEKO_DB_PASSWORD=$(shell_quote "$DB_PASSWORD") TRESEKO_SECRET_KEY=$(shell_quote "$SECRET_KEY") TRESEKO_AI_CREDENTIALS_MASTER_KEY=$(shell_quote "$AI_CREDENTIALS_MASTER_KEY") TRESEKO_AI_ENGINE_INTERNAL_TOKEN=$(shell_quote "$AI_ENGINE_INTERNAL_TOKEN") TRESEKO_ADMIN_PASSWORD=$(shell_quote "$ADMIN_PASSWORD") TRESEKO_SUDO_PASSWORD=$(shell_quote "${TRESEKO_SUDO_PASSWORD:-}") bash -s" <<'REMOTE_BODY'
+  "TRESEKO_REMOTE_DIR=$(shell_quote "$REMOTE_DIR") TRESEKO_HTTP_PORT=$(shell_quote "$HTTP_PORT") TRESEKO_INSTALL_DOCKER=$(shell_quote "$INSTALL_DOCKER") TRESEKO_WORKER_BROWSERS=$(shell_quote "$WORKER_BROWSERS") TRESEKO_WORKER_INSTALL_CYPRESS=$(shell_quote "$WORKER_INSTALL_CYPRESS") TRESEKO_WORKER_INSTALL_PUPPETEER=$(shell_quote "$WORKER_INSTALL_PUPPETEER") TRESEKO_DB_PASSWORD=$(shell_quote "$DB_PASSWORD") TRESEKO_SECRET_KEY=$(shell_quote "$SECRET_KEY") TRESEKO_AI_CREDENTIALS_MASTER_KEY=$(shell_quote "$AI_CREDENTIALS_MASTER_KEY") TRESEKO_AI_ENGINE_INTERNAL_TOKEN=$(shell_quote "$AI_ENGINE_INTERNAL_TOKEN") TRESEKO_ADMIN_PASSWORD=$(shell_quote "$ADMIN_PASSWORD") TRESEKO_SUDO_PASSWORD=$(shell_quote "${TRESEKO_SUDO_PASSWORD:-}") bash -c 'remote_script=\$(mktemp); cat >"\$remote_script"; bash "\$remote_script"; result=\$?; rm -f "\$remote_script"; exit "\$result"'" <<'REMOTE_BODY'
 set -euo pipefail
 
-SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   if ! command -v sudo >/dev/null 2>&1; then
     echo "El usuario remoto no es root y sudo no esta disponible." >&2
@@ -164,8 +165,21 @@ if [ "$(id -u)" -ne 0 ]; then
     fi
   fi
   unset TRESEKO_SUDO_PASSWORD
-  SUDO="sudo"
+  exec sudo -n env \
+    TRESEKO_REMOTE_DIR="$TRESEKO_REMOTE_DIR" \
+    TRESEKO_HTTP_PORT="$TRESEKO_HTTP_PORT" \
+    TRESEKO_INSTALL_DOCKER="$TRESEKO_INSTALL_DOCKER" \
+    TRESEKO_WORKER_BROWSERS="$TRESEKO_WORKER_BROWSERS" \
+    TRESEKO_WORKER_INSTALL_CYPRESS="$TRESEKO_WORKER_INSTALL_CYPRESS" \
+    TRESEKO_WORKER_INSTALL_PUPPETEER="$TRESEKO_WORKER_INSTALL_PUPPETEER" \
+    TRESEKO_DB_PASSWORD="$TRESEKO_DB_PASSWORD" \
+    TRESEKO_SECRET_KEY="$TRESEKO_SECRET_KEY" \
+    TRESEKO_AI_CREDENTIALS_MASTER_KEY="$TRESEKO_AI_CREDENTIALS_MASTER_KEY" \
+    TRESEKO_AI_ENGINE_INTERNAL_TOKEN="$TRESEKO_AI_ENGINE_INTERNAL_TOKEN" \
+    TRESEKO_ADMIN_PASSWORD="$TRESEKO_ADMIN_PASSWORD" \
+    bash "$0"
 fi
+SUDO=""
 
 if ! command -v docker >/dev/null 2>&1; then
   if [ "${TRESEKO_INSTALL_DOCKER}" != "true" ]; then
@@ -192,9 +206,11 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}"
-$SUDO tar -xzf /tmp/treseko-platform.tgz -C "${TRESEKO_REMOTE_DIR}"
+$SUDO tar --no-same-owner --no-same-permissions -xzf /tmp/treseko-platform.tgz -C "${TRESEKO_REMOTE_DIR}"
+$SUDO chmod 0755 "${TRESEKO_REMOTE_DIR}"
 $SUDO find "${TRESEKO_REMOTE_DIR}" -type f -name '._*' -delete
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}/secrets"
+$SUDO chmod 0700 "${TRESEKO_REMOTE_DIR}/secrets"
 
 DATABASE_URL="postgresql+asyncpg://treseko:${TRESEKO_DB_PASSWORD}@db:5432/treseko"
 
@@ -204,7 +220,16 @@ printf '%s' "${TRESEKO_SECRET_KEY}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/s
 printf '%s' "${TRESEKO_AI_CREDENTIALS_MASTER_KEY}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/ai-credentials-master-key" >/dev/null
 printf '%s' "${TRESEKO_AI_ENGINE_INTERNAL_TOKEN}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/ai-engine-internal-token" >/dev/null
 printf '%s' "${TRESEKO_ADMIN_PASSWORD}" | $SUDO tee "${TRESEKO_REMOTE_DIR}/secrets/admin-password" >/dev/null
-$SUDO chmod 0600 "${TRESEKO_REMOTE_DIR}"/secrets/*
+for secret_file in \
+  db-password database-url secret-key ai-credentials-master-key \
+  ai-engine-internal-token admin-password; do
+  secret_path="${TRESEKO_REMOTE_DIR}/secrets/${secret_file}"
+  $SUDO test -s "$secret_path" || {
+    echo "No se pudo escribir el secreto requerido '${secret_file}'." >&2
+    exit 1
+  }
+  $SUDO chmod 0600 "$secret_path"
+done
 
 $SUDO tee "${TRESEKO_REMOTE_DIR}/compose.production.env" >/dev/null <<ENV
 APP_ENV=production
@@ -232,9 +257,27 @@ for service_to_build in migrator backend engine frontend automation-worker; do
   else
     $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile automation build "${service_to_build}"
   fi
+  # Las imagenes de navegador son grandes. Liberar solo cache de build e
+  # imagenes colgantes evita agotar hosts pequenos sin tocar imagenes en uso,
+  # contenedores ni volumenes persistentes.
   $SUDO docker builder prune -af >/dev/null || true
+  $SUDO docker image prune -f >/dev/null || true
 done
 $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d db redis
+db_ready=false
+for _attempt in $(seq 1 60); do
+  if $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env exec -T -u postgres db \
+    pg_isready -U treseko -d treseko >/dev/null 2>&1; then
+    db_ready=true
+    break
+  fi
+  sleep 2
+done
+if [ "$db_ready" != "true" ]; then
+  echo "PostgreSQL no quedo disponible durante la instalacion." >&2
+  $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env logs --tail=100 db >&2 || true
+  exit 1
+fi
 # Reinstalaciones sobre el mismo volumen conservan el rol PostgreSQL, pero la
 # contraseña generada para esta instalación cambia. Ajustarla desde el socket
 # local evita romper migraciones sin eliminar datos persistentes.

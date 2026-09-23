@@ -88,7 +88,8 @@ async def list_automation_runner_pairing_requests(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("automatizacion.workers", "edit")),
 ):
-    return await crud.get_pending_automation_runner_pairing_requests(db)
+    organization_ids = await access_control.accessible_organization_ids(db, current_user)
+    return await crud.get_pending_automation_runner_pairing_requests(db, organization_ids)
 
 @router.get("/automation-runners/pairing-requests/{code}", response_model=schemas.AutomationRunnerPairingPoll)
 async def poll_automation_runner_pairing_request(
@@ -224,7 +225,8 @@ async def list_automation_runners(
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("automatizacion.workers", "read")),
 ):
-    runners = await crud.get_automation_runners(db)
+    organization_ids = await access_control.accessible_organization_ids(db, current_user)
+    runners = await crud.get_automation_runners(db, organization_ids)
     return [crud.automation_runner_response(runner) for runner in runners]
 
 @router.patch("/automation-runners/{runner_id}", response_model=schemas.AutomationRunner)

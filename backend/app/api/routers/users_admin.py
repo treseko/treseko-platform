@@ -87,10 +87,11 @@ async def _ensure_ad_user_exists(db: AsyncSession, identifier: str) -> None:
 async def read_usuarios(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    q: Annotated[str | None, Query(max_length=200)] = None,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.usuarios", "read"))
 ):
-    users = await crud.get_users(db, skip=skip, limit=limit)
+    users = await crud.get_users(db, skip=skip, limit=limit, query=q)
     for user in users:
         user.permisos = auth.effective_permissions_for_user(user)
         user.modulos = auth.effective_modules_for_user(user)

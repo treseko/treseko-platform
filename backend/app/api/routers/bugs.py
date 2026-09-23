@@ -34,6 +34,7 @@ async def read_project_bugs(
     ejecucion_id: Optional[UUID] = None,
     snapshot_id: Optional[UUID] = None,
     asignado_a: Optional[UUID] = None,
+    sin_asignar: Optional[bool] = None,
     creado_por: Optional[UUID] = None,
     external_provider: Annotated[Optional[str], Query(max_length=80)] = None,
     has_external: Optional[bool] = None,
@@ -46,7 +47,7 @@ async def read_project_bugs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
     return await crud.list_project_bugs(
@@ -63,6 +64,7 @@ async def read_project_bugs(
         ejecucion_id=ejecucion_id,
         snapshot_id=snapshot_id,
         asignado_a=asignado_a,
+        sin_asignar=sin_asignar,
         creado_por=creado_por,
         external_provider=external_provider,
         has_external=has_external,
@@ -82,7 +84,7 @@ async def read_project_bugs_summary(
     build_id: Optional[UUID] = None,
     build_scope: Annotated[Optional[str], Query(max_length=20)] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
     if build_id:
@@ -402,6 +404,12 @@ async def update_bug(
         raise HTTPException(status_code=404, detail="Bug no encontrado")
     await access_control.require_project_access(db, current_user, bug.proyecto_id, "edit")
     await _ensure_bug_build_is_active(db, bug)
+    patch_fields = payload.model_dump(exclude_unset=True)
+    if "fecha_resolucion" in patch_fields or "resuelto_por" in patch_fields:
+        raise HTTPException(status_code=422, detail="La resolución y su autor se registran mediante la transición de estado")
+    for capability in crud.bug_patch_capabilities(payload, bug, current_user.id):
+        if not auth.has_capability_permission(current_user, capability, "edit"):
+            raise HTTPException(status_code=403, detail=f"No tienes permisos para {capability}")
     old_state = {"asignado_a": bug.asignado_a, "severidad": bug.severidad, "prioridad": bug.prioridad}
     try:
         updated = await crud.update_bug_issue(db, bug_id, payload)
@@ -459,12 +467,19 @@ async def transition_bug(
     bug_id: UUID,
     payload: schemas.BugTransitionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.triage", "edit"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(
+        ("bugs.triage", "edit"), ("bugs.resolver", "edit"), ("bugs.cerrar", "edit")
+    ))
 ):
     bug = await crud.get_bug_issue(db, bug_id)
     if not bug:
         raise HTTPException(status_code=404, detail="Bug no encontrado")
     await access_control.require_project_access(db, current_user, bug.proyecto_id, "edit")
+    required_capability, role_restriction = crud.bug_transition_policy(payload.estado)
+    if not auth.has_capability_permission(current_user, required_capability, "edit"):
+        raise HTTPException(status_code=403, detail=f"No tienes permisos para {required_capability}")
+    if role_restriction == "assignee" and bug.asignado_a != current_user.id:
+        raise HTTPException(status_code=403, detail="Solo el responsable asignado puede resolver este bug")
     if payload.estado.upper() not in BUG_CLOSED_STATES:
         await _ensure_bug_build_is_active(db, bug)
     old_status = bug.estado

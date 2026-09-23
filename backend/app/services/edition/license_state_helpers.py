@@ -86,19 +86,38 @@ async def get_license_state(db: AsyncSession) -> dict[str, Any]:
                 fallback = offline_grace_from_cached_state(online_state, installed)
                 if fallback:
                     online_state = await save_online_license_state(db, fallback)
-    if isinstance(online_state, dict) and online_state.get("license"):
+    if (
+        local_state.get("edition") == "premium"
+        and local_state.get("state") == "active"
+        and isinstance(online_state, dict)
+        and online_state.get("license")
+        and online_state.get("edition") == "premium"
+        and online_state.get("state") == "active"
+        and online_state.get("valid") is True
+    ):
         online_license_id = (online_state.get("license") or {}).get("license_id")
         local_license_id = (local_state.get("license") or {}).get("license_id")
         if online_license_id and online_license_id == local_license_id:
-            # An online verification snapshot can outlive a product update.
-            # Community capabilities are always additive, so keep Premium
-            # licenses compatible with newly shipped Community features without
-            # granting any Premium capability or changing signed limits.
+            # The signed local document is the entitlement ceiling. A cached
+            # snapshot can be stale after a downgrade/renewal and must not add
+            # features or raise limits beyond what the currently valid document
+            # authorizes. Community capabilities remain additive for releases.
+            local_features = set(local_state.get("enabled_features") or [])
+            online_features = set(online_state.get("enabled_features") or [])
+            local_limits = dict(local_state.get("limits") or {})
+            online_limits = dict(online_state.get("limits") or {})
+            bounded_limits = {
+                limit_id: min(int(local_limit), int(online_limits[limit_id]))
+                if limit_id in online_limits
+                else int(local_limit)
+                for limit_id, local_limit in local_limits.items()
+            }
             return {
                 **online_state,
                 "online_status": "verified",
+                "limits": bounded_limits,
                 "enabled_features": sorted(
-                    set(online_state.get("enabled_features") or []) | community_feature_ids()
+                    (local_features & online_features) | community_feature_ids()
                 ),
             }
     if local_state.get("edition") == "premium" and (local_state.get("license") or {}).get("verification_server"):

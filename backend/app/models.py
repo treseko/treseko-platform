@@ -17,3 +17,4 @@ from .domain_models.scheduler import *
 from .domain_models.settings import *
 from .domain_models.system_updates import *
 from .domain_models.quality_intelligence import *
+from .domain_models.mcp import *

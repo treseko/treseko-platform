@@ -1,8 +1,8 @@
 import express from "express";
-import { deliverTerminalResult, persistPendingTerminalDelivery } from "./delivery/terminal-callback.ts";
+import { deliverTerminalResult, persistPendingTerminalDelivery, validateTerminalCallbackUrl } from "./delivery/terminal-callback.ts";
 import type { UpdateAdmission } from "./update-admission.ts";
 export function registerRunRoutes(app: express.Express, deps: any) {
-  const { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission } = deps as { updateAdmission?: UpdateAdmission } & any;
+  const { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission, mcpRuntime } = deps as { updateAdmission?: UpdateAdmission } & any;
   const beginAdmission = (kind: "run-task" | "run-task-sync", label: string) => {
     try {
       return updateAdmission?.beginLease(kind, label) || (() => undefined);
@@ -65,6 +65,14 @@ export function registerRunRoutes(app: express.Express, deps: any) {
     }
     if (!allowedEndpoint(llm_endpoint) || !allowedFallbacks(provider_fallbacks)) {
       return sendPublicError(req, res, 400, "El endpoint del modelo no está permitido.", "LLM_ENDPOINT_NOT_ALLOWED");
+    }
+    if (callback_url) {
+      try {
+        validateTerminalCallbackUrl(callback_url);
+      } catch (error: any) {
+        traceEntry("error", { message: "callback_url_rejected", reason: error?.message || "not allowed" });
+        return sendPublicError(req, res, 400, "El callback no está permitido.", "CALLBACK_URL_NOT_ALLOWED");
+      }
     }
     const executionKey = String(testId || "").trim();
     if (executionKey && activeExecutionIds.has(executionKey)) {
@@ -137,6 +145,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
           callbackUrl: callback_url,
           progressWsUrl: progress_ws_url,
           correlationId: requestCorrelation,
+          mcpRuntime,
         },
       );
       if (callback_url) {
@@ -153,6 +162,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         const correlatedResult = { ...result, correlation_id: requestCorrelation };
         await deliverTerminalResult({
           url: callback_url,
+          allowlist: process.env.ENGINE_CALLBACK_ALLOWLIST || undefined,
           token: callbackToken,
           executionId: testId,
           payload: correlatedResult,
@@ -167,7 +177,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
               ...(attempt.error ? { error: { message: attempt.error } } : {}),
             }),
         }).catch((callbackError) => {
-          persistPendingTerminalDelivery({ url: callback_url, token: callbackToken, executionId: testId, payload: correlatedResult });
+          persistPendingTerminalDelivery({ url: callback_url, allowlist: process.env.ENGINE_CALLBACK_ALLOWLIST || undefined, token: callbackToken, executionId: testId, payload: correlatedResult });
           traceEntry("error", {
             request_id: callbackRequestId,
             method: "POST",
@@ -237,6 +247,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         const callbackStarted = Date.now();
         await deliverTerminalResult({
           url: callback_url,
+          allowlist: process.env.ENGINE_CALLBACK_ALLOWLIST || undefined,
           token: callbackToken,
           executionId: testId,
           payload: errorPayload,
@@ -251,7 +262,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
               ...(attempt.error ? { error: { message: attempt.error } } : {}),
             }),
         }).catch((callbackError) => {
-          persistPendingTerminalDelivery({ url: callback_url, token: callbackToken, executionId: testId, payload: errorPayload });
+          persistPendingTerminalDelivery({ url: callback_url, allowlist: process.env.ENGINE_CALLBACK_ALLOWLIST || undefined, token: callbackToken, executionId: testId, payload: errorPayload });
           traceEntry("error", {
             request_id: callbackRequestId,
             method: "POST",
@@ -390,6 +401,7 @@ export function registerRunRoutes(app: express.Express, deps: any) {
           callbackToken: callback_token,
           progressWsUrl: progress_ws_url,
           correlationId: requestCorrelation,
+          mcpRuntime,
         },
       );
       res.json(result);

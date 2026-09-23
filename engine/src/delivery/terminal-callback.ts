@@ -1,14 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
+import { createPinnedFetch, isForbiddenAddress, resolveSafeAddress, type HostResolver } from '../ai/mcp-secure-transport.ts';
 
 export interface TerminalCallbackOptions {
   url: string;
+  allowlist?: string;
   token?: string;
   executionId: string;
   payload: Record<string, any>;
   attempts?: number;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  resolveHost?: HostResolver;
   onAttempt?: (details: { attempt: number; status?: number; error?: string }) => void;
 }
 
@@ -19,11 +23,24 @@ export interface TerminalCallbackAck {
   status: number;
 }
 
-type PendingTerminalDelivery = Pick<TerminalCallbackOptions, 'url' | 'token' | 'executionId' | 'payload'>;
+type PendingTerminalDelivery = Pick<TerminalCallbackOptions, 'url' | 'allowlist' | 'token' | 'executionId' | 'payload'>;
 
 const pendingDeliveryDir = () => process.env.ENGINE_PENDING_DELIVERIES_DIR
   || path.join(process.env.ENGINE_RUNTIME_DIR || process.cwd(), 'pending-deliveries');
 const pendingDeliveryPath = (executionId: string) => path.join(pendingDeliveryDir(), `${executionId}.json`);
+
+export function validateTerminalCallbackUrl(rawUrl: string, allowlist = process.env.ENGINE_CALLBACK_ALLOWLIST || ''): URL {
+  let parsed: URL;
+  try { parsed = new URL(String(rawUrl || '')); } catch { throw new Error('Callback URL invalida'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error('Callback URL invalida');
+  const hosts = allowlist.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const allowed = hosts.some((item) => item === host || (item.startsWith('*.') && host.endsWith(item.slice(1)) && host !== item.slice(2)));
+  if (!allowed) throw new Error('Callback URL fuera de la allowlist');
+  const privateHost = host === 'localhost' || net.isIP(host) === 4 && (/^(10|127|192\.168)\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) || net.isIP(host) === 6 && (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80'));
+  if (privateHost && process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS !== 'true') throw new Error('Callback URL privada bloqueada');
+  return parsed;
+}
 
 // The terminal payload is written only to the Engine's private runtime volume
 // (0700 directory, 0600 file). It is never emitted to logs and is removed as
@@ -86,6 +103,18 @@ export async function deliverTerminalResult(options: TerminalCallbackOptions): P
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const target = new URL(String(options.url || ''));
+      const callbackAllowlist = options.allowlist || process.env.ENGINE_CALLBACK_ALLOWLIST || '';
+      if (callbackAllowlist) validateTerminalCallbackUrl(options.url, callbackAllowlist);
+      if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.hash) throw new Error('Callback URL invalida');
+      const allowPrivateNetwork = process.env.ENGINE_CALLBACK_ALLOW_PRIVATE_NETWORKS === 'true';
+      const resolvedAddress = allowPrivateNetwork ? target.hostname : await resolveSafeAddress(target, options.resolveHost);
+      if (!resolvedAddress || (!allowPrivateNetwork && isForbiddenAddress(resolvedAddress))) throw new Error('Destino callback privado o no seguro');
+      const pinnedUrl = new URL(target.toString());
+      if (!allowPrivateNetwork) pinnedUrl.hostname = resolvedAddress;
+      const pinnedFetch = allowPrivateNetwork
+        ? fetchImpl
+        : createPinnedFetch(fetchImpl, pinnedUrl, target.host, { allowInsecureHttp: target.protocol === 'http:', pinNetwork: fetchImpl === globalThis.fetch });
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-Idempotency-Key': deliveryId,
@@ -93,10 +122,11 @@ export async function deliverTerminalResult(options: TerminalCallbackOptions): P
       const correlationId = String(payload.correlation_id || '').trim();
       if (correlationId) headers['X-Correlation-ID'] = correlationId;
       if (options.token) headers['X-AI-Engine-Token'] = options.token;
-      const response = await fetchImpl(options.url, {
+      const response = await pinnedFetch(pinnedUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
+        redirect: 'error',
         signal: controller.signal,
       });
       const body = await response.json().catch(() => ({}));

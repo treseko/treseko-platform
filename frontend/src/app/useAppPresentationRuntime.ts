@@ -88,9 +88,14 @@ export function useAppPresentationRuntime(options: any): any {
   const openBugTrackerDetail = useCallback((bug: any) => {
     const bugId = bug?.id ? String(bug.id) : "";
     if (!bugId) { showFeedback(t('common.bugTracker'), t('common.selectedBugNotIdentified'), "warning"); return; }
-    if (!canAccessCapability("bugs.ver", "read")) { showFeedback(t('common.noPermission'), t('common.noBugDetailPermission'), "warning"); return; }
+    // Incidents and Bug Tracker expose the same persisted BugIssue records,
+    // but their read capabilities are intentionally separate. A read-only
+    // user of the Incident Center must still be able to open its detail.
+    const canReadBugDetail = canAccessCapability("bugs.ver", "read") || canAccessCapability("incidencias.ver", "read");
+    if (!canReadBugDetail) { showFeedback(t('common.noPermission'), t('common.noBugDetailPermission'), "warning"); return; }
     setDeepLinkBugId(bugId);
-    setActiveTab("bugs");
+    const destination = new URLSearchParams(window.location.search).get('tab') === 'incidencias' ? 'incidencias' : 'bugs';
+    setActiveTab(destination);
   }, [canAccessCapability]);
   const closeInternalReportViewer = () => {
     setInternalReportToken("");

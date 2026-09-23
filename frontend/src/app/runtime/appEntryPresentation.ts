@@ -14,7 +14,13 @@ export function readInternalReportTokenFromLocation(location: Pick<Location, 'se
   const queryToken = new URLSearchParams(location.search).get('internal_report') || ''
   if (queryToken) return queryToken
   const match = location.pathname.match(/^\/informes-internos\/[^/]+\/[^/]+\/[^/]+\/([^/?#]+)$/)
-  return match?.[1] ? decodeURIComponent(match[1]) : ''
+  if (!match?.[1]) return ''
+  try {
+    return decodeURIComponent(match[1])
+  } catch (error) {
+    if (error instanceof URIError) return ''
+    throw error
+  }
 }
 
 export function readStoredAuthentication(storage: Pick<Storage, 'getItem' | 'removeItem'> = localStorage, now = Date.now()) {

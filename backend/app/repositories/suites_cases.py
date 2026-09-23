@@ -53,13 +53,14 @@ async def _clone_cases_for_suite(db: AsyncSession, original_suite_id: UUID, clon
             attachment_links_by_step.setdefault(link.paso_id, []).append(link)
     copied = 0
     for original in originals:
+        cloned_title = await generate_unique_case_title(db, cloned_suite_id, original.titulo, for_copy=True)
         cloned_case = models.CasoPrueba(
             master_id=uuid.uuid4(),
             codigo=await generate_case_code(db),
             proyecto_id=original.proyecto_id,
             suite_id=cloned_suite_id,
             componente_id=original.componente_id,
-            titulo=original.titulo,
+            titulo=cloned_title,
             descripcion=original.descripcion,
             precondiciones=original.precondiciones,
             postcondiciones=original.postcondiciones,
@@ -239,15 +240,99 @@ async def generate_case_code(db: AsyncSession, prefix: str = "TC") -> str:
     result = await db.execute(
         select(models.CasoPrueba.codigo).filter(models.CasoPrueba.codigo.like(f"{prefix}-%"))
     )
+    existing_codes = {str(code).strip() for code in result.scalars().all() if code}
     max_number = 0
-    for code in result.scalars().all():
+    for code in existing_codes:
         if not code:
             continue
         try:
             max_number = max(max_number, int(str(code).split("-")[-1]))
         except ValueError:
             continue
-    return f"{prefix}-{max_number + 1:03d}"
+    next_number = max_number + 1
+    candidate = f"{prefix}-{next_number:03d}"
+    while candidate in existing_codes:
+        next_number += 1
+        candidate = f"{prefix}-{next_number:03d}"
+    return candidate
+
+
+def _case_title_key(title: Optional[str]) -> str:
+    return " ".join(str(title or "").split()).casefold()
+
+
+def _fit_case_title(title: str, suffix: str = "") -> str:
+    max_length = 255
+    available = max_length - len(suffix)
+    return f"{title[:max(0, available)].rstrip()}{suffix}"
+
+
+async def generate_unique_case_title(
+    db: AsyncSession,
+    suite_id: Optional[UUID],
+    title: str,
+    *,
+    for_copy: bool = False,
+    exclude_master_id: Optional[UUID] = None,
+) -> str:
+    """Return a title unused by the current visible cases in a suite."""
+    if not suite_id:
+        return _fit_case_title(f"Copia de {title}" if for_copy else title)
+
+    await db.execute(
+        select(models.Suite.id)
+        .filter(models.Suite.id == suite_id)
+        .with_for_update()
+    )
+    latest_versions = (
+        select(
+            models.CasoPrueba.master_id,
+            func.max(models.CasoPrueba.version).label("max_version"),
+        )
+        .filter(
+            models.CasoPrueba.suite_id == suite_id,
+            models.CasoPrueba.activo == True,
+        )
+        .group_by(models.CasoPrueba.master_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(models.CasoPrueba.titulo)
+        .join(
+            latest_versions,
+            (models.CasoPrueba.master_id == latest_versions.c.master_id)
+            & (models.CasoPrueba.version == latest_versions.c.max_version),
+        )
+        .filter(
+            models.CasoPrueba.suite_id == suite_id,
+            models.CasoPrueba.activo == True,
+            models.CasoPrueba.estado_caso != models.EstadoCaso.ARCHIVADO,
+            *(
+                [models.CasoPrueba.master_id != exclude_master_id]
+                if exclude_master_id
+                else []
+            ),
+        )
+    )
+    occupied = {
+        _case_title_key(existing_title)
+        for existing_title in result.scalars().all()
+        if existing_title
+    }
+    base_title = f"Copia de {title}" if for_copy else title
+    candidate = _fit_case_title(base_title)
+    if _case_title_key(candidate) not in occupied:
+        return candidate
+
+    number = 2
+    while True:
+        suffix = f" ({number})"
+        candidate = _fit_case_title(base_title, suffix)
+        if _case_title_key(candidate) not in occupied:
+            return candidate
+        number += 1
+
+
 async def _ensure_case_code_available(
     db: AsyncSession,
     proyecto_id: UUID,
@@ -294,6 +379,7 @@ async def ensure_case_codes(db: AsyncSession, proyecto_id: Optional[UUID] = None
 async def create_caso_prueba(db: AsyncSession, caso: schemas.CasoPruebaCreate):
     pasos_data = caso.pasos
     caso_data = caso.model_dump(exclude={"pasos"})
+
     if not caso_data.get("codigo"):
         caso_data["codigo"] = await generate_case_code(db)
     await _ensure_case_code_available(db, caso_data["proyecto_id"], caso_data.get("codigo"))
@@ -338,7 +424,7 @@ VERSIONED_CASE_FIELDS = frozenset({
     "framework",
 })
 
-CASE_MODEL_FIELDS = VERSIONED_CASE_FIELDS | {"codigo", "estado_caso", "dataset", "creado_por"}
+CASE_MODEL_FIELDS = VERSIONED_CASE_FIELDS | {"codigo", "estado_caso", "dataset", "creado_por", "orden"}
 
 
 def _step_definition(step) -> dict:
@@ -507,7 +593,7 @@ async def get_casos_proyecto(db: AsyncSession, proyecto_id: UUID, include_archiv
     subq = (select(models.CasoPrueba.master_id, func.max(models.CasoPrueba.version).label("max_v")).filter(
         *filters
     ).group_by(models.CasoPrueba.master_id).subquery())
-    query = (select(models.CasoPrueba).join(subq, (models.CasoPrueba.master_id == subq.c.master_id) & (models.CasoPrueba.version == subq.c.max_v)))
+    query = (select(models.CasoPrueba).join(subq, (models.CasoPrueba.master_id == subq.c.master_id) & (models.CasoPrueba.version == subq.c.max_v)).order_by(models.CasoPrueba.orden, models.CasoPrueba.id))
     result = await db.execute(query)
     casos = result.scalars().all()
     caso_ids = [caso.id for caso in casos]
@@ -533,6 +619,7 @@ async def get_casos_proyecto(db: AsyncSession, proyecto_id: UUID, include_archiv
             "codigo": caso.codigo,
             "proyecto_id": caso.proyecto_id,
             "suite_id": caso.suite_id,
+            "orden": caso.orden,
             "componente_id": caso.componente_id,
             "titulo": caso.titulo,
             "descripcion": caso.descripcion,

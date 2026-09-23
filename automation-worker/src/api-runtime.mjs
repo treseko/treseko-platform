@@ -157,7 +157,7 @@ async function pairWithPlatform() {
       request = null;
     }
     if (!request) {
-      console.log(`Solicitando vinculacion a ${API_BASE}...`);
+      traceEntry("job_event", { message: "pairing_request_requested", api_base: API_BASE });
       request = await createPairingRequest();
       writePairingState(request);
     }

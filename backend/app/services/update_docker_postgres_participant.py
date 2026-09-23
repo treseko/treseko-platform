@@ -238,7 +238,12 @@ class DockerPostgresParticipant:
                 state["restored"] = True
                 self._complete(state, journal, operation, {"ok": True, "restored": True, **result})
         elif operation == "start":
-            if phase not in {"apply", "rollback", "start"}:
+            # LocalUpdateParticipant deliberately skips the runtime rollback
+            # callback when apply was never attempted: there is no database
+            # mutation to restore.  Recovery still has to advance this runtime
+            # from the repeated quiesce barrier to start/verify_rollback.
+            rollback_without_apply = phase == "quiesce" and not state.get("apply_attempted")
+            if phase not in {"apply", "rollback", "start"} and not rollback_without_apply:
                 raise TransactionFailure("Start is out of order")
             self._complete(state, journal, operation, {"ok": True})
         elif operation in {"verify", "verify_rollback"}:

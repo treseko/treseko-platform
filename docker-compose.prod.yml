@@ -90,7 +90,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENGINE_URL: http://engine:3010
       TRESEKO_PLUGIN_RUNNER_URL: http://plugin-runner:3020
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TRESEKO_MCP_ENABLED: ${TRESEKO_MCP_ENABLED:-false}
+      TRESEKO_MCP_TOOLS: ${TRESEKO_MCP_TOOLS:-}
+      TRESEKO_MCP_DEPLOYMENT_TOPOLOGY: ${TRESEKO_MCP_DEPLOYMENT_TOPOLOGY:-single_process}
       UPDATES_DIR: /data/updates
       BACKUPS_DIR: /data/backups
       DB_BACKUP_DIR: /data/backups
@@ -151,6 +154,9 @@ services:
       AI_API_ENDPOINT: ${AI_API_ENDPOINT:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
+      MCP_RUNTIME_RESOLVER_URL: http://backend:8000/api/mcp/internal/runtime-credential
+      MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS: http://backend:8000
+      MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP: "true"
       QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
     mem_limit: ${ENGINE_MEM_LIMIT:-2g}
     pids_limit: ${ENGINE_PIDS_LIMIT:-256}

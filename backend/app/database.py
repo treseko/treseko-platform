@@ -5,6 +5,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import declarative_base
 
 from .database_legacy_sqlite_automation import migrate_automation_schema
@@ -90,7 +91,7 @@ def _log_database_startup(database_url: str = DATABASE_URL, backend_dir: Path = 
 
 _log_database_startup()
 
-_engine_kwargs = {
+_engine_kwargs: dict[str, object] = {
     "echo": DB_ECHO,
     "pool_pre_ping": True,
 }
@@ -101,6 +102,10 @@ if not DATABASE_URL.startswith("sqlite"):
         "pool_recycle": DB_POOL_RECYCLE,
         "pool_timeout": DB_POOL_TIMEOUT,
     })
+if os.getenv("TRESEKO_TEST_NULL_POOL", "").strip().lower() in {"1", "true", "yes"}:
+    for _pool_option in ("pool_size", "max_overflow", "pool_recycle", "pool_timeout"):
+        _engine_kwargs.pop(_pool_option, None)
+    _engine_kwargs["poolclass"] = NullPool
 
 engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 

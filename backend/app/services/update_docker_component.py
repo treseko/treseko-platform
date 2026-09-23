@@ -161,6 +161,17 @@ class DockerComponentRuntime:
                     self.service._reconcile(self.service._load(service_dir), current)
                     if self.engine_control('resume', current) is not True:
                         raise TransactionFailure("Engine admission resume unconfirmed")
+                if operation == "activate" and state.get("verified_operation") == "verify_rollback":
+                    service_state = self.service._load(service_dir)
+                    if service_state.get("snapshot_image") is None:
+                        self.service.verify_original_running(service_dir)
+                    else:
+                        self.service.canonicalize_running(service_dir)
+                    current = self.service._current()
+                    self.service._reconcile(self.service._load(service_dir), current)
+                    if (not current or not current["State"]["Running"]
+                            or self.probe(current) != state["previous_version"]):
+                        raise TransactionFailure("Canonical rollback service failed live verification")
                 return {"ok": True}
             if self.fence(context["transaction"]) is not True:
                 raise TransactionFailure("Verified installation maintenance fence required")
@@ -204,7 +215,14 @@ class DockerComponentRuntime:
                                              mutable_directories=self.mutable)
             elif operation == "rollback":
                 current = self.service._current()
-                self._check_mounts(current)
+                service_state = self.service._load(service_dir)
+                # After apply, code-covering mounts intentionally point at the
+                # prepared candidate volumes.  Validate those exact journaled
+                # identities before replacing the container; comparing them
+                # with the original volume names would reject every legitimate
+                # rollback.  Before apply there is no candidate mapping yet.
+                candidate_volumes = service_state.get("runtime_volumes")
+                self._check_mounts(current, candidate_volumes)
                 self.service.replace_stopped(service_dir, rollback=True)
             elif operation == "start":
                 self.service.start(service_dir)
@@ -219,15 +237,25 @@ class DockerComponentRuntime:
                         raise TransactionFailure("Engine admission closure is not verified")
                 if self.backend_control is not None:
                     state['verified_version'] = expected
-                    save_json(journal, state)
+                state["verified_operation"] = operation
+                state["verified_version"] = expected
+                save_json(journal, state)
                 return {"ok": True, "version": expected, "transaction": context["transaction"]}
             else:
                 raise ValueError("Unknown component operation")
             return {"ok": True}
 
-    def _check_mounts(self, current):
+    def _check_mounts(self, current, runtime_volumes=None):
         code_root = {"backend": "/app", "frontend": "/usr/share/nginx/html",
                      "engine": "/engine", "automation_worker": "/worker"}[self.component]
+        original_code_volumes = {**self.volumes, **self.shared}
+        if runtime_volumes is None:
+            code_volumes = original_code_volumes
+        else:
+            if (not isinstance(runtime_volumes, dict)
+                    or set(runtime_volumes) != set(original_code_volumes)):
+                raise TransactionFailure("Journaled runtime volume inventory is invalid")
+            code_volumes = runtime_volumes
         mounts = current.get("Mounts", [])
         if self.engine_bind_mounts:
             for target, expected in self.engine_bind_mounts.items():
@@ -239,7 +267,7 @@ class DockerComponentRuntime:
                         or mount.get("Source") != expected["source"]
                         or mount.get("RW") is not True):
                     raise TransactionFailure("Engine control bind differs from inventory")
-        for root, source in {**self.volumes, **self.data, **self.shared}.items():
+        for root, source in {**code_volumes, **self.data}.items():
             matches = [m for m in mounts if m.get("Destination") == root]
             if len(matches) != 1 or matches[0].get("Type") != "volume" or matches[0].get("Name") != source:
                 raise TransactionFailure("Runtime volume does not match the live installation")
@@ -254,8 +282,8 @@ class DockerComponentRuntime:
                 continue
             for shared_root in {"/engine", "/worker", "/usr/share/nginx/html"} - {code_root}:
                 if (target == shared_root or target.startswith(shared_root + "/")
-                        or shared_root.startswith(target.rstrip("/") + "/")) and target not in self.shared:
+                        or shared_root.startswith(target.rstrip("/") + "/")) and target not in code_volumes:
                     raise TransactionFailure("Shared component runtime requires a coordinated volume mapping")
             if (target == code_root or code_root.startswith(target.rstrip("/") + "/")
-                    or target.startswith(code_root + "/")) and target not in self.volumes and target not in self.data:
+                    or target.startswith(code_root + "/")) and target not in code_volumes and target not in self.data:
                 raise TransactionFailure("Code-covering mount requires an explicit runtime replacement")

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Badge, Button, Card, Col, Form, Row } from "react-bootstrap";
+import { Badge, Button, Card, Col, Form, InputGroup, Row } from "react-bootstrap";
 import { ChevronDown, ChevronRight, FileText, Info, Tag, X } from "lucide-react";
 import { RequiredLabel } from "../../shared/ui/RequiredLabel";
 import { VariableReferenceHints } from "./VariableReferenceHints";
@@ -86,24 +86,27 @@ export function CaseMetadataCard({ context }: Props) {
             <Form.Group>
               <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                 <Form.Label className="fw-bold x-small text-muted mb-0"><RequiredLabel required>{t('casos.mainTitle')}</RequiredLabel></Form.Label>
-                {editingCaseCode ? (
-                  <span className="small text-muted font-monospace text-nowrap" title={t('casos.immutableCaseCode')} translate="no">
-                    {t('casos.caseCodeLabel')}: {editingCaseCode}
-                  </span>
-                ) : (
+                {!editingCaseCode && (
                   <span className="small text-muted text-end">{t('casos.caseCodeAssigned')}</span>
                 )}
               </div>
-              <Form.Control
-                name="a11y-casemetadatacardtsx-35"
-                aria-label={t('casos.mainTitle')}
-                type="text"
-                placeholder={t('casos.caseTitlePlaceholder')}
-                value={newTestTitle}
-                onChange={(e) => setNewTestTitle(e.target.value)}
-                required
-                className="case-title-input bg-light border-light-subtle shadow-none fw-bold text-primary fs-6"
-              />
+              <InputGroup className={editingCaseCode ? 'case-title-input-group' : undefined}>
+                {editingCaseCode && (
+                  <InputGroup.Text className="case-title-code-prefix font-monospace fw-bold" title={t('casos.immutableCaseCode')} translate="no">
+                    {editingCaseCode}
+                  </InputGroup.Text>
+                )}
+                <Form.Control
+                  name="a11y-casemetadatacardtsx-35"
+                  aria-label={t('casos.mainTitle')}
+                  type="text"
+                  placeholder={t('casos.caseTitlePlaceholder')}
+                  value={newTestTitle}
+                  onChange={(e) => setNewTestTitle(e.target.value)}
+                  required
+                  className="case-title-input bg-light border-light-subtle shadow-none fw-bold text-primary fs-6"
+                />
+              </InputGroup>
             </Form.Group>
           </Col>
           <Col md={4}>
@@ -126,10 +129,10 @@ export function CaseMetadataCard({ context }: Props) {
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ',') {
                       event.preventDefault()
-                      commitTagDraft()
+                      commitTagDraft(event.currentTarget.value)
                     }
                   }}
-                  onBlur={commitTagDraft}
+                  onBlur={(event) => commitTagDraft(event.currentTarget.value)}
                   placeholder={newTestTags.length ? t('casos.addAnotherTag') : t('casos.tagsPlaceholder')}
                   className="border-0 bg-transparent shadow-none p-0 flex-grow-1 small"
                   style={{ minWidth: 120 }}

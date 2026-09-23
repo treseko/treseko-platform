@@ -207,8 +207,8 @@ def _strip_non_assignable_user_modules(modulos):
 
 
 def _modules_from_permissions_and_capabilities(permisos, permisos_detallados):
-    from .auth import modules_from_permissions
-    from .rbac_catalog import get_capability_module
+    from ..auth import modules_from_permissions
+    from ..rbac_catalog import get_capability_module
 
     modules = set(modules_from_permissions(permisos))
     for capability, level in (permisos_detallados or {}).items():

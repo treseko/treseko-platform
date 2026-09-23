@@ -106,7 +106,13 @@ async def preview_import(db: AsyncSession, project_id: UUID, profile_id: str, da
         else:
             outcome = "duplicate" if ref.content_sha256 == digest else "new_version"
         new += outcome == "new"; changed += outcome == "new_version"; restored += outcome == "restore"; duplicate += outcome == "duplicate"
-        results.append({"external_id": item["external_id"], "titulo": item["titulo"], "outcome": outcome})
+        results.append({
+            "external_id": item["external_id"], "titulo": item["titulo"], "outcome": outcome,
+            "tipo_prueba": item["tipo_prueba"], "formato_prueba": item["formato_prueba"],
+            "pasos": item.get("pasos") or [],
+            "configuracion_api": item.get("configuracion_api") or {},
+            "configuracion_chatbot": item.get("configuracion_chatbot") or {},
+        })
     response_package = package if include_binary else {key: value for key, value in package.items() if key != "attachment_files"}
     return {"source_tool": package["tool"], "source_version": package["version"], "file_sha256": hashlib.sha256(data).hexdigest(), "summary": {"total": len(results), "new": new, "new_versions": changed, "restored": restored, "duplicates": duplicate}, "diagnostics": package.get("diagnostics", {}), "items": results, "package": response_package}
 
@@ -164,7 +170,7 @@ async def _restore_traceability(db: AsyncSession, project_id: UUID, case_master_
                 db.add(models.AcceptanceCriterionCase(acceptance_criterion_id=criterion.id, caso_master_id=case_master_id, creado_por=actor_id))
 
 
-async def commit_import(db: AsyncSession, project_id: UUID, profile_id: str, data: bytes, file_name: str | None, actor_id: UUID, selected_external_ids: list[str] | None = None, component_id: UUID | None = None, build_id: UUID | None = None) -> models.CaseImportBatch:
+async def commit_import(db: AsyncSession, project_id: UUID, profile_id: str, data: bytes, file_name: str | None, actor_id: UUID, selected_external_ids: list[str] | None = None, component_id: UUID | None = None, build_id: UUID | None = None, commit_transaction: bool = True) -> models.CaseImportBatch:
     # Lazy import avoids the repository facade cycle during app startup/tests.
     from ..repositories.suites_cases import generate_case_code
     preview = await preview_import(db, project_id, profile_id, data, include_binary=True); package = preview.pop("package")
@@ -273,9 +279,13 @@ async def commit_import(db: AsyncSession, project_id: UUID, profile_id: str, dat
         batch.status = "COMPLETED"; batch.summary_json = {**preview["summary"], "diagnostics": preview.get("diagnostics", {})}; batch.item_results = results; batch.created_case_ids = created_cases; batch.created_suite_ids = created_suites
         if build_id:
             for case_id in created_cases: db.add(models.BuildCaso(build_id=build_id, caso_id=UUID(case_id)))
-        await db.commit(); await db.refresh(batch); return batch
+        if commit_transaction:
+            await db.commit(); await db.refresh(batch)
+        return batch
     except Exception:
-        await db.rollback(); raise
+        if commit_transaction:
+            await db.rollback()
+        raise
 
 
 def rollback_expires_at(batch: models.CaseImportBatch) -> datetime | None:
@@ -312,7 +322,7 @@ async def rollback_eligibility(
     return True, None, expires_at
 
 
-async def rollback_batch(db: AsyncSession, batch: models.CaseImportBatch, actor_id: UUID) -> models.CaseImportBatch:
+async def rollback_batch(db: AsyncSession, batch: models.CaseImportBatch, actor_id: UUID, *, commit_transaction: bool = True) -> models.CaseImportBatch:
     eligible, reason, _ = await rollback_eligibility(db, batch)
     if not eligible:
         raise PortabilityError(reason or "El lote no se puede revertir")
@@ -329,7 +339,9 @@ async def rollback_batch(db: AsyncSession, batch: models.CaseImportBatch, actor_
                 children = (await db.execute(select(models.Suite.id).where(models.Suite.parent_id == suite_id).limit(1))).scalar_one_or_none()
                 if not remaining and not children: await db.delete(suite)
         batch.status = "ROLLED_BACK"; batch.rolled_back_at = utc_now(); batch.rolled_back_by = actor_id
-        await db.commit(); await db.refresh(batch); return batch
+        if commit_transaction:
+            await db.commit(); await db.refresh(batch)
+        return batch
     except IntegrityError as exc:
         await db.rollback()
         raise PortabilityError("No se puede revertir: uno o más casos ya tienen ejecuciones") from exc

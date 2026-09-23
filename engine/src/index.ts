@@ -28,6 +28,7 @@ import { createProgressChannel } from './progress-channel.ts';
 import { finalizeFailedRun, finalizeSuccessfulRun } from './run-finalization.ts';
 import { executeConfiguredWorkflow } from './workflow-executor.ts';
 import { runChatbotEvaluation } from './chatbot-evaluator.ts';
+import type { McpRuntimeServices } from './ai/mcp-tool-agent.ts';
 
 dotenv.config({ override: false });
 
@@ -191,6 +192,8 @@ export async function runTask(
     callbackUrl?: string;
     progressWsUrl?: string;
     correlationId?: string;
+    /** Backend-provided secure vault boundary; never serialized into graph state. */
+    mcpRuntime?: McpRuntimeServices;
   } = {}
 ): Promise<EngineRunResult> {
   const startedAt = Date.now();

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, delete, or_, cast, String, text
+from sqlalchemy import func, delete, or_, cast, String, text, update
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from .. import models, schemas
 from .. import access_control
@@ -114,7 +114,7 @@ DEFAULT_ATTACHMENT_CONFIG = {
         "video/webm",
         "application/octet-stream",
     ],
-    "max_file_size_mb": 10,
+    "max_file_size_mb": 100,
     "max_files_per_step": 5,
     "max_files_per_snapshot": 10,
     "enable_clipboard_paste": True,

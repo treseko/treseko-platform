@@ -11,8 +11,15 @@ Treseko separa dos decisiones que no deben confundirse:
 |---|---|---|
 | `CLASICA` | Pasos con acción, datos y resultado esperado. | Pasos, observaciones, capturas y adjuntos. |
 | `API` | Request declarativo, variables y aserciones. | Request, response, aserciones y variables permitidas. |
-| `CONVERSACIONAL` | Conexión, turnos, expectativas, memoria y herramientas. | Transcripción, evaluación, métricas y trazas disponibles. |
+| `CONVERSACIONAL` | Flujo específico de UI/API; no disponible para MCP. | Transcripción, evaluación, métricas y trazas disponibles. |
 | `PERFORMANCE` | Formato reservado. | En 1.0.3 no tiene un executor de carga certificado. |
+
+## MCP
+
+MCP está disponible únicamente para importaciones gobernadas de formatos
+`CLASICA` y `API`. `PERFORMANCE` permanece reservado y se rechaza porque no
+existe un executor seguro. `CONVERSACIONAL` no está disponible para MCP; sus
+casos deben gestionarse mediante los flujos específicos de UI/API.
 
 ## Modalidades
 

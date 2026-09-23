@@ -5,6 +5,7 @@ import { API_BASE } from '../../app/constants'
 import { applyPasswordChangeResult } from './passwordChangeResult'
 import { useI18n } from '../../i18n'
 import { needsForcedPasswordChange } from './passwordChangeUtils'
+import { PasswordVisibilityField } from '../../shared/ui/PasswordVisibilityField'
 
 type ForcePasswordChangeModalProps = {
   loggedUser: any
@@ -83,41 +84,44 @@ export function ForcePasswordChangeModal({
           <div className="d-grid gap-3">
             <Form.Group>
               <Form.Label htmlFor="force-password-current" className="small fw-bold text-muted">{t('forcePasswordChange.currentPassword')}</Form.Label>
-              <Form.Control
+              <PasswordVisibilityField
                 id="force-password-current"
                 name="currentPassword"
-                type="password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 autoComplete="current-password"
                 required
+                showLabel={t('common.showPassword')}
+                hideLabel={t('common.hidePassword')}
               />
             </Form.Group>
             <Form.Group>
               <Form.Label htmlFor="force-password-new" className="small fw-bold text-muted">{t('forcePasswordChange.newPassword')}</Form.Label>
-              <Form.Control
+              <PasswordVisibilityField
                 id="force-password-new"
                 name="newPassword"
-                type="password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 autoComplete="new-password"
                 minLength={8}
                 required
+                showLabel={t('common.showPassword')}
+                hideLabel={t('common.hidePassword')}
               />
               <div className="x-small text-muted mt-1">{t('forcePasswordChange.minimumPasswordLength')}</div>
             </Form.Group>
             <Form.Group>
               <Form.Label htmlFor="force-password-confirm" className="small fw-bold text-muted">{t('forcePasswordChange.confirmNewPassword')}</Form.Label>
-              <Form.Control
+              <PasswordVisibilityField
                 id="force-password-confirm"
                 name="confirmPassword"
-                type="password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 autoComplete="new-password"
                 minLength={8}
                 required
+                showLabel={t('common.showPassword')}
+                hideLabel={t('common.hidePassword')}
               />
             </Form.Group>
           </div>

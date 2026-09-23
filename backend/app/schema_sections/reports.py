@@ -292,12 +292,30 @@ class SharedReportBundleResponse(BaseModel):
     public_url: Optional[str] = None
     links: Dict[str, str] = Field(default_factory=dict)
     tokens: Dict[str, str] = Field(default_factory=dict)
-    snapshots: List[SharedReportSnapshotResponse] = Field(default_factory=list)
+    snapshots: List["SharedReportSnapshotSummary"] = Field(default_factory=list)
     requested_report_type: Optional[str] = None
     build_definition: Optional[str] = None
     qa_comment: Optional[str] = None
     definition_responsible_id: Optional[UUID] = None
     definition_at: Optional[datetime] = None
+
+class SharedReportSnapshotSummary(BaseModel):
+    """Lightweight snapshot metadata returned after bundle creation.
+
+    The full report payload is intentionally excluded. It is loaded only by
+    the report HTML/Markdown/CSV/PDF endpoints for the selected token.
+    """
+    token: str
+    report_type: str
+    title: str
+    description: Optional[str] = None
+    public_url: Optional[str] = None
+    build_id: Optional[UUID] = None
+    componente_id: Optional[UUID] = None
+    created_at: datetime
+    expires_at: Optional[datetime] = None
+    activo: bool
+    has_new_values: bool = False
 
 class SharedReportBundleHistoryItem(BaseModel):
     snapshot_group_id: str

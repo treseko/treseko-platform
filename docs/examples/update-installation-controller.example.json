@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "directory": "/var/lib/treseko-update/controller",
+  "participants": [
+    {
+      "id": "backend-p1",
+      "kind": "local",
+      "command": ["/usr/local/libexec/treseko-update-participant"]
+    },
+    {
+      "id": "frontend-p1",
+      "kind": "local",
+      "command": ["/usr/local/libexec/treseko-update-participant"]
+    },
+    {
+      "id": "engine-p1",
+      "kind": "ssh",
+      "alias": "treseko-runtime-remote"
+    },
+    {
+      "id": "worker-p1",
+      "kind": "ssh",
+      "alias": "treseko-runtime-remote"
+    },
+    {
+      "id": "postgres-p1",
+      "kind": "ssh",
+      "alias": "treseko-db-remote"
+    }
+  ],
+  "runtime_hosts": [
+    {
+      "id": "app-local",
+      "kind": "local",
+      "command": ["/usr/local/libexec/treseko-update-runtime-preparation"],
+      "helper_identity": "0000000000000000000000000000000000000000000000000000000000000000",
+      "components": ["backend", "frontend"],
+      "platform": "linux/amd64"
+    },
+    {
+      "id": "runtime-remote",
+      "kind": "ssh",
+      "alias": "treseko-runtime-remote",
+      "helper_identity": "1111111111111111111111111111111111111111111111111111111111111111",
+      "components": ["engine", "automation_worker"],
+      "platform": "linux/amd64"
+    }
+  ],
+  "activation_order": ["backend-p1", "frontend-p1", "engine-p1", "worker-p1", "postgres-p1"],
+  "quiesce_order": ["worker-p1", "engine-p1", "backend-p1", "frontend-p1", "postgres-p1"],
+  "admission_gates": [
+    {
+      "id": "ingress-main",
+      "kind": "docker-host-bind",
+      "docker": "/usr/bin/docker",
+      "container": "2222222222222222222222222222222222222222222222222222222222222222",
+      "project": "treseko-installation",
+      "service": "update-ingress",
+      "control": "/var/lib/treseko-update/gates/ingress",
+      "callback_drain": true
+    },
+    {
+      "id": "ai-queue-main",
+      "kind": "ai-queue-local",
+      "database_url_file": "/etc/treseko/update/secrets/ai-queue-database-url",
+      "database_name": "treseko",
+      "timeout_seconds": 120,
+      "journal_directory": "/var/lib/treseko-update/gates/ai-queue"
+    }
+  ],
+  "installation_topology": {
+    "schema": 1,
+    "scope": "treseko-installation",
+    "required_components": ["backend", "frontend", "engine", "automation_worker", "db"],
+    "hosts": [
+      {"id": "app-local-host", "kind": "runtime", "runtime_host": "app-local"},
+      {"id": "runtime-remote-host", "kind": "runtime", "runtime_host": "runtime-remote"},
+      {"id": "db-remote-host", "kind": "participant", "participant": "postgres-p1"}
+    ],
+    "bindings": [
+      {"participant": "backend-p1", "host": "app-local-host", "component": "backend"},
+      {"participant": "frontend-p1", "host": "app-local-host", "component": "frontend"},
+      {"participant": "engine-p1", "host": "runtime-remote-host", "component": "engine"},
+      {"participant": "worker-p1", "host": "runtime-remote-host", "component": "automation_worker"},
+      {"participant": "postgres-p1", "host": "db-remote-host", "component": "db"}
+    ],
+    "required_gates": [
+      {"id": "ingress-main", "scope": "treseko-installation"},
+      {"id": "ai-queue-main", "scope": "treseko-installation"}
+    ]
+  }
+}

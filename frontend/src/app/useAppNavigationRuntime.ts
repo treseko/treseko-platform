@@ -81,6 +81,8 @@ export function useAppNavigationRuntime(options: any): any {
     handleDeleteCaso,
     getSuiteExecutionMetrics,
     handleSelectTestForExecution,
+    confirmLeavingWithUnsavedChanges,
+    organizeCase,
   } = options;
 
   useWorkspaceNavigation({
@@ -95,6 +97,7 @@ export function useAppNavigationRuntime(options: any): any {
     consumeDeepLinkBug, internalReportToken, activeTab, currentOrgId,
     currentProjectId, currentCompId, currentBuildId, configTab, managingProjectId,
     projectInnerTab, sidebarCollapsed, collapsedSections,
+    confirmLeavingWithUnsavedChanges,
   });
 
   const { loadInitialBackendData } = createInitialLoadActions({
@@ -129,7 +132,7 @@ export function useAppNavigationRuntime(options: any): any {
     openEditSuiteModal, openMoveSuiteModal, updateSuiteArchiveStatus,
     handleDeleteSuite, openEditCase, updateCaseArchiveStatus, loadCasoVersions,
     handleDeleteCaso, getSuiteExecutionMetrics, handleSelectTestForExecution,
-    showFeedback,
+    showFeedback, organizeCase,
   });
 
   return { ...access, ...trees };

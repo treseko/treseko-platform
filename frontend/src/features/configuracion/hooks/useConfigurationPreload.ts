@@ -26,19 +26,29 @@ export function useConfigurationPreload({
   const attachmentConfigPreloadedRef = useRef(false)
 
   useEffect(() => {
-    if (activeTab === 'configuracion' && configTab === 'general') {
-      loadApiKeys()
-      loadSessionConfig()
+    if (activeTab === 'configuracion' && ['api_keys', 'mcp', 'security'].includes(configTab)) {
+      // API keys and session settings are loaded only inside their own sections.
+      if (['api_keys', 'mcp'].includes(configTab) && canAccessCapability(configTab === 'mcp' ? 'mcp.usar' : 'configuracion.api_keys', 'read')) {
+        loadApiKeys()
+      }
+      if (configTab === 'security' && canAccessCapability('configuracion.sesion', 'read')) {
+        loadSessionConfig()
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, configTab, isAuthenticated])
+  }, [activeTab, configTab, isAuthenticated, canAccessCapability])
 
   useEffect(() => {
-    if (activeTab === 'configuracion' && configTab === 'ai' && hasSystemFeature('ai.engine')) {
+    if (
+      activeTab === 'configuracion' &&
+      configTab === 'ai' &&
+      hasSystemFeature('ai.engine') &&
+      canAccessCapability('configuracion.pruebas_ia', 'read')
+    ) {
       loadAiEngineConfig()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, configTab, isAuthenticated, hasSystemFeature])
+  }, [activeTab, configTab, isAuthenticated, canAccessCapability, hasSystemFeature])
 
   useEffect(() => {
     if (!isAuthenticated) {

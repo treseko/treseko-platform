@@ -254,25 +254,26 @@ export function RolesSettingsTab({
             <Button variant="primary" size="sm" className="fw-bold rounded-pill px-3 shadow-sm" onClick={() => openRoleModal()}>+ {t('configuracion.newRole')}</Button>
           )}
         </Card.Header>
-        <Table responsive hover className="mb-0 align-middle">
-          <thead className="bg-light">
-            <tr className="x-small text-muted text-uppercase">
-              <th className="px-4 py-3 border-0">{t('configuracion.role')}</th>
-              <th className="border-0">{t('configuracion.description')}</th>
-              <th className="border-0">{t('configuracion.modules')}</th>
-              <th className="border-0">{t('configuracion.status')}</th>
-              {canEditRoles && <th className="px-4 border-0 text-end">{t('configuracion.actions')}</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {[...systemRoleItems, ...customRoles].map(role => (
-              <tr key={role.id} className="border-bottom">
-                <td className="px-4 fw-bold text-dark">{role.name}</td>
-                <td className="small text-muted">{role.description || t('configuracion.noDescription')}</td>
-                <td className="small text-muted">{t('configuracion.assignedModules', { count: role.modules.length })}</td>
-                <td><span className={`small fw-bold ${role.status === 'Activo' ? 'text-success' : 'text-danger'}`}>{role.status}</span></td>
+        <div className="roles-directory-table-wrap">
+          <Table hover className="mb-0 align-middle roles-directory-table">
+            <thead className="bg-light">
+              <tr className="x-small text-muted text-uppercase">
+                <th className="px-4 py-3 border-0">{t('configuracion.role')}</th>
+                <th className="border-0">{t('configuracion.description')}</th>
+                <th className="border-0">{t('configuracion.modules')}</th>
+                <th className="border-0">{t('configuracion.status')}</th>
+                {canEditRoles && <th className="px-4 border-0 text-end">{t('configuracion.actions')}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {[...systemRoleItems, ...customRoles].map(role => (
+                <tr key={role.id} className="border-bottom">
+                  <td data-label={t('configuracion.role')} className="px-4 fw-bold text-dark">{role.name}</td>
+                <td data-label={t('configuracion.description')} className="small text-muted">{role.description || t('configuracion.noDescription')}</td>
+                <td data-label={t('configuracion.modules')} className="small text-muted">{t('configuracion.assignedModules', { count: role.modules.length })}</td>
+                <td data-label={t('configuracion.status')}><span className={`small fw-bold ${role.status === 'Activo' ? 'text-success' : 'text-danger'}`}>{role.status}</span></td>
                 {canEditRoles && (
-                  <td className="px-4 text-end d-flex gap-2 justify-content-end">
+                  <td data-label={t('configuracion.actions')} className="roles-directory-actions-cell px-4 text-end d-flex gap-2 justify-content-end">
                     <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-primary" onClick={() => openRoleModal(role)} title={t('configuracion.editRole')} aria-label={t('configuracion.editRole')}><Edit size={14} /></Button>
                     {!role.systemRole && <Button variant="light" size="sm" className="p-1 text-secondary border shadow-sm hover-text-danger" onClick={() => handleDeactivateRole(role)}><Trash2 size={14} /></Button>}
                   </td>
@@ -283,7 +284,8 @@ export function RolesSettingsTab({
               <tr><td colSpan={5} className="text-center py-4 text-muted small">{t('configuracion.noCustomRoles')}</td></tr>
             )}
           </tbody>
-        </Table>
+          </Table>
+        </div>
       </Card>
     </div>
   )

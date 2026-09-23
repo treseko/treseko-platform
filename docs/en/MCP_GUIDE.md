@@ -99,6 +99,16 @@ access. To list builds, change `name` to `treseko.builds.list`.
   created.
 - The limit is 30 calls per minute.
 - Each request accepts up to 64 KiB and each response up to 256 KiB.
+- Set `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` for one process, or
+  `shared_redis` together with `REDIS_URL` (or
+  `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) for multiple workers/replicas. A missing,
+  invalid, or ambiguous topology disables MCP.
+- The backend checks shared Redis with a short timeout and safe caching. If
+  Redis is unavailable, every MCP route (including initialize, discovery, and
+  authentication) fails closed until health is restored.
+- Each handler returns a bounded, JSON-safe result per tool. Strings, lists,
+  depth, and bytes are truncated or rejected before the JSON-RPC envelope is
+  constructed.
 - The complete result is not stored in the audit log; the response is delivered
   to the MCP client and the record keeps the `success` status.
 - Revoking the API key or disabling MCP blocks subsequent calls.

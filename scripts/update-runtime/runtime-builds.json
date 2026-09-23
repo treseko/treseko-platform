@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "components": {
+    "backend": {"context": ".", "dockerfile": "backend/Dockerfile"},
+    "frontend": {"context": "frontend", "dockerfile": "frontend/Dockerfile"},
+    "engine": {"context": "engine", "dockerfile": "engine/Dockerfile"},
+    "automation_worker": {"context": "automation-worker", "dockerfile": "automation-worker/Dockerfile"}
+  }
+}

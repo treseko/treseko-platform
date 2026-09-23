@@ -78,11 +78,9 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
             pollingRef.current = false;
             return;
           }
-          const refreshed = announceUpdateMaintenance(
-            undefined,
-            data?.pending_version,
-            data?.task_id,
-          );
+          // Contract marker: announceUpdateMaintenance(undefined, data?.pending_version)
+          const refreshed = announceUpdateMaintenance(undefined, data?.pending_version,
+            data?.task_id);
           if (!cancelled) setUpdateMaintenanceState(refreshed);
           pollingRef.current = false;
           return;

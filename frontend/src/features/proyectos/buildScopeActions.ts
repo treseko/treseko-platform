@@ -7,6 +7,24 @@ import { isBuildReadOnly } from '../../app/buildState'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
+const buildScopeErrorMessage = async (response: Response, t: (key: TranslationKey, params?: Record<string, string | number>) => string) => {
+  const payload = await response.json().catch(() => null)
+  const detail = typeof payload?.detail === 'string'
+    ? payload.detail
+    : typeof payload?.error?.message === 'string'
+      ? payload.error.message
+      : ''
+  const normalized = detail.toLowerCase()
+
+  if (response.status === 409 && normalized.includes('build') && normalized.includes('inactiv')) {
+    return t('proyectos.buildScopeInactiveError')
+  }
+  if (response.status === 403) {
+    return t('proyectos.buildScopePermissionError')
+  }
+  return t('proyectos.buildScopeSaveFallback')
+}
+
 type CreateBuildScopeActionsParams = {
   projectsSource: 'local' | 'backend'
   buildsList: any[]
@@ -109,8 +127,7 @@ export function createBuildScopeActions({
         body: JSON.stringify({ caso_ids: buildCaseDraftIds })
       })
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || `Backend respondió ${response.status}`)
+        throw new Error(await buildScopeErrorMessage(response, t))
       }
       const cases = await response.json()
       const savedIds = cases.map((item: any) => item.id)

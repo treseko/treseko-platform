@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Text, Integer, Float, ForeignKey, Enum, JSON, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy import Column, String, Boolean, Text, Integer, Float, ForeignKey, Enum, JSON, UniqueConstraint, Index, CheckConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -82,6 +82,13 @@ class AutomationRunnerPairingRequest(Base):
 
 class AutomationJob(Base):
     __tablename__ = "automation_jobs"
+    __table_args__ = (
+        Index("ix_automation_jobs_organizacion_estado_fecha", "organizacion_id", "estado", "fecha_creacion"),
+        Index("ix_automation_jobs_proyecto_estado_fecha", "proyecto_id", "estado", "fecha_creacion"),
+        Index("uq_automation_jobs_result_event_id", "result_event_id", unique=True,
+              postgresql_where=text("result_event_id IS NOT NULL")),
+        CheckConstraint("max_attempts >= 1", name="ck_automation_jobs_max_attempts_positive"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type = Column(String(30), default="EXECUTION", nullable=False, index=True)

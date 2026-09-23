@@ -25,14 +25,22 @@ async def _require_suite_reorder_access(
 ):
     if not suite_ids:
         return None
+    if len(set(suite_ids)) != len(suite_ids):
+        raise HTTPException(status_code=400, detail="La lista de suites contiene duplicados")
     result = await db.execute(select(models.Suite).filter(models.Suite.id.in_(suite_ids)))
     suites = result.scalars().all()
-    if len({suite.id for suite in suites}) != len(set(suite_ids)):
+    if len(suites) != len(suite_ids):
         raise HTTPException(status_code=404, detail="Una o mas suites no existen")
-    project_ids = {suite.proyecto_id for suite in suites}
-    if len(project_ids) != 1:
-        raise HTTPException(status_code=400, detail="No se pueden reordenar suites de proyectos distintos")
-    project_id = next(iter(project_ids))
+    contexts = {(suite.proyecto_id, getattr(suite, "parent_id", None), getattr(suite, "componente_id", None)) for suite in suites}
+    if len(contexts) != 1:
+        raise HTTPException(status_code=400, detail="Las suites deben ser hermanas del mismo proyecto")
+    project_id, parent_id, component_id = next(iter(contexts))
+    siblings = (await db.execute(select(models.Suite).filter(
+        models.Suite.proyecto_id == project_id, models.Suite.parent_id == parent_id,
+        models.Suite.componente_id == component_id, models.Suite.activo == True,
+    ))).scalars().all()
+    if {suite.id for suite in siblings} != set(suite_ids):
+        raise HTTPException(status_code=400, detail="La lista completa de suites hermanas es obligatoria")
     await access_control.require_project_access(db, current_user, project_id, "edit")
     return suites[0]
 

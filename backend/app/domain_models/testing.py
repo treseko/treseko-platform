@@ -37,6 +37,8 @@ class CasoPrueba(Base):
     codigo = Column(String(20), index=True, nullable=True)
     proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="RESTRICT"), nullable=False, index=True)
     suite_id = Column(UUID(as_uuid=True), ForeignKey("suites.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Persistent organization is independent from the immutable case definition.
+    orden = Column(Integer, default=0, nullable=False)
     componente_id = Column(UUID(as_uuid=True), ForeignKey("componentes.id", ondelete="SET NULL"), nullable=True, index=True)
     titulo = Column(String(255), nullable=False)
     descripcion = Column(Text)
@@ -70,6 +72,7 @@ class CasoPrueba(Base):
     __table_args__ = (
         UniqueConstraint("master_id", "version", name="uq_casos_master_version"),
         Index("ix_casos_proyecto_codigo", "proyecto_id", "codigo"),
+        Index("ix_casos_suite_orden", "suite_id", "orden", "id"),
     )
 
 class PasoPrueba(Base):

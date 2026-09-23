@@ -295,20 +295,28 @@ async def create_automation_runner_pairing_request(
     await db.refresh(request)
     return request, pairing_token
 
-async def get_pending_automation_runner_pairing_requests(db: AsyncSession):
-    result = await db.execute(
+async def get_pending_automation_runner_pairing_requests(db: AsyncSession, organization_ids=None):
+    query = (
         select(models.AutomationRunnerPairingRequest)
         .join(models.Organizacion, models.Organizacion.id == models.AutomationRunnerPairingRequest.organizacion_id)
         .filter(models.AutomationRunnerPairingRequest.estado == "PENDING")
         .filter(models.Organizacion.activo.is_(True))
         .order_by(models.AutomationRunnerPairingRequest.fecha_creacion.desc())
     )
+    if organization_ids is not None:
+        query = query.filter(models.AutomationRunnerPairingRequest.organizacion_id.in_(organization_ids))
+    result = await db.execute(query)
     requests = result.scalars().all()
     changed = False
     approved_result = await db.execute(
         select(models.AutomationRunnerPairingRequest).filter(
             models.AutomationRunnerPairingRequest.estado == "APPROVED",
             models.AutomationRunnerPairingRequest.runner_token.is_not(None),
+            *(
+                [models.AutomationRunnerPairingRequest.organizacion_id.in_(organization_ids)]
+                if organization_ids is not None
+                else []
+            ),
         )
     )
     for request in approved_result.scalars().all():
@@ -421,13 +429,16 @@ async def deny_automation_runner_pairing_request(db: AsyncSession, code: str):
     await db.refresh(request)
     return request
 
-async def get_automation_runners(db: AsyncSession):
-    result = await db.execute(
+async def get_automation_runners(db: AsyncSession, organization_ids=None):
+    query = (
         select(models.AutomationRunner)
         .join(models.Organizacion, models.Organizacion.id == models.AutomationRunner.organizacion_id)
         .filter(models.Organizacion.activo.is_(True))
         .order_by(models.AutomationRunner.fecha_creacion.desc())
     )
+    if organization_ids is not None:
+        query = query.filter(models.AutomationRunner.organizacion_id.in_(organization_ids))
+    result = await db.execute(query)
     return result.scalars().all()
 
 def automation_runner_response(runner: models.AutomationRunner):

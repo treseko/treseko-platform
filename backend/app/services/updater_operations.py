@@ -1,6 +1,64 @@
+import re
+
 from .updater import *
 from .updater import _utc_iso, _pg_dump_url
 from .update_installation_mode import require as require_installation_mode
+from .error_sanitizer import sanitize_external_error
+
+
+def _update_server_error(response: httpx.Response) -> RuntimeError:
+    """Convert proxy/API failures into a short actionable local error."""
+    detail = ""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            detail = str(payload.get("detail") or payload.get("error") or "")
+    except (ValueError, TypeError):
+        detail = ""
+    if not detail:
+        detail = response.text
+    detail = sanitize_external_error(detail, max_len=180)
+    detail = re.sub(r"<[^>]+>", " ", detail)
+    detail = re.sub(r"\s+", " ", detail).strip()
+    retry_after = str(response.headers.get("retry-after") or "").strip()
+    suffix = f" Reintentá en {retry_after} segundos." if retry_after.isdigit() else ""
+    return RuntimeError(f"Update Server respondió HTTP {response.status_code}: {detail}.{suffix}")
+
+
+async def _fetch_update_payload(client: httpx.AsyncClient, url: str, legacy_url: str, request_payload: dict[str, Any]) -> dict[str, Any]:
+    retryable = {429, 502, 503, 504}
+    for attempt in range(UPDATE_CHECK_RETRY_ATTEMPTS):
+        try:
+            response = await client.post(url, json=request_payload)
+            if response.status_code in {404, 405}:
+                legacy_response = await client.get(legacy_url)
+                if not legacy_response.is_success:
+                    raise _update_server_error(legacy_response)
+                payload = legacy_response.json()
+            elif response.status_code in retryable and attempt + 1 < UPDATE_CHECK_RETRY_ATTEMPTS:
+                retry_after = response.headers.get("retry-after")
+                try:
+                    delay = min(float(retry_after), UPDATE_CHECK_RETRY_MAX_SECONDS) if retry_after else min(2 ** attempt, UPDATE_CHECK_RETRY_MAX_SECONDS)
+                except ValueError:
+                    delay = min(2 ** attempt, UPDATE_CHECK_RETRY_MAX_SECONDS)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                continue
+            elif not response.is_success:
+                raise _update_server_error(response)
+            else:
+                try:
+                    payload = response.json()
+                except (ValueError, TypeError) as exc:
+                    raise RuntimeError("Update Server devolvió una respuesta no JSON.") from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError("Update Server devolvió un payload inválido.")
+            return payload
+        except httpx.RequestError as exc:
+            if attempt + 1 >= UPDATE_CHECK_RETRY_ATTEMPTS:
+                raise RuntimeError("No se pudo conectar con Update Server después de varios intentos.") from exc
+            await asyncio.sleep(min(2 ** attempt, UPDATE_CHECK_RETRY_MAX_SECONDS))
+    raise RuntimeError("No se pudo consultar Update Server.")
 
 async def check_community_update(self, channel: str | None = None, *, force_refresh: bool = False) -> dict[str, Any]:
     channel = channel if channel in COMMUNITY_UPDATE_CHANNELS else configured_community_update_channel()
@@ -43,14 +101,12 @@ async def check_community_update(self, channel: str | None = None, *, force_refr
         "update_key_id": update_key_id or None,
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(UPDATE_CHECK_TIMEOUT_SECONDS, connect=5.0)) as client:
-        try:
-            response = await client.post(url, json=request_payload)
-            response.raise_for_status()
-            payload = response.json()
-        except httpx.HTTPStatusError:
-            legacy_response = await client.get(f"{self.update_server_url}/community/latest")
-            legacy_response.raise_for_status()
-            payload = legacy_response.json()
+        payload = await _fetch_update_payload(
+            client,
+            url,
+            f"{self.update_server_url}/community/latest",
+            request_payload,
+        )
     latest_version = str(payload.get("version") or payload.get("latest_version") or "").strip()
     available = bool(latest_version and version_gt(latest_version, PRODUCT_VERSION))
     manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else dict(payload)

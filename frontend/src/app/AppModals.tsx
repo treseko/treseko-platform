@@ -208,6 +208,7 @@ export function AppModals(props: AppModalsProps) {
         setRoleForm={props.setRoleForm}
         setRoleModulePermission={props.setRoleModulePermission}
         setRoleCapabilityPermission={props.setRoleCapabilityPermission}
+        applyRolePreset={props.applyRolePreset}
         handleSaveRole={props.handleSaveRole}
         showUserModal={props.showUserModal}
         setShowUserModal={props.setShowUserModal}

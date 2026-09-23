@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Button, Card, Form } from "react-bootstrap";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, LayoutList, Plus, Trash2 } from "lucide-react";
 import { EvidenceUpload } from "../../EvidenceUpload";
@@ -7,6 +8,7 @@ import { DynamicVariablePicker } from "./DynamicVariablePicker";
 type Props = { context: any };
 
 export function CaseStepsCard({ context }: Props) {
+  const pasteTargetRefs = useRef<Record<string, { current: HTMLDivElement | null }>>({});
   const {
     t, collapsedSections, setCollapsedSections, canEditSteps, addStepInput, newTestSteps,
     handleStepInputChange, attachmentConfig, updateStepAttachments, moveStepInput,
@@ -15,6 +17,10 @@ export function CaseStepsCard({ context }: Props) {
     newTestData,
     fetchWithAuth,
   } = context;
+  const getPasteTargetRef = (idx: number, field: 'action' | 'expected') => {
+    const key = `${idx}-${field}`;
+    return pasteTargetRefs.current[key] || (pasteTargetRefs.current[key] = { current: null });
+  };
   const variableContext = {
     environments: projectEnvironments,
     selectedEnvironment: selectedDryRunEnvironment,
@@ -65,8 +71,18 @@ export function CaseStepsCard({ context }: Props) {
           <div key={idx} className="case-step-grid mb-3 animate__animated animate__fadeIn bg-white p-2 rounded-3 border border-light-subtle shadow-sm">
             <div className="case-step-number-cell">
               <span className="case-step-index">#{idx + 1}</span>
+              {canEditSteps && (
+                <div className="case-step-reorder-controls">
+                  <Button variant="light" className="case-step-action-btn text-secondary border shadow-none hover-text-primary transition-all" onClick={() => moveStepInput(idx, 'up')} disabled={idx === 0} title={t('casos.moveStepUp')} aria-label={t('casos.moveStepUp')}>
+                    <ArrowUp size={15} />
+                  </Button>
+                  <Button variant="light" className="case-step-action-btn text-secondary border shadow-none hover-text-primary transition-all" onClick={() => moveStepInput(idx, 'down')} disabled={idx === newTestSteps.length - 1} title={t('casos.moveStepDown')} aria-label={t('casos.moveStepDown')}>
+                    <ArrowDown size={15} />
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="d-flex flex-column">
+            <div className="d-flex flex-column" ref={(node) => { getPasteTargetRef(idx, 'action').current = node }}>
               <Form.Control name="a11y-casestepscardtsx-57" aria-label="Campo de formulario" required as="textarea" rows={2} placeholder={t('casos.actionPlaceholder')} value={step.action} onChange={(e) => handleStepInputChange(idx, 'action', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
               <EvidenceUpload
                 compact
@@ -75,10 +91,11 @@ export function CaseStepsCard({ context }: Props) {
                 uploadScope="CASE_STEP_REFERENCE"
                 maxFileSize={attachmentConfig.max_file_size_mb}
                 enablePaste={attachmentConfig.enable_clipboard_paste}
+                pasteTargetRef={getPasteTargetRef(idx, 'action')}
                 currentAttachments={step.actionAttachments || []}
                 currentEvidence={step.actionImg}
-                onUploadComplete={(attachment) => updateStepAttachments(idx, 'actionAttachments', [...(step.actionAttachments || []), attachment])}
-                onRemoveAttachment={(attachment) => updateStepAttachments(idx, 'actionAttachments', (step.actionAttachments || []).filter(item => item.id !== attachment.id))}
+                onUploadComplete={(attachment) => updateStepAttachments(idx, 'actionAttachments', (current) => [...current, attachment])}
+                onRemoveAttachment={(attachment) => updateStepAttachments(idx, 'actionAttachments', (current) => current.filter(item => item.id !== attachment.id))}
                 disabled={!canEditAttachments}
               />
             </div>
@@ -87,7 +104,7 @@ export function CaseStepsCard({ context }: Props) {
               <VariableReferenceHints value={step.data} {...variableContext} />
               {canEditSteps && <DynamicVariablePicker value={step.data} onChange={(value) => handleStepInputChange(idx, 'data', value)} fetchWithAuth={fetchWithAuth} />}
             </div>
-            <div className="d-flex flex-column">
+            <div className="d-flex flex-column" ref={(node) => { getPasteTargetRef(idx, 'expected').current = node }}>
               <Form.Control name="a11y-casestepscardtsx-76" aria-label="Campo de formulario" required as="textarea" rows={2} placeholder={t('casos.validationCriteriaPlaceholder')} value={step.expected} onChange={(e) => handleStepInputChange(idx, 'expected', e.target.value)} className="border-light-subtle shadow-none small text-dark mb-2 flex-grow-1" style={{ resize: 'none' }} disabled={!canEditSteps} />
               <EvidenceUpload
                 compact
@@ -96,27 +113,28 @@ export function CaseStepsCard({ context }: Props) {
                 uploadScope="CASE_STEP_REFERENCE"
                 maxFileSize={attachmentConfig.max_file_size_mb}
                 enablePaste={attachmentConfig.enable_clipboard_paste}
+                pasteTargetRef={getPasteTargetRef(idx, 'expected')}
                 currentAttachments={step.expectedAttachments || []}
                 currentEvidence={step.expectedImg}
-                onUploadComplete={(attachment) => updateStepAttachments(idx, 'expectedAttachments', [...(step.expectedAttachments || []), attachment])}
-                onRemoveAttachment={(attachment) => updateStepAttachments(idx, 'expectedAttachments', (step.expectedAttachments || []).filter(item => item.id !== attachment.id))}
+                onUploadComplete={(attachment) => updateStepAttachments(idx, 'expectedAttachments', (current) => [...current, attachment])}
+                onRemoveAttachment={(attachment) => updateStepAttachments(idx, 'expectedAttachments', (current) => current.filter(item => item.id !== attachment.id))}
                 disabled={!canEditAttachments}
               />
             </div>
             <div className="case-step-actions-cell">
               {canEditSteps && (
                 <>
-                <Button variant="light" className="case-step-action-btn text-secondary border shadow-none hover-text-primary transition-all" onClick={() => moveStepInput(idx, 'up')} disabled={idx === 0} title={t('casos.moveStepUp')} aria-label={t('casos.moveStepUp')}>
-                  <ArrowUp size={15} />
-                </Button>
-                <Button variant="light" className="case-step-action-btn text-secondary border shadow-none hover-text-primary transition-all" onClick={() => moveStepInput(idx, 'down')} disabled={idx === newTestSteps.length - 1} title={t('casos.moveStepDown')} aria-label={t('casos.moveStepDown')}>
-                  <ArrowDown size={15} />
+                <Button variant="light" className="case-step-action-btn text-primary border shadow-none hover-bg-primary hover-text-white transition-all" onClick={() => addStepInput(idx)} title={t('casos.addStepAfter')} aria-label={t('casos.addStepAfter')}>
+                  <Plus size={15} />
+                  <span className="case-step-action-label">{t('casos.addStepShort')}</span>
                 </Button>
                 <Button variant="light" className="case-step-action-btn text-secondary border shadow-none hover-text-primary transition-all" onClick={() => duplicateStepInput(idx)} title={t('casos.copyStep')} aria-label={t('casos.copyStep')}>
                   <Copy size={15} />
+                  <span className="case-step-action-label">{t('casos.copyStepShort')}</span>
                 </Button>
                 <Button variant="light" className="case-step-action-btn text-danger border shadow-none hover-bg-danger hover-text-white transition-all" onClick={() => removeStepInput(idx)} title={t('casos.deleteStep')} aria-label={t('casos.deleteStep')}>
                   <Trash2 size={16} />
+                  <span className="case-step-action-label">{t('casos.deleteStepShort')}</span>
                 </Button>
                 </>
               )}

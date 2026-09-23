@@ -138,6 +138,24 @@ async def ensure_default_ai_workflow(db: AsyncSession, created_by: Optional[UUID
         await db.commit()
         workflow = await _load_workflow(db, default_id)
 
+    # The deterministic built-in workflow is the platform fallback. Older
+    # installations could retain a legacy default row or leave the canonical
+    # row in DRAFT after a migration/import. Normalize that state before
+    # listing workflows so the API never exposes zero active defaults or more
+    # than one default workflow.
+    changed_default_state = workflow.status != "ACTIVE" or not workflow.is_default
+    if changed_default_state:
+        workflow.status = "ACTIVE"
+        workflow.is_default = True
+    cleared_legacy_defaults = await db.execute(
+        update(models.AiWorkflow)
+        .where(models.AiWorkflow.id != workflow.id, models.AiWorkflow.is_default.is_(True))
+        .values(is_default=False)
+    )
+    if changed_default_state or cleared_legacy_defaults.rowcount:
+        await db.commit()
+        workflow = await _load_workflow(db, default_id)
+
     config = await get_ai_engine_config(db)
     existing_versions = await list_ai_workflow_versions(db, workflow.id)
     if not existing_versions:
@@ -415,6 +433,11 @@ async def archive_ai_workflow(db: AsyncSession, workflow_id: UUID) -> models.AiW
 
 async def restore_default_ai_workflow(db: AsyncSession, workflow_id: UUID, user_id: Optional[UUID]) -> models.AiWorkflow:
     workflow = await get_ai_workflow(db, workflow_id)
+    await db.execute(
+        update(models.AiWorkflow)
+        .where(models.AiWorkflow.id != workflow.id, models.AiWorkflow.is_default.is_(True))
+        .values(is_default=False)
+    )
     workflow.name = "QA Agent Workflow Default"
     workflow.version = max(1, workflow.version + 1)
     workflow.status = "DRAFT"

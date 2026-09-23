@@ -12,7 +12,7 @@ import {
 export function useCaseArchiveActions(options: any): any {
   const {
     t, currentProjectId, currentCompId, currentBuildId, buildsList,
-    componentsList, suitesTree, selectedTest, fetchWithAuth, confirmAction,
+    componentsList, suitesTree, selectedTest, fetchWithAuth, confirmAction, confirmLeavingWithUnsavedChanges,
     showFeedback, loadCasosFromBackend, loadSuitesFromBackend,
     setSelectedTest, setCaseEditorOpen, setEditingCasoMasterId,
     setSelectedSuiteId, setSelectedSubSuiteId, setNewTestSuite,
@@ -27,6 +27,9 @@ export function useCaseArchiveActions(options: any): any {
       return;
     }
     const isArchiving = nextStatus === "ARCHIVADO";
+    if (selectedTest?.masterId === test.masterId || selectedTest?.id === test.id) {
+      if (!(await confirmLeavingWithUnsavedChanges())) return;
+    }
     if (isArchiving) {
       const confirmed = await confirmAction({ title: t('common.archiveTest'), message: t('common.archiveTestMessage'), variant: "warning", confirmLabel: t('common.archiveTest') });
       if (!confirmed) return;
@@ -52,7 +55,7 @@ export function useCaseArchiveActions(options: any): any {
     } catch (error: any) {
       showFeedback(isArchiving ? t('common.archiveFailed') : t('common.restoreFailed'), error?.message || t('common.testStatusUpdateFailed'), "danger");
     }
-  }, [componentsList, confirmAction, currentProjectId, fetchWithAuth, loadCasosFromBackend, selectedTest, showFeedback, readOnlyBuild, t]);
+  }, [componentsList, confirmAction, confirmLeavingWithUnsavedChanges, currentProjectId, fetchWithAuth, loadCasosFromBackend, selectedTest, showFeedback, readOnlyBuild, t]);
 
   const updateSuiteArchiveStatus = useCallback(async (suite: any, archivado: boolean) => {
     if (!suite?.id || !currentProjectId) return;
@@ -62,6 +65,7 @@ export function useCaseArchiveActions(options: any): any {
     }
     const confirmed = archivado ? await confirmAction({ title: t('common.archiveSuite'), message: t('common.archiveSuiteMessage'), variant: "warning", confirmLabel: t('common.archiveSuite') }) : true;
     if (!confirmed) return;
+    if (!(await confirmLeavingWithUnsavedChanges())) return;
     try {
       const response = await fetchWithAuth(`${API_BASE}/suites/${suite.id}/archive`, { method: "PATCH", body: JSON.stringify({ archivado }) });
       if (!response.ok) {
@@ -78,7 +82,7 @@ export function useCaseArchiveActions(options: any): any {
     } catch (error: any) {
       showFeedback(archivado ? t('common.archiveSuiteFailed') : t('common.restoreSuiteFailed'), error?.message || t('common.suiteStatusUpdateFailed'), "danger");
     }
-  }, [componentsList, confirmAction, currentCompId, currentProjectId, fetchWithAuth, loadCasosFromBackend, loadSuitesFromBackend, showFeedback, readOnlyBuild, t]);
+  }, [componentsList, confirmAction, confirmLeavingWithUnsavedChanges, currentCompId, currentProjectId, fetchWithAuth, loadCasosFromBackend, loadSuitesFromBackend, showFeedback, readOnlyBuild, t]);
 
   const getCasoVersionRows = createCaseVersionRows({ suitesTree, componentsList });
   const getRootSuiteId = (suiteId: string) => getRootSuiteIdFromTree(suitesTree, suiteId);

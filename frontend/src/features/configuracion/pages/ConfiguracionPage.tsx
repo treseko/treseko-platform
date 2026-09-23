@@ -2,7 +2,7 @@
 import { Nav, Card, Badge, Form, Button, Table, Dropdown } from 'react-bootstrap'
 import { ReactFlowProvider } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Settings, Building2, Users, ShieldCheck, Link, Sliders, Save, Plus, RotateCcw, Copy, Upload, Download, Archive, Flag, Activity, User, Cpu, MoreHorizontal, BadgeCheck, Mail, Crown, DownloadCloud, ClipboardCheck } from 'lucide-react'
+import { Settings, Building2, Users, ShieldCheck, Link, Sliders, Save, Plus, RotateCcw, Copy, Upload, Download, Archive, Flag, Activity, User, Cpu, MoreHorizontal, BadgeCheck, Mail, Crown, DownloadCloud, ClipboardCheck, Plug, KeyRound, Paperclip } from 'lucide-react'
 import { useI18n } from '../../../i18n'
 import { createLocaleFormatter } from '../../../i18n/formatLocale'
 import { AiSettingsSection } from '../components/tabs/AiSettingsSection'
@@ -16,8 +16,13 @@ import { ProfileSettingsTab } from '../components/tabs/ProfileSettingsTab'
 import { RolesSettingsTab, UsersSettingsTab } from '../components/tabs/UsersRolesSettingsTab'
 import { SystemMonitorTab } from '../components/tabs/SystemMonitorTab'
 import { UpdatesSettingsTab } from '../components/tabs/UpdatesSettingsTab'
+import { SecuritySettingsTab } from '../components/tabs/SecuritySettingsTab'
+import { McpSettingsTab } from '../components/tabs/McpSettingsTab'
+import { EvidenceSettingsTab } from '../components/tabs/EvidenceSettingsTab'
+import { ApiKeysSettingsTab } from '../components/tabs/ApiKeysSettingsTab'
 import { useAttachmentMimeOptions } from '../hooks/useAttachmentMimeOptions'
 import { useProfileSettings } from '../hooks/useProfileSettings'
+import { PremiumLockedSettingsPanel } from '../components/PremiumLockedSettingsPanel'
 import type { ConfiguracionPageProps } from '../types/configuracion'
 import {
   agentActionOptions,
@@ -31,46 +36,6 @@ export function ConfiguracionPage(props: ConfiguracionPageProps) {
     <ReactFlowProvider>
       <ConfiguracionPageInner {...props} />
     </ReactFlowProvider>
-  )
-}
-
-function PremiumLockedSettingsPanel({
-  title,
-  description,
-  bullets,
-  onOpenLicense,
-}: {
-  title: string
-  description: string
-  bullets: string[]
-  onOpenLicense: () => void
-}) {
-  const { t } = useI18n()
-  return (
-    <div className="animate__animated animate__fadeIn">
-      <Card className="border-0 shadow-sm rounded-4 bg-white p-4">
-        <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
-          <div>
-            <Badge bg="warning" text="dark" className="border mb-3 d-inline-flex align-items-center gap-1">
-              <Crown size={14} /> {t('configuracion.premiumBadge')}
-            </Badge>
-            <h5 className="fw-bold text-dark mb-2">{title}</h5>
-            <p className="text-muted mb-3">{description}</p>
-            <div className="d-flex flex-column gap-2">
-              {bullets.map(item => (
-                <div key={item} className="small text-secondary d-flex align-items-start gap-2">
-                  <span className="text-primary fw-bold">•</span>
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <Button variant="outline-primary" className="fw-bold rounded-pill px-4" onClick={onOpenLicense}>
-            {t('configuracion.premiumLockedViewLicense')}
-          </Button>
-        </div>
-      </Card>
-    </div>
   )
 }
 
@@ -91,6 +56,20 @@ function ConfiguracionPageInner({
   revokeUserApiKey,
   handleApiKeyEnabledChange,
   copyToClipboard,
+  mcpTools,
+  mcpCredentials,
+  mcpLoading,
+  mcpError,
+  mcpRawCredential,
+  mcpEnabled,
+  mcpStatus,
+  mcpEndpoint,
+  mcpScopeCatalog,
+  mcpEffectiveCapabilities,
+  dismissMcpRawCredential,
+  createMcpCredential,
+  revokeMcpCredential,
+  toggleMcp,
   attachmentConfig,
   setAttachmentConfig,
   attachmentConfigLoading,
@@ -157,9 +136,13 @@ function ConfiguracionPageInner({
       { id: 'clients', visible: canAccessCapability('configuracion.clientes', 'read'), label: t('configuracion.tabClients'), icon: Building2 },
       { id: 'users', visible: canAccessCapability('configuracion.usuarios', 'read'), label: t('configuracion.tabUsers'), icon: Users },
       { id: 'roles', visible: canAccessCapability('configuracion.roles', 'read'), label: t('configuracion.tabRoles'), icon: ShieldCheck },
+      { id: 'security', visible: canAccessCapability('configuracion.sesion', 'read'), label: t('configuracion.tabSecurity'), icon: ShieldCheck },
       { id: 'notifications', visible: canAccessNotifications, label: t('configuracion.tabNotifications'), icon: Mail },
       { id: 'integrations', visible: canAccessCapability('configuracion.integraciones', 'read'), label: t('configuracion.tabIntegrations'), icon: Link },
+      { id: 'api_keys', visible: canAccessCapability('configuracion.api_keys', 'read'), label: t('configuracion.tabApiKeys'), icon: KeyRound },
+      { id: 'mcp', visible: canAccessCapability('mcp.usar', 'read'), label: t('configuracion.tabMcp'), icon: Plug },
       { id: 'ai', visible: canAccessCapability('configuracion.pruebas_ia', 'read'), label: t('configuracion.tabAi'), icon: Cpu },
+      { id: 'evidence', visible: canAccessCapability('configuracion.adjuntos', 'read'), label: t('configuracion.tabEvidence'), icon: Paperclip },
       { id: 'monitor', visible: canAccessCapability('configuracion.monitor', 'read'), label: t('configuracion.tabMonitor'), icon: Activity },
       { id: 'audit', visible: canAccessCapability('configuracion.monitor', 'read'), label: t('configuracion.tabAudit'), icon: ClipboardCheck },
       { id: 'license', visible: canAccessCapability('configuracion.licencia', 'read'), label: t('configuracion.tabLicense'), icon: BadgeCheck },
@@ -254,6 +237,19 @@ function ConfiguracionPageInner({
               revokeUserApiKey={revokeUserApiKey}
               handleApiKeyEnabledChange={handleApiKeyEnabledChange}
               copyToClipboard={copyToClipboard}
+              mcpTools={mcpTools}
+              mcpCredentials={mcpCredentials}
+              mcpLoading={mcpLoading}
+              mcpError={mcpError}
+              mcpRawCredential={mcpRawCredential}
+              mcpEnabled={mcpEnabled}
+              mcpStatus={mcpStatus}
+              mcpEndpoint={mcpEndpoint}
+              mcpScopeCatalog={mcpScopeCatalog}
+              mcpEffectiveCapabilities={mcpEffectiveCapabilities}
+              dismissMcpRawCredential={dismissMcpRawCredential}
+              createMcpCredential={createMcpCredential}
+              revokeMcpCredential={revokeMcpCredential}
               attachmentConfig={attachmentConfig}
               setAttachmentConfig={setAttachmentConfig}
               attachmentConfigLoading={attachmentConfigLoading}
@@ -318,6 +314,55 @@ function ConfiguracionPageInner({
             />
           )}
 
+          {configTab === 'security' && (
+            <SecuritySettingsTab
+              sessionConfig={sessionConfig}
+              setSessionConfig={setSessionConfig}
+              sessionConfigLoading={sessionConfigLoading}
+              saveSessionConfig={saveSessionConfig}
+              canEditSession={canAccessCapability('configuracion.sesion', 'edit')}
+              fetchWithAuth={fetchWithAuth}
+              showFeedback={showFeedback}
+              canAccessCapability={canAccessCapability}
+              hasSystemFeature={hasSystemFeature}
+            />
+          )}
+
+          {configTab === 'api_keys' && (
+            <ApiKeysSettingsTab
+              apiKeys={apiKeys}
+              apiKeysLoading={apiKeysLoading}
+              apiKeyName={apiKeyName}
+              newApiKeyValue={newApiKeyValue}
+              setApiKeyName={setApiKeyName}
+              createUserApiKey={createUserApiKey}
+              revokeUserApiKey={revokeUserApiKey}
+              handleApiKeyEnabledChange={handleApiKeyEnabledChange}
+              copyToClipboard={copyToClipboard}
+            />
+          )}
+
+          {configTab === 'mcp' && (
+            <McpSettingsTab
+              canAccessCapability={canAccessCapability}
+              mcpTools={mcpTools}
+              mcpCredentials={mcpCredentials}
+              mcpLoading={mcpLoading}
+              mcpError={mcpError}
+              mcpRawCredential={mcpRawCredential}
+              mcpEnabled={mcpEnabled}
+              mcpStatus={mcpStatus}
+              mcpEndpoint={mcpEndpoint}
+              mcpScopeCatalog={mcpScopeCatalog}
+              mcpEffectiveCapabilities={mcpEffectiveCapabilities}
+              dismissMcpRawCredential={dismissMcpRawCredential}
+              createMcpCredential={createMcpCredential}
+              revokeMcpCredential={revokeMcpCredential}
+              toggleMcp={toggleMcp}
+              copyToClipboard={copyToClipboard}
+            />
+          )}
+
           {configTab === 'notifications' && hasSystemFeature('notifications.email') && (
             <NotificationsSettingsTab
               fetchWithAuth={fetchWithAuth}
@@ -372,6 +417,19 @@ function ConfiguracionPageInner({
               projectsList={projectsList}
               currentProjectId={currentProjectId}
               loggedUser={loggedUser}
+            />
+          )}
+
+          {configTab === 'evidence' && (
+            <EvidenceSettingsTab
+              attachmentConfig={attachmentConfig}
+              setAttachmentConfig={setAttachmentConfig}
+              attachmentConfigLoading={attachmentConfigLoading}
+              saveAttachmentConfig={saveAttachmentConfig}
+              attachmentMimeGroups={attachmentMimeGroups}
+              toggleAttachmentMime={toggleAttachmentMime}
+              canAccessCapability={canAccessCapability}
+              fetchWithAuth={fetchWithAuth}
             />
           )}
 
