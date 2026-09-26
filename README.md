@@ -191,6 +191,8 @@ Los servicios comerciales privados de Treseko no forman parte de este repositori
   cobertura de ejecución.
 - Workers de automatización aprobados por código.
 - Integración con motor IA para ejecución y análisis.
+- MCP gobernado para consultar contexto QA, ejecutar operaciones confirmadas e
+  importar casos con preview/commit/rollback según scopes y allowlist.
 - Roles, permisos y capacidades granulares.
 - Edición Community con funciones Premium visibles como bloqueadas.
 - Instalación self-hosted con Docker.

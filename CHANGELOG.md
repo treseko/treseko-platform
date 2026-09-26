@@ -15,6 +15,13 @@
   rollback de startup más explícitos.
 - Validaciones adicionales para licencias, entitlements, límites y estados de
   actualización.
+- Superficie MCP gobernada con descubrimiento de herramientas, consultas de
+  contexto QA, mutaciones confirmadas e importaciones con preview/commit/
+  rollback, protegida por scopes, allowlist e idempotencia.
+- Authoring asistido por IA para requisitos, historias y casos, con alcance,
+  exclusiones, criterios versionados, fingerprints e idempotencia documentados.
+- Ejecución API declarativa con variables dinámicas, sandbox de scripts,
+  snapshots y evidencia redactada mediante el worker unificado.
 
 ## Correcciones
 

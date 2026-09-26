@@ -7,6 +7,11 @@ endpoint. MCP errors remain inside JSON-RPC envelopes; internal details,
 credentials, and handler/database exceptions never reach clients. Notifications
 receive HTTP 204 with no JSON-RPC response.
 
+The discovery response is the source of truth for the enabled catalog. Read
+operations and governed mutations use the same JSON-RPC transport; mutations
+require the schema's explicit confirmation and a durable `idempotency_key`.
+Import tools expose `preview`, `commit` and `rollback` as separate operations.
+
 The process-local limiter is bounded and lock-protected. It is allowed only
 when `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` is explicit. A shared
 Redis limiter is required for workers or replicas. Redis admission health uses a
