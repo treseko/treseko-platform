@@ -1,5 +1,7 @@
 # Public API surface
 
+<!-- Language: en -->
+
 This page lists the Community installation's endpoint groups. Documenting a
 route does not mean every role or edition can use it: the backend applies
 authentication, capability, scope, feature gates and resource state.
