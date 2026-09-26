@@ -137,3 +137,60 @@ For an external integration, first verify `/mcp/tools`, run a least-privilege
 call against a test project, and review the audit log. Use the mutation tools
 only after validating their input schema, required scope, confirmation and
 idempotency key.
+
+## Functional catalog and contracts
+
+The effective catalog is discovered at runtime and may include:
+
+- project and build metadata;
+- cases and case versions;
+- test runs, run status and test results;
+- bugs and quality summaries;
+- evidence metadata, environments and datasets;
+- quality trends and build comparisons;
+- governed run creation, execution and cancellation;
+- governed case and bug mutations; and
+- case import `preview`, `commit` and `rollback`.
+
+Every call requires a valid `project_id`, closed input schemas and ownership of
+the organization/project boundary. Pagination uses bounded `limit` and
+`offset` values. Cross-project runs, results, bugs and builds are rejected.
+Results are bounded and preserve functional evidence while redacting passwords,
+secrets, tokens, cookies, API keys, authorization headers and bearer tokens.
+
+## Case import
+
+The supported package profile is `treseko/tcases-v1` with the
+`treseko.test-cases-package/v1` format. A package contains checksummed
+`manifest.json`, `cases.json`, `suites.json` and `versions.json`; never include
+credentials or connection strings.
+
+MCP imports support `CLASICA` and `API` cases with `MANUAL`, `AUTOMATIZADA` or
+`AUTOMATIZADA_AI` modes. `PERFORMANCE` and `CONVERSACIONAL` are rejected until
+an MCP-compatible executor exists. Imported Playwright, Selenium, Cypress and
+Puppeteer scripts remain reviewable definitions; they are not executed by the
+importer.
+
+- `treseko.cases.import.preview` validates a package without persisting cases
+  and returns a temporary preview token.
+- `treseko.cases.import.commit` requires the exact package/hash, preview token,
+  commit scope, durable idempotency key and `APPLY_CASE_IMPORT` confirmation.
+- `treseko.cases.import.rollback` requires the batch receipt, rollback token,
+  idempotency key and `ROLLBACK_CASE_IMPORT` confirmation. Never delete cases
+  directly from PostgreSQL.
+
+## Scopes and unsupported capabilities
+
+MCP keys are created and managed through the official API-key surface and must
+receive only the scopes required by the integration, such as
+`mcp.cases.read`, `mcp.test-runs.list`, `mcp.test-results.detail`,
+`mcp.bugs.list`, `mcp.quality.summary` or the dedicated import scopes.
+Mutations additionally require organization/project edit permission.
+
+MCP does not create projects, components or builds, does not execute arbitrary
+shell or scripts, and does not execute conversational or performance tests.
+API execution is limited to suites supported by the certified declarative
+executor. Revoking the key or disabling MCP blocks subsequent calls.
+
+See [MCP governance](MCP_GOVERNANCE.md), [JSON-RPC operations](MCP_OPERATIONS.md)
+and [case portability](CASE_PORTABILITY.md) for the implementation contracts.

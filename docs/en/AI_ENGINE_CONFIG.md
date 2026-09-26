@@ -79,3 +79,23 @@ evidence certified by the instance.
 
 Dry-runs help validate readiness without creating an execution, evidence or
 project history.
+
+## Universal workflows and versioning
+
+Besides selecting workflows for generation and execution, an installation may
+expose the governed universal-workflow editor. Depending on edition and
+capabilities it can:
+
+- inspect the runtime manifest, universal agents and capabilities;
+- run V2 or V3 preflight (`workflow_format=universal_v3`) before saving;
+- create, import, duplicate, edit, validate, archive and restore workflows;
+- convert a workflow to blocks or to a universal package;
+- export and import workflow packages without credentials;
+- publish versions, activate them, inspect history and roll back.
+
+Draft changes require `motor_ia.workflow_drafts:edit`; publishing requires
+`motor_ia.workflow_publish:edit`; activation or restore requires
+`motor_ia.workflow_activate:edit`; reads use `motor_ia.workflow_view:read`.
+Activation while executions are running requires the administrative
+confirmation requested by the backend. Do not bypass a failed preflight by
+editing the database directly.
