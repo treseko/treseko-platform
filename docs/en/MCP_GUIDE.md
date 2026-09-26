@@ -32,7 +32,8 @@ Configure these variables in the backend environment:
 
 ```text
 TRESEKO_MCP_ENABLED=true
-TRESEKO_MCP_TOOLS=treseko.project.get,treseko.builds.list
+# Comma-separated allowlist; choose only the governed tools required.
+TRESEKO_MCP_TOOLS=treseko.project.get,treseko.builds.list,treseko.cases.list
 ```
 
 Restart the backend after changing the configuration. If
@@ -97,7 +98,6 @@ access. To list builds, change `name` to `treseko.builds.list`.
 
 - Authentication uses only `X-MCP-API-Key`; browser JWTs are not accepted.
 - MCP remains disabled by default.
-- The allowlist cannot enable unknown or forbidden tools.
 - The allowlist cannot enable unknown or forbidden tools; there is no shell,
   filesystem, secrets, database or generic network access.
 - Only tool invocations that execute successfully are audited with the actor,
@@ -133,5 +133,7 @@ backend and are preserved to make troubleshooting easier.
 | `404 Herramienta MCP no autorizada` | The tool is not in `TRESEKO_MCP_TOOLS` or does not exist in the catalog. |
 | `429` | The call limit was exceeded. |
 
-For an external integration, first verify `/mcp/tools`, run a read-only call
-against a test project and review the audit log.
+For an external integration, first verify `/mcp/tools`, run a least-privilege
+call against a test project, and review the audit log. Use the mutation tools
+only after validating their input schema, required scope, confirmation and
+idempotency key.

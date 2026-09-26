@@ -9,7 +9,7 @@ interfaz no escribe directamente en la base de datos.
 flowchart LR
   U[Navegador] --> F[Frontend]
   CI[Runner CI externo] -->|reporta resultados| B
-  MCP[Cliente MCP autorizado] -->|consultas de solo lectura| B
+  MCP[Cliente MCP autorizado] -->|consultas y operaciones gobernadas| B
   F --> B[Backend]
   B --> P[(PostgreSQL)]
   B --> R[(Redis)]

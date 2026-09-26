@@ -32,8 +32,11 @@ runtime.
 ## MCP
 
 MCP is not the external reporting API. It is disabled by default, uses
-`X-MCP-API-Key` and does not accept browser JWTs. The current allowlist exposes
-the read-only `treseko.project.get` and `treseko.builds.list` tools.
+`X-MCP-API-Key` and does not accept browser JWTs. The public surface combines
+queries for projects, builds, cases, runs, results, bugs, quality, evidence,
+environments, datasets, versions and trends with confirmed mutations and
+governed imports when capability and scope allow them. Discover the effective
+list at `/mcp/tools`; do not assume a static catalog.
 
 Each call requires capability, organization and project scope through
 `project_id`, validation, limits, rate limiting and auditing. There is no shell,

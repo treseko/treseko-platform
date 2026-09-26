@@ -11,7 +11,7 @@ interface does not write directly to the database.
 flowchart LR
   U[Browser] --> F[Frontend]
   CI[External CI runner] -->|reports results| B
-  MCP[Authorized MCP client] -->|read-only queries| B
+  MCP[Authorized MCP client] -->|queries and governed operations| B
   F --> B[Backend]
   B --> P[(PostgreSQL)]
   B --> R[(Redis)]

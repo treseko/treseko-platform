@@ -26,5 +26,5 @@ historical metrics, branding and Premium updates.
 ## MCP
 
 MCP is disabled by default, uses an API key separate from the JWT and exposes
-only read tools enabled by an allowlist, with simultaneous organization and
-project scope.
+read tools, confirmed mutations and governed imports according to the allowlist,
+organization/project scopes, capability and idempotency requirements.

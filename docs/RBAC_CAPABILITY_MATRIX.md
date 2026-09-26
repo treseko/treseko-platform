@@ -23,6 +23,6 @@ auditoría, métricas históricas, branding y updates.
 
 ## MCP
 
-Está deshabilitado por defecto, usa API key separada del JWT y expone solo
-herramientas de lectura habilitadas por allowlist, con scope simultáneo de
-organización y proyecto.
+Está deshabilitado por defecto, usa una API key separada del JWT y expone
+herramientas de lectura, mutaciones confirmadas e importación gobernada según
+allowlist, scopes de organización/proyecto, capability e idempotencia.

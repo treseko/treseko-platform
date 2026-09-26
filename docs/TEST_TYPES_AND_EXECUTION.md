@@ -61,6 +61,25 @@ el Automation Worker existente con la capacidad `treseko-api/declarative`.
 - Los nombres, códigos y datos técnicos permanecen intactos aunque cambie el
   idioma de la interfaz.
 
+## Capacidades API incluidas en 1.0.4
+
+- El runner declarativo admite variables dinámicas compatibles con Postman,
+  incluidas `{{$randomUUID}}`, `{{$timestamp}}`, `{{$randomEmail}}` y
+  `{{$randomInt}}`. Las variables se generan con una semilla por ejecución y
+  los placeholders desconocidos se rechazan.
+- El catálogo público contiene 118 variables oficiales y 3 extensiones de
+  Treseko. Los scripts de Postman se ejecutan dentro de un sandbox; no se
+  permiten scripts arbitrarios, credenciales inline ni requests fuera de la
+  allowlist o de los límites configurados.
+- La política `public_test_data=true` del ambiente permite conservar datos
+  sintéticos para evidencia; queda congelada en la ejecución y nunca habilita
+  conservar secretos reales.
+- Los jobs API automatizados usan la capacidad `treseko-api/declarative` del
+  worker unificado. La ejecución manual/IA usa el runner declarativo del
+  backend y conserva snapshots, aserciones, scopes y logs redactados.
+- La deduplicación de bugs y su contexto se calcula desde la ejecución
+  persistida, no desde el estado reemplazable del frontend.
+
 ## API externa y Automation Worker
 
 `POST /external/executions/report` registra resultados producidos por un runner

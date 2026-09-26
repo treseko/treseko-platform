@@ -56,6 +56,25 @@ A conversational case is not automatically an AI execution. Likewise, an API cas
 - Bugs are built from the persisted execution, not from data replaced by the browser.
 - Names, codes and technical data remain intact even when the interface language changes.
 
+## API capabilities included in 1.0.4
+
+- The declarative runner supports Postman-compatible dynamic variables,
+  including `{{$randomUUID}}`, `{{$timestamp}}`, `{{$randomEmail}}` and
+  `{{$randomInt}}`. Variables are generated with a per-execution seed and
+  unknown placeholders are rejected.
+- The public catalog contains 118 official variables and 3 Treseko
+  extensions. Postman scripts run inside a sandbox; arbitrary scripts, inline
+  credentials, and requests outside the allowlist or configured limits are not
+  permitted.
+- An environment's `public_test_data=true` policy allows synthetic data to be
+  retained for evidence; it is frozen in the execution and never enables
+  retention of real secrets.
+- Automated API jobs use the unified worker's `treseko-api/declarative`
+  capability. Manual/AI execution uses the backend declarative runner and
+  preserves redacted snapshots, assertions, scopes and logs.
+- Bug deduplication and context are computed from the persisted execution, not
+  from replaceable frontend state.
+
 ## External API and Automation Worker
 
 `POST /external/executions/report` records results produced by an external runner. It does not start jobs and does not replace the Automation Worker.

@@ -14,8 +14,9 @@ El resolvedor interno de credenciales del Engine comparte la misma admisión:
 permanece cerrado si MCP está deshabilitado o la topología no es válida, antes
 de evaluar el token técnico. Sus errores siguen siendo genéricos.
 
-La superficie es de solo lectura. La allowlist se intersecta con la capability
-RBAC y scopes declarados por cada herramienta. El catálogo no incluye shell,
+La superficie combina lecturas y operaciones gobernadas de escritura. La
+allowlist se intersecta con la capability RBAC y scopes declarados por cada
+herramienta. El catálogo no incluye shell,
 filesystem, secretos, base de datos, red privada ni ejecución arbitraria.
 
 El límite es de 30 llamadas por minuto, 64 KiB por solicitud y 256 KiB por

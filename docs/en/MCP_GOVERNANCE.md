@@ -11,8 +11,9 @@ multiple workers or replicas. Missing or ambiguous topology disables MCP.
 Authentication uses only a revocable `X-MCP-API-Key`; browser JWTs are not
 accepted. Project and organization membership are checked on every call.
 
-The surface is read-only. The allowlist is intersected with each tool's RBAC
-capability and declared scopes. The catalog has no shell, filesystem, secrets,
+The surface combines reads with governed write operations. The allowlist is
+intersected with each tool's RBAC capability and declared scopes. The catalog has
+no shell, filesystem, secrets,
 database, private network, or arbitrary execution.
 
 The limits are 30 calls per minute, 64 KiB per request, and 256 KiB per
