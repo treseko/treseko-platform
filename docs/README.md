@@ -34,6 +34,7 @@ usarla y qué revisar si algo no sale como esperás.
 - [Automatización](AUTOMATION_GUIDE.md)
 - [Automatización externa: generar API key y reportar ejecuciones](API_USAGE_GUIDE.md)
 - [Contrato de la API de automatización externa](EXTERNAL_AUTOMATION_API.md)
+- [Superficie API pública](API_SURFACE.md)
 - [API externa de reporte de automatización](API_SPEC.md)
 - [Worker de automatización](AUTOMATION_WORKER_V1.md)
 - [Operación del Motor IA](AI_ENGINE_GUIDE.md)

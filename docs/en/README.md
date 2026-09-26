@@ -36,6 +36,7 @@ check when something does not behave as expected.
 - [Automation](AUTOMATION_GUIDE.md)
 - [External automation: generate an API key and report executions](API_USAGE_GUIDE.md)
 - [External automation API contract](EXTERNAL_AUTOMATION_API.md)
+- [Public API surface](API_SURFACE.md)
 - [External automation reporting API](API_SPEC.md)
 - [Automation Worker](AUTOMATION_WORKER_V1.md)
 - [AI Engine operation](AI_ENGINE_GUIDE.md)
