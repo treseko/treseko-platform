@@ -5,7 +5,7 @@ Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al
 sistema. Confirmá que la licencia incluya la API externa antes de integrarla.
 
 El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero
-adaptado a la jerarquía y los formatos disponibles en Treseko 1.0.3:
+adaptado a la jerarquía y los formatos disponibles en Treseko 1.0.4:
 
 ```mermaid
 flowchart LR

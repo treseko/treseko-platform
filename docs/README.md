@@ -75,7 +75,7 @@ Para crear y ejecutar casos, empezá por [Crear y mantener casos de prueba](TEST
 
 ## Versión distribuida
 
-La versión estable distribuida es `1.0.3`. Incluye formatos API y
+La versión estable distribuida es `1.0.4`. Incluye formatos API y
 conversacional, ejecución unificada mediante worker, evidencia por formato,
 bugs, snapshots de reportes, trazabilidad, automatización, IA y administración.
 

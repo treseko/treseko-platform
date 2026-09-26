@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.3-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.4-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -12,15 +12,14 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Novedades de 1.0.3
+### Novedades de 1.0.4
 
-- Mejoras en el diseño y la consistencia visual.
-- Nuevas opciones de temas y preferencias para usuarios.
-- Mejoras en Reportes y Métricas, Centro de Incidencias e importación de API.
-- Refuerzos de seguridad, permisos RBAC y validaciones de acceso.
-- Optimización del manejo y migración de datos.
-- Actualizaciones Premium más confiables, con validación, respaldo y rollback.
-- Mejoras en la gestión y estabilidad de los workers de automatización.
+- Catálogo RBAC y controles de configuración alineados con las capacidades efectivas del backend.
+- Mejoras de localización y generación HTML localizada para la landing pública.
+- Contratos de actualización con mantenimiento, reintentos, evidencia RC y rollback de startup más explícitos.
+- Validaciones adicionales para licencias, entitlements, límites y estados de actualización.
+- Correcciones de callbacks, webhooks, deep links, controles MCP y drawer móvil.
+- Redacción de secretos y aislamiento del entorno de procesos hijos reforzados.
 
 ### Novedades de 1.0.2
 
@@ -85,7 +84,7 @@ Muchas organizaciones terminan combinando planillas, Jira, carpetas de evidencia
 
 ## Flujo De Trabajo
 
-Flujo funcional de Treseko Community 1.0.3:
+Flujo funcional de Treseko Community 1.0.4:
 
 ```mermaid
 flowchart TB
@@ -145,7 +144,7 @@ Cada tipo de reporte responde una pregunta distinta:
 
 ## Arquitectura
 
-Arquitectura operativa de Treseko Community 1.0.3:
+Arquitectura operativa de Treseko Community 1.0.4:
 
 ```mermaid
 flowchart TB
@@ -287,7 +286,7 @@ Luego entra a **Configuracion > Licencia**, instala nuevamente tu archivo `.tres
 
 ### Instalar En Un Servidor Por SSH
 
-> **Limitación de 1.0.3:** el instalador remoto actual transporta secretos en
+> **Limitación de 1.0.4:** el instalador remoto actual transporta secretos en
 > argumentos del comando SSH. Usalo únicamente en entornos de prueba. Para
 > producción, preferí la [instalación manual con secretos por archivo](docs/INSTALLATION.md#instalación-manual)
 > hasta que ese transporte sea reforzado.
@@ -390,7 +389,7 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión estable: `1.0.3`
+Versión estable: `1.0.4`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 changelog incluido para conocer su alcance y los cambios incorporados.

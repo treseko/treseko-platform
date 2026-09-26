@@ -14,7 +14,7 @@ Treseko separates two decisions that must not be confused:
 | `CLASICA` | Steps with action, data and expected result. | Steps, observations, screenshots and attachments. |
 | `API` | Declarative request, variables and assertions. | Request, response, assertions and permitted variables. |
 | `CONVERSACIONAL` | UI/API-specific flow; unavailable for MCP. | Available transcript, evaluation, metrics and traces. |
-| `PERFORMANCE` | Reserved format. | No certified load executor in 1.0.3. |
+| `PERFORMANCE` | Reserved format. | No certified load executor in 1.0.4. |
 
 ## MCP
 
@@ -33,7 +33,7 @@ specific UI/API flows.
 
 A conversational case is not automatically an AI execution. Likewise, an API case does not need a different worker: when automated, it uses the existing Automation Worker with the `treseko-api/declarative` capability.
 
-## 1.0.3 operational matrix
+## 1.0.4 operational matrix
 
 | Combination | Public scope |
 |---|---|

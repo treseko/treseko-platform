@@ -1,6 +1,6 @@
 # Capturas de Treseko Community
 
-Estas capturas muestran flujos de referencia de Treseko Community 1.0.3 con
+Estas capturas muestran flujos de referencia de Treseko Community 1.0.4 con
 datos sintéticos. No contienen credenciales ni datos operativos; los nombres,
 UUID, correos de prueba y direcciones loopback visibles pertenecen al entorno
 demo y no deben reutilizarse como configuración real. Para el contrato vigente

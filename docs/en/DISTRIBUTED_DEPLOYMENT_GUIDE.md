@@ -5,7 +5,7 @@
 Separate services when automation, browsers or the AI Engine compete with the
 interface and PostgreSQL. This does not create a separate API worker.
 
-Recommended topology for Treseko Community 1.0.3:
+Recommended topology for Treseko Community 1.0.4:
 
 ```mermaid
 flowchart LR

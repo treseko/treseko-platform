@@ -25,7 +25,7 @@ El proceso que se vincula desde `Automatizacion > Workers` es `automation-worker
 
 La versión del componente se lee desde `VERSION`, `TRESEKO_VERSION` o
 `package.json`. Debe mantenerse alineada con la versión del producto Treseko,
-por ejemplo `1.0.3`.
+por ejemplo `1.0.4`.
 ## Evidencia local
 
 Por defecto el engine no guarda reportes HTML ni screenshots locales. La evidencia operativa se envia al backend y queda asociada al run/caso dentro de Treseko.

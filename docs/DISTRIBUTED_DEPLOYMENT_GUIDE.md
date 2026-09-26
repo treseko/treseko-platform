@@ -3,7 +3,7 @@
 Separá servicios cuando automatización, navegadores o Engine IA compitan con la
 interfaz y PostgreSQL. No crea un worker API separado.
 
-Topología recomendada para Treseko Community 1.0.3:
+Topología recomendada para Treseko Community 1.0.4:
 
 ```mermaid
 flowchart LR

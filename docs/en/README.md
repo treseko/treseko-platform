@@ -77,7 +77,7 @@ To create and run cases, start with [Create and maintain test cases](TEST_CASES_
 
 ## Distributed version
 
-The stable distributed version is `1.0.3`. It includes API and conversational
+The stable distributed version is `1.0.4`. It includes API and conversational
 formats, unified worker execution, format-specific evidence, bugs, report
 snapshots, traceability, automation, AI and administration.
 

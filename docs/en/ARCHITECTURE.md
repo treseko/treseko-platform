@@ -2,7 +2,7 @@
 
 <!-- Language: en -->
 
-Technical guide for a Treseko Community 1.0.3 self-hosted installation. The
+Technical guide for a Treseko Community 1.0.4 self-hosted installation. The
 interface does not write directly to the database.
 
 ## Components
