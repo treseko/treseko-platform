@@ -41,6 +41,11 @@ See the [external automation API](EXTERNAL_AUTOMATION_API.md) for the full contr
 - Do not expose the API key in repositories, screenshots or CI logs.
 - Revoke the key from **Settings → Preferences → External automation API keys** if it leaks, the owner changes or it stops being used.
 
+A key can be temporarily **PAUSED** and later returned to **ACTIVE** without
+creating a new key. **REVOKED** is irreversible for that key. Pausing or
+resuming requires API-key edit permission and is audited; a paused or revoked
+key is rejected when reporting results.
+
 ## If you need Treseko to execute the test
 
 This guide covers only reporting from an external runner. To have the platform execute an API test, use **Automated execution** and an Automation Worker that advertises `treseko-api/declarative`. That flow uses the frozen case contract and produces `treseko.api-result/v1`; it does not use this external API or require another worker installation.

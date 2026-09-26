@@ -26,6 +26,12 @@ Treseko genera un snapshot nuevo cuando detecta datos nuevos. El enlace apunta
 a ese snapshot y no a una consulta histórica mutable; los snapshots existentes
 no se reescriben.
 
+Un enlace compartido puede tener expiración y revocarse desde el historial de
+compartidos. La revocación conserva el registro de auditoría y hace que las
+rutas públicas devuelvan una respuesta de enlace revocado, sin revelar el
+contenido anterior. Los formatos públicos disponibles son HTML, Markdown, CSV,
+PDF y miniatura, sujetos al mismo snapshot, rate limit y política de datos.
+
 ## Tipos de informe
 
 - **Ejecutivo:** KPIs, riesgos, tendencias y hallazgos principales.

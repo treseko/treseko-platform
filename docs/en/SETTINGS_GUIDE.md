@@ -13,7 +13,9 @@ messages or exports may depend on the format configuration.
 
 In **Preferences**, review general options and, when enabled, external
 automation keys. Store each key in a secrets manager and revoke it when it is
-no longer used.
+no longer used. Keys and MCP credentials expose their state: you can pause and
+resume them without redistributing the secret; revocation is irreversible. Each
+state change is audited.
 
 ## Users, roles and audit
 

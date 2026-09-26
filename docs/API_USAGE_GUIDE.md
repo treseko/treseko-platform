@@ -51,6 +51,11 @@ ver el contrato completo, payloads, respuestas y un ejemplo en Python.
 - Revocá la clave desde **Configuración → Preferencias → API keys de
   automatización externa** si se filtra, cambia el responsable o deja de usarse.
 
+Una clave puede quedar temporalmente en estado **PAUSED** y luego volver a
+**ACTIVE** sin generar una nueva. **REVOKED** es irreversible para esa clave.
+Pausar o reactivar requiere permiso de edición de API keys y queda registrado
+en auditoría; una clave pausada o revocada es rechazada al reportar resultados.
+
 ## Si necesitás que Treseko ejecute la prueba
 
 Esta guía describe únicamente el reporte desde un runner externo. Para que la

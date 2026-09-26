@@ -8,7 +8,7 @@ Treseko MCP is disabled by default. Enabling it requires
 `shared_redis` with `REDIS_URL` (or `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) for
 multiple workers or replicas. Missing or ambiguous topology disables MCP.
 
-Authentication uses only a revocable `X-MCP-API-Key`; browser JWTs are not
+Authentication uses only a pausable or revocable `X-MCP-API-Key`; browser JWTs are not
 accepted. Project and organization membership are checked on every call.
 
 The surface combines reads with governed write operations. The allowlist is
@@ -22,6 +22,10 @@ is unavailable, every MCP route, including `initialize`, discovery, and
 authentication, fails closed. Handlers return bounded, JSON-safe results;
 strings, lists, depth, and bytes are truncated or rejected before the JSON-RPC
 envelope is built.
+
+Credentials can move from `ACTIVE` to `PAUSED` and back to active;
+`REVOKED` is irreversible. The change requires edit capability, is audited,
+and blocks calls while paused.
 
 Calls and rejections are audited with bounded, sanitized details. Prompts,
 credentials, and complete results are not persisted. MCP is not exposed openly

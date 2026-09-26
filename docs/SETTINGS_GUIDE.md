@@ -11,7 +11,9 @@ exportaciones pueden depender de la configuración del formato.
 
 En **Preferencias** revisá opciones generales y, cuando estén habilitadas,
 claves de automatización externa. Guardá cada clave en un gestor de secretos y
-revocala cuando deje de usarse.
+revocala cuando deje de usarse. Las claves y credenciales MCP muestran su
+estado: podés pausarlas temporalmente y reactivarlas sin volver a distribuir el
+secreto; la revocación es irreversible. Cada cambio queda en auditoría.
 
 ## Usuarios, roles y auditoría
 

@@ -29,6 +29,12 @@ Treseko creates a new snapshot when it detects new data. The link points to that
 snapshot rather than a mutable historical query; existing snapshots are not
 rewritten.
 
+A shared link can expire and can be revoked from shared-report history.
+Revocation preserves the audit record and makes public routes return a revoked
+link response without exposing the previous content. Public formats include
+HTML, Markdown, CSV, PDF and a thumbnail, subject to the same snapshot,
+rate-limit and data policy.
+
 ## Report types
 
 - **Executive:** KPIs, risks, trends and main findings.

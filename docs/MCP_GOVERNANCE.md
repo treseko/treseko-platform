@@ -6,7 +6,8 @@ segura: `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` para un único proceso,
 o `shared_redis` con `REDIS_URL` (o `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) para
 workers o réplicas múltiples. Una declaración ausente o ambigua deshabilita MCP.
 
-La autenticación usa exclusivamente `X-MCP-API-Key`, una API key revocable. El
+La autenticación usa exclusivamente `X-MCP-API-Key`, una API key pausible o
+revocable. El
 endpoint no acepta JWT de navegador y comprueba membresía de proyecto y
 organización en cada llamada.
 
@@ -25,6 +26,10 @@ responde, todas las rutas MCP, incluido `initialize`, discovery y autenticación
 fallan cerradas. Los handlers deben devolver resultados JSON seguros y acotados;
 las cadenas, listas, profundidad y bytes se truncan o rechazan antes de construir
 el sobre JSON-RPC.
+
+Las credenciales pueden pasar de `ACTIVE` a `PAUSED` y volver a activarse;
+`REVOKED` es irreversible. El cambio requiere capability de edición, queda
+auditado y bloquea las llamadas mientras está pausado.
 
 Las llamadas y rechazos se auditan con detalles saneados y acotados. No se
 persisten prompts, credenciales ni resultados completos. No se publica MCP
