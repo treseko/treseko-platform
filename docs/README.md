@@ -38,7 +38,8 @@ usarla y qué revisar si algo no sale como esperás.
 - [Worker de automatización](AUTOMATION_WORKER_V1.md)
 - [Operación del Motor IA](AI_ENGINE_GUIDE.md)
 - [Configuración del Motor IA](AI_ENGINE_CONFIG.md)
-- [MCP gobernado](MCP_GUIDE.md)
+- [MCP gobernado](MCP_GUIDE.md): catálogo de lectura, mutaciones confirmadas e importación con preview/commit/rollback.
+- [Gobernanza MCP](MCP_GOVERNANCE.md) y [operación JSON-RPC](MCP_OPERATIONS.md)
 
 ## Bugs, incidentes e informes
 

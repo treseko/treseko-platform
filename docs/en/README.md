@@ -40,7 +40,8 @@ check when something does not behave as expected.
 - [Automation Worker](AUTOMATION_WORKER_V1.md)
 - [AI Engine operation](AI_ENGINE_GUIDE.md)
 - [AI Engine configuration](AI_ENGINE_CONFIG.md)
-- [Governed MCP](MCP_GUIDE.md)
+- [Governed MCP](MCP_GUIDE.md): read catalog, confirmed mutations and preview/commit/rollback imports.
+- [MCP governance](MCP_GOVERNANCE.md) and [JSON-RPC operations](MCP_OPERATIONS.md)
 
 ## Bugs, incidents and reports
 

@@ -16,6 +16,11 @@ You need edit permissions in **Settings → AI-Powered Testing** and a compatibl
 provider available for the instance. In Community, the AI Engine is included
 with weekly quotas for executions and case generation.
 
+Provider configuration and assisted authoring are separate surfaces. New
+provider credentials are encrypted through the installation vault, never shown
+again, and must not be copied into cases, workflows, comments, screenshots or
+versioned files.
+
 ## Configure a provider and model
 
 1. Open **Settings → AI-Powered Testing**.
@@ -41,6 +46,16 @@ comments, screenshots or versioned files.
 The screen lets you query the models exposed by the provider and choose them
 without saving an accidental configuration. Workflows are selected by their
 use: story generation, test case generation or assisted execution.
+
+Treseko keeps three independent selections: `story_generation` for stories from
+requirements, `test_case_generation` for cases from stories and criteria, and
+`test_execution` for running tests. Editing or publishing one does not replace
+the others. Each execution preserves its purpose, version and frozen snapshot.
+
+Authoring v2 adds scope, out-of-scope items, dependencies and risks to stories,
+plus a criterion -> scenario -> case matrix for proposals. Applying proposals
+is idempotent, preserves original/edited fingerprints and requires human
+review; `scope` and `out_of_scope` are mandatory for v2 application.
 
 A workflow marked as **Experimental** may depend on capabilities that are not
 present in all providers. Test it first with non-critical data and review the

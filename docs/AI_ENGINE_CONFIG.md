@@ -14,6 +14,11 @@ Necesitás permisos de edición en **Configuración → Pruebas con IA** y un
 proveedor compatible disponible para la instancia. En Community, el Motor IA
 está incluido con cuotas semanales para ejecuciones y generación de casos.
 
+La configuración de proveedores y la autoría asistida son superficies
+separadas. Las credenciales nuevas se cifran mediante el vault de la
+instalación, no vuelven a mostrarse y nunca deben copiarse en casos, workflows,
+comentarios, capturas o archivos versionados.
+
 ## Configurar un proveedor y modelo
 
 1. Abrí **Configuración → Pruebas con IA**.
@@ -39,6 +44,17 @@ comentarios, capturas ni archivos versionados.
 La pantalla permite consultar los modelos que expone el proveedor y elegirlos
 sin guardar una configuración accidental. Los workflows se seleccionan por su
 uso: generación de historias, generación de casos o ejecución asistida.
+
+Treseko mantiene tres selecciones independientes: `story_generation` para
+historias desde requisitos, `test_case_generation` para casos desde historias y
+criterios, y `test_execution` para ejecutar pruebas. Editar o publicar uno no
+reemplaza los otros. Cada ejecución conserva el propósito, la versión y el
+snapshot usados.
+
+La autoría v2 añade alcance, fuera de alcance, dependencias y riesgos a las
+historias, y una matriz criterio → escenario → caso para las propuestas. La
+aplicación es idempotente, conserva huellas original/editada y exige revisión
+humana; `scope` y `out_of_scope` son obligatorios para aplicar propuestas v2.
 
 Un workflow marcado como **Experimental** puede depender de capacidades que no
 están presentes en todos los proveedores. Probalo primero con datos no críticos

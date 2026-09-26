@@ -1,43 +1,72 @@
-# Trazabilidad y generación asistida
+# Requisitos, historias y generación gobernada con IA
 
-Treseko relaciona el origen funcional con la ejecución para responder qué
-requisito se cubre, qué caso lo valida y qué evidencia existe.
+Treseko conecta requisitos, historias, criterios de aceptación y casos para que
+la cobertura pueda explicarse desde una necesidad hasta su último resultado de
+ejecución.
+
+## Modelo de trazabilidad
+
+La relación principal es:
 
 ```text
-Proyecto → Requisito → Historia → Caso → Ejecución → Evidencia → Bug/Informe
+Proyecto -> Requisito -> Historia -> Caso -> Ejecución -> Evidencia
 ```
 
-## Trabajar con requisitos e historias
+Un requisito y una historia conservan historial de cambios. Cuando una historia
+cambia, los vínculos con casos pueden quedar pendientes de revisión hasta que
+una persona confirme que el caso continúa cubriendo el criterio esperado.
 
-1. Abrí **Proyectos → Requisitos e Historias**.
-2. Registrá requisito, historia y criterios de aceptación.
-3. Vinculá los casos.
-4. Consultá cobertura y vínculos.
-5. Cuando cambie una historia, revisá y confirmá los vínculos afectados.
+La matriz de cobertura muestra requisitos, historias, casos vinculados y último
+resultado conocido. No interpreta ausencia de evidencia como aprobación.
 
-La cobertura son relaciones registradas: no garantiza que el caso haya pasado
-ni que su evidencia esté completa. Las acciones de crear, editar, archivar,
-vincular y confirmar revisión se auditan cuando corresponde.
+## Crear historias con IA
 
-## Formatos
+1. Abrir la trazabilidad del proyecto y crear o seleccionar un requisito.
+2. Completar descripción, alcance y criterios disponibles.
+3. Solicitar una estimación de generación.
+4. Revisar supuestos o información faltante.
+5. Ejecutar el workflow configurado para **Generación de historias**.
+6. Editar y seleccionar propuestas.
+7. Aplicarlas mediante confirmación humana.
 
-La trazabilidad no cambia el formato. Clásica mantiene pasos; API mantiene
-contrato y aserciones; conversacional mantiene endpoint, turnos y evaluación.
-`PERFORMANCE` es reservado y no debe rellenarse con otra estructura para forzar
-cobertura.
+La IA propone; el backend crea los registros dentro de una transacción después
+de la selección. Una propuesta no se publica automáticamente como historia.
 
-## Generar propuestas con IA
+## Crear casos desde una historia
 
-La IA puede proponer historias desde requisitos y casos desde historias:
+1. Abrir una historia con criterios de aceptación estructurados.
+2. Solicitar una estimación de casos y revisar cuota y cobertura.
+3. Confirmar supuestos cuando el sistema lo solicite.
+4. Ejecutar el workflow de **Generación de casos de prueba**.
+5. Revisar título, prioridad, precondiciones, pasos, datos y resultados
+   esperados de cada propuesta.
+6. Seleccionar las propuestas que deben persistirse.
 
-1. seleccioná el origen;
-2. estimá alcance y revisá supuestos;
-3. ejecutá si tenés permiso, cuota y proveedor;
-4. revisá cada propuesta;
-5. confirmá solo lo que quieras guardar.
+Los casos creados quedan vinculados con la historia y sus criterios. La
+generación no crea scripts ni ejecuta código arbitrario.
 
-La generación no publica automáticamente, no crea scripts ni ejecuta código
-arbitrario. Conserva fuente, supuestos, versión, trazas y auditoría.
+## Tres workflows independientes
 
-Consultá [Historial Runs](RUN_HISTORY_GUIDE.md), [Reportes](REPORTING_GUIDE.md)
-y [Configuración del Motor IA](AI_ENGINE_CONFIG.md).
+Configuración permite elegir y editar por separado:
+
+- Generación de historias.
+- Generación de casos de prueba.
+- Ejecución de pruebas.
+
+Cada uso conserva workflow activo, versión publicada, validación, snapshot de
+ejecución y auditoría propios. Editar un uso no debe reemplazar los otros dos.
+
+## Gobierno y seguridad
+
+- Los permisos de proyecto y las capacidades Premium se validan en backend.
+- Las cuotas se consultan antes de generar y se consumen sólo según el contrato
+  vigente.
+- Un workflow inválido, sin capability o sin proveedor disponible se bloquea
+  con un motivo visible.
+- Las salidas malformadas no se convierten silenciosamente en historias o
+  casos.
+- Los prompts y agentes no pueden incorporar secretos inline.
+- La revisión humana es obligatoria antes de persistir propuestas.
+
+Para el formato portable de agentes y workflows consulta
+[Configuración del Motor IA](AI_ENGINE_CONFIG.md).

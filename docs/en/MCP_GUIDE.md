@@ -2,21 +2,29 @@
 
 <!-- Language: en -->
 
-Treseko includes a read-only MCP (Model Context Protocol) endpoint so an
-authorized assistant can query QA context from an installation. It is disabled
-by default and does not grant access to the shell, filesystem, secrets,
-database or private network.
+Treseko includes a governed MCP (Model Context Protocol) surface so an
+authorized assistant can query QA context and perform explicitly confirmed
+case, run, bug and import operations. It is disabled by default and never
+grants access to the shell, filesystem, secrets, database or private network.
 
 ## Status and scope
 
-The initial implementation exposes these tools:
+The catalog exposes these read tools:
 
-- `treseko.project.get`: reads non-sensitive project metadata.
-- `treseko.builds.list`: lists builds for a project.
+- `treseko.project.get` and `treseko.builds.list`.
+- `treseko.cases.list/get` and `treseko.cases.versions.list`.
+- `treseko.test-runs.list/get/status` and test-result list/get.
+- `treseko.bugs.list/get` and `treseko.quality.summary`.
+- `treseko.evidence.list/get`, environments and datasets list/get.
+- `treseko.quality.trends/compare`.
 
-Both tools require `project_id` and enforce the user's access to the
-organization and project. Mutations and arbitrary execution are outside this
-contract.
+All tools require `project_id` and enforce the user's access to the
+organization and project. The governed mutation and import tools are also
+discoverable when the identity has the required scopes: create/execute/cancel
+test runs, create/update/archive cases, create/update/transition/close bugs,
+and preview/commit/rollback case imports. Mutations require the literal
+confirmation and durable `idempotency_key` defined by their input schema.
+Conversational and performance execution are not exposed through MCP.
 
 ## 1. Enable MCP
 
@@ -48,26 +56,21 @@ repositories, screenshots, prompts, versioned `.env` files or logs.
 
 ## 3. Discover tools
 
-```text
-GET https://TU_TRESEKO/mcp/tools
-X-MCP-API-Key: <MCP_API_KEY>
-```
+Discovery: `GET https://TU_TRESEKO/mcp/tools` with the
+`X-MCP-API-Key: <MCP_API_KEY>` header.
 
 You can also use JSON-RPC over `POST /mcp`:
 
 ```bash
+# Discovery and JSON-RPC call
+curl -sS https://TU_TRESEKO/mcp/tools \
+  -H "X-MCP-API-Key: ${TRESEKO_MCP_API_KEY}"
+
 curl -sS https://TU_TRESEKO/mcp \
   -H 'Content-Type: application/json' \
   -H "X-MCP-API-Key: ${TRESEKO_MCP_API_KEY}" \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
 
-The response only includes tools enabled by the allowlist and permitted by the
-technical user's RBAC.
-
-## 4. Call a tool
-
-```bash
 curl -sS https://TU_TRESEKO/mcp \
   -H 'Content-Type: application/json' \
   -H "X-MCP-API-Key: ${TRESEKO_MCP_API_KEY}" \
@@ -82,6 +85,11 @@ curl -sS https://TU_TRESEKO/mcp \
   }'
 ```
 
+The response only includes tools enabled by the allowlist and permitted by the
+technical user's RBAC.
+
+## 4. Call a tool
+
 Replace the example UUID with a project to which the technical identity has
 access. To list builds, change `name` to `treseko.builds.list`.
 
@@ -90,9 +98,8 @@ access. To list builds, change `name` to `treseko.builds.list`.
 - Authentication uses only `X-MCP-API-Key`; browser JWTs are not accepted.
 - MCP remains disabled by default.
 - The allowlist cannot enable unknown or forbidden tools.
-- The initial allowlist includes only `treseko.project.get` and
-  `treseko.builds.list`; there is no shell, filesystem, secrets, database or
-  generic network access.
+- The allowlist cannot enable unknown or forbidden tools; there is no shell,
+  filesystem, secrets, database or generic network access.
 - Only tool invocations that execute successfully are audited with the actor,
   tool, sanitized arguments, `success` status and `correlation_id`. Authentication,
   RBAC, validation, allowlist or limit rejections happen before that record is
