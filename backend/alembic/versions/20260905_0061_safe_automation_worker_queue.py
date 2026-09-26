@@ -144,11 +144,20 @@ def upgrade() -> None:
             postgresql_where=sa.text("result_event_id IS NOT NULL"),
         )
 
-    op.create_check_constraint(
-        "ck_automation_jobs_max_attempts_positive",
-        "automation_jobs",
-        "max_attempts >= 1",
-    )
+    check_name = "ck_automation_jobs_max_attempts_positive"
+    check_constraints = {
+        check["name"]: " ".join((check.get("sqltext") or "").lower().split()).strip("() ")
+        for check in sa.inspect(op.get_bind()).get_check_constraints("automation_jobs")
+    }
+    if check_name in check_constraints:
+        if check_constraints[check_name] != "max_attempts >= 1":
+            raise RuntimeError(f"Existing constraint {check_name} has an unexpected definition")
+    else:
+        op.create_check_constraint(
+            check_name,
+            "automation_jobs",
+            "max_attempts >= 1",
+        )
     op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION treseko_automation_job_scope_immutable()
         RETURNS trigger AS $$
@@ -171,7 +180,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(sa.text("DROP TRIGGER IF EXISTS trg_automation_job_scope_immutable ON automation_jobs"))
     op.execute(sa.text("DROP FUNCTION IF EXISTS treseko_automation_job_scope_immutable()"))
-    op.drop_constraint("ck_automation_jobs_max_attempts_positive", "automation_jobs", type_="check")
+    check_name = "ck_automation_jobs_max_attempts_positive"
+    check_constraints = {
+        check["name"] for check in sa.inspect(op.get_bind()).get_check_constraints("automation_jobs")
+    }
+    if check_name in check_constraints:
+        op.drop_constraint(check_name, "automation_jobs", type_="check")
     op.drop_index("uq_automation_jobs_result_event_id", table_name="automation_jobs")
     op.drop_index("ix_automation_jobs_lease_expires_at", table_name="automation_jobs")
     op.drop_index("ix_automation_jobs_proyecto_estado_fecha", table_name="automation_jobs")
