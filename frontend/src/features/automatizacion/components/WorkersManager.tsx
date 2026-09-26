@@ -196,7 +196,7 @@ export function WorkersManager({
   }
 
   return (
-    <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mb-4">
+    <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mb-4 automation-panel-card">
       <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
         <div>
           <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
@@ -293,7 +293,16 @@ export function WorkersManager({
         </Alert>
       ) : null}
 
-      {canViewWorkers && <Table hover responsive className="align-middle mb-0">
+      {canViewWorkers && <div className="automation-table-wrap automation-workers-table-wrap">
+      <Table hover responsive className="align-middle mb-0 automation-workers-table">
+        <colgroup>
+          <col className="automation-workers-col-primary" />
+          <col className="automation-workers-col-status" />
+          <col className="automation-workers-col-capabilities" />
+          <col className="automation-workers-col-resources" />
+          <col className="automation-workers-col-heartbeat" />
+          <col className="automation-workers-col-actions" />
+        </colgroup>
         <thead className="table-light">
           <tr>
             <th>{t('automatizacion.worker')}</th>
@@ -362,7 +371,8 @@ export function WorkersManager({
             </tr>
           )}
         </tbody>
-      </Table>}
+      </Table>
+      </div>}
 
       {canViewJobs && <div className="border-top mt-4 pt-3">
         <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
@@ -376,7 +386,17 @@ export function WorkersManager({
             <RefreshCw size={14} className="me-1" /> {t('automatizacion.jobs')}
           </Button>
         </div>
-        <Table hover responsive className="align-middle mb-0">
+        <div className="automation-table-wrap automation-jobs-table-wrap">
+        <Table hover responsive className="align-middle mb-0 automation-jobs-table">
+          <colgroup>
+            <col className="automation-jobs-col-case" />
+            <col className="automation-jobs-col-status" />
+            <col className="automation-jobs-col-worker" />
+            <col className="automation-jobs-col-framework" />
+            <col className="automation-jobs-col-created" />
+            <col className="automation-jobs-col-time" />
+            <col className="automation-jobs-col-diagnostic" />
+          </colgroup>
           <thead className="table-light">
             <tr>
               <th>{t('automatizacion.case')}</th>
@@ -443,6 +463,7 @@ export function WorkersManager({
             )}
           </tbody>
         </Table>
+        </div>
       </div>}
       {!schedulerEnabled && (
         <Alert variant="light" className="border small mt-4 mb-0">

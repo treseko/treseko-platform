@@ -1,12 +1,24 @@
-from fastapi import APIRouter
+import hashlib
+import os
+from fastapi import APIRouter, File, UploadFile
 from sqlalchemy import func
 from typing import Annotated
 
 from ...main_context import *
 from ...services.edition.entitlement_service import enforce_limit
+from ...content_type_validation import content_matches_declared_type
 
 
 router = APIRouter(tags=["Proyectos"])
+
+PROJECT_LOGO_MIME_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+MAX_PROJECT_LOGO_BYTES = 2 * 1024 * 1024
 
 @router.post("/proyectos/", response_model=schemas.Proyecto)
 async def create_proyecto(
@@ -151,6 +163,46 @@ async def update_proyecto(
             payload={"project": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "source": "active_flag"},
         )
     return db_proyecto
+
+@router.post("/proyectos/{proyecto_id}/logo", response_model=schemas.Proyecto)
+async def upload_proyecto_logo(
+    proyecto_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("proyectos.portfolio", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    proyecto = await crud.get_proyecto(db, proyecto_id=proyecto_id)
+    if proyecto is None:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+    content_type = (file.content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    if content_type not in PROJECT_LOGO_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="El logo debe ser PNG, JPG, WEBP o GIF.")
+    content = await file.read(MAX_PROJECT_LOGO_BYTES + 1)
+    if len(content) > MAX_PROJECT_LOGO_BYTES:
+        raise HTTPException(status_code=400, detail="El logo no puede superar 2 MB.")
+    if not content_matches_declared_type(content_type, content):
+        raise HTTPException(status_code=400, detail="El contenido del logo no coincide con el tipo declarado.")
+
+    digest = hashlib.sha256(content).hexdigest()
+    extension = PROJECT_LOGO_MIME_TYPES[content_type]
+    target_dir = os.path.join("app", "static", "project-logos")
+    os.makedirs(target_dir, exist_ok=True)
+    filename = f"{proyecto_id}-{digest}.{extension}"
+    target_path = os.path.join(target_dir, filename)
+    if not os.path.exists(target_path):
+        with open(target_path, "wb") as output:
+            output.write(content)
+
+    updated = await crud.update_proyecto(
+        db=db,
+        proyecto_id=proyecto_id,
+        proyecto_update=schemas.ProyectoUpdate(imagen_url=f"/static/project-logos/{filename}"),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    return updated
 
 @router.get("/proyectos/{proyecto_id}/miembros/", response_model=List[schemas.ProyectoMiembro])
 async def read_proyecto_miembros(

@@ -382,21 +382,68 @@
 }
 
 .reportes-widget-body .table-responsive {
-  overflow-x: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .reportes-widget-body table {
   width: 100%;
-  max-width: 100%;
-  table-layout: fixed;
+  max-width: none;
+  table-layout: auto;
+}
+
+/* Report widgets contain dense, user-configurable tables. Keep their columns
+   readable and let the card scroll horizontally instead of collapsing text
+   into one-character columns. */
+.reportes-widget-body .reportes-responsive-table {
+  min-width: 760px;
+}
+
+.reportes-widget-body .reportes-responsive-table--wide {
+  min-width: 1240px;
+}
+
+.reportes-history-table {
+  min-width: 960px;
 }
 
 .reportes-widget-body th,
 .reportes-widget-body td {
-  min-width: 0;
+  min-width: 110px;
   white-space: normal;
   overflow-wrap: anywhere;
+  word-break: normal;
   vertical-align: middle;
+}
+
+/* Headers must remain labels, never narrow vertical strips. Body text may
+   wrap, but each column keeps enough room to be usable before the table
+   viewport scrolls. */
+.reportes-widget-body .reportes-responsive-table > thead > tr > th {
+  min-width: 110px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.reportes-widget-body .reportes-responsive-table > thead > tr > th:first-child,
+.reportes-widget-body .reportes-responsive-table > tbody > tr > td:first-child,
+.reportes-widget-body .reportes-responsive-table > tbody > tr > th:first-child {
+  min-width: 180px;
+}
+
+.reportes-widget-body .reportes-responsive-table--wide > thead > tr > th,
+.reportes-widget-body .reportes-responsive-table--wide > tbody > tr > td,
+.reportes-widget-body .reportes-responsive-table--wide > tbody > tr > th {
+  min-width: 78px;
+}
+
+.reportes-widget-body .reportes-responsive-table--wide > thead > tr > th:nth-child(2),
+.reportes-widget-body .reportes-responsive-table--wide > tbody > tr > td:nth-child(2),
+.reportes-widget-body .reportes-responsive-table--wide > tbody > tr > th:nth-child(2) {
+  min-width: 220px;
 }
 
 .reportes-widget-body .text-truncate {
@@ -1657,6 +1704,21 @@ button.theme-choice.is-selected,
   overflow: visible !important;
 }
 
+@media (max-width: 1199.98px) {
+  /* The action menu remains fixed-position, while the dense table gets its
+     own horizontal viewport at tablet and smaller content widths. */
+  .traceability-table-card .table-responsive {
+    max-width: 100%;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .traceability-table-card .table-responsive > .table {
+    min-width: 920px;
+  }
+}
+
 .app-shell-context > .small,
 .app-shell-actions .dropdown-toggle {
   min-width: 0;
@@ -2490,12 +2552,36 @@ button.theme-choice.is-selected,
 /* Login */
 .login-screen {
   min-height: 100dvh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 12% 16%, rgba(37, 99, 235, 0.14), transparent 28%),
     radial-gradient(circle at 82% 18%, rgba(34, 197, 94, 0.14), transparent 30%),
     linear-gradient(135deg, #eef6ff 0%, #f7f3ec 45%, #eefbf4 100%);
   color: #111827 !important;
   color-scheme: light;
+}
+
+.login-layout {
+  min-height: 100dvh;
+}
+
+.login-marketing-visual {
+  height: clamp(210px, 31vh, 310px);
+  background:
+    radial-gradient(circle at 15% 18%, rgba(37, 99, 235, 0.08), transparent 36%),
+    #f8fafc;
+}
+
+.login-marketing-visual img {
+  object-position: center;
+}
+
+.login-slide-copy {
+  min-width: 0;
+}
+
+.login-slide-copy > div:first-child {
+  min-width: 0;
 }
 
 .login-screen .bg-white,
@@ -2867,6 +2953,52 @@ button.theme-choice.is-selected,
   overflow-x: auto;
   border-radius: var(--app-radius-sm);
 }
+
+.case-portability-batches-table,
+.case-generation-steps-table {
+  min-width: 760px;
+}
+
+.execution-desktop-table {
+  min-width: 1195px;
+}
+
+/* Audit events keep readable column widths and scroll as one table on narrow
+   screens. Without an explicit minimum, the browser can collapse resource and
+   actor labels into one-character columns when the detail column is long. */
+.audit-events-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.audit-events-table {
+  width: 100%;
+  min-width: 1080px;
+  table-layout: auto;
+}
+
+.audit-events-table th,
+.audit-events-table td {
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.audit-events-table th {
+  white-space: nowrap;
+}
+
+.audit-events-col-date { min-width: 160px; }
+.audit-events-col-action { min-width: 145px; }
+.audit-events-col-resource { min-width: 150px; }
+.audit-events-col-actor { min-width: 190px; max-width: 240px; }
+.audit-events-col-ip { min-width: 170px; }
+.audit-events-col-detail { min-width: 320px; max-width: 520px; }
+.audit-events-col-view { min-width: 92px; }
 
 .history-runs-card .table-responsive {
   overflow-x: auto;
@@ -3970,6 +4102,132 @@ button.theme-choice.is-selected,
 .workflow-agent-bg-teal { background: #CCFBF1; }
 .workflow-agent-bg-cyan { background: #CFFAFE; }
 .workflow-agent-bg-slate { background: #E2E8F0; }
+
+.automation-page {
+  min-width: 0;
+}
+
+.project-logo-url-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.project-logo-url-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-logo-upload-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .project-logo-url-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+}
+
+.automation-panel-card {
+  min-width: 0;
+}
+
+.automation-panel-toolbar {
+  min-width: min(100%, 420px);
+}
+
+.automation-search-control {
+  min-width: min(260px, 100%);
+}
+
+.automation-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.automation-data-table {
+  min-width: 760px;
+}
+
+.automation-workers-table,
+.automation-jobs-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.automation-jobs-table {
+  min-width: 1120px;
+}
+
+.automation-workers-table th,
+.automation-jobs-table th {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.automation-workers-table td,
+.automation-jobs-table td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.automation-workers-col-primary { width: 21%; }
+.automation-workers-col-status { width: 10%; }
+.automation-workers-col-capabilities { width: 28%; }
+.automation-workers-col-resources { width: 17%; }
+.automation-workers-col-heartbeat { width: 12%; }
+.automation-workers-col-actions { width: 12%; }
+
+.automation-jobs-col-case { width: 25%; }
+.automation-jobs-col-status { width: 10%; }
+.automation-jobs-col-worker { width: 15%; }
+.automation-jobs-col-framework { width: 15%; }
+.automation-jobs-col-created { width: 12%; }
+.automation-jobs-col-time { width: 9%; }
+.automation-jobs-col-diagnostic { width: 320px; }
+
+@media (max-width: 767.98px) {
+  .automation-page {
+    padding: 1rem !important;
+  }
+
+  .automation-panel-card {
+    padding: 1rem !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .automation-panel-toolbar,
+  .automation-search-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .automation-panel-toolbar > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .automation-data-table {
+    min-width: 680px;
+  }
+
+  .automation-workers-table,
+  .automation-jobs-table {
+    min-width: 920px;
+  }
+
+  .automation-jobs-table {
+    min-width: 1040px;
+  }
+}
 
 .motor-ia-workspace {
   min-height: 0;
@@ -5510,6 +5768,16 @@ button.theme-choice.is-selected,
 }
 
 @media (max-width: 767.98px) {
+  .login-layout {
+    align-items: flex-start !important;
+    min-height: auto;
+    padding-block: 1rem !important;
+  }
+
+  .login-marketing-visual {
+    height: clamp(180px, 48vw, 250px);
+  }
+
   .login-shell {
     align-items: flex-start;
     padding: 1rem;
@@ -5527,9 +5795,10 @@ button.theme-choice.is-selected,
 }
 
 @media (min-width: 992px) and (max-height: 760px) {
-  .login-shell {
-    align-items: flex-start;
-    padding-block: 1rem;
+  .login-layout {
+    align-items: flex-start !important;
+    min-height: auto;
+    padding-block: 1rem !important;
   }
 
   .login-brand,
@@ -5556,6 +5825,10 @@ button.theme-choice.is-selected,
     height: 210px;
   }
 
+  .login-marketing-visual {
+    height: 190px;
+  }
+
   .login-slide-copy {
     padding-top: 0.75rem !important;
   }
@@ -5570,6 +5843,17 @@ button.theme-choice.is-selected,
 
   .login-form-body {
     padding: 1.35rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-screen *,
+  .login-screen *::before,
+  .login-screen *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -6550,6 +6834,219 @@ button.theme-choice.is-selected,
 
 .project-environments-tab .table-responsive {
   max-width: 100%;
+  overflow-x: visible;
+}
+
+.dataset-card {
+  min-width: 0;
+}
+
+.dataset-variables-editor {
+  min-height: 96px;
+  max-height: 168px;
+  overflow-y: auto;
+  resize: vertical;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dataset-card-header,
+.dataset-card-actions {
+  min-width: 0;
+}
+
+.dataset-card-title-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dataset-card-header {
+  flex-wrap: nowrap !important;
+}
+
+.dataset-card-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--app-text, #1f2937);
+  touch-action: manipulation;
+}
+
+.dataset-card-toggle:hover,
+.dataset-card-toggle:focus-visible {
+  color: var(--app-primary, #2563eb);
+}
+
+.dataset-card-toggle:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.dataset-card-summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dataset-card-summary-name {
+  font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-card-summary-description {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--app-muted, #6b7280);
+  font-size: var(--app-font-size-meta, 0.8rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-card-actions {
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: nowrap !important;
+}
+
+.dataset-action-button {
+  width: 34px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+}
+
+.environment-action-button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex: 0 0 32px;
+}
+
+.project-environments-table td:last-child {
+  white-space: nowrap;
+}
+
+.environment-action-button + .environment-action-button {
+  margin-left: 0.25rem;
+}
+
+.dataset-action-loading {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: treseko-spin 0.75s linear infinite;
+}
+
+.project-environments-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.project-environments-table th,
+.project-environments-table td {
+  vertical-align: middle;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.project-environments-table th {
+  white-space: nowrap;
+}
+
+.project-environments-table th:first-child,
+.project-environments-table td:first-child {
+  width: 18%;
+}
+
+.project-environments-table th:nth-child(2),
+.project-environments-table td:nth-child(2) {
+  width: 28%;
+}
+
+.project-environments-table th:nth-child(3),
+.project-environments-table td:nth-child(3) {
+  width: 22%;
+}
+
+.project-environments-table th:nth-child(4),
+.project-environments-table td:nth-child(4) {
+  width: 10%;
+}
+
+.project-environments-table th:nth-child(5),
+.project-environments-table td:nth-child(5) {
+  width: 13%;
+}
+
+.project-environments-table th:last-child,
+.project-environments-table td:last-child {
+  width: 12%;
+}
+
+@media (max-width: 991.98px) {
+  .project-environments-table,
+  .project-environments-table tbody,
+  .project-environments-table tr,
+  .project-environments-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .project-environments-table thead {
+    display: none;
+  }
+
+  .project-environments-table tbody tr {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0;
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-radius-sm);
+    background: var(--app-surface);
+  }
+
+  .project-environments-table tbody td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.55rem 1rem !important;
+    border: 0 !important;
+    text-align: right;
+  }
+
+  .project-environments-table tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 42%;
+    color: var(--app-muted);
+    font-size: var(--app-font-size-meta);
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .project-environments-table tbody td:last-child {
+    justify-content: flex-end;
+    border-top: 1px solid var(--app-border) !important;
+    margin-top: 0.25rem;
+  }
+
+  .project-environments-table tbody td:last-child::before {
+    display: none;
+  }
 }
 
 /* User directory: preserve column readability and scroll as a single table on narrow screens. */

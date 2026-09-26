@@ -43,6 +43,7 @@ class ApiKey(BaseModel):
     fecha_creacion: datetime
     ultimo_uso: Optional[datetime] = None
     purpose: str = "legacy"
+    estado: str = "ACTIVE"
     expires_at: Optional[datetime] = None
     scopes_json: List[str] = Field(default_factory=list)
 

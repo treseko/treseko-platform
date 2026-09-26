@@ -4,6 +4,7 @@ import {
   fetchAttachmentConfig,
   fetchUserApiKeys,
   revokeUserApiKey as revokeUserApiKeyRequest,
+  setUserApiKeyState as setUserApiKeyStateRequest,
   updateAttachmentConfig,
 } from './api/configuracionApi'
 
@@ -113,22 +114,35 @@ export function createConfigurationActions({
     }
   }
 
+  const setUserApiKeyState = async (apiKeyId: string, estado: 'ACTIVE' | 'PAUSED') => {
+    setApiKeysLoading(true)
+    try {
+      const updated = await setUserApiKeyStateRequest(fetchWithAuth, apiKeyId, estado)
+      setApiKeys(prev => prev.map(item => item.id === updated.id ? updated : item))
+      showFeedback(t('configuracion.apiKeyTitle'), estado === 'ACTIVE' ? t('configuracion.apiKeyResumed') : t('configuracion.apiKeyPaused'), 'success')
+    } catch (error: any) {
+      showFeedback(t('configuracion.apiKeyTitle'), error.message || t('configuracion.updateApiKeyStateError'), 'danger')
+    } finally {
+      setApiKeysLoading(false)
+    }
+  }
+
   const handleApiKeyEnabledChange = async (enabled: boolean) => {
-    const activeKeys = apiKeys.filter(key => key.activo)
+    const activeKeys = apiKeys.filter(key => key.estado === 'ACTIVE' || (!key.estado && key.activo))
     if (enabled) {
       if (activeKeys.length === 0) await createUserApiKey()
       return
     }
     if (activeKeys.length === 0) return
     const confirmed = await confirmAction({
-      title: t('configuracion.revokeApiKeys'),
-      message: t('configuracion.revokeApiKeysMessage'),
-      variant: 'danger',
-      confirmLabel: t('configuracion.revokeKeys'),
+      title: t('configuracion.pauseApiKeys'),
+      message: t('configuracion.pauseApiKeysMessage'),
+      variant: 'warning',
+      confirmLabel: t('configuracion.pauseKeys'),
     })
     if (!confirmed) return
     for (const key of activeKeys) {
-      await revokeUserApiKey(key.id)
+      await setUserApiKeyState(key.id, 'PAUSED')
     }
     setNewApiKeyValue('')
   }
@@ -140,6 +154,7 @@ export function createConfigurationActions({
     loadApiKeys,
     createUserApiKey,
     revokeUserApiKey,
+    setUserApiKeyState,
     handleApiKeyEnabledChange,
   }
 }

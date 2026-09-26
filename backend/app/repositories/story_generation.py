@@ -227,7 +227,12 @@ async def generate_story_candidates(db, run, payload):
                     )
                 # Compare with persisted stories and proposals already processed,
                 # never with the candidate currently being evaluated.
-                validate_proposal(candidate, accepted, existing_data + candidates)
+                validate_proposal(
+                    candidate,
+                    accepted,
+                    existing_data + candidates,
+                    require_v2_fields=int(workflow.version or 1) >= 2,
+                )
                 # This is intentionally an advisory check. A similar title may
                 # still represent a different scope, so QA makes the decision.
                 candidate["similar_stories"] = find_title_similarities(
@@ -393,11 +398,23 @@ async def apply_story_generation(db, run, stories, user_id):
     titles = {str(title).strip().lower() for title in existing}
     incoming = set()
     accepted_assumptions = set(run.accepted_assumption_ids or [])
+    original_by_id = {
+        str(item.get("local_id")): item
+        for item in (run.propuestas_originales_json or [])
+        if isinstance(item, dict) and item.get("local_id")
+    }
     for candidate in selected:
+        if str(candidate.local_id) not in original_by_id:
+            raise ValueError("La propuesta no pertenece a esta generación.")
         # Never trust the editable preview's quality field. Re-run the
         # deterministic guards against exactly what will be persisted.
         candidate_for_validation = candidate.model_dump()
-        validate_proposal(candidate_for_validation, accepted_assumptions, [])
+        validate_proposal(
+            candidate_for_validation,
+            accepted_assumptions,
+            [],
+            require_v2_fields=int(run.workflow_version or 1) >= 2,
+        )
         if (
             candidate_for_validation["quality"]["testability"] == "FAIL"
             and not candidate.quality_override_accepted
@@ -465,7 +482,20 @@ async def apply_story_generation(db, run, stories, user_id):
 
 
 def _story_markdown(candidate):
-    return "\n".join(filter(None, [f"**Como:** {candidate.actor}" if candidate.actor else "", f"**Quiero:** {candidate.goal}" if candidate.goal else "", f"**Para:** {candidate.benefit}" if candidate.benefit else ""]))
+    sections = [
+        f"**Como:** {candidate.actor}" if candidate.actor else "",
+        f"**Quiero:** {candidate.goal}" if candidate.goal else "",
+        f"**Para:** {candidate.benefit}" if candidate.benefit else "",
+    ]
+    if candidate.scope:
+        sections.append("**Alcance:**\n" + "\n".join(f"- {item}" for item in candidate.scope))
+    if candidate.out_of_scope:
+        sections.append("**Fuera de alcance:**\n" + "\n".join(f"- {item}" for item in candidate.out_of_scope))
+    if candidate.dependencies:
+        sections.append("**Dependencias:**\n" + "\n".join(f"- {item}" for item in candidate.dependencies))
+    if candidate.risks:
+        sections.append("**Riesgos:**\n" + "\n".join(f"- {item}" for item in candidate.risks))
+    return "\n\n".join(filter(None, sections))
 
 
 def _criteria_markdown(criteria):

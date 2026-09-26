@@ -1,17 +1,19 @@
 import { useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap'
-import { Edit, Info, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Edit, Info, Plus, Save, Star, Trash2 } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { PasswordVisibilityField } from '../../shared/ui/PasswordVisibilityField'
 
 export function ProjectEnvironmentsTab({ context }: { context: any }) {
   const [showVariableHelp, setShowVariableHelp] = useState(false)
+  const [expandedDatasetIds, setExpandedDatasetIds] = useState<Set<string>>(new Set())
   const datasetEnvironmentRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const { t,
     canReadProjectEnvironments,
     canReadProjectDatasets,
     canEditProjectEnvironmentsEffective,
     canEditProjectDatasetsEffective,
+    confirmAction,
     openEnvironmentModal,
     handleSaveProjectEnvironment,
     projectEnvironments,
@@ -117,7 +119,7 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                           </Col>
                         </Row>
                       </Form>
-                      <Table responsive hover className="border rounded-3 overflow-hidden shadow-sm align-middle">
+                      <Table responsive hover className="project-environments-table border rounded-3 overflow-hidden shadow-sm align-middle">
                         <thead className="bg-light text-secondary small">
                           <tr>
                             <th className="py-3 px-4 border-0">{t('proyectos.envTableName')}</th>
@@ -131,23 +133,31 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                         <tbody>
                           {projectEnvironments.map((env: any) => (
                             <tr key={env.id}>
-                              <td className="px-4 fw-bold text-dark">{env.name}</td>
-                              <td className="font-monospace text-primary small text-break">{env.url}</td>
-                              <td className="small text-muted">
+                              <td data-label={t('proyectos.envTableName')} className="px-4 fw-bold text-dark">{env.name}</td>
+                              <td data-label={t('proyectos.envTableUrl')} className="font-monospace text-primary small text-break">{env.url}</td>
+                              <td data-label={t('proyectos.envTableVariables')} className="small text-muted">
                                 <Badge bg="light" text="dark" className="border me-1">{t('proyectos.vars', { count: Object.keys(env.variables || {}).length })}</Badge>
                                 <Badge bg="light" text="dark" className="border">{t('proyectos.datasetsCount', { count: (env.datasets || []).length })}</Badge>
                                 {env.chatbotConfig?.connection && <Badge bg="info" text="dark" className="border ms-1">{t('proyectos.chatbotLabel')}</Badge>}
                               </td>
-                              <td className="text-muted small">{env.version || t('proyectos.noVersion')}</td>
-                              <td>
+                              <td data-label={t('proyectos.envTableVersion')} className="text-muted small">{env.version || t('proyectos.noVersion')}</td>
+                              <td data-label={t('proyectos.envTableApiStatus')}>
                                 <Badge bg={env.status === 'Online' ? 'success' : env.status === 'Offline' ? 'danger' : 'warning'} text={env.status === 'Maintenance' ? 'dark' : undefined} className="fw-normal">
                                   <span className="d-inline-block bg-white rounded-circle me-1" style={{ width: '6px', height: '6px' }}></span>{environmentStatusLabel(env.status)}
                                 </Badge>
                               </td>
-                              <td className="px-4 text-end">
-                                {canEditProjectDatasetsEffective && <Button variant="link" className="text-primary p-0 me-2" title={t('proyectos.addDataset')} aria-label={t('proyectos.environmentActionAria', { action: t('proyectos.addDataset'), environment: env.name })} onClick={() => toggleDatasetForm(env.id)}><Plus size={16} /></Button>}
-                                {canEditProjectEnvironmentsEffective && <Button variant="link" className="text-muted p-0 me-2" title={t('proyectos.editEnvironment')} onClick={() => openEnvironmentModal(env)}><Edit size={16} /></Button>}
-                                {canEditProjectEnvironmentsEffective && <Button variant="link" className="text-danger p-0" title={t('proyectos.hideEnvironment')} onClick={() => handleDeleteProjectEnvironment(env.id)}><Trash2 size={16} /></Button>}
+                              <td data-label={t('proyectos.envTableActions')} className="px-4 text-end">
+                                {canEditProjectDatasetsEffective && <Button variant="outline-primary" className="environment-action-button" title={t('proyectos.addDataset')} aria-label={t('proyectos.environmentActionAria', { action: t('proyectos.addDataset'), environment: env.name })} onClick={() => toggleDatasetForm(env.id)}><Plus size={15} /></Button>}
+                                {canEditProjectEnvironmentsEffective && <Button variant="outline-secondary" className="environment-action-button" title={t('proyectos.editEnvironment')} aria-label={t('proyectos.editEnvironment')} onClick={() => openEnvironmentModal(env)}><Edit size={15} /></Button>}
+                                {canEditProjectEnvironmentsEffective && <Button variant="outline-danger" className="environment-action-button" title={t('proyectos.hideEnvironment')} aria-label={t('proyectos.hideEnvironment')} onClick={async () => {
+                                  const confirmed = await confirmAction({
+                                    title: t('proyectos.deleteEnvironmentTitle'),
+                                    message: t('proyectos.deleteEnvironmentConfirm', { name: env.name }),
+                                    variant: 'danger',
+                                    confirmLabel: t('proyectos.hideEnvironment')
+                                  })
+                                  if (confirmed) await handleDeleteProjectEnvironment(env.id)
+                                }}><Trash2 size={15} /></Button>}
                               </td>
                             </tr>
                           ))}
@@ -206,7 +216,7 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                           rows={3}
                                           name="datasetVariables"
                                           size="sm"
-                                          className="font-monospace small"
+                                          className="dataset-variables-editor font-monospace small"
                                           placeholder={t('proyectos.datasetVariablesPlaceholder')}
                                         />
                                       </Col>
@@ -223,22 +233,42 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                   <div className="d-flex flex-column gap-2">
                                     {(env.datasets || []).map((dataset: any) => {
                                       const draft = getDatasetDraft(dataset)
+                                      const expanded = expandedDatasetIds.has(dataset.id)
                                       const dirty = isDatasetDraftDirty(dataset)
                                       const saving = savingDatasetId === dataset.id
                                       const justSaved = savedDatasetId === dataset.id
+                                      const toggleDataset = () => setExpandedDatasetIds(current => {
+                                        const next = new Set(current)
+                                        if (next.has(dataset.id)) next.delete(dataset.id)
+                                        else next.add(dataset.id)
+                                        return next
+                                      })
                                       return (
-                                      <Form key={dataset.id} className="border rounded-3 bg-white p-3" onSubmit={(event) => handleDatasetSubmit(event, env.id, dataset)}>
-                                        <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-                                          <div className="d-flex flex-wrap align-items-center gap-2 min-w-0">
+                                      <Form key={dataset.id} className="dataset-card border rounded-3 bg-white p-3" onSubmit={(event) => handleDatasetSubmit(event, env.id, dataset)}>
+                                        <div className={`dataset-card-header d-flex flex-wrap justify-content-between align-items-start gap-2 ${expanded ? 'mb-3' : 'mb-0'}`}>
+                                          <div className="dataset-card-title-row d-flex align-items-start gap-2 min-w-0">
+                                            <Button
+                                              type="button"
+                                              variant="link"
+                                              className="dataset-card-toggle p-0 text-start text-decoration-none"
+                                              aria-expanded={expanded}
+                                              aria-controls={`dataset-content-${dataset.id}`}
+                                              onClick={toggleDataset}
+                                            >
+                                              {expanded ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+                                              <span className="dataset-card-summary">
+                                                <span className="dataset-card-summary-name">{draft.name || t('proyectos.dataset')}</span>
+                                                {draft.description && <span className="dataset-card-summary-description">{draft.description}</span>}
+                                              </span>
+                                            </Button>
                                             <Badge bg={dataset.isDefault ? 'success' : 'light'} text={dataset.isDefault ? undefined : 'dark'} className="border">
                                               {dataset.isDefault ? t('proyectos.default') : t('proyectos.dataset')}
                                             </Badge>
                                             {justSaved && <Badge bg="success" className="border">{t('proyectos.changesSaved')}</Badge>}
-                                            <span className="x-small text-muted font-monospace text-break">{dataset.id}</span>
                                           </div>
-                                          <div className="d-flex flex-wrap justify-content-end gap-2">
+                                          <div className="dataset-card-actions d-flex flex-wrap justify-content-end gap-1">
                                             {canEditProjectDatasetsEffective && !dataset.isDefault && (
-                                              <Button type="button" variant="outline-success" size="sm" className="x-small" onClick={async () => {
+                                              <Button type="button" variant="outline-success" size="sm" className="dataset-action-button px-2" title={t('proyectos.markAsDefault')} aria-label={t('proyectos.markAsDefault')} onClick={async () => {
                                                 const ok = await handleSetDefaultEnvironmentDataset(env.id, dataset.id)
                                                 if (ok) {
                                                   setDatasetDrafts(prev => {
@@ -249,15 +279,22 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                                     return next
                                                   })
                                                 }
-                                              }}>{t('proyectos.markAsDefault')}</Button>
+                                              }}><Star size={14} /></Button>
                                             )}
-                                            {canEditProjectDatasetsEffective && (
-                                              <Button type="submit" variant={dirty ? 'primary' : 'secondary'} size="sm" className="x-small" disabled={!dirty || saving}>
-                                                {saving ? t('proyectos.saving') : dirty ? t('proyectos.save') : t('proyectos.noChanges')}
+                                            {canEditProjectDatasetsEffective && dirty && (
+                                              <Button type="submit" variant="primary" size="sm" className="dataset-action-button px-2" title={saving ? t('proyectos.saving') : t('proyectos.save')} aria-label={saving ? t('proyectos.saving') : t('proyectos.save')} disabled={saving}>
+                                                {saving ? <span className="dataset-action-loading" aria-hidden="true" /> : <Save size={14} />}
                                               </Button>
                                             )}
                                             {canEditProjectDatasetsEffective && (
-                                              <Button type="button" variant="outline-danger" size="sm" className="x-small" onClick={async () => {
+                                              <Button type="button" variant="outline-danger" size="sm" className="dataset-action-button px-2" title={t('proyectos.delete')} aria-label={t('proyectos.delete')} onClick={async () => {
+                                                const confirmed = await confirmAction({
+                                                  title: t('proyectos.deleteDatasetTitle'),
+                                                  message: t('proyectos.deleteDatasetConfirm', { name: draft.name || t('proyectos.dataset') }),
+                                                  variant: 'danger',
+                                                  confirmLabel: t('proyectos.delete')
+                                                })
+                                                if (!confirmed) return
                                                 const ok = await handleDeleteEnvironmentDataset(env.id, dataset.id)
                                                 if (ok) {
                                                   setDatasetDrafts(prev => {
@@ -266,11 +303,11 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                                     return next
                                                   })
                                                 }
-                                              }}><Trash2 size={13} /></Button>
+                                              }}><Trash2 size={14} /></Button>
                                             )}
                                           </div>
                                         </div>
-                                        <Row className="g-2">
+                                        {expanded && <Row id={`dataset-content-${dataset.id}`} className="g-2">
                                           <Col md={5}>
                                             <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('proyectos.datasetName')}</RequiredLabel></Form.Label>
                                             <Form.Control name="datasetName" size="sm" value={draft.name} onChange={(event) => updateDatasetDraft(dataset, { name: event.target.value })} required disabled={!canEditProjectDatasetsEffective} />
@@ -286,7 +323,7 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                               rows={4}
                                               name="datasetVariables"
                                               size="sm"
-                                              className="font-monospace small"
+                                              className="dataset-variables-editor font-monospace small"
                                               value={draft.variablesText}
                                               onChange={(event) => updateDatasetDraft(dataset, { variablesText: event.target.value })}
                                               disabled={!canEditProjectDatasetsEffective}
@@ -310,7 +347,7 @@ export function ProjectEnvironmentsTab({ context }: { context: any }) {
                                               {t('proyectos.useInTests', { code1: '{{DATASET.usuario}}', code2: '{{usuario}}' })}
                                             </div>
                                           </Col>
-                                        </Row>
+                                        </Row>}
                                       </Form>
                                     )})}
                                     {(env.datasets || []).length === 0 && (

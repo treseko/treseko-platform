@@ -39,7 +39,7 @@ export function ReportFormatModeMatrixWidget({
       </div>
       {hasData ? (
         <div className="table-responsive">
-          <Table bordered hover size="sm" className="align-middle mb-0">
+          <Table bordered hover size="sm" className="reportes-responsive-table mb-0 align-middle">
             <thead className="table-light">
               <tr>
                 <th scope="col">{t('reportes.format')}</th>

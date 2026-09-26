@@ -40,6 +40,7 @@ export function useGeneralConfiguration({
     loadApiKeys,
     createUserApiKey,
     revokeUserApiKey,
+    setUserApiKeyState,
     handleApiKeyEnabledChange,
   } = createConfigurationActions({
     t,
@@ -99,6 +100,7 @@ export function useGeneralConfiguration({
     loadApiKeys,
     createUserApiKey,
     revokeUserApiKey,
+    setUserApiKeyState,
     handleApiKeyEnabledChange,
     ...mcpConfiguration,
   }

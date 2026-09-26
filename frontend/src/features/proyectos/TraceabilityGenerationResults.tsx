@@ -4,6 +4,11 @@ import { Eye } from 'lucide-react'
 
 export function TraceabilityGenerationResults({ options }: { options: any }) {
   const { generationRun, generationStep, locale, tx, t, generationBusy, generationCompletedCount, generationRequestedCount, generationCandidates, preflightExcludedStories, selectedCandidateCount, generationRequirement, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor } = options
+  const qualityCounts = generationCandidates.reduce((counts: { PASS: number; WARN: number; FAIL: number }, candidate: any) => {
+    const quality = proposalQuality(candidate) as keyof typeof counts
+    if (quality in counts) counts[quality] += 1
+    return counts
+  }, { PASS: 0, WARN: 0, FAIL: 0 })
   return (
     <>
               {generationRun && generationStep === "configuration" && (
@@ -72,6 +77,16 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
               )}
               {generationCandidates.length > 0 && generationStep === "review" && (
                 <div className="border rounded overflow-hidden">
+                  <div className="bg-white border-bottom px-3 py-2">
+                    <div className="small text-uppercase text-muted fw-semibold mb-2">{tx("reviewSummary")}</div>
+                    <div className="d-flex flex-wrap gap-2" aria-label={tx("reviewSummary")}>
+                      <Badge bg="light" text="dark" className="border">{tx("totalProposals")}: {generationCandidates.length}</Badge>
+                      <Badge bg="primary">{tx("selectedProposals")}: {selectedCandidateCount}</Badge>
+                      <Badge bg="success">{tx("qualityPass")}: {qualityCounts.PASS}</Badge>
+                      <Badge bg="warning" text="dark">{tx("qualityWarnings")}: {qualityCounts.WARN}</Badge>
+                      <Badge bg="danger">{tx("qualityFailures")}: {qualityCounts.FAIL}</Badge>
+                    </div>
+                  </div>
                   <div className="bg-light border-bottom px-3 py-2 d-flex align-items-center justify-content-between">
                     <div className="fw-semibold">
                       {tx("insertionPreview")} {" "}
@@ -249,6 +264,19 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                                     </ul>
                                   </div>
                                 )}
+                                <Row className="g-2 mb-3 small">
+                                  {([
+                                    ["scope", candidate.scope],
+                                    ["outOfScope", candidate.out_of_scope],
+                                    ["dependencies", candidate.dependencies],
+                                    ["risks", candidate.risks],
+                                  ] as [string, string[] | undefined][]).map(([label, values]) => values?.length ? (
+                                    <Col md={6} key={label}>
+                                      <div className="fw-semibold">{tx(label)}</div>
+                                      <ul className="mb-0 ps-3">{values.map((value) => <li key={`${label}-${value}`}>{value}</li>)}</ul>
+                                    </Col>
+                                  ) : null)}
+                                </Row>
                                 {proposalQuality(candidate) === "FAIL" && candidate.selected && (
                                   <div className="border border-danger rounded p-2 mb-3 small">
                                     <Form.Check name="a11y-traceabilitygenerationresultstsx-254" aria-label={t('proyectos.includeOnCreate')}

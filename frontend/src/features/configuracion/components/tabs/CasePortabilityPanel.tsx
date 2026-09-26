@@ -385,7 +385,7 @@ export function CasePortabilityPanel({
           <h6 className="mb-0 fw-bold">{t("configuracion.recentBatches")}</h6>
         </div>
         <div className="table-responsive">
-          <Table size="sm" hover className="mb-0 align-middle">
+          <Table size="sm" hover className="case-portability-batches-table mb-0 align-middle">
             <thead>
               <tr>
                 <th>{t("configuracion.source")}</th>

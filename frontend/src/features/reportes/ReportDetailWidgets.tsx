@@ -114,7 +114,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                     </Button>
                   </div>
                 </div>
-                <Table hover responsive className="mb-0 align-middle">
+                <Table hover responsive className="reportes-responsive-table mb-0 align-middle">
                   <thead>
                     <tr>
                       {isColumnVisible('bugs', 'bug') && <th>{t('reportes.bug')}</th>}
@@ -174,7 +174,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
           renderReportesWidget('failures', (
               <Card className="border-0 shadow-sm p-4 rounded-3 bg-white h-100">
                 <h6 className="fw-bold mb-3 text-secondary text-start">{t('reportes.diagnosableFailures')}</h6>
-                <Table hover responsive className="mb-0 align-middle">
+                <Table hover responsive className="reportes-responsive-table mb-0 align-middle">
                   <thead>
                     <tr>
                       {isColumnVisible('failures', 'case') && <th>{t('reportes.case')}</th>}

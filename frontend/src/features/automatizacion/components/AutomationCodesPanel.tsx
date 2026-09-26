@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Badge, Button, Card, Col, Row, Spinner, Table } from 'react-bootstrap'
-import { Code, Copy } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Code, Copy } from 'lucide-react'
 import { useI18n } from '../../../i18n'
 import { API_BASE } from '../../../app/constants'
 import { createBugLocalizedLabels } from '../../bugs/bugPresentation'
@@ -44,6 +44,8 @@ export function AutomationCodesPanel({
   const [backendCasesTotal, setBackendCasesTotal] = useState(0)
   const [backendCasesLoading, setBackendCasesLoading] = useState(false)
   const [backendCasesError, setBackendCasesError] = useState('')
+  const [casesPage, setCasesPage] = useState(1)
+  const casesPageSize = 20
   const currentOrg = organizations.find(org => org.id === currentOrgId)
   const currentProject = projectsList.find(project => project.id === currentProjectId)
   const currentComponent = componentsList.find(component => component.id === currentCompId)
@@ -69,7 +71,7 @@ export function AutomationCodesPanel({
       setBackendCasesLoading(true)
       setBackendCasesError('')
       try {
-        const params = new URLSearchParams({ skip: '0', limit: '20' })
+        const params = new URLSearchParams({ skip: String((casesPage - 1) * casesPageSize), limit: String(casesPageSize) })
         if (currentCompId) params.set('component_id', currentCompId)
         if (currentBuildId) params.set('build_id', currentBuildId)
         const response = await fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/casos/search?${params.toString()}`)
@@ -91,7 +93,7 @@ export function AutomationCodesPanel({
     return () => {
       cancelled = true
     }
-  }, [projectsSource, currentProjectId, currentCompId, currentBuildId, fetchWithAuth])
+  }, [projectsSource, currentProjectId, currentCompId, currentBuildId, fetchWithAuth, casesPage])
 
   const localVisibleCases = useMemo(() => {
     if (projectsSource === 'backend') return []
@@ -104,8 +106,19 @@ export function AutomationCodesPanel({
       : (currentComponentCases.length > 0 ? currentComponentCases : currentProjectCases)
   }, [buildCaseIds, currentBuildId, currentComponentCases, currentProjectCases, projectsSource])
 
-  const visibleCases = projectsSource === 'backend' ? backendCases : localVisibleCases.slice(0, 20)
+  const visibleCases = projectsSource === 'backend'
+    ? backendCases
+    : localVisibleCases.slice((casesPage - 1) * casesPageSize, casesPage * casesPageSize)
   const visibleCasesTotal = projectsSource === 'backend' ? backendCasesTotal : localVisibleCases.length
+  const casesPageCount = Math.max(1, Math.ceil(visibleCasesTotal / casesPageSize))
+
+  useEffect(() => {
+    setCasesPage(1)
+  }, [projectsSource, currentProjectId, currentCompId, currentBuildId])
+
+  useEffect(() => {
+    setCasesPage(page => Math.min(page, casesPageCount))
+  }, [casesPageCount])
 
   const solutionCode = currentOrg?.code || ''
   const projectCode = currentProject?.code || ''
@@ -136,7 +149,7 @@ export function AutomationCodesPanel({
   }, null, 2)
 
   return (
-    <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4">
+    <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4 automation-panel-card">
       <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
         <div>
           <h6 className="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
@@ -180,7 +193,8 @@ export function AutomationCodesPanel({
         <Badge bg="primary">{visibleCasesTotal} {visibleCasesTotal === 1 ? t('automatizacion.caseSingular') : t('automatizacion.casePlural')}</Badge>
       </div>
       {backendCasesError && <Alert variant="warning" className="small py-2">{backendCasesError}</Alert>}
-      <Table hover size="sm" className="mb-3 align-middle">
+      <div className="automation-table-wrap mb-2">
+      <Table hover size="sm" className="mb-0 align-middle automation-data-table">
         <thead className="table-light">
           <tr>
             <th>{t('automatizacion.caseCodeCol')}</th>
@@ -212,8 +226,28 @@ export function AutomationCodesPanel({
           )}
         </tbody>
       </Table>
-      {visibleCasesTotal > visibleCases.length && (
-        <div className="x-small text-muted mb-3">{t('automatizacion.externalCodesShowing', { shown: visibleCases.length, total: visibleCasesTotal })}</div>
+      </div>
+      {visibleCasesTotal > 0 && (
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <div className="x-small text-muted">
+            {t('automatizacion.showingItems', {
+              from: (casesPage - 1) * casesPageSize + 1,
+              to: Math.min(casesPage * casesPageSize, visibleCasesTotal),
+              total: visibleCasesTotal,
+            })}
+          </div>
+          {casesPageCount > 1 && (
+            <div className="d-flex align-items-center gap-2">
+              <Button variant="outline-secondary" size="sm" aria-label={t('automatizacion.previousPage')} disabled={casesPage === 1} onClick={() => setCasesPage(page => page - 1)}>
+                <ChevronLeft size={14} />
+              </Button>
+              <span className="x-small text-muted" aria-live="polite">{t('automatizacion.pageOf', { page: casesPage, total: casesPageCount })}</span>
+              <Button variant="outline-secondary" size="sm" aria-label={t('automatizacion.nextPage')} disabled={casesPage === casesPageCount} onClick={() => setCasesPage(page => page + 1)}>
+                <ChevronRight size={14} />
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       <pre className="bg-dark text-light p-3 rounded-3 small mb-0 overflow-auto" style={{ fontSize: 'var(--app-font-size-micro)' }}>{samplePayload}</pre>

@@ -147,9 +147,14 @@ export const mapBackendWikiToItem = (page: any) => ({
   projectId: page.proyecto_id,
   title: page.titulo,
   content: page.contenido || '',
-  lastEditedBy: page.ultima_edicion_por_display || page.ultima_edicion_por || 'Sistema',
+  lastEditedBy: page.ultima_edicion_por_display || page.creado_por_display || page.ultima_edicion_por || page.creado_por || 'Sistema',
   lastEditedAt: page.ultima_actualizacion ? formatDateTime(page.ultima_actualizacion) : '',
-  history: Array.isArray(page.history) ? page.history : Array.isArray(page.historial) ? page.historial : []
+  history: (Array.isArray(page.history) ? page.history : Array.isArray(page.historial) ? page.historial : []).map((entry: any) => ({
+    ...entry,
+    author: entry.editado_por_display || entry.author || entry.editado_por || 'Sistema',
+    date: entry.date || (entry.fecha_edicion ? formatDateTime(entry.fecha_edicion) : ''),
+    action: entry.action || entry.comentario_cambio || 'Edición de contenido'
+  }))
 })
 
 export const mapBackendUserToItem = (user: any) => ({

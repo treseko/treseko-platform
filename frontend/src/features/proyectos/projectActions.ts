@@ -255,9 +255,35 @@ export function createProjectActions({
     }
   }
 
+  const handleUploadProjectLogo = async (file?: File) => {
+    if (!file || !managingProjectId || projectsSource !== 'backend') return
+    if (!canEditCurrentProject) {
+      showFeedback(t('proyectos.insufficientPermission'), t('proyectos.projectReadOnly'), 'warning')
+      return
+    }
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetchWithAuth(`${API_BASE}/proyectos/${managingProjectId}/logo`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.detail || `Backend respondió ${response.status}`)
+      const mapped = mapBackendProjectToCard(data, currentOrgId)
+      setProjectsList(current => current.map(project => project.id === mapped.id ? { ...project, ...mapped } : project))
+      setProjectSyncMessage(t('proyectos.projectLogoUploaded'))
+      showFeedback(t('proyectos.projectLogo'), t('proyectos.projectLogoUploaded'), 'success')
+    } catch (error: any) {
+      setProjectSyncMessage(`${t('proyectos.projectLogoUploadError')}: ${error.message}.`)
+      showFeedback(t('proyectos.projectLogo'), error?.message || t('proyectos.projectLogoUploadError'), 'danger')
+    }
+  }
+
   return {
     loadProjectsFromBackend,
     handleCreateProject,
-    handleUpdateProject
+    handleUpdateProject,
+    handleUploadProjectLogo
   }
 }

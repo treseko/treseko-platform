@@ -10,7 +10,7 @@ type Props = {
   setApiKeyName: (value: string) => void
   createUserApiKey: () => void
   revokeUserApiKey: (id: string) => void
-  handleApiKeyEnabledChange: (enabled: boolean) => void
+  setUserApiKeyState: (id: string, estado: 'ACTIVE' | 'PAUSED') => void
   copyToClipboard: (text: string, label?: string) => void
 }
 

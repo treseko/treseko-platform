@@ -24,6 +24,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
     canReadProjectTeam,
     canEditProject,
     handleUpdateProject,
+    handleUploadProjectLogo,
     setShowProjectStatusHelp,
     canEditProjectTeamEffective,
     handleAddProjectMember,
@@ -188,7 +189,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                     <ProjectConfigTab
                       t={t} canEditProjectPortfolio={canEditProjectPortfolio} canReadProjectTeam={canReadProjectTeam}
                       canEditProject={canEditProject} projectsList={projectsList} managingProjectId={managingProjectId}
-                      setShowProjectStatusHelp={setShowProjectStatusHelp} handleUpdateProject={handleUpdateProject}
+                      setShowProjectStatusHelp={setShowProjectStatusHelp} handleUpdateProject={handleUpdateProject} handleUploadProjectLogo={handleUploadProjectLogo}
                       canEditProjectTeamEffective={canEditProjectTeamEffective} handleAddProjectMember={handleAddProjectMember}
                       projectMembers={projectMembers} handleRemoveProjectMember={handleRemoveProjectMember}
                     />
@@ -270,6 +271,7 @@ export function ProjectAdminWorkspace({ context }: { context: any }) {
                         canReadProjectDatasets,
                         canEditProjectEnvironmentsEffective,
                         canEditProjectDatasetsEffective,
+                        confirmAction,
                         openEnvironmentModal,
                         handleSaveProjectEnvironment,
                         projectEnvironments,

@@ -90,6 +90,7 @@ export function ConfiguracionRoute({
       setApiKeyName={generalConfiguration.setApiKeyName}
       createUserApiKey={generalConfiguration.createUserApiKey}
       revokeUserApiKey={generalConfiguration.revokeUserApiKey}
+      setUserApiKeyState={generalConfiguration.setUserApiKeyState}
       handleApiKeyEnabledChange={generalConfiguration.handleApiKeyEnabledChange}
       copyToClipboard={generalConfiguration.copyToClipboard}
       mcpTools={generalConfiguration.tools}
@@ -105,6 +106,7 @@ export function ConfiguracionRoute({
       dismissMcpRawCredential={generalConfiguration.clearRawCredential}
       createMcpCredential={generalConfiguration.create}
       revokeMcpCredential={generalConfiguration.revoke}
+      setMcpCredentialState={generalConfiguration.setCredentialState}
       toggleMcp={generalConfiguration.toggle}
       attachmentConfig={generalConfiguration.attachmentConfig}
       setAttachmentConfig={generalConfiguration.setAttachmentConfig}

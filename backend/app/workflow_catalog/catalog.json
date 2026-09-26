@@ -10,28 +10,28 @@
       "workflow_sha256": "f44b98db4ce26349b87c35e8f61d5f9d0ad5e130a26c6bfcd68cf5e3e148de19"
     },
     {
-      "filename": "story-generation.v1.treseko-workflow.zip",
-      "package_sha256": "0325dcc98a1bc85e9a57434a05ee800aefc3122ac0914b0e6719ea9190fd2775",
+      "filename": "story-generation.v2.treseko-workflow.zip",
+      "package_sha256": "868d5373a6d2690b6cb7f7998a9c4e9953fbdbefe54a15b2c1b62df2305c9b9d",
       "slug": "story-generation",
-      "version": "1",
+      "version": "2",
       "workflow_purpose": "story_generation",
-      "workflow_sha256": "c0f33d56af1f92435d99ae22a3965d4f7cde33c1ede0df40754d982a460d0569"
+      "workflow_sha256": "77c4467f895203f2922d4bdbac1dd1e93ab3ad63f5b198ec885e54fd170cd1f4"
     },
     {
-      "filename": "test-case-generation.v1.treseko-workflow.zip",
-      "package_sha256": "ba90729df232435585b6c6e8c2312b229cc42032019f5765cbbcbe8a70c67995",
+      "filename": "test-case-generation.v2.treseko-workflow.zip",
+      "package_sha256": "6a82c41617dbd348c46d25efe4f02deddd8a00c36e77daa860b55fdb9dd224bf",
       "slug": "test-case-generation",
-      "version": "1",
+      "version": "2",
       "workflow_purpose": "test_case_generation",
-      "workflow_sha256": "03237c25f5653fa3e579b0e4eb634b709063abb7aedda416296ec320d7ce4586"
+      "workflow_sha256": "995de80df8bb500305552bf0dea1a45fc8206a6a4d2fba354ebb772604254de4"
     },
     {
       "filename": "chatbot-evaluation.v1.treseko-workflow.zip",
-      "package_sha256": "93bd404928602ad0271f30b8578fb7639721a393759dd6a6a5355b3e0ff4dddd",
+      "package_sha256": "9b6a3e7a3a358983e6ced46c1e73f108434f38456dcef1b617fdf1cd1514eab8",
       "slug": "chatbot-evaluation",
       "version": "1",
       "workflow_purpose": "chatbot_evaluation",
-      "workflow_sha256": "b16998a345b2b67cd72677deec378af5b837d4ee5041c75c3af9aa604a850b78"
+      "workflow_sha256": "eb58ee8a077a0d2a419134033492ef1014cf96dbe8905aad534d21792a814ba5"
     }
   ]
 }

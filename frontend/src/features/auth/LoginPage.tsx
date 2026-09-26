@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { Button, Card, Form } from 'react-bootstrap'
-import { BarChart3, Building2, FileCheck2, Key, Lock, ShieldCheck } from 'lucide-react'
-import { DEV_ADMIN_EMAIL, IS_DEV_ENV } from '../../app/constants'
+import { BarChart3, Building2, FileCheck2, Key, ShieldCheck } from 'lucide-react'
 import type { AuthMode } from '../../app/types'
 import { DEFAULT_BRANDING, type BrandingState } from '../../app/branding'
 import { resolveAssetUrl } from '../../shared/utils/assets'
@@ -41,24 +40,24 @@ const marketingSlides = [
   },
   {
     image: automationHero,
-    eyebrow: 'Ejecucion QA',
-    title: 'Pruebas manuales y automatizadas en una sola operacion.',
-    description: 'Organiza corridas, resultados, evidencias y estados de ejecucion con una experiencia pensada para equipos QA.',
+    eyebrow: 'Ejecución QA',
+    title: 'Pruebas manuales y automatizadas en una sola operación.',
+    description: 'Organiza ejecuciones, resultados, evidencias y estados con una experiencia pensada para equipos QA.',
     chips: ['Casos', 'Ejecuciones', 'Resultados']
   },
   {
     image: reportingHero,
     eyebrow: 'Visibilidad',
-    title: 'Metricas y reportes para seguir el estado real de calidad.',
-    description: 'Consulta avances por build, resultados, bugs y vistas ejecutivas en una edicion comunitaria autogestionada.',
-    chips: ['Metricas', 'Reportes', 'Bugs']
+    title: 'Métricas y reportes para seguir el estado real de calidad.',
+    description: 'Consulta avances por build, resultados, bugs y vistas ejecutivas en una plataforma autogestionada.',
+    chips: ['Métricas', 'Reportes', 'Bugs']
   }
 ] as const
 
 const highlights = [
   { icon: FileCheck2, label: 'Evidencia ligada al caso' },
-  { icon: BarChart3, label: 'Metricas por build' },
-  { icon: ShieldCheck, label: 'Roles y auditoria base' }
+  { icon: BarChart3, label: 'Métricas por build' },
+  { icon: ShieldCheck, label: 'Roles y auditoría' }
 ]
 
 export function LoginPage({
@@ -78,12 +77,15 @@ export function LoginPage({
   const activeMarketingSlide = marketingSlides[activeSlide]
   const effectiveAuthMode = showAdLogin ? authMode : 'local'
   const isAdPasswordMode = effectiveAuthMode === 'ad' && adMode === 'ldap'
-  const editionLabel = branding.edition === 'premium' ? 'Premium' : 'Community'
+  const isPremium = branding.edition === 'premium'
+  const editionLabel = isPremium ? t('auth.premiumEdition') : t('auth.communityEdition')
   const brandName = branding.effective_brand_name || DEFAULT_BRANDING.effective_brand_name
   const brandLogoUrl = resolveAssetUrl(branding.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url
   const displayBrandName = branding.custom_branding_active ? brandName : `${brandName} ${editionLabel}`
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
     const rotationId = window.setInterval(() => {
       setActiveSlide((currentSlide) => (currentSlide + 1) % marketingSlides.length)
     }, 5800)
@@ -99,23 +101,23 @@ export function LoginPage({
 
   return (
     <main
-      className="login-screen text-dark overflow-auto"
+      className="login-screen text-dark overflow-x-hidden"
       style={{
         minHeight: '100dvh',
         background: 'linear-gradient(135deg, #f8fafc 0%, #eef4ff 50%, #f6fbf8 100%)'
       }}
     >
-      <section className="d-flex align-items-center justify-content-center px-3 px-lg-5 py-4" style={{ minHeight: '100dvh' }}>
+      <section className="login-layout d-flex align-items-center justify-content-center px-3 px-lg-5 py-3 py-lg-4">
         <div className="w-100" style={{ maxWidth: 1180 }}>
           <div className="row g-4 align-items-center">
             <div className="col-12 col-lg-7">
               <div className="login-brand d-flex align-items-center gap-3 mb-3">
                 <div className="login-brand-mark shadow-sm" aria-hidden="true">
-                  <img src={brandLogoUrl} alt="" className="login-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
+                  <img src={brandLogoUrl} alt="" width="46" height="46" className="login-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
                 </div>
                 <div>
                   <div className="fw-bold fs-4">{displayBrandName}</div>
-                  <div className="text-muted small">{t('auth.qaEnvironment')} {editionLabel}</div>
+                  <div className="text-muted small">{t('auth.qaEnvironment')} · {editionLabel}</div>
                 </div>
               </div>
 
@@ -123,20 +125,22 @@ export function LoginPage({
                 {t('auth.visibleQuality')}
               </h1>
               <p className="text-secondary fs-5 mb-4" style={{ maxWidth: 650 }}>
-                {t('auth.qualityDescription')}
+                {isPremium ? t('auth.premiumQualityDescription') : t('auth.qualityDescription')}
               </p>
 
               <div className="position-relative mb-4" style={{ maxWidth: 720 }}>
                 <div className="bg-white rounded-4 shadow-sm border p-2 p-md-3">
                   <div
-                    className="position-relative overflow-hidden rounded-4 border bg-white"
-                    style={{ aspectRatio: '16 / 10', minHeight: 190 }}
+                    className="login-marketing-visual position-relative overflow-hidden rounded-4 border bg-white"
                   >
                     <img
                       src={activeMarketingSlide.image}
                       alt={activeMarketingSlide.title}
                       className="d-block w-100 h-100"
-                      style={{ objectFit: 'contain', transition: 'opacity 600ms ease' }}
+                      width="720"
+                      height="520"
+                      fetchPriority="high"
+                      style={{ objectFit: 'contain' }}
                     />
                     <div className="position-absolute top-0 start-0 m-2 m-md-3 d-inline-flex align-items-center gap-2 rounded-pill border px-3 py-2 small fw-bold shadow-sm" style={{ background: 'rgba(255, 255, 255, 0.94)' }}>
                       <span className="rounded-circle bg-primary" style={{ width: 8, height: 8 }} />
@@ -144,7 +148,7 @@ export function LoginPage({
                     </div>
                   </div>
 
-                  <div className="d-flex flex-column flex-md-row justify-content-between gap-3 pt-3" aria-live="polite">
+                  <div className="login-slide-copy d-flex flex-column flex-md-row justify-content-between gap-3 pt-3" aria-live="polite">
                     <div>
                       <h2 className="h5 fw-bold mb-1">{activeMarketingSlide.title}</h2>
                       <p className="small text-secondary mb-2" style={{ maxWidth: 560 }}>
@@ -170,7 +174,7 @@ export function LoginPage({
                             width: index === activeSlide ? 24 : 9,
                             height: 9,
                             opacity: index === activeSlide ? 1 : 0.35,
-                            transition: 'all 220ms ease'
+                            transition: 'width 220ms ease, opacity 220ms ease, background-color 220ms ease'
                           }}
                           onClick={() => setActiveSlide(index)}
                         />
@@ -195,7 +199,7 @@ export function LoginPage({
                 <Card.Body className="p-4 p-xl-5">
                   <div className="d-lg-none d-flex align-items-center gap-2 mb-3">
                     <span className="login-brand-mark login-brand-mark-sm" aria-hidden="true">
-                      <img src={brandLogoUrl} alt="" className="login-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
+                      <img src={brandLogoUrl} alt="" width="34" height="34" className="login-brand-icon" onError={(event) => { event.currentTarget.src = DEFAULT_BRANDING.effective_logo_url }} />
                     </span>
                     <span className="fw-bold fs-5">{displayBrandName}</span>
                   </div>
@@ -213,14 +217,14 @@ export function LoginPage({
                   <div className="row g-2 mb-4">
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
-                        <div className="fw-bold small text-dark">{editionLabel} Edition</div>
-                        <div className="text-muted app-label">{branding.edition === 'premium' ? t('auth.activeLicense') : t('auth.openEdition')}</div>
+                        <div className="fw-bold small text-dark">{editionLabel}</div>
+                        <div className="text-muted app-label">{isPremium ? t('auth.activeLicense') : t('auth.openEdition')}</div>
                       </div>
                     </div>
                     <div className="col-6">
                       <div className="border rounded-3 p-3 h-100 bg-light">
                         <div className="fw-bold small text-dark">{t('auth.includedCapabilities')}</div>
-                        <div className="text-muted app-label">{t('auth.includedCapabilitiesDescription')}</div>
+                        <div className="text-muted app-label">{isPremium ? t('auth.premiumCapabilitiesDescription') : t('auth.includedCapabilitiesDescription')}</div>
                       </div>
                     </div>
                   </div>
@@ -231,7 +235,7 @@ export function LoginPage({
                         <Key size={16} className="me-2" /> {t('auth.local')}
                       </Button>
                       <Button variant={authMode === 'ad' ? 'primary' : 'light'} className="flex-fill fw-bold border-0" onClick={() => setAuthMode('ad')} type="button">
-                        <Building2 size={16} className="me-2" /> AD
+                        <Building2 size={16} className="me-2" /> {t('auth.activeDirectory')}
                       </Button>
                     </div>
                   )}
@@ -241,11 +245,11 @@ export function LoginPage({
                       <>
                         <Form.Group className="mb-3">
                           <Form.Label className="small fw-bold text-muted">{isAdPasswordMode ? t('auth.corporateUser') : t('auth.email')}</Form.Label>
-                          <Form.Control name="a11y-loginpagetsx-243" aria-label="Campo de formulario" type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? t('auth.corporateUserPlaceholder') : t('auth.emailPlaceholder')} required />
+                          <Form.Control name="email" aria-label={isAdPasswordMode ? t('auth.corporateUser') : t('auth.email')} autoComplete={isAdPasswordMode ? 'username' : 'email'} spellCheck={false} type={isAdPasswordMode ? 'text' : 'email'} value={loginForm.email} onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })} className="bg-light border-light-subtle" placeholder={isAdPasswordMode ? t('auth.corporateUserPlaceholder') : t('auth.emailPlaceholder')} required />
                         </Form.Group>
                         <Form.Group className="mb-3">
                           <Form.Label className="small fw-bold text-muted">{t('auth.password')}</Form.Label>
-                          <PasswordVisibilityField name="a11y-loginpagetsx-247" aria-label="Campo de formulario" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} />
+                          <PasswordVisibilityField name="password" aria-label={t('auth.password')} autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} className="bg-light border-light-subtle" placeholder={t('auth.passwordPlaceholder')} required showLabel={t('common.showPassword')} hideLabel={t('common.hidePassword')} />
                         </Form.Group>
                       </>
                     ) : (
@@ -254,21 +258,14 @@ export function LoginPage({
                       </div>
                     )}
 
-                    {loginError && <div className="small text-danger bg-danger bg-opacity-10 border border-danger-subtle rounded-3 p-2 mb-3">{loginError}</div>}
+                    {loginError && <div className="small text-danger bg-danger bg-opacity-10 border border-danger-subtle rounded-3 p-2 mb-3" role="alert" aria-live="polite">{loginError}</div>}
 
                     <Button type="submit" variant="primary" className="w-100 fw-bold py-2 rounded-3 shadow-sm" disabled={loginLoading}>
                       {loginLoading ? t('auth.validating') : (effectiveAuthMode === 'ad' ? t('auth.loginWithAd') : t('auth.enterPlatform'))}
                     </Button>
                   </Form>
 
-                  {IS_DEV_ENV && (
-                    <div className="d-flex align-items-start gap-2 small text-muted mt-4">
-                      <Lock size={16} className="text-primary mt-1 flex-shrink-0" />
-                      <span>
-                        {t('auth.development')}: <span className="font-monospace">{DEV_ADMIN_EMAIL}</span>. {t('auth.protectedSession')}
-                      </span>
-                    </div>
-                  )}
+                  <div className="small text-muted mt-4">{t('auth.protectedSession')}</div>
                 </Card.Body>
               </Card>
             </div>

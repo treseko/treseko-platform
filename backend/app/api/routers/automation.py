@@ -39,7 +39,10 @@ async def create_automation_runner_registration_token(
     count_result = await db.execute(
         select(func.count())
         .select_from(models.AutomationRunner)
-        .filter(models.AutomationRunner.organizacion_id == payload.organizacion_id)
+        .filter(
+            models.AutomationRunner.organizacion_id == payload.organizacion_id,
+            models.AutomationRunner.activo.is_(True),
+        )
     )
     await enforce_limit(db, "max_workers", int(count_result.scalar() or 0), tenant_id=str(payload.organizacion_id))
     registration, token = await crud.create_automation_runner_registration_token(db, payload, current_user.id)
@@ -158,7 +161,10 @@ async def approve_automation_runner_pairing_request(
         count_result = await db.execute(
             select(func.count())
             .select_from(models.AutomationRunner)
-            .filter(models.AutomationRunner.organizacion_id == pending.organizacion_id)
+            .filter(
+                models.AutomationRunner.organizacion_id == pending.organizacion_id,
+                models.AutomationRunner.activo.is_(True),
+            )
         )
         await enforce_limit(db, "max_workers", int(count_result.scalar() or 0), tenant_id=str(pending.organizacion_id))
         pairing_request, runner, _ = await crud.approve_automation_runner_pairing_request(db, normalized_code, current_user.id)

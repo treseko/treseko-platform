@@ -276,7 +276,9 @@ export function AuditSettingsTab({ fetchWithAuth, showFeedback }: AuditSettingsT
         ) : filteredRows.length === 0 ? (
           <Alert variant="light" className="border small mb-0">{t('configuracion.noFilteredEvents')}</Alert>
         ) : (
-          <Table hover responsive className="align-middle mb-0">
+          <div className="audit-events-table-wrap">
+          <Table hover responsive={false} className="audit-events-table align-middle mb-0">
+            <caption className="visually-hidden">{t('configuracion.recentEvents')}</caption>
             <thead className="table-light">
               <tr>
                 <th>{t('configuracion.date')}</th><th>{t('configuracion.action')}</th><th>{t('configuracion.auditResourceLabel')}</th>
@@ -286,22 +288,22 @@ export function AuditSettingsTab({ fetchWithAuth, showFeedback }: AuditSettingsT
             <tbody>
               {filteredRows.map(row => (
                 <tr key={row.id}>
-                  <td className="small text-nowrap">{formatDateTime(row.fecha)}</td>
-                  <td><Badge bg="primary" className="text-nowrap">{actionLabel(row.accion, t)}</Badge></td>
-                  <td>
+                  <td className="audit-events-col-date small text-nowrap">{formatDateTime(row.fecha)}</td>
+                  <td className="audit-events-col-action"><Badge bg="primary" className="text-nowrap">{actionLabel(row.accion, t)}</Badge></td>
+                  <td className="audit-events-col-resource">
                     <div className="fw-bold">{resourceLabel(row.recurso, t)}</div>
                     <div className="small text-muted">{compactId(row.recurso_id, t)}</div>
                   </td>
-                  <td style={{ minWidth: 190 }}>
+                  <td className="audit-events-col-actor">
                     <div className="fw-semibold text-truncate" style={{ maxWidth: 220 }} title={actorLabel(row, t)}>{actorLabel(row, t)}</div>
                     <div className="small text-muted text-truncate" style={{ maxWidth: 220 }} title={actorSecondary(row, t)}>{actorSecondary(row, t)}</div>
                   </td>
-                  <td className="small">
+                  <td className="audit-events-col-ip small">
                     <div>{ipLabel(row, t)}</div>
                     <div className="text-muted text-nowrap">{originLabel(row.origen, t)}</div>
                   </td>
-                  <td className="small text-muted" style={{ minWidth: 320, maxWidth: 520 }}>{safeDetailsPreview(row.detalles, t)}</td>
-                  <td className="text-end">
+                  <td className="audit-events-col-detail small text-muted">{safeDetailsPreview(row.detalles, t)}</td>
+                  <td className="audit-events-col-view text-end">
                     <Button variant="outline-secondary" size="sm" onClick={() => setSelected(row)}>
                       <Eye size={14} className="me-1" /> {t('configuracion.detail')}
                     </Button>
@@ -310,6 +312,7 @@ export function AuditSettingsTab({ fetchWithAuth, showFeedback }: AuditSettingsT
               ))}
             </tbody>
           </Table>
+          </div>
         )}
       </Card>
 

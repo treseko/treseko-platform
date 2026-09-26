@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createMcpCredential, fetchMcpConfiguration, listMcpCredentials, revokeMcpCredential, updateMcpConfiguration, type McpCredential, type McpTool, type McpScope } from '../api/configuracionApi'
+import { createMcpCredential, fetchMcpConfiguration, listMcpCredentials, revokeMcpCredential, setMcpCredentialState, updateMcpConfiguration, type McpCredential, type McpTool, type McpScope } from '../api/configuracionApi'
 
 type Params = {
   isAuthenticated: boolean
@@ -95,6 +95,20 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
     }
   }, [canEdit, confirmAction, enabled, fetchWithAuth, showFeedback, status, t])
 
+  const setCredentialState = useCallback(async (credential: McpCredential, estado: 'ACTIVE' | 'PAUSED') => {
+    if (!canEdit || !enabled || status === 'disabled' || credential.estado === 'REVOKED') return
+    setLoading(true)
+    try {
+      const updated = await setMcpCredentialState(fetchWithAuth, credential.id, estado)
+      setCredentials(current => current.map(item => item.id === updated.id ? updated : item))
+      showFeedback(t('configuracion.mcpTitle'), estado === 'ACTIVE' ? t('configuracion.mcpCredentialResumed') : t('configuracion.mcpCredentialPaused'), 'success')
+    } catch (cause: any) {
+      showFeedback(t('configuracion.mcpTitle'), cause?.message || t('configuracion.mcpCredentialStateError'), 'danger')
+    } finally {
+      setLoading(false)
+    }
+  }, [canEdit, enabled, fetchWithAuth, showFeedback, status, t])
+
   const toggle = useCallback(async (nextEnabled: boolean) => {
     if (!canEdit || loading) return
     const previousEnabled = enabled
@@ -115,7 +129,7 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
     }
   }, [canEdit, enabled, fetchWithAuth, loading, showFeedback, t])
 
-  return { tools, credentials, scopeCatalog, effectiveCapabilities, enabled, status, endpoint, loading, error, rawCredential, load, create, revoke, toggle, clearRawCredential: () => setRawCredential(null) }
+  return { tools, credentials, scopeCatalog, effectiveCapabilities, enabled, status, endpoint, loading, error, rawCredential, load, create, revoke, setCredentialState, toggle, clearRawCredential: () => setRawCredential(null) }
 }
 
 export type McpConfigurationState = ReturnType<typeof useMcpConfiguration>

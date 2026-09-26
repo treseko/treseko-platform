@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Form, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Sparkles } from 'lucide-react'
+import { GenerationStepper } from './GenerationStepper'
 
 export function CaseGenerationWizardView({ options }: { options: any }) {
   const { t, step, busy, busyMessage, elapsedSeconds, error, run, duplicateReviewOpen, onClose, story, structured, components, componentId, setSelectedComponent, availableSuites, suiteId, setSelectedSuite, suitePathById, selectedSuite, selectedComponent, instructions, setInstructions, answers, setAnswers, plannedScenarios, selectedScenarioIds, toggleScenario, toggle, duplicateSignals, setDuplicateDetail, duplicateReasons, setDuplicateReasons, requiresDuplicateDecision, failReasons, setFailReasons, estimate, confirm, generate, apply, duplicateDetail } = options
@@ -12,26 +13,11 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        <div className="d-flex gap-2 small mb-3" aria-label={t('proyectos.caseGenerationStepAria', { step })}>
-          {[
-            t('proyectos.stepContext'),
-            t('proyectos.stepAnalysis'),
-            t('proyectos.stepCoverage'),
-            t('proyectos.stepCases'),
-            t('proyectos.stepApply'),
-          ].map((label, i) => (
-            <span
-              key={label}
-              className={`border rounded px-2 py-1 ${i + 1 === step
-                ? "bg-primary text-white border-primary"
-                : i + 1 < step
-                  ? "bg-light text-muted"
-                  : "text-muted"}`}
-            >
-              {i + 1}. {label}
-            </span>
-          ))}
-        </div>
+        <GenerationStepper
+          labels={[t('proyectos.stepContext'), t('proyectos.stepAnalysis'), t('proyectos.stepCoverage'), t('proyectos.stepCases'), t('proyectos.stepApply')]}
+          currentStep={Math.max(0, step - 1)}
+          ariaLabel={t('proyectos.caseGenerationStepAria', { step })}
+        />
 
         {busy && (
           <div className="border rounded bg-light px-3 py-2 mb-3" aria-live="polite">
@@ -231,7 +217,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
                   </div>
                   <div className="text-uppercase text-muted fw-semibold small mb-1">{t('proyectos.caseGenerationStepsTitle')}</div>
                   <div className="table-responsive">
-                    <table className="table table-sm table-bordered mb-3">
+                    <table className="table table-sm table-bordered case-generation-steps-table mb-3">
                       <thead className="table-light">
                         <tr>
                           <th style={{ width: "56px" }}>#</th>

@@ -24,11 +24,16 @@ test('la capability granular permite el módulo sin habilitarlo por defecto en Q
   assert.equal(MODULE_PERMISSIONS.TESTER.includes('incidencias'), false)
 })
 
-test('bugs.ver conserva compatibilidad para el Centro de Incidencias', () => {
-  assert.equal(canAccessModule(user({}, { 'bugs.ver': 'read' }), 'incidencias'), true)
+test('bugs.ver no habilita el Centro de Incidencias', () => {
+  assert.equal(canAccessModule(user({}, { 'bugs.ver': 'read' }), 'incidencias'), false)
 })
 
-test('la compatibilidad de bugs.ver no concede edición del Centro de Incidencias', () => {
+test('API keys habilita Configuración sin permiso genérico de preferencias', () => {
+  assert.equal(canAccessModule(user({}, { 'configuracion.api_keys': 'read' }), 'configuracion'), true)
+  assert.equal(canAccessModule(user({}, { 'configuracion.api_keys': 'edit' }), 'configuracion'), true)
+})
+
+test('la lectura del Centro no concede edición y solo su permiso explícito habilita editar', () => {
   assert.equal(canAccessModule(user({}, { 'bugs.ver': 'read' }), 'incidencias', 'edit'), false)
   assert.equal(canAccessModule(user({}, { 'incidencias.ver': 'read' }), 'incidencias', 'edit'), false)
   assert.equal(canAccessModule(user({}, { 'incidencias.ver': 'edit' }), 'incidencias', 'edit'), true)

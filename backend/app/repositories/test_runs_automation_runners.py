@@ -16,7 +16,10 @@ async def _enforce_worker_limit_for_solution(db: AsyncSession, organizacion_id: 
     count_result = await db.execute(
         select(func.count())
         .select_from(models.AutomationRunner)
-        .filter(models.AutomationRunner.organizacion_id == organizacion_id)
+        .filter(
+            models.AutomationRunner.organizacion_id == organizacion_id,
+            models.AutomationRunner.activo.is_(True),
+        )
     )
     await enforce_limit(db, "max_workers", int(count_result.scalar() or 0), tenant_id=str(organizacion_id))
 
@@ -433,7 +436,10 @@ async def get_automation_runners(db: AsyncSession, organization_ids=None):
     query = (
         select(models.AutomationRunner)
         .join(models.Organizacion, models.Organizacion.id == models.AutomationRunner.organizacion_id)
-        .filter(models.Organizacion.activo.is_(True))
+        .filter(
+            models.Organizacion.activo.is_(True),
+            models.AutomationRunner.activo.is_(True),
+        )
         .order_by(models.AutomationRunner.fecha_creacion.desc())
     )
     if organization_ids is not None:

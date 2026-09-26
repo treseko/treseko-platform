@@ -1,0 +1,31 @@
+{
+  "catalog_version": "treseko.builtin-workflow/v1",
+  "slug": "story-generation",
+  "workflow": {
+    "name": "Generación de historias v2",
+    "version": 2,
+    "workflow_format": "universal_v2",
+    "workflow_purpose": "story_generation",
+    "decision_policy_json": {"catalog_key": "story-generation", "catalog_version": "2.0.0", "quality_gate": "traceable-invest-v2"}
+  },
+  "agents": [{
+    "ref": "story-generation",
+    "key": "story-generation-v2",
+    "name": "Autor gobernado de historias v2",
+    "description": "Diseña historias pequeñas, verificables y trazables desde un requisito",
+    "category": "analysis",
+    "objective": "Separar capacidades, conservar alcance, explicitar supuestos y producir criterios observables.",
+    "tags": ["traceability", "story-generation", "v2", "invest", "quality-gate"]
+  }],
+  "nodes": [
+    {"key": "requirement-analyzer", "type": "RequirementAnalyzer", "name": "Analizar requisito", "agent_key": "REQUIREMENTANALYZER", "agent_ref": "story-generation", "prompt_template": "Analiza hechos explícitos, alcance, fuera de alcance, actores, dependencias, riesgos, ambigüedades y preguntas funcionales. No inventes comportamiento. Clasifica cada supuesto por riesgo. Separa capacidades independientes en un outline y explica por qué. No preguntes por frameworks ni implementación interna.", "position_x": 0, "position_y": 120, "timeout_sec": 180},
+    {"key": "story-generator", "type": "StoryGenerator", "name": "Generar historias v2", "agent_key": "STORYGENERATOR", "agent_ref": "story-generation", "prompt_template": "Genera una única propuesta por capacidad planificada. La historia debe ser independiente, estimable y verificable: actor, acción, beneficio, alcance, fuera de alcance, dependencias, riesgos y criterios Given/When/Then observables. No mezcles capacidades ni agregues detalles técnicos no presentes en las fuentes.", "position_x": 280, "position_y": 120, "timeout_sec": 180},
+    {"key": "qa-story-critic", "type": "QaStoryCritic", "name": "Evaluar calidad funcional", "agent_key": "QASTORYCRITIC", "agent_ref": "story-generation", "prompt_template": "Evalúa INVEST de forma explícita, tamaño, independencia, testabilidad criterio por criterio, alcance, duplicados y solapamientos. Devuelve hallazgos accionables y marca FAIL si falta evidencia funcional, resultado observable o trazabilidad.", "position_x": 560, "position_y": 120, "timeout_sec": 180},
+    {"key": "traceability-auditor", "type": "TraceabilityAuditor", "name": "Auditar trazabilidad", "agent_key": "TRACEABILITYAUDITOR", "agent_ref": "story-generation", "prompt_template": "Construye la matriz requisito → historia → criterio. Rechaza criterios sin fuente o supuesto aceptado, historias fuera del alcance y propuestas duplicadas. Reporta cobertura, huecos y decisiones necesarias antes de aplicar.", "position_x": 840, "position_y": 120, "timeout_sec": 180}
+  ],
+  "edges": [
+    {"source": "requirement-analyzer", "target": "story-generator", "condition_type": "on_success", "priority": 10, "max_passes": 1},
+    {"source": "story-generator", "target": "qa-story-critic", "condition_type": "on_success", "priority": 10, "max_passes": 1},
+    {"source": "qa-story-critic", "target": "traceability-auditor", "condition_type": "on_success", "priority": 10, "max_passes": 1}
+  ]
+}

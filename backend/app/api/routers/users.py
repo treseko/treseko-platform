@@ -177,6 +177,30 @@ async def revoke_my_mcp_credential(
     return db_key
 
 
+@router.patch("/users/me/mcp-credentials/{api_key_id}/", response_model=schemas.McpApiKey)
+async def set_my_mcp_credential_state(
+    request: Request,
+    api_key_id: UUID,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("mcp.usar", "edit")),
+):
+    estado = payload.get("estado") if isinstance(payload, dict) else None
+    try:
+        db_key = await crud.set_api_key_state(db, current_user.id, api_key_id, purpose="mcp", estado=estado)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not db_key:
+        raise HTTPException(status_code=404, detail="Credencial MCP no encontrada o revocada")
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="MCP_CREDENTIAL_STATE_CHANGE",
+        recurso="mcp_credential", recurso_id=db_key.id,
+        detalles={"nombre": db_key.nombre, "estado": db_key.estado},
+        ip_address=request.client.host if request.client else "unknown",
+    )
+    return db_key
+
+
 @router.delete("/users/me/api-keys/{api_key_id}/", response_model=schemas.ApiKey)
 async def revoke_my_api_key(
     request: Request,
@@ -199,6 +223,30 @@ async def revoke_my_api_key(
             "key_prefix": db_key.key_prefix,
         },
         ip_address=client_ip,
+    )
+    return db_key
+
+
+@router.patch("/users/me/api-keys/{api_key_id}/", response_model=schemas.ApiKey)
+async def set_my_api_key_state(
+    request: Request,
+    api_key_id: UUID,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("configuracion.api_keys", "edit")),
+):
+    estado = payload.get("estado") if isinstance(payload, dict) else None
+    try:
+        db_key = await crud.set_api_key_state(db, current_user.id, api_key_id, purpose="legacy", estado=estado)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not db_key:
+        raise HTTPException(status_code=404, detail="API key no encontrada o revocada")
+    await crud.create_audit_log(
+        db=db, usuario_id=current_user.id, accion="API_KEY_STATE_CHANGE",
+        recurso="api_key", recurso_id=db_key.id,
+        detalles={"nombre": db_key.nombre, "estado": db_key.estado},
+        ip_address=request.client.host if request.client else "unknown",
     )
     return db_key
 

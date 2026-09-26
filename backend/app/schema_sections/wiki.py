@@ -40,7 +40,10 @@ class WikiPageUpdate(BaseModel):
 class WikiPage(WikiPageBase):
     id: UUID
     proyecto_id: UUID
+    creado_por: Optional[UUID] = None
+    creado_por_display: Optional[str] = None
     ultima_edicion_por: Optional[UUID] = None
+    ultima_edicion_por_display: Optional[str] = None
     fecha_creacion: datetime
     ultima_actualizacion: datetime
 
@@ -51,6 +54,7 @@ class WikiHistory(BaseModel):
     page_id: UUID
     contenido: str
     editado_por: UUID
+    editado_por_display: Optional[str] = None
     fecha_edicion: datetime
     comentario_cambio: Optional[str] = None
 

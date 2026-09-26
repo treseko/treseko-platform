@@ -47,7 +47,7 @@ async def read_project_bugs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
+    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
     return await crud.list_project_bugs(
@@ -84,7 +84,7 @@ async def read_project_bugs_summary(
     build_id: Optional[UUID] = None,
     build_scope: Annotated[Optional[str], Query(max_length=20)] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read")))
+    current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
     if build_id:
@@ -113,7 +113,7 @@ async def read_incident_center(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_any_capability(("incidencias.ver", "read"), ("bugs.ver", "read"))),
+    current_user: models.Usuario = Depends(auth.check_capability("incidencias.ver", "read")),
 ):
     """Operational cross-project view over the existing BugIssue records."""
     if proyecto_id is not None:
@@ -185,7 +185,9 @@ async def export_incident_center(
     chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
     chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("bugs.exportar", "read")),
+    current_user: models.Usuario = Depends(auth.check_capabilities(
+        ("incidencias.ver", "read"), ("bugs.exportar", "read")
+    )),
 ):
     """Export only incidents the authenticated user can already access."""
     if request.url.path.endswith(".md"):

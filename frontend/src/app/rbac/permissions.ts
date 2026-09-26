@@ -36,12 +36,9 @@ export function canAccessCapability(user: SessionUser, capabilityId: CatalogCapa
 export function canAccessModule(user: SessionUser, moduleId: ModuleId, level: PermissionLevel = 'read') {
   if (moduleId === 'bugs' && !canAccessCapability(user, 'bugs.ver', 'read')) return false
   if (moduleId === 'incidencias') {
-    // `bugs.ver` is a read-only compatibility path for existing roles. It
-    // must never satisfy a future write check for this separate module.
-    if (level === 'read' && (
-      canAccessCapability(user, 'incidencias.ver', 'read') ||
-      canAccessCapability(user, 'bugs.ver', 'read')
-    )) return true
+    // Incident Center is a separate development/triage module. Bug Tracker
+    // read access must not expose it.
+    if (level === 'read' && canAccessCapability(user, 'incidencias.ver', 'read')) return true
     if (level === 'edit' && canAccessCapability(user, 'incidencias.ver', 'edit')) return true
   }
   const current = user.permissions?.[moduleId] || (isGlobalAdmin(user) ? ROLE_ACCESS.ADMIN[moduleId] : undefined)

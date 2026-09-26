@@ -136,7 +136,7 @@ renderReportesWidget('priority', Object.keys(projectMetrics.por_prioridad).lengt
     <Col md={12}>
       <Card className="border-0 shadow-sm p-4 rounded-3 bg-white">
         <h6 className="fw-bold mb-4 text-secondary text-start">{t('reportes.resultsByPriority')}</h6>
-        <Table hover responsive className="mb-0">
+        <Table hover responsive className="reportes-responsive-table reportes-responsive-table--wide mb-0">
           <thead>
             <tr>
               {isColumnVisible('priority', 'priority') && <th>{t('reportes.priority')}</th>}
@@ -195,7 +195,7 @@ renderReportesWidget('suites', suiteTree.length > 0 ? (
             </Button>
           </div>
         </div>
-        <Table hover responsive className="mb-0">
+        <Table hover responsive className="reportes-responsive-table reportes-responsive-table--wide mb-0">
           <thead>
             <tr>
               {isColumnVisible('suites', 'suite') && <th style={{ width: '40px' }}></th>}

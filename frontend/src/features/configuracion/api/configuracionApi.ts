@@ -52,6 +52,14 @@ export async function revokeUserApiKey(fetchWithAuth: FetchWithAuth, apiKeyId: s
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
 
+export async function setUserApiKeyState(fetchWithAuth: FetchWithAuth, apiKeyId: string, estado: 'ACTIVE' | 'PAUSED') {
+  const response = await fetchWithAuth(`${API_BASE}/users/me/api-keys/${apiKeyId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado }),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
 export type McpTool = {
   name: string
   description: string
@@ -67,6 +75,7 @@ export type McpCredential = {
   nombre: string
   key_prefix: string
   activo: boolean
+  estado?: 'ACTIVE' | 'PAUSED' | 'REVOKED'
   fecha_creacion: string
   ultimo_uso?: string | null
   expires_at?: string | null
@@ -130,6 +139,14 @@ export async function createMcpCredential(fetchWithAuth: FetchWithAuth, payload:
 
 export async function revokeMcpCredential(fetchWithAuth: FetchWithAuth, credentialId: string) {
   const response = await fetchWithAuth(`${API_BASE}/users/me/mcp-credentials/${encodeURIComponent(credentialId)}/`, { method: 'DELETE' })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpCredential>
+}
+
+export async function setMcpCredentialState(fetchWithAuth: FetchWithAuth, credentialId: string, estado: 'ACTIVE' | 'PAUSED') {
+  const response = await fetchWithAuth(`${API_BASE}/users/me/mcp-credentials/${encodeURIComponent(credentialId)}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado }),
+  })
   return readJsonOrThrow(response, `Backend respondio ${response.status}`) as Promise<McpCredential>
 }
 

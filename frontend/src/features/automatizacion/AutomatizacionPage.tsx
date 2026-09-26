@@ -72,7 +72,7 @@ export function AutomatizacionPage({
   }
 
   return (
-    <div className="p-4 animate__animated animate__fadeIn text-dark text-start">
+    <div className="p-4 animate__animated animate__fadeIn text-dark text-start automation-page">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
           <Code size={24} /> {t('automatizacion.pageTitle')}

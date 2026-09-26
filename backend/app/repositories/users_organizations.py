@@ -353,6 +353,7 @@ async def create_api_key(db: AsyncSession, user_id: UUID, payload: schemas.ApiKe
         key_hash=_hash_api_key(raw_key),
         key_prefix=raw_key[:12],
         purpose="legacy",
+        estado="ACTIVE",
         scopes_json=[],
     )
     db.add(db_key)
@@ -375,7 +376,7 @@ async def create_mcp_api_key(db: AsyncSession, user_id: UUID, payload: schemas.M
     raw_key = generate_raw_api_key()
     db_key = models.ApiKey(
         usuario_id=user_id, nombre=payload.nombre, key_hash=_hash_api_key(raw_key),
-        key_prefix=raw_key[:12], purpose="mcp", expires_at=payload.expires_at,
+        key_prefix=raw_key[:12], purpose="mcp", estado="ACTIVE", expires_at=payload.expires_at,
         scopes_json=scopes,
     )
     db.add(db_key)
@@ -406,6 +407,27 @@ async def revoke_api_key(db: AsyncSession, user_id: UUID, api_key_id: UUID, *, p
     if not db_key:
         return None
     db_key.activo = False
+    db_key.estado = "REVOKED"
+    await db.commit()
+    await db.refresh(db_key)
+    return db_key
+
+
+async def set_api_key_state(db: AsyncSession, user_id: UUID, api_key_id: UUID, *, purpose: str, estado: str):
+    if estado not in {"ACTIVE", "PAUSED"}:
+        raise ValueError("Estado de credencial no valido")
+    result = await db.execute(
+        select(models.ApiKey).filter(
+            models.ApiKey.id == api_key_id,
+            models.ApiKey.usuario_id == user_id,
+            models.ApiKey.purpose == purpose,
+        )
+    )
+    db_key = result.scalar_one_or_none()
+    if not db_key or db_key.estado == "REVOKED":
+        return None
+    db_key.estado = estado
+    db_key.activo = estado == "ACTIVE"
     await db.commit()
     await db.refresh(db_key)
     return db_key
@@ -419,6 +441,7 @@ async def get_user_by_api_key(db: AsyncSession, api_key: str):
             models.ApiKey.key_hash == _hash_api_key(normalized_api_key),
             models.ApiKey.purpose == "legacy",
             models.ApiKey.activo == True,
+            models.ApiKey.estado == "ACTIVE",
         )
     )
     db_key = result.scalar_one_or_none()
@@ -439,6 +462,7 @@ async def get_user_by_mcp_api_key(db: AsyncSession, api_key: str):
     result = await db.execute(select(models.ApiKey).filter(
         models.ApiKey.key_hash == _hash_api_key(normalized_api_key),
         models.ApiKey.purpose == "mcp", models.ApiKey.activo == True,
+        models.ApiKey.estado == "ACTIVE",
         or_(models.ApiKey.expires_at.is_(None), models.ApiKey.expires_at > now),
     ))
     db_key = result.scalar_one_or_none()

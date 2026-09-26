@@ -375,10 +375,8 @@ def capability_metadata(capability_id: str, module: str, label: str) -> dict:
     }
     if capability_id in _CONFIG_SUBSECTIONS:
         metadata["subsection"] = _CONFIG_SUBSECTIONS[capability_id]
-    if capability_id == "bugs.ver":
-        metadata["compatibility_note"] = "También permite abrir el Centro de incidencias a roles antiguos de solo lectura."
     if capability_id == "incidencias.ver":
-        metadata["compatibility_note"] = "Permiso explícito recomendado para el Centro de incidencias."
+        metadata["compatibility_note"] = "Permiso explícito requerido para abrir el Centro de incidencias."
     if capability_id == "motor_ia.workflows":
         metadata["compatibility_note"] = "Acceso a la sección; las acciones se controlan con los permisos workflow_* ."
     if capability_id == "settings.evidence_sanitization.manage":

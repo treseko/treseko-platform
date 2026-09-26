@@ -17,6 +17,7 @@ type Props = {
   dismissMcpRawCredential: () => void
   createMcpCredential: (name: string, scopes: string[], expiresAt?: string) => void
   revokeMcpCredential: (credential: any) => void
+  setMcpCredentialState?: (credential: any, estado: 'ACTIVE' | 'PAUSED') => void
   toggleMcp: (enabled: boolean) => void
   copyToClipboard: (text: string, label?: string) => void
 }
@@ -46,6 +47,7 @@ export function McpSettingsTab({ canAccessCapability, ...props }: Props) {
         copyToClipboard={props.copyToClipboard}
         onCreate={props.createMcpCredential}
         onRevoke={props.revokeMcpCredential}
+        onSetState={props.setMcpCredentialState}
         onToggle={props.toggleMcp}
       />
     </div>

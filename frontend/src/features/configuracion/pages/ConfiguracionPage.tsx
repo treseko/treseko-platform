@@ -55,6 +55,7 @@ function ConfiguracionPageInner({
   createUserApiKey,
   revokeUserApiKey,
   handleApiKeyEnabledChange,
+  setUserApiKeyState,
   copyToClipboard,
   mcpTools,
   mcpCredentials,
@@ -69,6 +70,7 @@ function ConfiguracionPageInner({
   dismissMcpRawCredential,
   createMcpCredential,
   revokeMcpCredential,
+  setMcpCredentialState,
   toggleMcp,
   attachmentConfig,
   setAttachmentConfig,
@@ -235,6 +237,7 @@ function ConfiguracionPageInner({
               setApiKeyName={setApiKeyName}
               createUserApiKey={createUserApiKey}
               revokeUserApiKey={revokeUserApiKey}
+              setUserApiKeyState={setUserApiKeyState}
               handleApiKeyEnabledChange={handleApiKeyEnabledChange}
               copyToClipboard={copyToClipboard}
               mcpTools={mcpTools}
@@ -337,7 +340,7 @@ function ConfiguracionPageInner({
               setApiKeyName={setApiKeyName}
               createUserApiKey={createUserApiKey}
               revokeUserApiKey={revokeUserApiKey}
-              handleApiKeyEnabledChange={handleApiKeyEnabledChange}
+              setUserApiKeyState={setUserApiKeyState}
               copyToClipboard={copyToClipboard}
             />
           )}
@@ -358,6 +361,7 @@ function ConfiguracionPageInner({
               dismissMcpRawCredential={dismissMcpRawCredential}
               createMcpCredential={createMcpCredential}
               revokeMcpCredential={revokeMcpCredential}
+              setMcpCredentialState={setMcpCredentialState}
               toggleMcp={toggleMcp}
               copyToClipboard={copyToClipboard}
             />

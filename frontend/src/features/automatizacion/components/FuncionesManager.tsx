@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, Button, Modal, Form, Badge, Table, Alert } from 'react-bootstrap'
-import { Plus, Edit2, Trash2, Code, History, Save } from 'lucide-react'
+import { Plus, Edit2, Trash2, Code, History, Save, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import { useI18n } from '../../../i18n'
 import { isValidUUID } from '../../../app/validation'
@@ -42,6 +42,8 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
   const [showVersionsModal, setShowVersionsModal] = useState(false)
   const [editingFuncion, setEditingFuncion] = useState<Funcion | null>(null)
   const [selectedVersions, setSelectedVersions] = useState<Funcion[]>([])
+  const [functionSearch, setFunctionSearch] = useState('')
+  const [functionPage, setFunctionPage] = useState(1)
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
@@ -60,7 +62,30 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
     if (proyectoId) {
       loadFunciones()
     }
+    setFunctionPage(1)
   }, [proyectoId, currentCompId])
+
+  const filteredFunctions = useMemo(() => {
+    const query = functionSearch.trim().toLocaleLowerCase()
+    if (!query) return funciones
+    return funciones.filter(funcion => [
+      funcion.nombre,
+      funcion.descripcion,
+      funcion.framework,
+      ...(funcion.parametros || []),
+    ].some(value => String(value || '').toLocaleLowerCase().includes(query)))
+  }, [funciones, functionSearch])
+
+  const functionPageSize = 25
+  const functionPageCount = Math.max(1, Math.ceil(filteredFunctions.length / functionPageSize))
+  const visibleFunctions = filteredFunctions.slice(
+    (functionPage - 1) * functionPageSize,
+    functionPage * functionPageSize,
+  )
+
+  useEffect(() => {
+    setFunctionPage(page => Math.min(page, functionPageCount))
+  }, [functionPageCount])
 
   const readErrorMessage = async (response: Response) => {
     const raw = await response.text().catch(() => '')
@@ -209,18 +234,32 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
 
   return (
     <>
-      <Card className="border-0 shadow-sm rounded-3 bg-white mb-4">
-        <Card.Header className="bg-white border-bottom d-flex justify-content-between align-items-center py-3">
-          <h5 className="mb-0 d-flex align-items-center gap-2">
+      <Card className="border-0 shadow-sm rounded-3 bg-white mb-4 automation-panel-card">
+        <Card.Header className="bg-white border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2 py-3">
+          <h5 className="mb-0 d-flex align-items-center gap-2 flex-shrink-0">
             <Code size={20} className="text-primary" />
             {t('automatizacion.functionsTitle')}
           </h5>
-          {canEdit && (
-            <Button variant="primary" size="sm" onClick={handleCreate} className="d-flex align-items-center gap-2">
-              <Plus size={16} />
-              {t('automatizacion.newFunction')}
-            </Button>
-          )}
+          <div className="d-flex flex-wrap justify-content-end align-items-center gap-2 automation-panel-toolbar">
+            {funciones.length > 0 && (
+              <div className="input-group input-group-sm automation-search-control">
+                <span className="input-group-text bg-white"><Search size={14} aria-hidden="true" /></span>
+                <Form.Control
+                  name="automation-function-search"
+                  aria-label={t('automatizacion.searchFunctions')}
+                  placeholder={t('automatizacion.searchFunctions')}
+                  value={functionSearch}
+                  onChange={event => { setFunctionSearch(event.target.value); setFunctionPage(1) }}
+                />
+              </div>
+            )}
+            {canEdit && (
+              <Button variant="primary" size="sm" onClick={handleCreate} className="d-flex align-items-center gap-2">
+                <Plus size={16} />
+                {t('automatizacion.newFunction')}
+              </Button>
+            )}
+          </div>
         </Card.Header>
         <Card.Body className="p-0">
           {loading ? (
@@ -233,8 +272,13 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
             <Alert variant="info" className="m-4">
               {t('automatizacion.noFunctions')}
             </Alert>
+          ) : filteredFunctions.length === 0 ? (
+            <Alert variant="info" className="m-4">
+              {t('automatizacion.noMatchingFunctions')}
+            </Alert>
           ) : (
-            <Table hover responsive className="mb-0">
+            <div className="automation-table-wrap">
+            <Table hover responsive className="mb-0 automation-data-table">
               <thead className="table-light">
                 <tr>
                   <th>{t('automatizacion.name')}</th>
@@ -247,7 +291,7 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                 </tr>
               </thead>
               <tbody>
-                {funciones.map((funcion) => (
+                {visibleFunctions.map((funcion) => (
                   <tr key={funcion.id}>
                     <td>
                       <strong>{funcion.nombre || t('automatizacion.noName')}</strong>
@@ -319,8 +363,31 @@ export const FuncionesManager = ({ proyectoId, currentCompId, componentsList = [
                 ))}
               </tbody>
             </Table>
+            </div>
           )}
         </Card.Body>
+        {filteredFunctions.length > 0 && (
+          <Card.Footer className="bg-white border-top d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+            <span className="small text-muted">
+              {t('automatizacion.showingFunctions', {
+                from: (functionPage - 1) * functionPageSize + 1,
+                to: Math.min(functionPage * functionPageSize, filteredFunctions.length),
+                total: filteredFunctions.length,
+              })}
+            </span>
+            {functionPageCount > 1 && (
+              <div className="d-flex align-items-center gap-2">
+                <Button variant="outline-secondary" size="sm" aria-label={t('automatizacion.previousPage')} disabled={functionPage === 1} onClick={() => setFunctionPage(page => page - 1)}>
+                  <ChevronLeft size={14} />
+                </Button>
+                <span className="small text-muted" aria-live="polite">{t('automatizacion.pageOf', { page: functionPage, total: functionPageCount })}</span>
+                <Button variant="outline-secondary" size="sm" aria-label={t('automatizacion.nextPage')} disabled={functionPage === functionPageCount} onClick={() => setFunctionPage(page => page + 1)}>
+                  <ChevronRight size={14} />
+                </Button>
+              </div>
+            )}
+          </Card.Footer>
+        )}
       </Card>
 
       {/* Modal Crear/Editar */}

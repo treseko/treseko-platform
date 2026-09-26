@@ -1,13 +1,29 @@
-import { Badge, Button, Card, Col, Form, ListGroup, Row } from 'react-bootstrap'
-import { Image as ImageIcon, Info, Trash2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Badge, Button, Card, Col, Form, ListGroup, Row, Spinner } from 'react-bootstrap'
+import { Image as ImageIcon, Info, Trash2, Upload } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { resolveAssetUrl } from '../../shared/utils/assets'
 
 export function ProjectConfigTab({
   t, canEditProjectPortfolio, canReadProjectTeam, canEditProject, projectsList, managingProjectId,
-  setShowProjectStatusHelp, handleUpdateProject, canEditProjectTeamEffective, handleAddProjectMember,
+  setShowProjectStatusHelp, handleUpdateProject, handleUploadProjectLogo, canEditProjectTeamEffective, handleAddProjectMember,
   projectMembers, handleRemoveProjectMember,
 }: any) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const project = projectsList.find(p => p.id === managingProjectId)
+
+  const uploadLogo = async (file?: File) => {
+    if (!file || !handleUploadProjectLogo) return
+    setUploadingLogo(true)
+    try {
+      await handleUploadProjectLogo(file)
+    } finally {
+      setUploadingLogo(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   return (
                     <div className="animate__animated animate__fadeIn">
                       <h5 className="fw-bold text-dark mb-4 border-bottom pb-2">{canReadProjectTeam ? t('proyectos.infoAndTeam') : t('proyectos.info')}</h5>
@@ -19,8 +35,8 @@ export function ProjectConfigTab({
                             <Card.Body>
                               <div className="d-flex align-items-center gap-3 mb-3">
                                 <div className="project-avatar">
-                                  {projectsList.find(p => p.id === managingProjectId)?.imageUrl ? (
-                                    <img src={resolveAssetUrl(projectsList.find(p => p.id === managingProjectId)?.imageUrl)} alt={projectsList.find(p => p.id === managingProjectId)?.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
+                                  {project?.imageUrl ? (
+                                    <img src={resolveAssetUrl(project.imageUrl)} alt={project.name || t('proyectos.projectFallback')} onError={(event) => { event.currentTarget.style.display = 'none' }} />
                                   ) : (
                                     <ImageIcon size={22} className="text-primary" />
                                   )}
@@ -36,7 +52,14 @@ export function ProjectConfigTab({
                               </Form.Group>
                               <Form.Group className="mb-3">
                                 <Form.Label className="small fw-bold text-muted">{t('proyectos.projectLogo')}</Form.Label>
-                                <Form.Control name="projectImageUrl" type="url" placeholder={t('proyectos.urlPlaceholder')} defaultValue={projectsList.find(p => p.id === managingProjectId)?.imageUrl || ''} className="border-light-subtle" disabled={!canEditProject} />
+                                <div className="project-logo-url-row">
+                                  <Form.Control name="projectImageUrl" type="url" placeholder={t('proyectos.urlPlaceholder')} defaultValue={project?.imageUrl || ''} className="project-logo-url-input border-light-subtle" disabled={!canEditProject} />
+                                  <Button type="button" variant="outline-primary" className="project-logo-upload-button px-2" title={t('proyectos.uploadProjectLogo')} aria-label={t('proyectos.uploadProjectLogo')} disabled={!canEditProject || uploadingLogo} onClick={() => fileInputRef.current?.click()}>
+                                    {uploadingLogo ? <Spinner size="sm" /> : <Upload size={15} />}
+                                  </Button>
+                                </div>
+                                <Form.Control ref={fileInputRef} className="d-none" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { void uploadLogo((event.currentTarget as HTMLInputElement).files?.[0]) }} disabled={!canEditProject || uploadingLogo} />
+                                <Form.Text>{t('proyectos.projectLogoUploadHint')}</Form.Text>
                               </Form.Group>
                               <Form.Group className="mb-3">
                                 <div className="d-flex align-items-center justify-content-between gap-2 mb-1">

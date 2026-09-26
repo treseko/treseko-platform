@@ -2,9 +2,16 @@ import { Button, Form, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Sparkles } from 'lucide-react'
 import { TraceabilityGenerationContext } from './TraceabilityGenerationContext'
 import { TraceabilityGenerationResults } from './TraceabilityGenerationResults'
+import { GenerationStepper } from './GenerationStepper'
 
 export function TraceabilityGenerationModal({ options }: { options: any }) {
   const { generationRequirement, setGenerationRequirement, generationBusy, t, tx, generationStep, setGenerationStep, locale, generationCompletedCount, generationRequestedCount, generationElapsedSeconds, generationContextExpanded, setGenerationContextExpanded, generationRun, setGenerationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, preflightExcludedStories, selectedCandidateCount, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor, estimateGeneration, generationHasActionableReview, confirmAssumptions, generationHasCriticalAssumptions, autoContinueRemaining, autoContinuePaused, recalculateGenerationScope, generationMaxStories, setGenerationMaxStories, generateCandidates, selectedCriticalCandidatesNeedDecision, applyCandidates } = options
+  const currentStep = { context: 0, analysis: 1, configuration: 2, review: 3 }[generationStep] ?? 0
+  const progress = generationBusy
+    ? generationStep === "configuration" && generationRequestedCount > 0
+      ? Math.min(95, Math.max(8, Math.round((generationCompletedCount / generationRequestedCount) * 100)))
+      : generationStep === "review" ? 92 : 18
+    : 0
   return (
       <Modal
         show={Boolean(generationRequirement)}
@@ -31,29 +38,11 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                   {tx("generationNotice")}
                 </div>
               </div>
-              <div className="d-flex flex-wrap gap-2 small" aria-label={tx("stages")}>
-                {[
-                  t('proyectos.stageContext'),
-                  t('proyectos.stageAnalyze'),
-                  t('proyectos.stageConfigure'),
-                  t('proyectos.stageReview'),
-                ].map((label, index) => {
-                  const currentStep = {
-                    context: 0,
-                    analysis: 1,
-                    configuration: 2,
-                    review: 3,
-                  }[generationStep];
-                  return (
-                    <span
-                      key={label}
-                      className={`border rounded px-2 py-1 ${index === currentStep ? "bg-primary text-white border-primary" : index < currentStep ? "bg-light text-muted" : "text-muted"}`}
-                    >
-                      {label}
-                    </span>
-                  );
-                })}
-              </div>
+              <GenerationStepper
+                labels={[t('proyectos.stageContext'), t('proyectos.stageAnalyze'), t('proyectos.stageConfigure'), t('proyectos.stageReview')]}
+                currentStep={currentStep}
+                ariaLabel={tx("stages")}
+              />
               {generationBusy && (
                 <div className="border rounded bg-light px-3 py-2" aria-live="polite">
                   <div className="d-flex align-items-center gap-2">
@@ -74,7 +63,14 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                     </div>
                     <span className="small text-muted">{generationElapsedSeconds}s</span>
                   </div>
-                  <ProgressBar animated now={100} variant="primary" className="mt-2" style={{ height: "4px" }} />
+                  <ProgressBar
+                    animated
+                    now={progress}
+                    variant="primary"
+                    className="mt-2"
+                    style={{ height: "4px" }}
+                    aria-label={tx("generationProgress")}
+                  />
                 </div>
               )}
               <TraceabilityGenerationContext options={{

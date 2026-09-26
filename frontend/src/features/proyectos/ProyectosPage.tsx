@@ -51,6 +51,7 @@ export function ProyectosPage(props: ProyectosPageProps) {
     traceabilityRefreshToken,
     handleProjectChange,
     handleUpdateProject,
+    handleUploadProjectLogo,
     canEditCurrentProject,
     projectMembers,
     handleAddProjectMember,

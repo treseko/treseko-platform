@@ -35,7 +35,7 @@ export function SharedReportHistory(options: any) {
         </Button>
       </div>
     </div>
-    <Table hover responsive className="mb-0 align-middle">
+    <Table hover responsive className="reportes-history-table mb-0 align-middle">
       <thead>
         <tr>
           {isColumnVisible('sharedHistory', 'snapshot') && <th>{t('reportes.snapshot')}</th>}

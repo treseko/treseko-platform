@@ -168,6 +168,10 @@ export const COMPACT_STORY_GENERATION_SCHEMA = {
     goal: "string",
     benefit: "string",
     description: "string",
+    scope: ["string"],
+    out_of_scope: ["string"],
+    dependencies: ["string"],
+    risks: ["string"],
     open_questions: ["string"],
     acceptance_criteria: [{
       type: "FUNCTIONAL|SECURITY|ACCESSIBILITY|PERFORMANCE|TECHNICAL",

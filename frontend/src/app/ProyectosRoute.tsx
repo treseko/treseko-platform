@@ -106,6 +106,7 @@ export function ProyectosRoute({
       readOnlyBuild={readOnlyBuild}
       handleProjectChange={handleProjectChange}
       handleUpdateProject={projectActions.handleUpdateProject}
+      handleUploadProjectLogo={projectActions.handleUploadProjectLogo}
       canEditCurrentProject={canEditCurrentProject}
       traceabilityRefreshToken={traceabilityRefreshToken}
       projectMembers={projectMemberState.projectMembers}

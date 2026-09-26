@@ -21,6 +21,7 @@ type Props = {
   copyToClipboard: (value: string, label?: string) => void
   onCreate: (name: string, scopes: string[], expiresAt?: string) => void
   onRevoke: (credential: McpCredential) => void
+  onSetState?: (credential: McpCredential, estado: 'ACTIVE' | 'PAUSED') => void
   onToggle?: (enabled: boolean) => void
 }
 
@@ -30,7 +31,7 @@ const IMPORT_SCOPES = [
   { scope: 'mcp.cases.import.rollback', operation: 'rollback', write: true },
 ] as const
 
-export function McpPanel({ canEdit, enabled = true, status = 'available', endpoint = '/api/mcp', tools, scopeCatalog = [], effectiveCapabilities = {}, credentials, loading, error, rawCredential, onDismissRawCredential = () => undefined, copyToClipboard, onCreate, onRevoke, onToggle = () => undefined }: Props) {
+export function McpPanel({ canEdit, enabled = true, status = 'available', endpoint = '/api/mcp', tools, scopeCatalog = [], effectiveCapabilities = {}, credentials, loading, error, rawCredential, onDismissRawCredential = () => undefined, copyToClipboard, onCreate, onRevoke, onSetState = () => undefined, onToggle = () => undefined }: Props) {
   const { t } = useI18n()
   const mcpEnabled = enabled && status !== 'disabled'
   const [name, setName] = useState('')
@@ -145,7 +146,7 @@ export function McpPanel({ canEdit, enabled = true, status = 'available', endpoi
           <Accordion.Body>
             <div className="small text-muted mb-2">{t('configuracion.mcpCredentialMetadataHint')}</div>
             <Table responsive hover size="sm" className="mb-0 align-middle"><thead><tr><th>{t('configuracion.name')}</th><th>{t('configuracion.prefix')}</th><th>{t('configuracion.mcpScope')}</th><th>{t('configuracion.status')}</th>{canEdit && mcpEnabled && <th className="text-end">{t('configuracion.action')}</th>}</tr></thead><tbody>
-              {credentials.map(credential => <tr key={credential.id}><td>{credential.nombre}</td><td><code>{credential.key_prefix}...</code></td><td>{credential.scopes_json.join(', ')}</td><td><Badge bg={credential.activo ? 'success' : 'secondary'}>{credential.activo ? t('configuracion.active') : t('configuracion.revoked')}</Badge>{credential.ultimo_uso && <div className="x-small text-muted">{formatDateTime(credential.ultimo_uso)}</div>}</td>{canEdit && mcpEnabled && <td className="text-end"><Button variant="link" className="text-danger p-0" disabled={loading || !credential.activo} onClick={() => onRevoke(credential)}>{t('configuracion.revoke')}</Button></td>}</tr>)}
+              {credentials.map(credential => <tr key={credential.id}><td>{credential.nombre}</td><td><code>{credential.key_prefix}...</code></td><td>{credential.scopes_json.join(', ')}</td><td><Badge bg={credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? 'success' : credential.estado === 'PAUSED' ? 'warning' : 'secondary'} text={credential.estado === 'PAUSED' ? 'dark' : undefined}>{credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? t('configuracion.active') : credential.estado === 'PAUSED' ? t('configuracion.paused') : t('configuracion.revoked')}</Badge>{credential.ultimo_uso && <div className="x-small text-muted">{formatDateTime(credential.ultimo_uso)}</div>}</td>{canEdit && mcpEnabled && <td className="text-end"><div className="d-flex justify-content-end gap-2 flex-wrap">{credential.estado !== 'REVOKED' && credential.activo && <Button variant="link" className="text-warning p-0" disabled={loading} onClick={() => onSetState(credential, 'PAUSED')}>{t('configuracion.pause')}</Button>}{credential.estado === 'PAUSED' && <Button variant="link" className="text-success p-0" disabled={loading} onClick={() => onSetState(credential, 'ACTIVE')}>{t('configuracion.activate')}</Button>}<Button variant="link" className="text-danger p-0" disabled={loading || credential.estado === 'REVOKED' || (!credential.estado && !credential.activo)} onClick={() => onRevoke(credential)}>{t('configuracion.revoke')}</Button></div></td>}</tr>)}
               {credentials.length === 0 && !loading && <tr><td colSpan={canEdit && mcpEnabled ? 5 : 4} className="text-center py-3 text-muted small">{t('configuracion.mcpNoCredentials')}</td></tr>}
             </tbody></Table>
           </Accordion.Body>

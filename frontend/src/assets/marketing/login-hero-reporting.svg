@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
-  <title id="title">Metricas y reportes QA en Community Edition</title>
+  <title id="title">Métricas y reportes QA en Treseko</title>
   <desc id="desc">Mockup sobrio de tablero de metricas, bugs, resultados y reporte ejecutivo.</desc>
   <rect width="720" height="520" rx="28" fill="#f8fafc"/>
   <rect x="44" y="42" width="632" height="436" rx="26" fill="#ffffff" stroke="#dbe3ef"/>
 
   <rect x="72" y="72" width="576" height="58" rx="18" fill="#0f172a"/>
-  <text x="102" y="107" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Metricas de build</text>
+  <text x="102" y="107" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Métricas de build</text>
   <rect x="504" y="86" width="106" height="30" rx="15" fill="#dcfce7"/>
-  <text x="526" y="106" fill="#15803d" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Community</text>
+  <text x="526" y="106" fill="#15803d" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Treseko</text>
 
   <g font-family="Inter, Arial, sans-serif">
     <rect x="72" y="156" width="132" height="82" rx="18" fill="#eff6ff" stroke="#bfdbfe"/>
@@ -28,7 +28,7 @@
   </g>
 
   <rect x="72" y="264" width="360" height="164" rx="20" fill="#ffffff" stroke="#dbe3ef"/>
-  <text x="100" y="300" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Evolucion de ejecucion</text>
+  <text x="100" y="300" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Evolución de ejecución</text>
   <path d="M104 386h292" stroke="#e2e8f0" stroke-width="2"/>
   <rect x="118" y="342" width="30" height="44" rx="8" fill="#bfdbfe"/>
   <rect x="168" y="318" width="30" height="68" rx="8" fill="#93c5fd"/>

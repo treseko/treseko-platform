@@ -78,7 +78,13 @@ def find_title_similarities(title: str, existing: list[dict]) -> list[dict]:
     return sorted(matches, key=lambda item: (-item["score"], item["titulo"]))[:5]
 
 
-def validate_proposal(proposal: dict, accepted_assumptions: set[str], existing: list[dict]) -> list[dict]:
+def validate_proposal(
+    proposal: dict,
+    accepted_assumptions: set[str],
+    existing: list[dict],
+    *,
+    require_v2_fields: bool = False,
+) -> list[dict]:
     findings = []
     quality = proposal.setdefault("quality", {})
     actor, goal, benefit = (str(proposal.get(key) or "").strip() for key in ("actor", "goal", "benefit"))
@@ -91,6 +97,10 @@ def validate_proposal(proposal: dict, accepted_assumptions: set[str], existing: 
         findings.append({"code": "STORY_GOAL_REQUIRED", "severity": "FAIL", "message": "El objetivo es obligatorio."})
     if not benefit:
         findings.append({"code": "STORY_BENEFIT_REQUIRED", "severity": "FAIL", "message": "El beneficio es obligatorio."})
+    if not proposal.get("scope"):
+        findings.append({"code": "STORY_SCOPE_MISSING", "severity": "FAIL" if require_v2_fields else "WARN", "message": "La historia no explicita su alcance."})
+    if not proposal.get("out_of_scope"):
+        findings.append({"code": "STORY_OUT_OF_SCOPE_MISSING", "severity": "FAIL" if require_v2_fields else "WARN", "message": "La historia no explicita qué queda fuera de alcance."})
     fingerprint = normalize(" ".join([actor, goal, proposal.get("title", "")]))
     for other in existing:
         other_key = normalize(" ".join([other.get("actor", ""), other.get("goal", ""), other.get("title", "")]))

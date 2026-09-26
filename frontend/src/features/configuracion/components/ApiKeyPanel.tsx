@@ -11,7 +11,7 @@ type ApiKeyPanelProps = {
   setApiKeyName: (value: string) => void
   createUserApiKey: () => void
   revokeUserApiKey: (apiKeyId: string) => void
-  handleApiKeyEnabledChange: (enabled: boolean) => void
+  setUserApiKeyState: (apiKeyId: string, estado: 'ACTIVE' | 'PAUSED') => void
   copyToClipboard: (value: string, label?: string) => void
 }
 
@@ -23,12 +23,10 @@ export function ApiKeyPanel({
   setApiKeyName,
   createUserApiKey,
   revokeUserApiKey,
-  handleApiKeyEnabledChange,
+  setUserApiKeyState,
   copyToClipboard,
 }: ApiKeyPanelProps) {
   const { t } = useI18n()
-  const activeApiKeys = apiKeys.filter((key: any) => key.activo)
-
   return (
     <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4">
       <div className="d-flex justify-content-between align-items-start gap-3 mb-3 responsive-card-header">
@@ -40,15 +38,7 @@ export function ApiKeyPanel({
             {t('configuracion.apiKeyDesc')}
           </p>
         </div>
-        <Form.Check name="a11y-apikeypaneltsx-43" aria-label={t('configuracion.apiKeyEnabled')}
-          type="switch"
-          id="external-api-key-switch"
-          label={activeApiKeys.length > 0 ? t('configuracion.apiKeyEnabled') : t('configuracion.disabledState')}
-          checked={activeApiKeys.length > 0}
-          disabled={apiKeysLoading}
-          onChange={(event) => handleApiKeyEnabledChange(event.target.checked)}
-          className="fw-bold text-dark"
-        />
+        <span className="small text-muted">{t('configuracion.apiKeyLifecycleHint')}</span>
       </div>
 
       <Row className="g-3 align-items-end mb-3">
@@ -95,12 +85,14 @@ export function ApiKeyPanel({
             <tr key={key.id}>
               <td className="small fw-semibold text-dark">{key.nombre}</td>
               <td><code className="small">{key.key_prefix}...</code></td>
-              <td><Badge bg={key.activo ? 'success' : 'secondary'}>{key.activo ? t('configuracion.active') : t('configuracion.revoked')}</Badge></td>
+              <td><Badge bg={key.estado === 'ACTIVE' || (!key.estado && key.activo) ? 'success' : key.estado === 'PAUSED' ? 'warning' : 'secondary'} text={key.estado === 'PAUSED' ? 'dark' : undefined}>{key.estado === 'ACTIVE' || (!key.estado && key.activo) ? t('configuracion.active') : key.estado === 'PAUSED' ? t('configuracion.paused') : t('configuracion.revoked')}</Badge></td>
               <td className="small text-muted">{key.ultimo_uso ? formatDateTime(key.ultimo_uso) : t('configuracion.never')}</td>
               <td className="text-end">
-                <Button variant="link" size="sm" className="text-danger p-0" disabled={!key.activo || apiKeysLoading} onClick={() => revokeUserApiKey(key.id)}>
-                  {t('configuracion.revoke')}
-                </Button>
+                <div className="d-flex justify-content-end gap-2 flex-wrap">
+                  {key.estado !== 'REVOKED' && key.activo && <Button variant="link" size="sm" className="text-warning p-0" disabled={apiKeysLoading} onClick={() => setUserApiKeyState(key.id, 'PAUSED')}>{t('configuracion.pause')}</Button>}
+                  {key.estado === 'PAUSED' && <Button variant="link" size="sm" className="text-success p-0" disabled={apiKeysLoading} onClick={() => setUserApiKeyState(key.id, 'ACTIVE')}>{t('configuracion.activate')}</Button>}
+                  <Button variant="link" size="sm" className="text-danger p-0" disabled={key.estado === 'REVOKED' || (!key.estado && !key.activo) || apiKeysLoading} onClick={() => revokeUserApiKey(key.id)}>{t('configuracion.revoke')}</Button>
+                </div>
               </td>
             </tr>
           ))}

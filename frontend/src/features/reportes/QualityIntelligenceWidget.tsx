@@ -159,7 +159,7 @@ export function QualityIntelligenceWidget({
             </div>
             {showQualityCases && <>
               <div id="quality-cases-table" className="table-responsive mt-2">
-                <Table size="sm" hover className="align-middle mb-0">
+                <Table size="sm" hover className="reportes-responsive-table mb-0 align-middle">
                   <thead><tr><th>{t('reportes.case')}</th><th>{t('reportes.status')}</th><th>{t('reportes.qualityScore')}</th><th>{t('reportes.qualityEvidence')}</th><th>{t('reportes.date')}</th></tr></thead>
                   <tbody>{visibleQualityCases.map((item) => {
                     const evidence = item.evidence_summary || {}

@@ -61,7 +61,12 @@ def _canonical_json(value: Any, *, indent: int | None = None) -> bytes:
 def builtin_source_path(slug: str) -> Path:
     if slug not in BUILTIN_WORKFLOW_SLUGS:
         raise ValueError(f"Workflow builtin desconocido: {slug}.")
-    return CATALOG_SOURCE_ROOT / f"{slug}.v1.json"
+    candidates = sorted(CATALOG_SOURCE_ROOT.glob(f"{slug}.v*.json"))
+    if not candidates:
+        raise ValueError(f"No existe fuente para el workflow builtin {slug}.")
+    # Keep historical v1 sources portable while making the newest catalog
+    # source the default for new installations and explicit upgrades.
+    return max(candidates, key=lambda item: int(item.stem.rsplit(".v", 1)[1]))
 
 
 def load_builtin_workflow_source(slug: str) -> Dict[str, Any]:
@@ -358,7 +363,7 @@ def build_builtin_workflow_package(source_or_slug: Dict[str, Any] | str) -> Dict
     package = _deterministic_zip(files)
     return {
         "slug": slug,
-        "filename": f"{slug}.v1.treseko-workflow.zip",
+        "filename": f"{slug}.v{graph['workflow']['version']}.treseko-workflow.zip",
         "sha256": hashlib.sha256(package).hexdigest(),
         "manifest": manifest,
         "graph": graph,
@@ -369,7 +374,9 @@ def build_builtin_workflow_package(source_or_slug: Dict[str, Any] | str) -> Dict
 
 async def _catalog_workflow(db: AsyncSession, slug: str) -> models.AiWorkflow | None:
     workflows = (await db.execute(
-        select(models.AiWorkflow).where(models.AiWorkflow.workflow_format == "universal_v2")
+        select(models.AiWorkflow)
+        .where(models.AiWorkflow.workflow_format == "universal_v2")
+        .order_by(models.AiWorkflow.version.desc(), models.AiWorkflow.updated_at.desc())
     )).scalars().all()
     for workflow in workflows:
         if str((workflow.decision_policy_json or {}).get("catalog_key") or "") == slug:
@@ -388,6 +395,20 @@ async def ensure_builtin_workflow(
     source = load_builtin_workflow_source(slug)
     purpose = str(source["workflow"]["workflow_purpose"])
     existing = await _catalog_workflow(db, slug)
+    source_version = int(source["workflow"].get("version") or 1)
+    if existing and int(existing.version or 1) < source_version:
+        # Upgrade only catalog-owned workflows. User-created workflows do not
+        # carry catalog_key and are never overwritten by a builtin release.
+        package = build_builtin_workflow_package(source)
+        existing = await import_universal_workflow_package(
+            db,
+            schemas.AiUniversalWorkflowImport(package_base64=package["package_base64"]),
+            created_by,
+            imported_name_suffix="",
+            agent_origin_type="builtin",
+            agent_version_status="PUBLISHED",
+            preserve_catalog_metadata=True,
+        )
     if not existing:
         package = build_builtin_workflow_package(source)
         existing = await import_universal_workflow_package(
@@ -404,8 +425,8 @@ async def ensure_builtin_workflow(
     active = (await db.execute(select(models.AiWorkflow).where(
         models.AiWorkflow.workflow_purpose == purpose,
         models.AiWorkflow.status == "ACTIVE",
-    ))).scalars().first()
-    if active:
+    ).order_by(models.AiWorkflow.version.desc()))).scalars().first()
+    if active and int(active.version or 1) >= source_version:
         return active
     from .ai_workflows import publish_ai_workflow_version
     from .ai_workflow_versions import activate_ai_workflow_version
@@ -423,13 +444,22 @@ async def ensure_builtin_workflow(
             created_by,
         )
         version_number = published.version
-    return await activate_ai_workflow_version(
+    activated = await activate_ai_workflow_version(
         db,
         existing.id,
         version_number,
         True,
         created_by,
     )
+    # Imported catalog packages carry their semantic release version. The
+    # first local snapshot may start at 1, but runtime selection must still
+    # expose the catalog's v2 quality contract to generation runs.
+    if int(activated.version or 1) < source_version:
+        activated.version = source_version
+        await db.commit()
+        from .ai_workflows import get_ai_workflow
+        activated = await get_ai_workflow(db, activated.id)
+    return activated
 
 
 async def ensure_builtin_workflow_catalog(

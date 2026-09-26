@@ -28,6 +28,16 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
 
 
+def _proposal_fingerprint(proposal):
+    """Stable identity for a generated case, excluding human decisions."""
+    if hasattr(proposal, "model_dump"):
+        proposal = proposal.model_dump(mode="json")
+    payload = dict(proposal or {})
+    for key in ("selected", "quality_override_accepted", "quality_override_reason", "duplicate_override_accepted", "duplicate_override_reason"):
+        payload.pop(key, None)
+    return _hash(payload)
+
+
 def _normalized_text(value):
     value = unicodedata.normalize("NFD", str(value or ""))
     value = "".join(char for char in value if unicodedata.category(char) != "Mn").lower()
@@ -344,7 +354,10 @@ async def generate_case_proposals(db, run, request):
             validated_proposal["duplicate_candidates"] = _duplicate_signals(
                 schemas.CasoGeneracionProposalInput.model_validate(validated_proposal), candidates
             )
-        run.propuestas_originales_json, run.propuestas_finales_json = proposals, validated
+        for item in validated:
+            item["original_fingerprint"] = _proposal_fingerprint(item)
+        run.propuestas_originales_json = [dict(item, original_fingerprint=_proposal_fingerprint(item)) for item in proposals]
+        run.propuestas_finales_json = validated
         run.warnings_json = result.get("warnings") or []
         _persist_engine_audit(run, workflow, result, config)
         run.estado = "LISTA_PARA_REVISION"
@@ -357,6 +370,8 @@ async def generate_case_proposals(db, run, request):
 
 
 async def apply_case_generation(db, run, payload, user_id):
+    if run.estado == "APLICADA":
+        return (run.decisiones_json or {}).get("created_cases", [])
     if run.estado != "LISTA_PARA_REVISION":
         raise ValueError("La generación no está lista para revisión.")
     story, criteria = await _structured_story(db, run.historia_id)
@@ -372,11 +387,23 @@ async def apply_case_generation(db, run, payload, user_id):
         raise ValueError("Selecciona al menos un caso.")
     created = []
     duplicate_overrides = []
+    proposal_decisions = []
     seen = set()
     decisions = run.decisiones_json or {}
+    original_by_id = {
+        str(item.get("local_id")): item
+        for item in (run.propuestas_originales_json or [])
+        if isinstance(item, dict) and item.get("local_id")
+    }
     suite_id, component_id = destination_suite.id, destination_component_id
     candidates = await _location_case_candidates(db, story.proyecto_id, suite_id, component_id)
     for proposal in selected:
+        original = original_by_id.get(str(proposal.local_id))
+        if not original:
+            raise ValueError("La propuesta no pertenece a esta generación.")
+        original_fingerprint = str(original.get("original_fingerprint") or _proposal_fingerprint(original))
+        edited_fingerprint = _proposal_fingerprint(proposal)
+        changed = edited_fingerprint != original_fingerprint
         key = _normalized_text(proposal.title)
         if key in seen: raise ValueError("No se puede aplicar un título de caso duplicado.")
         duplicate_signals = _duplicate_signals(proposal, candidates)
@@ -394,10 +421,22 @@ async def apply_case_generation(db, run, payload, user_id):
         db.add(models.CasoHistoria(caso_master_id=case.master_id, historia_id=story.id, creado_por=user_id, historia_actualizada_en_vinculo=story.ultima_actualizacion))
         for criterion_id in proposal.criterion_refs: db.add(models.AcceptanceCriterionCase(acceptance_criterion_id=criterion_id, caso_master_id=case.master_id, creado_por=user_id))
         created.append({"id": str(case.id), "master_id": str(case.master_id), "codigo": case.codigo, "titulo": case.titulo})
+        proposal_decisions.append({
+            "local_id": str(proposal.local_id),
+            "original_fingerprint": original_fingerprint,
+            "edited_fingerprint": edited_fingerprint,
+            "edited": changed,
+            "decided_by": str(user_id),
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        })
     mandatory = {x.id for x in criteria if x.mandatory}
     covered = {ref for proposal in selected for ref in proposal.criterion_refs}
     excluded = set(payload.excluded_criteria_reasons)
     if missing := mandatory - covered - excluded: raise ValueError("Hay criterios obligatorios sin cobertura o motivo de exclusión.")
-    run.estado = "APLICADA"; run.decisiones_json = {**(run.decisiones_json or {}), "created_cases": created, "excluded_criteria_reasons": {str(k): v for k, v in payload.excluded_criteria_reasons.items()}, "duplicate_overrides": duplicate_overrides, "applied_by": str(user_id)}
+    coverage = {
+        str(criteria_id): [str(proposal.local_id) for proposal in selected if criteria_id in proposal.criterion_refs]
+        for criteria_id in criteria_by_id
+    }
+    run.estado = "APLICADA"; run.decisiones_json = {**(run.decisiones_json or {}), "created_cases": created, "excluded_criteria_reasons": {str(k): v for k, v in payload.excluded_criteria_reasons.items()}, "duplicate_overrides": duplicate_overrides, "proposal_decisions": proposal_decisions, "coverage_matrix": coverage, "applied_by": str(user_id)}
     await db.commit()
     return created
