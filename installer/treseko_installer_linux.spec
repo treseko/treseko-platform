@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-ROOT = Path(SPECPATH).parent.parent
+ROOT = Path(SPECPATH).parent
 NAME = os.environ.get("TRESEKO_ARTIFACT_NAME", "Treseko-Installer")
 
 a = Analysis(
