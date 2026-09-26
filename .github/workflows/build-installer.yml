@@ -17,9 +17,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: py -m pip install -r installer/requirements-build.txt
+      - run: python -m pip install --disable-pip-version-check -r installer/requirements-build.txt
       - name: Build and validate Windows installer
-        run: py installer/build_installer.py --target windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python --version
+          python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
+          python -c "import PIL; print('Pillow', PIL.__version__)"
+          python -m PyInstaller --version
+          python -u installer/build_installer.py --target windows 2>&1 | Tee-Object windows-build.log
+          if ($LASTEXITCODE -ne 0) { throw "Windows build failed with exit code $LASTEXITCODE" }
       - name: Verify Windows artifact
         shell: pwsh
         run: |
@@ -42,7 +50,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -r installer/requirements-build.txt
+      - run: python -m pip install --disable-pip-version-check -r installer/requirements-build.txt
       - name: Install appimagetool
         shell: bash
         run: |
@@ -80,9 +88,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -r installer/requirements-build.txt
+      - run: python -m pip install --disable-pip-version-check -r installer/requirements-build.txt
       - name: Build and validate native macOS app
-        run: python installer/build_installer.py --target macos
+        run: python -u installer/build_installer.py --target macos
       - name: Verify architecture-specific artifact name
         shell: bash
         run: |

@@ -48,6 +48,8 @@
 - Redacción de secretos en artefactos y aislamiento del entorno de procesos
   hijos.
 - Correcciones de callbacks/webhooks, deep links, controles MCP y drawer móvil.
+- El empaquetado del instalador corrige la selección de Python en Windows y la
+  categoría de escritorio del AppImage Linux.
 - El pipeline de paquetes de actualización conserva la versión y la ruta de
   salida solicitadas.
 - Las API keys y credenciales MCP tienen ciclo de estado `ACTIVE`, `PAUSED` y

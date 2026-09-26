@@ -226,7 +226,7 @@ def main() -> int:
             shutil.copy2(binary, appdir / "usr" / "bin" / "Treseko-Installer")
             shutil.copy2(INSTALLER / "treseko-installer.png", appdir / "treseko-installer.png")
             (appdir / "treseko-installer.desktop").write_text(
-                "[Desktop Entry]\nType=Application\nName=Treseko Community Installer\nExec=Treseko-Installer\nIcon=treseko-installer\nTerminal=false\nCategories=Development;Testing;\n",
+                "[Desktop Entry]\nType=Application\nName=Treseko Community Installer\nExec=Treseko-Installer\nIcon=treseko-installer\nTerminal=false\nCategories=Development;\n",
                 encoding="utf-8",
             )
             (appdir / "AppRun").write_text("#!/bin/sh\nexec \"$(dirname \"$0\")/usr/bin/Treseko-Installer\" \"$@\"\n", encoding="utf-8")
