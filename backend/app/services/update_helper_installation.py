@@ -121,6 +121,8 @@ def _config(config, root):
     for path in paths.values(): _reject_symlink_components(root, path)
     configs = {name: _under(root, _absolute(value, f"{name} config")) for name, value in config["configs"].items()}
     for path in configs.values(): _reject_symlink_components(root, path)
+    if launcher_config is not None:
+        launcher.validate_active_compose_state(configs["participant"], root, launcher_config)
     dependencies = config.get("dependencies", ["cryptography"])
     if (not isinstance(dependencies, list) or len(set(dependencies)) != len(dependencies)
             or not all(isinstance(v, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", v) for v in dependencies)):

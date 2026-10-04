@@ -86,6 +86,10 @@ export function isTerminalUpdateStatus(status?: unknown, stage?: unknown): boole
   return status === 'done' && stage === 'applied'
 }
 
+export function shouldRenewUpdateMaintenance(signal: Pick<UpdateMaintenanceState, 'active' | 'timedOut'>): boolean {
+  return signal.active && !signal.timedOut
+}
+
 export function clearUpdateMaintenanceSignal() {
   localStorage.removeItem(UPDATE_MAINTENANCE_STORAGE_KEY)
   window.dispatchEvent(new CustomEvent(UPDATE_MAINTENANCE_EVENT))

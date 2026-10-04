@@ -50,6 +50,9 @@ def require_files() -> None:
         INSTALLER / "treseko_installer_windows.spec",
         INSTALLER / "treseko_installer_linux.spec",
         INSTALLER / "treseko_installer_macos.spec",
+        INSTALLER / "INSTALLER_VERSION",
+        INSTALLER / "native" / "macos" / "Package.swift",
+        INSTALLER / "native" / "macos" / "Sources" / "TresekoInstaller" / "main.swift",
     ]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file() or path.is_symlink()]
     if missing:
@@ -97,18 +100,14 @@ def windows_icon(source: Path, temp: Path) -> Path:
 
 def macos_icon(source: Path, temp: Path) -> Path:
     """Create the standard macOS iconset and compile it with iconutil."""
-    try:
-        from PIL import Image
-    except ImportError as exc:
-        raise SystemExit("macOS requiere Pillow para convertir el icono PNG a ICNS.") from exc
+    sips = shutil.which("sips")
+    if not sips:
+        raise SystemExit("macOS build bloqueado: falta sips para generar el icono .icns.")
     iconset = temp / "treseko-installer.iconset"
     iconset.mkdir()
-    with Image.open(source) as image:
-        image = image.convert("RGBA")
-        resampling = getattr(Image, "Resampling", Image).LANCZOS
-        for size in (16, 32, 128, 256, 512):
-            image.resize((size, size), resampling).save(iconset / f"icon_{size}x{size}.png")
-            image.resize((size * 2, size * 2), resampling).save(iconset / f"icon_{size}x{size}@2x.png")
+    for size in (16, 32, 128, 256, 512):
+        run([sips, "-z", str(size), str(size), str(source), "--out", str(iconset / f"icon_{size}x{size}.png")], cwd=ROOT, env=os.environ.copy())
+        run([sips, "-z", str(size * 2), str(size * 2), str(source), "--out", str(iconset / f"icon_{size}x{size}@2x.png")], cwd=ROOT, env=os.environ.copy())
     iconutil = shutil.which("iconutil")
     if not iconutil:
         raise SystemExit("macOS build bloqueado: falta iconutil para generar el icono .icns.")
@@ -169,6 +168,47 @@ def appimage(appdir: Path, output: Path) -> None:
     run([tool, str(appdir), str(output)], cwd=ROOT, env=os.environ.copy())
 
 
+def build_native_macos(output_dir: Path, product_version: str, temp: Path) -> Path:
+    swift = shutil.which("swift")
+    if not swift:
+        raise SystemExit("Build macOS nativo bloqueado: se requiere Swift/Xcode del runner macOS.")
+    installer_version = (INSTALLER / "INSTALLER_VERSION").read_text(encoding="utf-8").strip()
+    package_root = INSTALLER / "native" / "macos"
+    scratch = temp / "swift-build"
+    run([swift, "build", "-c", "release", "--package-path", str(package_root), "--scratch-path", str(scratch)], cwd=ROOT, env=os.environ.copy())
+    executable = scratch / "arm64-apple-macosx" / "release" / "TresekoInstaller"
+    if not executable.is_file():
+        executable = scratch / "release" / "TresekoInstaller"
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise SystemExit("Swift no produjo el ejecutable nativo TresekoInstaller.")
+    icon = macos_icon(INSTALLER / "treseko-installer.png", temp)
+    app = output_dir / artifact_name("macos", product_version)
+    contents = app / "Contents"
+    macos = contents / "MacOS"
+    resources = contents / "Resources"
+    macos.mkdir(parents=True, exist_ok=False)
+    resources.mkdir()
+    shutil.copy2(executable, macos / "Treseko-Installer")
+    shutil.copy2(icon, resources / "treseko-installer.icns")
+    (contents / "PkgInfo").write_bytes(b"APPL????")
+    plistlib.dump({
+        "CFBundleDisplayName": "Treseko Community Installer",
+        "CFBundleExecutable": "Treseko-Installer",
+        "CFBundleIdentifier": "com.treseko.community.installer",
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleName": "Treseko Installer",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": product_version,
+        "CFBundleVersion": product_version,
+        "TresekoInstallerVersion": installer_version,
+        "CFBundleIconFile": "treseko-installer.icns",
+        "LSMinimumSystemVersion": "13.0",
+        "NSHighResolutionCapable": True,
+        "NSPrincipalClass": "NSApplication",
+    }, (contents / "Info.plist").open("wb"))
+    return app
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", choices=("windows", "linux", "macos"), required=True)
@@ -180,10 +220,16 @@ def main() -> int:
     name = artifact_name(args.target, value)
     print(f"Treseko installer {value} · target={args.target} · artifact={name}")
     if args.plan:
-        print("Plan solamente: build nativo + validación de estructura, nombre y versión.")
+        print("Plan solamente: interfaz nativa de cada plataforma + validación de estructura, nombre y versión.")
         return 0
     if not native_target(args.target):
         raise SystemExit(f"Build {args.target} bloqueado en {platform.system()}; use el runner nativo correspondiente.")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.target == "macos":
+        with tempfile.TemporaryDirectory(prefix="treseko-installer-native-macos-") as temp_dir:
+            final = build_native_macos(args.output_dir, value, Path(temp_dir))
+            validate_artifact(final, args.target, value)
+        return 0
     pyinstaller = shutil.which("pyinstaller") or sys.executable
     if pyinstaller == sys.executable:
         command_prefix = [pyinstaller, "-m", "PyInstaller"]
@@ -194,6 +240,7 @@ def main() -> int:
         temp = Path(temp_dir)
         env = os.environ.copy()
         env["TRESEKO_ARTIFACT_NAME"] = "Treseko-Installer"
+        env["TRESEKO_INSTALLER_ROOT"] = str(ROOT)
         if args.target == "windows":
             env["TRESEKO_ICON"] = str(windows_icon(INSTALLER / "treseko-installer.png", temp))
             version_info = temp / "version_info.txt"
@@ -204,9 +251,7 @@ def main() -> int:
             env["TRESEKO_ICON"] = str(INSTALLER / "treseko-installer.png")
             spec = INSTALLER / "treseko_installer_linux.spec"
         else:
-            env["TRESEKO_ICON"] = str(macos_icon(INSTALLER / "treseko-installer.png", temp))
-            env["TRESEKO_VERSION"] = value
-            spec = INSTALLER / "treseko_installer_macos.spec"
+            raise SystemExit("La GUI de macOS debe compilarse mediante SwiftUI nativo.")
         work = temp / "pyinstaller"
         run(command_prefix + ["--noconfirm", "--clean", "--distpath", str(work / "dist"), "--workpath", str(work / "build"), str(spec)], cwd=ROOT, env=env)
         binary = work / "dist" / "Treseko-Installer"

@@ -4,6 +4,7 @@ After=docker.service network-online.target
 Wants=network-online.target
 ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_CONFIG@
 ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_WRAPPER@
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_HELPER@
 
 [Service]
 Type=oneshot

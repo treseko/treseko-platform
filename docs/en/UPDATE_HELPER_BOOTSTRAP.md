@@ -51,6 +51,35 @@ journal, locks, backups, and versioned backend. The prefix may not contain
 symlink components. Configurations are read-only, must be private regular
 files, and are never copied or printed.
 
+### Docker Compose participant configuration
+
+With `launcher.type: "docker"`, `configs.participant` may be a private router
+with the exact schema `{"schema": 1, "participants": {"backend":
+"/etc/treseko/participants/backend.json", ...}}`. Each path points to a
+separate private configuration and must be declared as a `ro` mount for the
+`participant` helper. Do not put secrets in the router.
+
+Each Compose runtime declares its own `runtime.active_compose_file`, for example
+`/var/lib/treseko-update/active-compose/backend.json`. Never share that file
+between Backend, Frontend, Engine, Automation Worker, or Plugin Runner. In
+`launcher.mounts.participant`, mount the exact file `rw` if it already exists,
+or its dedicated parent directory if it does not. That directory must already
+exist, be root-owned, and have mode `0700`; mounting a broad ancestor is not
+accepted. Existing Compose files must be regular, private, and declare the
+configured service. PostgreSQL uses `runtime.type: "docker-postgres"` and does
+not declare `active_compose_file`.
+
+On the first `prepare`, before stopping the service, the driver captures the
+effective original Compose model, requires its hash to match the live container,
+checks that the JSON can be replayed, and atomically saves the model with mode
+`0600`. The next update uses that model as its source; after activating a
+verified version it persists the new Compose model and current volume
+identities. A chain such as 1.0.4→1.0.5→1.0.6 therefore does not depend on
+rebuilding only Frontend or on the old Compose file. Each signed package must
+allow the currently installed source version in its compatibility policy. The
+installer validates these paths and mounts, but it does not create the
+operator's private configurations.
+
 The package is located as:
 
 ```text

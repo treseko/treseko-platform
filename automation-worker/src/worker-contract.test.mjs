@@ -151,6 +151,15 @@ test("el token de pairing puede persistirse fuera del árbol de código", () => 
   assert.match(source, /fs\.writeFileSync\(tokenPath, token, \{ encoding: "utf8", mode: 0o600 \}\)/);
 });
 
+test("la marca se revisa en cada vuelta aunque el heartbeat no responda", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  const loopIndex = source.indexOf("async function loop()");
+  assert.ok(loopIndex >= 0, "no se encontro el bucle principal del worker");
+  const callIndex = source.indexOf("updateMarker.consumeIfReady();", loopIndex);
+  assert.ok(callIndex > loopIndex, "el bucle no revisa la marca de update");
+  assert.ok(callIndex - loopIndex < 600, "la revision de la marca debe ser la primera accion del bucle");
+});
+
 test("un token de runner inválido activa recuperación y no se confunde con otros fallos", () => {
   assert.equal(isInvalidRunnerTokenError({ error_code: "UNAUTHORIZED" }), true);
   assert.equal(isInvalidRunnerTokenError({ message: "Runner token invalido" }), true);

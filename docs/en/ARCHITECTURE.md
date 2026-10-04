@@ -32,11 +32,10 @@ flowchart LR
 | Redis | Coordination and queues. | No public port. |
 | AI Engine | Generation and evaluation workflows. | Private. |
 | Automation Worker | Classic and declarative API automation; polls for jobs and returns results. | Private; pairing required. |
-| plugin-runner | Declared profile for isolated plugins; not included in this public snapshot. | Not operational from this package. |
+| Plugin Runner | Accepts the declarative `junit_xml.import_results` entrypoint; it does not run arbitrary code or WASM. | Optional `plugins` profile, isolated private network; no DB, Redis, secrets or Docker socket. |
 
-The worker uses the `automation` profile. The `plugins` profile is declared in
-Compose, but this public snapshot does not contain the `plugin-runner` context;
-it must not be started or considered operational from this package.
+The worker uses the `automation` profile. The `plugins` profile is optional
+and should be enabled only when the installation has plugins configured.
 
 ## Executions
 
@@ -63,9 +62,8 @@ never includes real data. Snapshots, exports and shared links follow RBAC.
 
 ## Security
 
-- PostgreSQL, Redis, Engine and worker remain on the private network. If a
-  plugin runner is included in a future distribution, it must also remain on
-  the private network.
+- PostgreSQL, Redis, Engine, worker and Plugin Runner remain on private
+  networks; Plugin Runner has a dedicated network with no internal data access.
 - Inject credentials through secret files, never through Git or the frontend.
 - The backend evaluates capability, level and organization/project scope.
 - Back up PostgreSQL and attachments before updating.

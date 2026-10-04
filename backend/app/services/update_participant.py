@@ -26,6 +26,22 @@ class LocalUpdateParticipant:
         self.cache = cache
         self.runtime = runtime
 
+    def can_abort_unmutated(self, transaction: str) -> bool:
+        """A missing participant transaction tree proves prepare wrote no state."""
+        if not IDENTIFIER.fullmatch(transaction):
+            return False
+        root = self.directory / transaction
+        if root.exists():
+            return False
+        active = self.directory / "active.json"
+        if not active.exists():
+            return True
+        try:
+            owner = json.loads(active.read_text(encoding="utf-8")).get("transaction")
+        except (OSError, ValueError, AttributeError):
+            return False
+        return owner != transaction
+
     def execute(self, operation: str, transaction: str, release: dict):
         if operation not in OPERATIONS or not IDENTIFIER.fullmatch(transaction):
             raise ValueError("Invalid participant request")

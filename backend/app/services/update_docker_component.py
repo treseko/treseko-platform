@@ -48,7 +48,7 @@ class DockerComponentRuntime:
                  configuration_identity: str | None = None, worker_control=None, backend_control=None,
                  engine_control=None, engine_control_identity: str | None = None,
                  engine_bind_mounts: dict | None = None):
-        if component not in {"backend", "frontend", "engine", "automation_worker"}:
+        if component not in {"backend", "frontend", "engine", "automation_worker", "plugin_runner"}:
             raise ValueError("Unknown component")
         if not all(callable(item) for item in (fence, drain, probe)):
             raise ValueError("Explicit fence, drain and live probe required")
@@ -93,6 +93,12 @@ class DockerComponentRuntime:
     def __call__(self, operation, context, release):
         directory = Path(context["directory"]) / "docker-component"
         with exclusive_lock(directory / ".component.lock"):
+            if getattr(self.service, 'active_compose_file', None) is not None:
+                targets = set(self.volumes) | set(self.shared)
+                if targets:
+                    active = self.service.active_runtime_volumes(targets)
+                    self.volumes = {root: active[root] for root in self.volumes}
+                    self.shared = {root: active[root] for root in self.shared}
             scope = {"component": self.component, "platform": self.platform,
                      "configuration_identity": self.configuration_identity,
                      "worker_control": self.worker_control is not None,
@@ -172,6 +178,9 @@ class DockerComponentRuntime:
                     if (not current or not current["State"]["Running"]
                             or self.probe(current) != state["previous_version"]):
                         raise TransactionFailure("Canonical rollback service failed live verification")
+                if (operation == "activate" and getattr(self.service, "active_compose_file", None) is not None
+                        and self.service._load(service_dir).get("active_config")):
+                    self.service.persist_active_compose(service_dir)
                 return {"ok": True}
             if self.fence(context["transaction"]) is not True:
                 raise TransactionFailure("Verified installation maintenance fence required")
@@ -247,7 +256,8 @@ class DockerComponentRuntime:
 
     def _check_mounts(self, current, runtime_volumes=None):
         code_root = {"backend": "/app", "frontend": "/usr/share/nginx/html",
-                     "engine": "/engine", "automation_worker": "/worker"}[self.component]
+                     "engine": "/engine", "automation_worker": "/worker",
+                     "plugin_runner": "/app"}[self.component]
         original_code_volumes = {**self.volumes, **self.shared}
         if runtime_volumes is None:
             code_volumes = original_code_volumes

@@ -26,7 +26,8 @@ def create_driver(config, context, release):
         from .update_postgres_driver import create_driver as create_postgres_driver
         return create_postgres_driver(config, context, release)
     required = {"type", "docker", "project", "service", "project_directory", "config_files",
-                "component", "platform", "runtime_volumes", "mutable_directories", "checks"}
+                "component", "platform", "runtime_volumes", "mutable_directories", "checks",
+                "active_compose_file"}
     optional = {"data_mounts", "shared_directory", "shared_mounts", "check_timeout_seconds", "worker_control", 'ai_queue_control', 'backend_control', 'snapshot_mode', 'engine_control', 'engine_bind_mounts'}
     if (not isinstance(config, dict) or not required <= set(config) or set(config) - required - optional
             or config["type"] != "docker-compose"
@@ -34,6 +35,10 @@ def create_driver(config, context, release):
             or not isinstance(config["config_files"], list) or not config["config_files"]
             or not all(isinstance(p, str) for p in config["config_files"])
             or not isinstance(config["runtime_volumes"], dict)
+            or not isinstance(config["active_compose_file"], str)
+            or not Path(config["active_compose_file"]).is_absolute()
+            or Path(config["active_compose_file"]) == Path("/")
+            or ".." in Path(config["active_compose_file"]).parts
             or config["platform"] not in {"linux/amd64", "linux/arm64"}
             or not isinstance(config["mutable_directories"], list)
             or not all(isinstance(p, str) and Path(p).is_absolute() for p in config["mutable_directories"])):
@@ -82,7 +87,8 @@ def create_driver(config, context, release):
             raise ValueError("Invalid private Engine control configuration")
     service = DockerServiceImageSwitch(config["docker"], config["project"], config["service"],
                                       [Path(p) for p in config["config_files"]], Path(config["project_directory"]),
-                                      snapshot_mode=config.get('snapshot_mode', 'commit'))
+                                      snapshot_mode=config.get('snapshot_mode', 'commit'),
+                                      active_compose_file=Path(config['active_compose_file']))
     checks = {name: CommandRuntime({op: argv for op in RUNTIME_OPERATIONS}, config.get("check_timeout_seconds", 60))
               for name, argv in config["checks"].items()}
     def check(name, current=None):

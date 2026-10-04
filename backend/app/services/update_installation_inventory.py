@@ -13,7 +13,9 @@ from typing import Any, Callable, Mapping, Sequence
 from .update_participant_commands import load_private_json
 
 SCHEMA_VERSION = 1
-ROLES = ("backend", "frontend", "engine", "worker", "db")
+REQUIRED_ROLES = ("backend", "frontend", "engine", "worker", "db")
+OPTIONAL_ROLES = ("plugin_runner",)
+ROLES = (*REQUIRED_ROLES, *OPTIONAL_ROLES)
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 IMAGE_ID = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 _RUNNER = Callable[[Sequence[str]], Any]
@@ -69,7 +71,7 @@ class DockerComposeInspection:
         for record in inspected:
             if record.get("service") not in declared:
                 report["out_of_scope"].append({"full_id": record.get("full_id"), "service": record.get("service"), "reason": "service_not_declared"})
-        for role in ROLES:
+        for role in roles:
             service = str(roles[role]["service"])
             matches = [item for item in inspected if item.get("service") == service]
             if not matches:
@@ -103,9 +105,10 @@ def _validate_config(config: Mapping[str, Any]) -> None:
     if not isinstance(config.get("project"), str) or not config["project"].strip() or any(ch.isspace() for ch in config["project"]):
         raise InventoryConfigurationError("project must be an explicit non-empty name")
     roles = config.get("roles")
-    if not isinstance(roles, Mapping) or set(roles) != set(ROLES):
-        raise InventoryConfigurationError("roles must explicitly declare backend/frontend/engine/worker/db")
-    for role in ROLES:
+    if (not isinstance(roles, Mapping) or not set(REQUIRED_ROLES) <= set(roles)
+            or set(roles) - set(ROLES)):
+        raise InventoryConfigurationError("roles must declare backend/frontend/engine/worker/db and only supported optional roles")
+    for role in roles:
         value = roles[role]
         if not isinstance(value, Mapping) or set(value) != {"service"} or not isinstance(value["service"], str) or not value["service"].strip():
             raise InventoryConfigurationError(f"role {role} must declare only service")

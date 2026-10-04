@@ -21,11 +21,16 @@ expected="$2"
 test -d "$root"
 test ! -L "$root/VERSION"
 test "$(cat "$root/VERSION")" = "$expected"
-test ! -e "$root/.runner-token" && test ! -L "$root/.runner-token"
-test ! -e "$root/.env" && test ! -L "$root/.env"
+for item in .runner-token .runner-token.pairing .worker-instance-id .env; do
+    test ! -e "$root/$item" && test ! -L "$root/$item"
+done
 test -z "$(ls -A /prepared)"
 cp -a "$root/." /prepared/
-for item in .runner-token .env; do
+preserved_items=".env"
+if test "$root" = /worker; then
+    preserved_items=".runner-token .runner-token.pairing .worker-instance-id .env"
+fi
+for item in $preserved_items; do
     test ! -L "/previous/$item"
     if test -e "/previous/$item"; then
         test -f "/previous/$item"

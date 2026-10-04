@@ -30,6 +30,16 @@ On Windows PowerShell:
 py installer\treseko_installer.py
 ```
 
+At startup, it checks the Frontend version and the Backend health/version on
+the selected port. It distinguishes a running installation from a folder that
+only contains local files. If it detects another service, mismatched component
+versions, a root that does not match the installation, or a pending update, it
+blocks the action to avoid installing over an instance or starting another
+update. It also blocks installing the same or an older version. If Docker is
+stopped, it shows the last recorded version and validates the root before an
+update. `Package` selects the target version; `Existing installation` selects
+the root containing the configuration and persistent data.
+
 The graphical installer requires Python 3 and Tkinter; on minimal Ubuntu,
 install `python3-tk` before opening it.
 
@@ -38,9 +48,12 @@ latest stable `treseko/treseko-platform` release on GitHub, downloads the core
 over HTTPS, validates the required files, and continues the installation. It
 does not download code from user-configurable URLs.
 
-If the release includes a newer graphical installer, the downloaded version
-replaces the current process at the next step. New services must be declared in
-Compose or in the release scripts to become part of the installation.
+When launched through the Python entry point, the bootstrap can restart a newer
+GUI from the downloaded package while keeping the existing data root separate.
+An already frozen standalone executable cannot load downloaded Python code into
+itself; to update from an older standalone GUI, download and run the destination
+version's graphical installer. New services must be declared in Compose or in
+the release scripts to become part of the installation.
 
 The interface uses the Bash installer on Ubuntu/macOS and the PowerShell
 installer on Windows. Apple Silicon requires Docker Desktop for Apple Silicon.
@@ -71,11 +84,33 @@ requires the `automation` profile, process startup and approval in
 
 ### Updating an existing installation
 
-Use `--update` (or `-Update` in PowerShell) from the same package or a
-compatible release. The existing `compose.production.env`, secrets and
-volumes are the source of truth: the script reuses them without rewriting them
-or running `seed_admin`. It only builds images, runs the migrator and starts
-the services again.
+Use `--update` (or `-Update` in PowerShell) from the target release package.
+The existing `compose.production.env` and secrets are reused without rewriting
+them or running `seed_admin`. Bash and PowerShell use the same transactional
+coordinator. It first copies the complete target package tree into
+`.treseko-local/releases/<version>-<hash>` (excluding Git and mutable local
+configuration), records per-file hashes and verifies the copy against the
+candidate. It builds and validates images from that copy, then stops the whole
+project, snapshots every data volume and tags the previous
+images by immutable ID. Only then does it start the migration. The new release
+remains behind an HTTP fence covering the SPA, API, WebSocket and assets until
+Compose reports healthy and Backend, Frontend, Engine and active optional
+workers pass version checks. If a phase fails, the previous volumes and
+Compose model are restored before service is reopened. If the process or
+machine is interrupted, the next run reconciles the journal before beginning
+another update.
+
+`.treseko-local/active-release.json` is atomically replaced only after the new
+release passes validation while admission remains fenced. If an earlier phase
+fails, the previous release remains active. Versioned directories and their
+manifests are retained for recovery and audit.
+
+This mode prioritizes consistency over availability: the local service is
+offline during migration and validation. Docker snapshots and previous image
+tags are retained for recovery; they consume disk space and are not removed by
+later updates. The flow requires an identifiable Compose installation, all
+five base services active, and a target Frontend Nginx that supports the
+global fence. It stops without updating if it cannot prove these conditions.
 
 ```bash
 scripts/install_local_treseko.sh --update
@@ -87,6 +122,16 @@ scripts/install_local_treseko.sh --update
 
 The update fails if `compose.production.env` does not exist. Do not combine
 `--update` with `--with-demo`.
+
+The graphical installer delegates to the same local flow for each operating
+system: Bash on macOS/Linux and PowerShell on Windows. The GUI does not apply
+components itself. **Settings → Updates** is a separate route and only accepts
+installations with a valid host-coordinator binding; otherwise, the API rejects
+the request before creating a task and the UI directs the user to run the local
+installer on the host. There is no legacy application fallback because it does
+not provide the same atomic transaction. Operational host-coordinator
+integration for that option is still pending and must not be confused with the
+atomic local update.
 
 ### Conservative uninstall
 
@@ -195,9 +240,15 @@ docker compose -f docker-compose.prod.yml --env-file compose.production.env --pr
 ```
 
 Community supports one worker. Adding workers requires the Premium
-capability/entitlement. The `plugins` profile is declared in Compose, but this
-public snapshot does not contain the `plugin-runner` build context; do not
-enable it or consider it operational from this package.
+capability/entitlement. The plugin runner is optional and starts only when
+needed:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile plugins up -d plugin-runner
+```
+
+The runner stays on a private network with no database, Redis, secrets or Docker
+socket access.
 
 ## First start
 

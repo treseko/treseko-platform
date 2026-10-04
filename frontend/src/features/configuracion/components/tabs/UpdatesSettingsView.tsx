@@ -1,9 +1,30 @@
 import { Alert, Badge, Button, Card, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Bot, Cpu, Database, DownloadCloud, Monitor, RefreshCw, Server, UploadCloud } from 'lucide-react'
+import { parseLatestReleaseNotes, type ReleaseNoteGroup } from './releaseNotes'
+import { systemMonitorDetailLabel, systemStatusLabel, updateStageLabel, updateStatusLabel } from '../../updatePresentation'
+
+function ReleaseNotes({ groups, fallback }: { groups: ReleaseNoteGroup[]; fallback: string }) {
+  if (!groups.length) return <div className="small text-muted text-break">{fallback}</div>
+
+  return (
+    <div className="small text-muted d-grid gap-2 text-break">
+      {groups.map(group => (
+        <div key={group.title}>
+          <div className="fw-bold text-dark mb-1">{group.title}</div>
+          <ul className="mb-0 ps-3">
+            {group.items.map((item, index) => <li key={`${group.title}-${index}`}>{item}</li>)}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function UpdatesSettingsView({ options }: { options: any }) {
   const { t, loading, load, checkingCommunity, syncCommunity, checkingPremium, syncPremium, canApplyUpdates, latestUpdate, isPremiumUpdateMode, applyLatestUpdate, applyConfirmation, setApplyConfirmation, confirmApplyUpdate, status, activeTask, updateEvents, isPrepared, restartingPrepared, restartPreparedUpdate, rollingBack, rollbackPendingUpdate, reportingFailure, reportFailure, componentRows, findComponent, workers, primaryWorker, onlineWorkers, systemVersion, frontendVersion, history, statusVariant, channels, premiumUpdatesAllowed, applyingPremium, confirmationChannel, confirmationVersion } = options
   const workerVersion = (worker: any) => worker?.version || worker?.capabilities?.component_version || worker?.capabilities?.worker_version || t('configuracion.updateWorkerNotActive')
+  const availableVersion = latestUpdate?.latest_version || latestUpdate?.version
+  const releaseNotes = parseLatestReleaseNotes(latestUpdate?.changelog, availableVersion)
   return (
     <div className="animate__animated animate__fadeIn">
       <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
@@ -40,11 +61,11 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                         <Icon size={17} className="text-primary flex-shrink-0" />
                         <div className="fw-bold text-dark text-truncate" title={item.name}>{item.name}</div>
                       </div>
-                      <Badge bg={statusVariant(item.status)}>{item.status}</Badge>
+                      <Badge bg={statusVariant(item.status)}>{systemStatusLabel(item.status, t)}</Badge>
                     </div>
                     <div className="h6 fw-bold mb-1">{item.version}</div>
                     <div className="x-small text-muted mb-2">{item.description}</div>
-                    <div className="x-small text-muted text-truncate" title={item.detail}>{item.detail}</div>
+                    <div className="x-small text-muted text-truncate" title={systemMonitorDetailLabel(item.detail, t)}>{systemMonitorDetailLabel(item.detail, t)}</div>
                   </div>
                 </div>
               )
@@ -68,7 +89,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                             {worker.name || t('configuracion.updateComponentWorker')}
                           </div>
                         </div>
-                        <Badge bg={statusVariant(worker.status)}>{worker.status || t('configuracion.versionNotReported')}</Badge>
+                        <Badge bg={statusVariant(worker.status)}>{worker.status ? systemStatusLabel(worker.status, t) : t('configuracion.versionNotReported')}</Badge>
                       </div>
                       <div className="h6 fw-bold mb-1">{workerVersion(worker)}</div>
                       <div className="x-small text-muted mb-1">
@@ -145,7 +166,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       </div>
                       <div className="small text-muted">
                         {latestUpdate?.available
-                          ? latestUpdate?.changelog || t('configuracion.communityReleaseDetected')
+                          ? <ReleaseNotes groups={releaseNotes} fallback={t('configuracion.communityReleaseDetected')} />
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
@@ -181,7 +202,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                 <div className="fw-bold text-dark mb-2">{t('configuracion.updateTaskStatus')}</div>
                 <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
                   <Badge bg={activeTask ? (status.status === 'failed' ? 'danger' : 'primary') : 'secondary'}>
-                    {status?.status || 'idle'}
+                    {updateStatusLabel(status?.status || 'idle', t)}
                   </Badge>
                   <span className="small text-muted">{status?.message || t('configuracion.updateNoActiveTask')}</span>
                 </div>
@@ -210,7 +231,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       {updateEvents.map((event: any, index: number) => (
                         <div key={`${event.at || index}-${event.event || index}`} className="x-small text-muted d-flex justify-content-between gap-2">
                           <span className="text-truncate" title={event.message || event.event}>{event.message || event.event || t('configuracion.updateEvent')}</span>
-                          <span className="text-nowrap">{event.stage || event.status || '-'}</span>
+                          <span className="text-nowrap">{updateStageLabel(event.stage || event.status || '-', t)}</span>
                         </div>
                       ))}
                     </div>
@@ -253,12 +274,12 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                           {item.version || t('configuracion.versionNotReported')}
                         </div>
                         <div className="x-small text-muted">
-                          {item.channel || t('configuracion.channelNotReported')} · {item.stage || item.status} · {item.completed_at || item.started_at || t('configuracion.dateNotReported')}
+                          {item.channel || t('configuracion.channelNotReported')} · {updateStageLabel(item.stage || item.status, t)} · {item.completed_at || item.started_at || t('configuracion.dateNotReported')}
                         </div>
                         {item.error && <div className="x-small text-danger text-truncate" title={item.error}>{item.error}</div>}
                       </div>
                       <Badge bg={item.status === 'failed' ? 'danger' : item.stage === 'prepared' ? 'success' : item.status === 'done' ? 'primary' : 'secondary'}>
-                        {item.status}
+                        {updateStatusLabel(item.status, t)}
                       </Badge>
                     </div>
                   ))}
@@ -317,7 +338,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       </div>
                       <div className="small text-muted">
                         {latestUpdate?.available
-                          ? latestUpdate?.changelog || t('configuracion.premiumManifestValidated')
+                          ? <ReleaseNotes groups={releaseNotes} fallback={t('configuracion.premiumManifestValidated')} />
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
@@ -349,7 +370,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                 <div className="fw-bold text-dark mb-2">Estado de tarea</div>
                 <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
                   <Badge bg={activeTask ? (status.status === 'failed' ? 'danger' : 'primary') : 'secondary'}>
-                    {status?.status || 'idle'}
+                    {updateStatusLabel(status?.status || 'idle', t)}
                   </Badge>
                   <span className="small text-muted">{status?.message || t('configuracion.updateNoActiveTask')}</span>
                 </div>
@@ -378,7 +399,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       {updateEvents.map((event: any, index: number) => (
                         <div key={`${event.at || index}-${event.event || index}`} className="x-small text-muted d-flex justify-content-between gap-2">
                           <span className="text-truncate" title={event.message || event.event}>{event.message || event.event || 'Evento'}</span>
-                          <span className="text-nowrap">{event.stage || event.status || '-'}</span>
+                          <span className="text-nowrap">{updateStageLabel(event.stage || event.status || '-', t)}</span>
                         </div>
                       ))}
                     </div>
@@ -421,12 +442,12 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                           {item.version || t('configuracion.versionNotReported')}
                         </div>
                         <div className="x-small text-muted">
-                          {item.channel || 'sin canal'} · {item.stage || item.status} · {item.completed_at || item.started_at || 'sin fecha'}
+                          {item.channel || t('configuracion.channelNotReported')} · {updateStageLabel(item.stage || item.status, t)} · {item.completed_at || item.started_at || t('configuracion.dateNotReported')}
                         </div>
                         {item.error && <div className="x-small text-danger text-truncate" title={item.error}>{item.error}</div>}
                       </div>
                       <Badge bg={item.status === 'failed' ? 'danger' : item.stage === 'prepared' ? 'success' : item.status === 'done' ? 'primary' : 'secondary'}>
-                        {item.status}
+                        {updateStatusLabel(item.status, t)}
                       </Badge>
                     </div>
                   ))}

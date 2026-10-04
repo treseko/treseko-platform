@@ -109,13 +109,28 @@ def _load_history(self) -> None:
                 state.completed_at = state.completed_at or _utc_iso()
                 changed = True
             elif installation_mode == "legacy":
-                state.status = "failed"
-                state.stage = "interrupted"
-                state.progress_pct = min(state.progress_pct, 99)
-                state.error = "El proceso se reinicio antes de terminar la tarea de update."
-                state.message = "La tarea quedo interrumpida por reinicio del proceso."
-                state.completed_at = state.completed_at or _utc_iso()
-                changed = True
+                pending_task_id = self._read_convergence_pending_task_id()
+                if pending_task_id and pending_task_id == task_id:
+                    # El entrypoint arranco el backend en segundo plano para
+                    # confirmar componentes antes de finalizar: este reinicio es
+                    # esperado, no una tarea interrumpida.
+                    if state.status != "restarting" or state.stage != "restarting":
+                        state.status = "restarting"
+                        state.stage = "restarting"
+                        state.message = (
+                            "Reinicio en curso: el entrypoint esta aplicando y "
+                            "confirmando la actualizacion."
+                        )
+                        self._append_event(state, "restarting", message=state.message, persist=False)
+                        changed = True
+                else:
+                    state.status = "failed"
+                    state.stage = "interrupted"
+                    state.progress_pct = min(state.progress_pct, 99)
+                    state.error = "El proceso se reinicio antes de terminar la tarea de update."
+                    state.message = "La tarea quedo interrumpida por reinicio del proceso."
+                    state.completed_at = state.completed_at or _utc_iso()
+                    changed = True
         self._tasks[task_id] = state
     if self._tasks:
         latest = max(
@@ -128,6 +143,17 @@ def _load_history(self) -> None:
 
 def _read_applied_update_task_id(self) -> str:
     marker = self.settings.updates_dir / "update-applied"
+    if not marker.exists():
+        return ""
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+        return str(payload.get("task_id") or "").strip() if isinstance(payload, dict) else ""
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+def _read_convergence_pending_task_id(self) -> str:
+    """Tarea cuya convergencia sigue confirmándose tras el reinicio."""
+    marker = self.settings.updates_dir / "update-convergence-pending"
     if not marker.exists():
         return ""
     try:

@@ -140,6 +140,14 @@ services:
       context: engine
       dockerfile: Dockerfile
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # First boot may sync persistent Engine dependencies and initialize the
+      # browser runtime. Allow slow Windows Docker hosts to finish startup.
+      start_period: 240s
     # Permite usar un proveedor LLM local del host (Ollama/LM Studio) desde
     # el contenedor sin confundir localhost con el propio contenedor.
     extra_hosts:
@@ -195,6 +203,8 @@ services:
     build:
       context: plugin-runner
       dockerfile: Dockerfile
+      args:
+        TRESEKO_RELEASE_VERSION: ${TRESEKO_RELEASE_VERSION:-unknown}
     profiles: ["plugins"]
     restart: unless-stopped
     read_only: true
@@ -207,6 +217,11 @@ services:
       - /tmp:rw,noexec,nosuid,size=16m
     environment:
       PLUGIN_RUNNER_PORT: 3020
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3020/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     networks:
       - plugin_internal
     # No host mounts, Docker socket, database, Redis, credentials or public port.

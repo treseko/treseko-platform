@@ -20,6 +20,7 @@ from .update_transport import IDENTIFIER, ProcessParticipant
 
 SCHEMA = 1
 REQUIRED_COMPONENTS = frozenset({"backend", "frontend", "engine", "automation_worker", "db"})
+OPTIONAL_COMPONENTS = frozenset({"plugin_runner"})
 TOPOLOGY_KEYS = {"schema", "scope", "required_components", "hosts", "bindings", "required_gates"}
 
 
@@ -40,9 +41,11 @@ def validate(config: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(scope, str) or not scope.strip() or "\x00" in scope:
         raise InstallationTopologyError("Installation topology scope is required")
     components = topology.get("required_components")
-    if (not isinstance(components, list) or len(components) != len(REQUIRED_COMPONENTS)
-            or set(components) != REQUIRED_COMPONENTS):
-        raise InstallationTopologyError("The topology must declare all five fixed components")
+    if (not isinstance(components, list) or len(set(components)) != len(components)
+            or not REQUIRED_COMPONENTS <= set(components)
+            or set(components) - REQUIRED_COMPONENTS - OPTIONAL_COMPONENTS):
+        raise InstallationTopologyError("The topology must declare every fixed component and only supported optional components")
+    declared_components = set(components)
 
     participants = config.get("participants")
     if not isinstance(participants, list) or not participants:
@@ -82,7 +85,7 @@ def validate(config: Mapping[str, Any]) -> dict[str, Any]:
     seen: set[tuple[str, str, str]] = set()
     bound_participants: set[str] = set()
     bound_hosts: set[str] = set()
-    component_hosts: dict[str, set[str]] = {component: set() for component in REQUIRED_COMPONENTS}
+    component_hosts: dict[str, set[str]] = {component: set() for component in declared_components}
     for binding in bindings:
         if not isinstance(binding, Mapping) or set(binding) != {"participant", "host", "component"}:
             raise InstallationTopologyError("Topology binding fields are invalid")
@@ -91,7 +94,7 @@ def validate(config: Mapping[str, Any]) -> dict[str, Any]:
         key = (participant, host, component)
         if (not isinstance(participant, str) or participant not in participant_ids
                 or not isinstance(host, str) or host not in host_map
-                or component not in REQUIRED_COMPONENTS or key in seen):
+                or component not in declared_components or key in seen):
             raise InstallationTopologyError("Topology binding is invalid")
         seen.add(key)
         bound_participants.add(participant)
@@ -113,8 +116,19 @@ def validate(config: Mapping[str, Any]) -> dict[str, Any]:
         raise InstallationTopologyError("Each participant must bind exactly one component")
     if bound_hosts != set(host_map):
         raise InstallationTopologyError("Every topology host must have an explicit binding")
-    if any(not component_hosts[component] for component in REQUIRED_COMPONENTS):
-        raise InstallationTopologyError("Every fixed component must be present on a host")
+    if any(not component_hosts[component] for component in declared_components):
+        raise InstallationTopologyError("Every declared component must be present on a host")
+    runtime_declared = {
+        component for runtime_host in runtime_hosts
+        for component in runtime_host.get("components", [])
+    }
+    runtime_bound = {
+        binding["component"] for binding in bindings
+        if binding["component"] in RUNTIME_COMPONENTS
+    }
+    if runtime_declared != runtime_bound:
+        raise InstallationTopologyError(
+            "Every runtime-host component must have exactly declared topology coverage")
 
     _validate_gates(topology["required_gates"], config.get("admission_gates"), scope)
     participant_endpoints, runtime_endpoints = _endpoint_bindings(participants, runtime_hosts)

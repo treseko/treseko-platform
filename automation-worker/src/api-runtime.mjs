@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 export function createApiRuntime(deps) {
   const {
     API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, pairingStatePath, workerInstanceId, state,

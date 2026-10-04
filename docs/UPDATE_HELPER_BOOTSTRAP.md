@@ -48,6 +48,34 @@ contiene journal, locks, backups y backend versionado. El prefijo no puede
 contener componentes symlink. Las configuraciones sólo se leen, deben ser
 ficheros regulares privados y nunca se copian ni se imprimen.
 
+### Configuración de participantes Docker Compose
+
+Con `launcher.type: "docker"`, `configs.participant` puede ser un router
+privado con el esquema exacto `{"schema": 1, "participants": {"backend":
+"/etc/treseko/participants/backend.json", ...}}`. Cada ruta apunta a una
+configuración privada separada y debe declararse como mount `ro` del helper
+`participant`. No se deben incluir secretos en el router.
+
+Cada runtime Compose declara su propio `runtime.active_compose_file`; por
+ejemplo `/var/lib/treseko-update/active-compose/backend.json`. Nunca compartir
+ese archivo entre Backend, Frontend, Engine, Automation Worker o Plugin Runner.
+En `launcher.mounts.participant` se monta `rw` el archivo exacto si ya existe o
+su directorio padre dedicado si todavía no existe. Ese directorio debe existir,
+ser propiedad de root y tener modo `0700`; no se acepta montar un ancestro
+amplio. Los archivos Compose ya existentes deben ser regulares, privados y
+declarar el servicio configurado. PostgreSQL usa `runtime.type:
+"docker-postgres"` y no declara `active_compose_file`.
+
+En el primer `prepare`, antes de detener el servicio, el driver captura el
+Compose efectivo original, exige que su hash corresponda al contenedor vivo,
+comprueba que el JSON pueda reproducirse y guarda el modelo atómicamente con
+modo `0600`. La actualización siguiente usa ese modelo como origen; al activar
+una versión verificada persiste el Compose nuevo y las identidades actuales de
+sus volúmenes. Así una cadena como 1.0.4→1.0.5→1.0.6 no depende de reconstruir
+solo Frontend ni del Compose antiguo. Cada paquete firmado debe admitir la
+versión activa de origen en su política de compatibilidad. El instalador valida
+estas rutas y mounts, pero no crea las configuraciones privadas del operador.
+
 El paquete se busca como:
 
 ```text

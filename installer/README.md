@@ -1,5 +1,31 @@
 # Instalador gráfico de Treseko Community
 
+## Estado del reemplazo nativo
+
+El contrato compartido de releases está en `release_client.py` y el generador
+del índice verificable en `build_release_index.py`. El índice
+`treseko-installer-release.json` declara `schema`, `product_version`,
+`installer_version` y los artefactos por plataforma, incluyendo nombre, tamaño
+y SHA-256. Todavía no se publica mediante el workflow actual.
+
+El release de producto previsto para validar el descubrimiento desde GitHub es
+`treseko-community-v1.0.7`. Los clientes consultan `/releases/latest`; no tienen
+`1.0.7` fijado en el código y mostrarán la versión estable que GitHub publique
+como más reciente. La publicación de instaladores y del índice se hará junto a
+ese release, después de cerrar las pruebas nativas pendientes.
+
+Hay prototipos nativos SwiftUI para macOS y WPF para Windows en
+`native/macos/` y `native/windows/`. El SwiftUI compila en macOS y el proyecto
+WPF compila con el SDK .NET 8; eso valida compilación, no certifica todavía los
+flujos completos en equipos Windows/macOS. El Linux GTK/libadwaita, el enlace
+de Windows al empaquetado firmado y la publicación de assets/índice no están
+implementados. El workflow `build-installer.yml` conserva el empaquetado GUI
+anterior y no debe interpretarse como publicación de los clientes nativos.
+
+No distribuir los prototipos como instaladores oficiales hasta completar esos
+enlaces y la verificación nativa de instalación, actualización, rollback y
+autoactualización. El instalador anterior sigue disponible durante esa etapa.
+
 El instalador gráfico coordina los instaladores CLI oficiales del paquete. No
 duplica la lógica de Docker, secretos, migraciones ni creación del administrador.
 
@@ -39,7 +65,15 @@ Linux; macOS y Windows conservan sus launchers existentes.
 La distribución mínima de arranque incluye `installer/treseko-installer.png`,
 por lo que el launcher y el acceso `.desktop` no dependen de que viaje también
 `frontend/public/`. La ventana comprueba Docker, Compose v2, el motor Docker, el puerto elegido y
-la integridad mínima del paquete antes de iniciar la instalación. Si se abre
+la integridad mínima del paquete antes de iniciar la instalación. También
+consulta `version.json` y el health check del Backend en el puerto elegido para
+mostrar las versiones en ejecución de Frontend y Backend. Si no coinciden, el
+puerto pertenece a otra aplicación o la instalación no puede identificarse, no
+permite instalar ni actualizar encima. Para actualizar exige que la raíz
+seleccionada corresponda a la instalación detectada, que la versión destino sea
+más nueva y que no exista una transacción de actualización pendiente. Si Docker
+está detenido, muestra la última versión registrada y vuelve a validar el
+destino antes de modificarlo. Si se abre
 sola desde `Descargas` y faltan los archivos principales, consulta el último
 release estable oficial de GitHub, lo descarga por HTTPS, valida su estructura
 y lo guarda en una caché versionada. Durante el proceso muestra la salida real
@@ -51,12 +85,18 @@ contiene `compose.production.env` y sus secretos locales válidos. También se
 puede elegir manualmente otra carpeta con `Cambiar`. Cuando la instalación es
 reconocida aparece el botón visible `Desinstalar Treseko`; la acción conserva
 datos por defecto y la purga requiere la confirmación adicional habitual.
+El selector `Instalación existente` permite apuntar a una raíz fuera de la
+caché; es independiente de `Paquete`, que define la versión destino.
 
-Si ese release también incluye una versión más nueva de la GUI, el bootstrap la
-abre automáticamente y continúa desde ella. De esta forma, la interfaz y los
-scripts de instalación pertenecen al mismo paquete. Un servicio nuevo, como un
-worker, debe estar declarado en el Compose y/o en el script del release para
-que pueda instalarse; la GUI no inventa servicios que no estén en el paquete.
+Si se ejecuta el launcher Python y ese release también incluye una GUI más
+nueva, el bootstrap la abre automáticamente con el paquete nuevo y la raíz de
+datos reconocida por separado. Un ejecutable standalone congelado no puede
+reemplazar su propio código por el Python descargado. Para actualizar desde un
+standalone anterior, descargá y ejecutá directamente el instalador gráfico de
+la versión destino; no inicies el update desde el standalone viejo. Un servicio
+nuevo, como un worker, debe estar declarado en el Compose y/o en el script del
+release para que pueda instalarse; la GUI no inventa servicios que no estén en
+el paquete.
 
 ## Empaquetado versionado
 
@@ -118,8 +158,11 @@ firma de AppImage quedan pendientes antes de distribuir binarios públicamente.
 - macOS Apple Silicon: Docker Desktop para Apple Silicon + Bash.
 
 La primera versión gráfica instala el entorno Docker local. No instala Treseko
-como servicios nativos de Windows ni como servicios nativos de macOS. La opción
-de recrear el entorno elimina los volúmenes locales y requiere confirmación.
+como servicios nativos de Windows ni como servicios nativos de macOS. Para una
+actualización, la GUI delega en el script CLI del release destino, que aplica el
+coordinador transaccional descrito en `docs/INSTALLATION.md`; la GUI no sustituye
+esa lógica. La opción de recrear el entorno elimina los volúmenes locales y
+requiere confirmación.
 
 La instalación nueva exige que no exista todavía una configuración local
 (`compose.production.env`). Para una actualización con datos existentes se debe

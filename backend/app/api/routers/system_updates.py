@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from ...database import get_db
 from ... import access_control, auth, crud, models, schemas
-from ...services.update_installation_mode import InstallationModeError
+from ...services.update_installation_mode import InstallationModeError, require_atomic_update_coordinator
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...content_type_validation import content_matches_declared_type
@@ -422,6 +422,13 @@ async def apply_system_update(
         manifest = check_result.get("manifest") or check_result
         original_manifest = dict(manifest)
     if channel in PREMIUM_UPDATE_CHANNELS:
+        # Reject unsupported legacy installations before consuming a one-use
+        # DownloadGrant. The coordinator is the only supported Premium apply
+        # path and this check has no external side effects.
+        try:
+            require_atomic_update_coordinator()
+        except InstallationModeError as exc:
+            raise HTTPException(status_code=409, detail=exc.code) from exc
         state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         if manifest is None:
             entry = await _cached_latest_premium_manifest(db, state)
@@ -445,6 +452,9 @@ async def apply_system_update(
         # URL. Keep the signed catalog manifest immutable for the host bridge;
         # only the downloader receives the resolved grant manifest.
         download_manifest = dict(grant_result["manifest"])
+        # Bind the downloader to the URL returned by the grant itself. The
+        # signed catalog manifest intentionally contains only an opaque URI.
+        download_manifest["package_url"] = str(grant_result["package_url"])
     elif channel in COMMUNITY_UPDATE_CHANNELS:
         state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         try:

@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -311,8 +312,18 @@ async def request_premium_download_grant(
         current_version=current_version,
     )
     package_url = str(grant_payload.get("package_url") or "").strip()
-    if not package_url:
-        raise UpdateManifestError("El DownloadGrant no incluyo package_url")
+    try:
+        parsed_package_url = urlsplit(package_url)
+    except ValueError as exc:
+        raise UpdateManifestError("El DownloadGrant no incluyo una URL HTTPS valida") from exc
+    if (
+        parsed_package_url.scheme.lower() != "https"
+        or not parsed_package_url.hostname
+        or parsed_package_url.username is not None
+        or parsed_package_url.password is not None
+        or parsed_package_url.fragment
+    ):
+        raise UpdateManifestError("El DownloadGrant no incluyo una URL HTTPS valida")
     grant_manifest = grant_payload.get("manifest") if isinstance(grant_payload.get("manifest"), dict) else {}
     resolved_manifest = {
         **manifest,

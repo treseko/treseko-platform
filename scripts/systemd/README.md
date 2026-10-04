@@ -15,9 +15,11 @@ root-owned `0755` en una ruta host fija. Debe validar previamente que:
   no se presupone Python host ni se monta el socket en el backend;
 - la unidad sólo se instala después de validar todos esos bindings.
 
-El wrapper no acepta argumentos del usuario: ejecuta siempre el helper instalado
-sin `-m`, `--config` ni otros argumentos. El helper usa internamente el CLI
-existente con `--once --spool` y una configuración fija. `process_once()` usa el lock
+El wrapper instalado desde `treseko-update-spool-wrapper.sh` debe ser root-owned
+`0755`; la unidad lo ejecuta y comprueba por separado su existencia, la del
+helper y la de la configuración. El wrapper no acepta argumentos del usuario:
+ejecuta siempre el helper instalado sin `-m`, `--config` ni otros argumentos.
+El helper usa internamente el CLI existente con `--once --spool` y una configuración fija. `process_once()` usa el lock
 durable del spool, reconcilia primero receipts `pending/running/uncertain` y
 devuelve `idle` si no hay trabajo.
 
@@ -55,9 +57,12 @@ separado para shell y systemd; nunca interpolar una request en una unidad.
 `host_bridge` requiere launcher Docker explícito. Su wrapper instalado ejecuta
 la misma imagen bootstrap/helper con `--entrypoint /usr/local/bin/python`,
 `-m app.services.update_host_bridge_cli`, `--config` fijo, `--once --spool` y
-la configuración montada readonly; no hornea secretos. El journal conserva los cuatro
-wrappers, sus hashes, config hashes, launcher binding y backups; unidades systemd
-no se registran ni instalan en esta fase.
+la configuración montada readonly; no hornea secretos. El bundle offline actual
+incluye un `install_plan` revisable con destinos allowlisted, modos y owner
+esperados, además de hashes de contenido. Un instalador debe volver a verificar
+ambos; planificar artefactos no equivale a instalarlos. El journal de la
+integración completa debe conservar los cuatro wrappers, sus hashes, config
+hashes, launcher binding y backups.
 
 El timer es obligatorio. No se usa `systemd.path` ni `DirectoryNotEmpty`: las
 requests se conservan para identidad/replay y observar un directorio no vacío

@@ -125,3 +125,11 @@ def resolve(command: str = "request") -> str:
 
 def require(command: str = "request") -> str:
     return resolve(command)
+
+
+def require_atomic_update_coordinator() -> str:
+    """Fail closed unless the host owns updates through its transaction journal."""
+    mode = resolve("request")
+    if mode != "coordinated":
+        raise InstallationModeError("atomic_update_coordinator_required")
+    return mode

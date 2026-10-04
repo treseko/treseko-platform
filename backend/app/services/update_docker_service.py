@@ -7,8 +7,10 @@ starts dependencies, prunes images or removes volumes. Its journal is private.
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 
 from .update_journal import exclusive_lock, save_json
@@ -19,7 +21,8 @@ from .update_recovery_pipeline import recover_stopped_baseline
 
 class DockerServiceImageSwitch:
     def __init__(self, docker: str, project: str, service: str, config_files: list[Path],
-                 project_directory: Path, *, snapshot_mode: str = 'commit'):
+                 project_directory: Path, *, snapshot_mode: str = 'commit',
+                 active_compose_file: Path | None = None):
         if (not Path(docker).is_absolute() or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project)
                 or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", service)
                 or not config_files or not all(path.is_absolute() for path in config_files)
@@ -27,6 +30,11 @@ class DockerServiceImageSwitch:
             raise ValueError("An explicit Compose service and absolute configuration paths are required")
         self.docker, self.project, self.service = docker, project, service
         self.files, self.project_directory = config_files, project_directory
+        if active_compose_file is not None and (
+                not active_compose_file.is_absolute() or active_compose_file == Path('/')
+                or '..' in active_compose_file.parts):
+            raise ValueError('A dedicated absolute active Compose state file is required')
+        self.active_compose_file = active_compose_file
         if snapshot_mode not in {'commit', 'private-export'}:
             raise ValueError('Explicit supported snapshot mode required')
         self.snapshot_mode = snapshot_mode
@@ -42,9 +50,20 @@ class DockerServiceImageSwitch:
 
     def _compose(self, arguments, files=None):
         command = ["compose", "--project-name", self.project, "--project-directory", str(self.project_directory)]
-        for path in files or self.files:
+        effective_files = files if files is not None else self._effective_files()
+        for path in effective_files:
             command += ["--file", str(path)]
         return self._run([*command, *arguments])
+
+    def _effective_files(self):
+        if self.active_compose_file is None or not self.active_compose_file.exists():
+            return self.files
+        if self.active_compose_file.is_symlink() or not self.active_compose_file.is_file():
+            raise TransactionFailure('Persisted active Compose model is unsafe')
+        metadata = self.active_compose_file.stat()
+        if metadata.st_mode & 0o077 or metadata.st_uid not in {0, os.geteuid()}:
+            raise TransactionFailure('Persisted active Compose model is unsafe')
+        return [self.active_compose_file]
 
     def _current(self):
         ids = self._run(["ps", "--all", "--no-trunc", "--filter", "label=com.docker.compose.project=" + self.project,
@@ -63,6 +82,26 @@ class DockerServiceImageSwitch:
 
     def _hash(self, files=None):
         return self._compose(["config", "--hash", self.service], files).decode().split()[-1]
+
+    def active_runtime_volumes(self, targets):
+        """Resolve current named-volume identities from the persisted Compose model."""
+        model = json.loads(self._compose(["config", "--format", "json"]))
+        service = model.get('services', {}).get(self.service)
+        if not isinstance(service, dict):
+            raise TransactionFailure('Active Compose service model is unavailable')
+        declared = {}
+        for mount in service.get('volumes', []):
+            if not isinstance(mount, dict) or mount.get('target') not in targets:
+                continue
+            source = mount.get('source')
+            volume = model.get('volumes', {}).get(source)
+            name = volume.get('name', source) if isinstance(volume, dict) else source
+            if mount.get('type') != 'volume' or not isinstance(name, str) or not name:
+                raise TransactionFailure('Active runtime volume identity is invalid')
+            declared[mount['target']] = name
+        if set(declared) != set(targets):
+            raise TransactionFailure('Active Compose model omits an inventoried runtime volume')
+        return declared
 
     def _load(self, directory):
         state = json.loads((directory / "service.json").read_text())
@@ -90,6 +129,7 @@ class DockerServiceImageSwitch:
             save_json(prepared, model)
             if self._hash([prepared]) != expected:
                 raise TransactionFailure("Installed Compose cannot faithfully replay the captured configuration")
+            self._seed_active_compose_model(model, expected)
             state = {"schema": 1, "project": self.project, "service": self.service,
                      "original": current["Id"], "current": current["Id"], "model": model,
                      "original_image": current["Image"],
@@ -98,6 +138,36 @@ class DockerServiceImageSwitch:
                      "snapshot_mode": self.snapshot_mode}
             save_json(directory / "service.json", state)
             return state
+
+    def _seed_active_compose_model(self, model, expected_hash):
+        """Initialize the per-service canonical model before the first mutation."""
+        target = self.active_compose_file
+        if target is None:
+            return
+        try:
+            parent = target.parent.lstat()
+        except OSError as exc:
+            raise TransactionFailure("Persistent active Compose directory is unavailable") from exc
+        if (not target.parent.is_dir() or target.parent.is_symlink()
+                or parent.st_uid not in {0, os.geteuid()} or parent.st_mode & 0o077):
+            raise TransactionFailure("Persistent active Compose directory is unsafe")
+        with exclusive_lock(target.with_name(target.name + ".lock")):
+            try:
+                existing = target.lstat()
+            except FileNotFoundError:
+                existing = None
+            if existing is not None:
+                if not stat.S_ISREG(existing.st_mode) or target.is_symlink():
+                    raise TransactionFailure("Persisted active Compose model is unsafe")
+                if existing.st_mode & 0o077 or existing.st_uid not in {0, os.geteuid()}:
+                    raise TransactionFailure("Persisted active Compose model is unsafe")
+                if self._hash([target]) != expected_hash:
+                    raise TransactionFailure("Persisted active Compose model differs from the running installation")
+                return
+            save_json(target, model)
+            target.chmod(0o600)
+            if self._hash([target]) != expected_hash:
+                raise TransactionFailure("Initial active Compose model does not match the running installation")
 
     def _require_snapshot_source(self, current):
         if self.snapshot_mode == 'private-export':
@@ -181,9 +251,13 @@ class DockerServiceImageSwitch:
             # Inspect first: Compose must not silently create an empty volume.
             self._run(["volume", "inspect", name])
             key = "treseko_update_" + hashlib.sha256(target.encode()).hexdigest()[:24]
-            if key in model.get("volumes", {}):
+            definitions = model.setdefault("volumes", {})
+            existing = definitions.get(key)
+            if existing is not None and (
+                    not isinstance(existing, dict) or existing.get("external") is not True
+                    or not isinstance(existing.get("name"), str)):
                 raise TransactionFailure("Runtime volume alias conflicts with installation configuration")
-            model.setdefault("volumes", {})[key] = {"external": True, "name": name}
+            definitions[key] = {"external": True, "name": name}
             matches[0]["source"] = key
             # A prepared runtime must not receive old image content by copy-up.
             matches[0].setdefault("volume", {})["nocopy"] = True
@@ -335,3 +409,40 @@ class DockerServiceImageSwitch:
                          active_config=str(config), canonicalized=True)
             save_json(directory / "service.json", state)
             return current["Id"]
+
+    def persist_active_compose(self, directory: Path):
+        """Commit the verified Compose model as the source for the next release."""
+        if self.active_compose_file is None:
+            raise TransactionFailure('Persistent active Compose model is not configured')
+        with exclusive_lock(directory / '.service.lock'):
+            state = self._load(directory)
+            source = state.get('active_config')
+            if not isinstance(source, str) or not Path(source).is_absolute():
+                raise TransactionFailure('Verified active Compose model is unavailable')
+            current = self._current()
+            self._reconcile(state, current)
+            if not current or not current['State']['Running']:
+                raise TransactionFailure('Active Compose model requires a running verified service')
+            model_path = Path(source)
+            if model_path.is_symlink() or not model_path.is_file():
+                raise TransactionFailure('Verified active Compose model is unsafe')
+            expected_hash = self._hash([model_path])
+            if current['Config']['Labels'].get('com.docker.compose.config-hash') != expected_hash:
+                raise TransactionFailure('Verified service does not match its active Compose model')
+            model = json.loads(model_path.read_text(encoding='utf-8'))
+            target = self.active_compose_file
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with exclusive_lock(target.with_name(target.name + '.lock')):
+                try:
+                    existing = target.lstat()
+                except FileNotFoundError:
+                    existing = None
+                if existing is not None and (
+                        not stat.S_ISREG(existing.st_mode) or target.is_symlink()
+                        or existing.st_mode & 0o077
+                        or existing.st_uid not in {0, os.geteuid()}):
+                    raise TransactionFailure('Persisted active Compose model is unsafe')
+                save_json(target, model)
+                target.chmod(0o600)
+            if self._hash() != expected_hash:
+                raise TransactionFailure('Persisted active Compose model did not preserve the running identity')

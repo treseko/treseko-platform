@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from .updater import *
 from .updater import _utc_iso, _pg_dump_url
 
@@ -12,6 +14,12 @@ async def _download_package(
     downloads_dir.mkdir(parents=True, exist_ok=True)
     package_path = downloads_dir / f"{task_id}.tar.gz"
     digest = hashlib.sha256()
+    scheme = urlsplit(str(package_url or "")).scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError(
+            "El manifest no incluye una URL HTTPS utilizable para descargar el paquete; "
+            f"scheme recibido: {scheme or 'vacio'}."
+        )
     self._update_state(state, "downloading", 12, "Descargando paquete desde Update Server.")
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0, read=120.0)) as client:
         async with client.stream("GET", package_url) as response:

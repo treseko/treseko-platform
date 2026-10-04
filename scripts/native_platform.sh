@@ -17,7 +17,9 @@ treseko_detect_linux_platform() {
   # shellcheck disable=SC1090
   . "$os_release_file"
 
-  TRESEKO_DISTRO_ID="${ID,,}"
+  # Bash 3.2 is still the system Bash on supported macOS hosts; avoid the
+  # Bash-4-only lowercase parameter expansion so local release gates run there.
+  TRESEKO_DISTRO_ID="$(printf '%s' "$ID" | tr '[:upper:]' '[:lower:]')"
   TRESEKO_DISTRO_VERSION="${VERSION_ID:-unknown}"
   TRESEKO_DISTRO_MAJOR="${TRESEKO_DISTRO_VERSION%%.*}"
   case "$TRESEKO_DISTRO_MAJOR" in

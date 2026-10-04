@@ -18,15 +18,17 @@ import tempfile
 import threading
 import tkinter as tk
 import urllib.error
-import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from installer.bootstrap import build_gui_handoff_args, publish_release_tree
+from installer.runtime_detection import compare_versions, detect_runtime, has_unfinished_update, installed_version, runtime_matches_installation
+from installer.release_client import parse_latest_release
+
 
 class TresekoInstaller(tk.Tk):
-    GITHUB_REPO = "treseko/treseko-platform"
     GITHUB_LATEST_API = "https://api.github.com/repos/treseko/treseko-platform/releases/latest"
     MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
     MAX_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
@@ -40,6 +42,15 @@ class TresekoInstaller(tk.Tk):
         self.minsize(660, 500)
         self.configure(bg="#f6f8fb")
         self.repo_root = Path(initial.package).expanduser().resolve() if initial and initial.package else self._bundled_repo_root()
+        self.installation_root = (
+            Path(initial.installation_root).expanduser().resolve()
+            if initial and getattr(initial, "installation_root", None)
+            else self.repo_root
+        )
+        if not self._installation_recognized():
+            cached_installation = self._find_cached_installation()
+            if cached_installation:
+                self.installation_root = cached_installation
         self.icon_path = Path(initial.icon).expanduser().resolve() if initial and getattr(initial, "icon", None) else None
         self.port_var = tk.StringVar(value=initial.port if initial and initial.port else "9095")
         self.demo_var = tk.BooleanVar(value=bool(initial.demo) if initial else False)
@@ -47,8 +58,10 @@ class TresekoInstaller(tk.Tk):
         self.purge_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Comprobá los requisitos antes de instalar.")
         self.installation_state_var = tk.StringVar()
+        self.runtime_state_var = tk.StringVar(value="Versión en ejecución: comprobando…")
         self.platform_var = tk.StringVar()
         self.package_var = tk.StringVar()
+        self.installation_root_var = tk.StringVar(value=str(self.installation_root))
         self.events: queue.Queue[tuple[str, str]] = queue.Queue()
         self.cancel_event = threading.Event()
         self.install_running = False
@@ -60,6 +73,7 @@ class TresekoInstaller(tk.Tk):
         self._stages: dict[str, ttk.Label] = {}
         self._busy_widgets: list[tk.Widget] = []
         self._existing_install_widgets: list[tk.Widget] = []
+        self._new_install_widgets: list[tk.Widget] = []
         self._purge_widget: ttk.Checkbutton | None = None
         self._icon_image: tk.PhotoImage | None = None
         self._set_window_icon()
@@ -70,6 +84,7 @@ class TresekoInstaller(tk.Tk):
         self.after(100, self._drain_events)
         if not self.package_ready:
             self.after(250, self._start_bootstrap_download)
+        self.after(300, self._start_runtime_detection)
 
     def _build_ui(self) -> None:
         style = ttk.Style(self)
@@ -116,6 +131,7 @@ class TresekoInstaller(tk.Tk):
         purge_check = ttk.Checkbutton(purge_container, text="PURGA TOTAL: borrar volúmenes y configuración local (requiere segunda confirmación)", variable=self.purge_var)
         purge_check.pack(anchor="w")
         ttk.Label(config, textvariable=self.installation_state_var, foreground="#52627b", wraplength=680).pack(anchor="w", pady=(7, 0))
+        ttk.Label(config, textvariable=self.runtime_state_var, foreground="#52627b", wraplength=680).pack(anchor="w", pady=(4, 0))
         demo_check = ttk.Checkbutton(config, text="Cargar datos demo después de instalar", variable=self.demo_var)
         demo_check.pack(anchor="w", pady=(7, 0))
         location = ttk.Frame(config)
@@ -125,6 +141,18 @@ class TresekoInstaller(tk.Tk):
         self.location_label.pack(side="left", padx=8, fill="x", expand=True)
         self.choose_package_button = ttk.Button(location, text="Cambiar", command=self._choose_package)
         self.choose_package_button.pack(side="right")
+        installation_location = ttk.Frame(config)
+        installation_location.pack(fill="x", pady=(7, 0))
+        ttk.Label(installation_location, text="Instalación existente:").pack(side="left")
+        self.installation_location_label = ttk.Label(
+            installation_location, textvariable=self.installation_root_var,
+            foreground="#52627b", wraplength=560,
+        )
+        self.installation_location_label.pack(side="left", padx=8, fill="x", expand=True)
+        self.choose_installation_button = ttk.Button(
+            installation_location, text="Seleccionar", command=self._choose_installation,
+        )
+        self.choose_installation_button.pack(side="right")
         self.release_label = ttk.Label(config, text="Versión: se determinará al validar el paquete", foreground="#52627b")
         self.release_label.pack(anchor="w", pady=(8, 0))
         actions = ttk.Frame(content)
@@ -152,12 +180,14 @@ class TresekoInstaller(tk.Tk):
             purge_check,
             demo_check,
             self.choose_package_button,
+            self.choose_installation_button,
             self.check_button,
             self.download_button,
             self.uninstall_button,
             self.install_button,
         ]
         self._existing_install_widgets = [update_mode]
+        self._new_install_widgets = [new_mode]
         self._purge_container = purge_container
         self._purge_widget = purge_check
         self.mode_var.trace_add("write", lambda *_args: self._refresh_mode_controls())
@@ -276,7 +306,7 @@ class TresekoInstaller(tk.Tk):
         self._refresh_mode_controls()
 
     def _installation_recognized(self) -> bool:
-        return self._installation_recognized_at(self.repo_root)
+        return self._installation_recognized_at(self.installation_root)
 
     @staticmethod
     def _installation_recognized_at(root: Path) -> bool:
@@ -305,16 +335,48 @@ class TresekoInstaller(tk.Tk):
 
     def _refresh_mode_controls(self) -> None:
         recognized = self._installation_recognized()
-        show_purge = recognized and self.mode_var.get() == "uninstall"
-        self.installation_state_var.set(
-            "Instalación reconocida: podés actualizarla o usar «Desinstalar Treseko». La desinstalación conserva datos salvo que confirmes la purga."
-            if recognized
-            else "No hay una instalación reconocible en este paquete: solo está disponible Instalación nueva."
+        detection = getattr(self, "runtime_detection", None)
+        runtime_occupies_port = detection is not None and detection.state not in {"not_running"}
+        target_version = self._version(self.repo_root) if getattr(self, "package_ready", False) else None
+        current_version = detection.version if detection and detection.state in {"running", "version_mismatch", "unverified_treseko"} else (installed_version(self.installation_root) if recognized else None)
+        journal_pending = recognized and has_unfinished_update(self.installation_root)
+        version_mismatch = bool(detection and detection.state == "version_mismatch")
+        root_version_mismatch = bool(
+            detection and detection.state == "running" and recognized
+            and installed_version(self.installation_root) != detection.version
         )
+        wrong_installation = bool(detection and detection.state == "running" and recognized and getattr(detection, "installation_matches", None) is not True)
+        downgrade = bool(target_version and current_version and compare_versions(target_version, current_version) < 0)
+        same_version = bool(target_version and current_version and compare_versions(target_version, current_version) == 0)
+        ambiguous_runtime = detection is not None and detection.state in {"occupied", "unknown", "unverified_treseko"}
+        can_update = recognized and not journal_pending and not version_mismatch and not root_version_mismatch and not wrong_installation and not downgrade and not same_version and not ambiguous_runtime
+        can_new = not recognized and not runtime_occupies_port
+        show_purge = recognized and self.mode_var.get() == "uninstall"
+        if journal_pending:
+            installation_text = "Hay una actualización pendiente o interrumpida. No se iniciará otra desde el instalador; revisá el estado y recuperación de la instalación."
+        elif version_mismatch:
+            installation_text = "La instalación fue detectada, pero Frontend y Backend reportan versiones distintas. No se actualizará hasta resolver esa discrepancia."
+        elif root_version_mismatch:
+            installation_text = "La versión que reporta Treseko no coincide con la última versión registrada en la raíz seleccionada. No se actualizará una instalación ambigua."
+        elif wrong_installation:
+            installation_text = "Treseko responde en el puerto, pero Docker no pudo demostrar que pertenece a la raíz seleccionada. No se actualizará una instancia ambigua."
+        elif downgrade:
+            installation_text = f"La versión destino ({target_version}) es anterior a la detectada ({current_version}); se bloquea la degradación."
+        elif recognized:
+            installation_text = "Instalación reconocida. La actualización reutiliza su configuración, secretos y volúmenes."
+        elif runtime_occupies_port:
+            installation_text = "El puerto configurado está ocupado o Treseko no se pudo identificar. No se permite instalar encima; seleccioná la instalación correcta o liberá el puerto."
+        else:
+            installation_text = "No se detectó una instalación existente en este destino. Podés realizar una instalación nueva."
+        self.installation_state_var.set(installation_text)
         self.install_button.configure(text="Actualizar Treseko" if self.mode_var.get() == "update" else "Instalar Treseko")
         for widget in self._existing_install_widgets:
-            widget.configure(state="normal" if recognized else "disabled")
-        self.uninstall_button.configure(state="normal" if recognized else "disabled")
+            widget.configure(state="normal" if can_update else "disabled")
+        self.uninstall_button.configure(state="normal" if recognized and not journal_pending and not version_mismatch else "disabled")
+        for widget in getattr(self, "_new_install_widgets", []):
+            widget.configure(state="normal" if can_new else "disabled")
+        install_allowed = can_update if self.mode_var.get() == "update" else can_new if self.mode_var.get() == "new" else recognized and not journal_pending
+        self.install_button.configure(state="normal" if install_allowed else "disabled")
         if show_purge:
             if not self._purge_container.winfo_ismapped():
                 self._purge_container.pack(fill="x", pady=(7, 0), before=self._purge_container.master.winfo_children()[-1])
@@ -323,8 +385,26 @@ class TresekoInstaller(tk.Tk):
             self._purge_container.pack_forget()
         if self._purge_widget is not None:
             self._purge_widget.configure(state="normal" if show_purge else "disabled")
-        if not recognized and self.mode_var.get() in {"update", "uninstall"}:
+        if (not can_update and self.mode_var.get() == "update") or (not recognized and self.mode_var.get() == "uninstall"):
             self.mode_var.set("new")
+
+    def _start_runtime_detection(self) -> None:
+        try:
+            port = self._validate_port()
+        except (ValueError, TypeError):
+            return
+        threading.Thread(target=self._runtime_detection_worker, args=(port,), daemon=True).start()
+
+    def _runtime_detection_worker(self, port: int) -> None:
+        result = detect_runtime(port)
+        installation_matches = runtime_matches_installation(port, self.installation_root) if result.state == "running" and self._installation_recognized() else None
+        self.events.put(("runtime-detection", json.dumps({
+            "state": result.state,
+            "version": result.version,
+            "backend_version": result.backend_version,
+            "detail": result.detail,
+            "installation_matches": installation_matches,
+        })))
 
     def _choose_package(self) -> None:
         selected = filedialog.askdirectory(title="Seleccioná la carpeta de Treseko Community")
@@ -335,9 +415,27 @@ class TresekoInstaller(tk.Tk):
             messagebox.showerror("Paquete inválido", "El paquete no contiene los archivos válidos para este sistema operativo.")
             return
         self.repo_root = root
+        self.runtime_detection = None
         self.checks_ok = False
         self._refresh_package_state()
         self.status_var.set("Paquete cambiado. Volvé a comprobar los requisitos.")
+
+    def _choose_installation(self) -> None:
+        selected = filedialog.askdirectory(title="Seleccioná la carpeta de la instalación Treseko existente")
+        if not selected:
+            return
+        root = Path(selected).expanduser().resolve()
+        if not self._installation_recognized_at(root):
+            messagebox.showerror(
+                "Instalación no reconocida",
+                "La carpeta seleccionada no contiene una instalación Treseko reconocible. No se cambió el destino.",
+            )
+            return
+        self.installation_root = root
+        self.installation_root_var.set(str(root))
+        self.runtime_detection = None
+        self._refresh_mode_controls()
+        self._start_runtime_detection()
 
     def _capture_config(self) -> dict[str, object]:
         """Lee Tkinter únicamente en el hilo principal."""
@@ -347,6 +445,7 @@ class TresekoInstaller(tk.Tk):
             "mode": self.mode_var.get(),
             "purge": bool(self.purge_var.get()),
             "package": self.repo_root,
+            "installation_root": self.installation_root,
         }
 
     def _set_busy(self, busy: bool) -> None:
@@ -397,13 +496,9 @@ class TresekoInstaller(tk.Tk):
         try:
             request = urllib.request.Request(self.GITHUB_LATEST_API, headers={"Accept": "application/vnd.github+json", "User-Agent": "Treseko-Installer"})
             with urllib.request.urlopen(request, timeout=30) as response:
-                release = json.load(response)
-            if release.get("draft") or release.get("prerelease"):
-                raise RuntimeError("GitHub no devolvió un release estable.")
-            tag = str(release.get("tag_name", "")).strip()
-            if not tag or not re.fullmatch(r"[A-Za-z0-9._-]+", tag):
-                raise RuntimeError("La respuesta de GitHub no contiene un tag válido.")
-            archive_url = f"https://github.com/{self.GITHUB_REPO}/archive/refs/tags/{urllib.parse.quote(tag, safe='')}.zip"
+                release = parse_latest_release(json.load(response))
+            tag = release.tag
+            archive_url = release.archive_url
             target = cache_root / tag
             if not self._is_valid_package(target, tag):
                 cache_root.mkdir(parents=True, exist_ok=True)
@@ -433,9 +528,14 @@ class TresekoInstaller(tk.Tk):
                     package = next((path for path in roots if self._is_valid_package(path, tag)), None)
                     if package is None:
                         raise RuntimeError("El release no contiene un paquete válido para este sistema.")
-                    if target.exists():
-                        shutil.rmtree(target)
-                    shutil.move(str(package), str(target))
+                    try:
+                        publish_release_tree(package, target)
+                    except FileExistsError:
+                        # A concurrent bootstrap may have won the same
+                        # immutable-tag publication. Reuse only a complete,
+                        # valid package; never remove or overwrite the tree.
+                        if not self._is_valid_package(target, tag):
+                            raise RuntimeError("El destino del release ya existe, pero no es un paquete válido; no se modificó.")
             gui_path = target / "installer" / "treseko_installer.py"
             self.events.put(("bootstrap", json.dumps({"package": str(target), "gui": str(gui_path), "tag": tag})))
         except Exception as exc:
@@ -493,11 +593,45 @@ class TresekoInstaller(tk.Tk):
                 self.events.put(("log", f"$ {' '.join(command)}\n{output[-1200:]}\n"))
                 if not ok:
                     failures.append(f"No se pudo comprobar {label}. Iniciá Docker Desktop/Engine y reintentá.")
-        env_file = root / "compose.production.env" if isinstance(root, Path) else None
+        installation_root = config.get("installation_root")
+        env_file = installation_root / "compose.production.env" if isinstance(installation_root, Path) else None
         if mode == "new" and env_file is not None and env_file.is_file():
             failures.append("Ya existe una configuración local. Elegí recrear el entorno o usá el flujo de actualización.")
         if mode in {"update", "uninstall"} and not self._installation_recognized():
             failures.append("No existe compose.production.env; actualización/eliminación requieren una instalación existente.")
+        runtime = None
+        if mode in {"new", "update"}:
+            try:
+                runtime_port = int(str(port))
+                if not 1 <= runtime_port <= 65535:
+                    raise ValueError
+            except (ValueError, TypeError):
+                failures.append("El puerto debe ser un número entre 1 y 65535.")
+            else:
+                runtime = detect_runtime(runtime_port)
+        if mode == "new":
+            if runtime is not None and runtime.state != "not_running":
+                failures.append("El puerto responde o su estado es ambiguo. No se iniciará una instalación nueva para evitar interferir con una instancia existente.")
+            elif self._installation_recognized():
+                failures.append("Ya se reconoció una instalación en el destino. Elegí Actualizar en lugar de Instalación nueva.")
+        if mode == "update":
+            if runtime is None:
+                pass
+            elif runtime.state not in {"running", "not_running"}:
+                failures.append("No se pudo identificar y verificar la instalación en ejecución. No se iniciará la actualización.")
+            elif runtime.state == "running":
+                if not self._installation_recognized():
+                    failures.append("Treseko está ejecutándose, pero no se identificó su raíz de instalación. Seleccioná la instalación correcta antes de actualizar.")
+                elif installed_version(self.installation_root) != runtime.version:
+                    failures.append("La versión en ejecución no coincide con la versión registrada en la raíz seleccionada. No se actualizará una instalación ambigua.")
+                elif runtime_matches_installation(int(str(port)), self.installation_root) is not True:
+                    failures.append("Docker no pudo demostrar que la instancia que ocupa el puerto pertenece a la raíz seleccionada. No se actualizará una instalación ambigua.")
+            elif not self._installation_recognized() or not installed_version(self.installation_root):
+                failures.append("Los servicios están detenidos y no se pudo confirmar la versión registrada de la instalación seleccionada.")
+            elif compare_versions(self._version(root), installed_version(self.installation_root) or "0.0.0") <= 0:
+                failures.append("La versión destino debe ser más nueva que la versión instalada; no se permiten reintentos de la misma versión ni degradaciones.")
+            if self._installation_recognized() and has_unfinished_update(self.installation_root):
+                failures.append("Hay una transacción de actualización pendiente o interrumpida. Debe reconciliarse antes de iniciar otra.")
         if platform.system() not in {"Windows", "Linux", "Darwin"}:
             failures.append(f"Sistema no soportado: {platform.system()}.")
         return failures
@@ -572,6 +706,8 @@ class TresekoInstaller(tk.Tk):
                 shutil.copy2(bundled_script, script)
         if platform.system() == "Windows":
             command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+            if isinstance(config.get("installation_root"), Path) and config["installation_root"].resolve() != root.resolve():
+                command.extend(["-InstallRoot", str(config["installation_root"])])
             if mode not in {"update", "uninstall"}:
                 command.extend(["-HttpPort", port])
             if demo and mode == "new":
@@ -587,6 +723,8 @@ class TresekoInstaller(tk.Tk):
                     command.extend(["-PurgeData", "-ConfirmPurge"])
         else:
             command = ["bash", str(script)]
+            if isinstance(config.get("installation_root"), Path) and config["installation_root"].resolve() != root.resolve():
+                command.extend(["--install-root", str(config["installation_root"])])
             if mode not in {"update", "uninstall"}:
                 command.extend(["--http-port", port])
             if demo and mode == "new":
@@ -658,9 +796,17 @@ class TresekoInstaller(tk.Tk):
             if not health_verified:
                 return False, "No se pudo confirmar el health check de la aplicación."
             with urllib.request.urlopen(base + "/version.json", timeout=10) as response:
-                actual = str(json.load(response).get("version", "")).strip()
+                frontend_payload = json.load(response)
+                actual = str(frontend_payload.get("version", "")).strip()
+                if frontend_payload.get("product") != "treseko-platform":
+                    return False, "El servicio respondió, pero no se identificó como Treseko."
             if actual != expected_version:
                 return False, f"La versión publicada ({actual or 'desconocida'}) no coincide con {expected_version}."
+            with urllib.request.urlopen(base + "/api/health", timeout=10) as response:
+                backend_payload = json.load(response)
+            backend_version = str(backend_payload.get("version", "")).strip()
+            if backend_payload.get("status") != "ok" or backend_version != expected_version:
+                return False, f"Backend reporta {backend_version or 'una versión desconocida'}; se esperaba {expected_version}."
         except (OSError, urllib.error.URLError, ValueError, json.JSONDecodeError) as exc:
             return False, f"No se pudo verificar HTTP/health/version: {exc}"
         return True, f"HTTP, health y versión {expected_version} verificados."
@@ -763,6 +909,19 @@ class TresekoInstaller(tk.Tk):
                     else:
                         self.status_var.set("La instalación terminó, pero la verificación final falló.")
                         messagebox.showerror("Verificación incompleta", detail)
+                elif kind == "runtime-detection":
+                    data = json.loads(payload)
+                    self.runtime_detection = type("RuntimeDetectionView", (), data)()
+                    if data.get("state") == "running":
+                        self.runtime_state_var.set(f"Versión en ejecución: {data['version']} · Frontend y Backend saludables")
+                    elif data.get("state") == "version_mismatch":
+                        self.runtime_state_var.set(f"Versiones en ejecución distintas: Frontend {data.get('version')} · Backend {data.get('backend_version')}")
+                    elif data.get("state") == "not_running":
+                        saved = installed_version(self.installation_root) if self._installation_recognized() else None
+                        self.runtime_state_var.set(f"Servicios detenidos · última versión registrada: {saved}" if saved else "Versión en ejecución: no disponible; no hay servicios respondiendo")
+                    else:
+                        self.runtime_state_var.set(str(data.get("detail") or "No se pudo verificar la versión en ejecución."))
+                    self._refresh_mode_controls()
                 elif kind in {"install", "bootstrap-error"}:
                     self._set_stage("install" if kind == "install" else "download", "error")
                     self._set_busy(False)
@@ -781,8 +940,11 @@ class TresekoInstaller(tk.Tk):
                     new_root, gui_path = Path(data["package"]), Path(data["gui"])
                     if not self._is_valid_package(new_root, data["tag"]):
                         raise RuntimeError("El paquete descargado no superó la validación final.")
+                    selected_root = self.installation_root if self._installation_recognized() else None
                     recognized_root = self._find_cached_installation()
-                    self.repo_root = recognized_root or new_root
+                    self.repo_root = new_root
+                    self.installation_root = selected_root or recognized_root or new_root
+                    self.installation_root_var.set(str(self.installation_root))
                     self._refresh_package_state()
                     self._set_stage("download", "done")
                     self._set_busy(False)
@@ -793,9 +955,15 @@ class TresekoInstaller(tk.Tk):
                         except (OSError, py_compile.PyCompileError) as exc:
                             raise RuntimeError(f"La GUI descargada no superó la validación de sintaxis: {exc}") from exc
                         config = self._capture_config()
-                        args = [sys.executable, str(gui_path), "--package", str(self.repo_root), "--port", str(config["port"]), "--mode", str(config["mode"])]
-                        if bool(config["demo"]):
-                            args.append("--demo")
+                        args = build_gui_handoff_args(
+                            sys.executable,
+                            gui_path,
+                            new_root,
+                            self.installation_root,
+                            str(config["port"]),
+                            str(config["mode"]),
+                            bool(config["demo"]),
+                        )
                         self._write_log("\nSe encontró una GUI actualizada. Reiniciando con la misma configuración...\n")
                         subprocess.Popen(args, cwd=str(new_root))
                         self.destroy()
@@ -822,6 +990,7 @@ class TresekoInstaller(tk.Tk):
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Instalador grafico de Treseko")
     parser.add_argument("--package")
+    parser.add_argument("--installation-root")
     parser.add_argument("--port", default="9095")
     parser.add_argument("--mode", choices=("new", "update", "uninstall", "reset"), default="new")
     parser.add_argument("--demo", action="store_true")

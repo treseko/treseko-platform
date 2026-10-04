@@ -18,14 +18,14 @@ function read(name) {
   const fd = fs.openSync(path.join(directory, name), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const stat = fs.fstatSync(fd);
-    if (!stat.isFile() || !safe(stat) || stat.size > 4096) throw Error();
+    if (!stat.isFile() || !safe(stat) || stat.size > 4096) throw Error('unsafe worker receipt');
     const buffer = Buffer.alloc(4097);
     const count = fs.readSync(fd, buffer);
     return JSON.parse(buffer.subarray(0, count).toString('utf8'));
   } finally { fs.closeSync(fd); }
 }
 const dir = fs.lstatSync(directory);
-if (!dir.isDirectory() || dir.isSymbolicLink() || !safe(dir)) throw Error();
+if (!dir.isDirectory() || dir.isSymbolicLink() || !safe(dir)) throw Error('unsafe worker control directory');
 const probing = mode === 'probe';
 const receipt = read(probing ? 'runtime.json' : 'status.json');
 if(!probing) {
@@ -33,19 +33,19 @@ const request = read('request.json');
 if (request.schema !== 1 || request.transaction !== transaction
     || Object.keys(request).sort().join(',') !== 'schema,transaction'
     || receipt.schema !== 1 || receipt.transaction !== transaction || receipt.ready !== true
-    || receipt.active_jobs !== 0 || receipt.pending_results !== 0 || receipt.unresolved_claims !== 0) throw Error();
+    || receipt.active_jobs !== 0 || receipt.pending_results !== 0 || receipt.unresolved_claims !== 0) throw Error('worker drain receipt mismatch');
 const age = Date.now() - Date.parse(receipt.observed_at);
-if (!Number.isFinite(age) || age < 0 || age > 5000) throw Error();
+if (!Number.isFinite(age) || age < 0 || age > 5000) throw Error('worker drain receipt is stale');
 }
 if(receipt.schema !== 1 || !Number.isSafeInteger(receipt.pid) || receipt.pid <= 0
-    || typeof receipt.process_start_ticks !== 'string' || !/^[0-9]+$/.test(receipt.process_start_ticks)) throw Error();
-if(probing && (typeof receipt.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$/.test(receipt.version))) throw Error();
+    || typeof receipt.process_start_ticks !== 'string' || !/^[0-9]+$/.test(receipt.process_start_ticks)) throw Error('invalid worker runtime identity');
+if(probing && (typeof receipt.version !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$/.test(receipt.version))) throw Error('invalid worker runtime version');
 const stat = fs.readFileSync(`/proc/${receipt.pid}/stat`, 'utf8');
 const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-if (fields[0] === 'Z' || fields[19] !== receipt.process_start_ticks) throw Error();
+if (fields[0] === 'Z' || fields[19] !== receipt.process_start_ticks) throw Error('worker process identity mismatch');
 const argv = fs.readFileSync(`/proc/${receipt.pid}/cmdline`, 'utf8').split('\0');
-if (!argv.includes(script)) throw Error();
-if (!probing && read('request.json').transaction !== transaction) throw Error();
+if (!argv.includes(script)) throw Error('worker process command mismatch');
+if (!probing && read('request.json').transaction !== transaction) throw Error('worker request changed during drain check');
 process.stdout.write(JSON.stringify({ready:true, version:receipt.version}));
 '''
 

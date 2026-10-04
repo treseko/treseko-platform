@@ -2,8 +2,9 @@
   "schema": 1,
   "components": {
     "backend": {"context": ".", "dockerfile": "backend/Dockerfile"},
-    "frontend": {"context": "frontend", "dockerfile": "frontend/Dockerfile"},
+    "frontend": {"context": "frontend", "dockerfile": "frontend/update.Dockerfile"},
     "engine": {"context": "engine", "dockerfile": "engine/Dockerfile"},
-    "automation_worker": {"context": "automation-worker", "dockerfile": "automation-worker/Dockerfile"}
+    "automation_worker": {"context": "automation-worker", "dockerfile": "automation-worker/Dockerfile"},
+    "plugin_runner": {"context": "plugin-runner", "dockerfile": "plugin-runner/Dockerfile"}
   }
 }

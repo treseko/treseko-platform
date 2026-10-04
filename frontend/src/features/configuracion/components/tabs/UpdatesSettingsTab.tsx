@@ -44,6 +44,9 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   const [reportingFailure, setReportingFailure] = useState(false)
   const [applyConfirmation, setApplyConfirmation] = useState(false)
   const statusPollingRef = useRef(false)
+  const updateErrorMessage = (error: any, fallback: string) => error?.message === 'atomic_update_coordinator_required'
+    ? t('configuracion.atomicUpdateRequiresInstaller')
+    : error?.message || fallback
 
   const load = async () => {
     setLoading(true)
@@ -139,7 +142,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
         'info',
       )
     } catch (error: any) {
-      showFeedback(t('configuracion.updatesTitle'), error?.message || t('configuracion.updateStartError'), 'danger')
+      showFeedback(t('configuracion.updatesTitle'), updateErrorMessage(error, t('configuracion.updateStartError')), 'danger')
     } finally {
       setApplyingPremium(false)
     }
@@ -178,7 +181,7 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
         payload.task_id)
       showFeedback(t('configuracion.restartConfirmed'), t('configuracion.restartConfirmedMessage'), 'info')
     } catch (error: any) {
-      showFeedback(t('configuracion.updatesTitle'), error?.message || t('configuracion.restartError'), 'danger')
+      showFeedback(t('configuracion.updatesTitle'), updateErrorMessage(error, t('configuracion.restartError')), 'danger')
     } finally {
       setRestartingPrepared(false)
     }

@@ -22,7 +22,15 @@ ENTRYPOINT_UPDATE_FAILED_FILE=""
 ENTRYPOINT_UPDATE_DIR=""
 ENTRYPOINT_UPDATE_TASK_ID=""
 ENTRYPOINT_UPDATE_VERSION=""
+ENTRYPOINT_UPDATE_WORKER_STAGED="false"
 AUTO_DB_ROLLBACK_ON_FAILURE="${TRESEKO_AUTO_DB_ROLLBACK_ON_MIGRATION_FAILURE:-false}"
+# Backend lanzado en segundo plano mientras se confirma la convergencia.
+BACKEND_PID=""
+# Motivo ultimo por el que la convergencia de componentes sigue pendiente.
+CONVERGENCE_REASON=""
+# Marcador leido por el historial de updates para distinguir un arranque
+# interrumpido de un arranque que esta aplicando un update en curso.
+CONVERGENCE_PENDING_FILE="$UPDATES_DIR/update-convergence-pending"
 
 migrate_instance_identity() {
   persistent_identity_file="${TRESEKO_INSTANCE_ID_FILE:-$UPDATES_DIR/instance_id}"
@@ -263,8 +271,104 @@ restore_database_backup() {
   } | psql "$pg_url"
 }
 
+# El Automation Worker solo puede consumir su marca de reinicio cuando su
+# heartbeat contra la API termina bien, y la API no puede responder mientras el
+# entrypoint aun no ha arrancado el backend. Por eso la convergencia del Worker
+# se confirma con el backend ya en marcha y todavia en mantenimiento: la
+# version instalada, la tarea aplicada y la baja de mantenimiento ocurren
+# despues de esa confirmacion, nunca antes.
+start_backend_background() {
+  echo "Iniciando backend en segundo plano para confirmar componentes."
+  uvicorn app.main:app --host 0.0.0.0 --port "$PORT" &
+  BACKEND_PID=$!
+  trap 'stop_backend_background; exit 143' TERM INT
+}
+
+stop_backend_background() {
+  if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo "Deteniendo backend en segundo plano."
+    kill -TERM "$BACKEND_PID" 2>/dev/null || true
+    wait "$BACKEND_PID" 2>/dev/null || true
+  fi
+  BACKEND_PID=""
+}
+
+serve_backend_background() {
+  echo "Backend en marcha; esperando proceso."
+  set +e
+  wait "$BACKEND_PID"
+  backend_status=$?
+  set -e
+  BACKEND_PID=""
+  exit "$backend_status"
+}
+
+wait_for_worker_restart_convergence() {
+  expected_version="$1"
+  timeout_seconds="${TRESEKO_UPDATE_WORKER_CONVERGENCE_TIMEOUT_SECONDS:-120}"
+  deadline=$(($(date +%s) + timeout_seconds))
+  echo "Esperando que el Automation Worker consuma su marca de reinicio..."
+  while [ -f "$WORKER_DIR/.treseko-update-restart" ]; do
+    if [ -n "$BACKEND_PID" ] && ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+      echo "El backend dejo de ejecutarse durante la convergencia del Worker." >&2
+      return 1
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "El Worker no consumio la marca de reinicio en ${timeout_seconds}s (¿hay trabajos activos?). La actualizacion no converge en Automation Worker." >&2
+      return 1
+    fi
+    sleep 2
+  done
+  if [ ! -f "$WORKER_DIR/VERSION" ] || [ "$(tr -d '[:space:]' < "$WORKER_DIR/VERSION")" != "$expected_version" ]; then
+    echo "El Worker reinicio con una VERSION distinta de ${expected_version}." >&2
+    return 1
+  fi
+  echo "Automation Worker convergio en ${expected_version}."
+}
+
+# El paquete de update firma y verifica su checksum antes de escribir estos
+# archivos. El manifiesto deja constancia de ese origen para que los entrypoints
+# de los componentes distingan un runtime instalado por la propia actualizacion
+# de un runtime divergente, en lugar de bloquear el arranque.
+write_runtime_manifest() {
+  target_dir="$1"
+  target_version="$2"
+  [ -d "$target_dir" ] || return 0
+  printf '{"schema": 1, "source": "legacy-payload", "version": "%s", "task_id": "%s", "applied_at": "%s"}\n' \
+    "$target_version" "${ENTRYPOINT_UPDATE_TASK_ID:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$target_dir/.treseko-runtime-manifest.json"
+}
+
+write_convergence_pending() {
+  if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" != "true" ]; then
+    return 0
+  fi
+  printf '{"schema": 1, "status": "applying", "task_id": "%s", "version": "%s"}\n' \
+    "${ENTRYPOINT_UPDATE_TASK_ID:-}" "${ENTRYPOINT_UPDATE_VERSION:-}" \
+    > "$CONVERGENCE_PENDING_FILE"
+}
+
+# Solo cuando migraciones y componentes convergieron se publica la version, se
+# marca la tarea aplicada y se levanta el mantenimiento. El orden es contrato:
+# la instalacion nunca comunica una release que todavia no esta completa.
+finalize_pending_update() {
+  commit_installed_version
+  mark_update_applied
+  maintenance_off
+  ENTRYPOINT_UPDATE_IN_PROGRESS="false"
+  rm -f "$CONVERGENCE_PENDING_FILE"
+  if [ -n "$ENTRYPOINT_UPDATE_FAILED_FILE" ]; then
+    rm -f "$ENTRYPOINT_UPDATE_FAILED_FILE"
+  fi
+}
+
 rollback_on_exit() {
   status="$?"
+  # Nunca restaurar codigo mientras el backend sigue corriendo, y limpiar el
+  # marcador para que el siguiente arranque vuelva a tratar la tarea como
+  # interrumpida si llego hasta aqui sin converger.
+  stop_backend_background
+  rm -f "$CONVERGENCE_PENDING_FILE"
   if [ "$status" -ne 0 ] && [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ]; then
     echo "Startup fallo durante un update preparado."
     if [ -n "$ENTRYPOINT_UPDATE_FAILED_FILE" ] && [ -n "$ENTRYPOINT_UPDATE_DIR" ]; then
@@ -346,12 +450,24 @@ PY
     return 1
   fi
 
+  # Validar todo el staging antes de activar mantenimiento o reemplazar runtime.
+  # El preflight usa solo la biblioteca estandar y protege instalaciones antiguas.
+  if [ -f "$update_dir/backend/app/services/update_package_preflight.py" ]; then
+    echo "Validando integridad del paquete antes de aplicar..."
+    PYTHONPATH="$update_dir/backend" python -m app.services.update_package_preflight --root "$update_dir"
+  else
+    echo "Paquete sin preflight de integridad; se rechaza antes de modificar la instalacion." >&2
+    return 1
+  fi
+
   maintenance_on
   ENTRYPOINT_UPDATE_IN_PROGRESS="true"
   ENTRYPOINT_UPDATE_FAILED_FILE="$failed_file"
   ENTRYPOINT_UPDATE_DIR="$update_dir"
   rm -f "$failed_file"
   backup_runtime_code
+  expected_payload_version="${ENTRYPOINT_UPDATE_VERSION:-$(cat "$update_dir/VERSION" 2>/dev/null || true)}"
+  write_convergence_pending
   echo "Aplicando update pendiente desde: $update_dir"
 
   if [ -d "$update_dir/backend/app" ]; then
@@ -377,10 +493,10 @@ PY
     chmod 755 "$APP_DIR/entrypoint.sh"
   fi
 
-  if [ -f "$update_dir/VERSION" ]; then
-    echo "  Actualizando version instalada..."
-    cp "$update_dir/VERSION" "$APP_DIR/VERSION"
-  fi
+  # La version instalada no se publica aqui: se confirma la ultima, despues de
+  # migrar y de converger todos los componentes (ver commit_installed_version).
+  # Adelantarla dejaba la instalacion comunicando una version que todavia no
+  # estaba completa en el resto de los modulos.
 
   if [ -d "$update_dir/backend/alembic/versions" ]; then
     echo "  Agregando migraciones..."
@@ -400,6 +516,7 @@ PY
     find "$update_dir/frontend/dist" -mindepth 1 -maxdepth 1 ! -name '.maintenance' ! -name '.treseko-update-fence' -exec cp -a {} "$FRONTEND_HTML_DIR/" \;
     expected_frontend_version="${ENTRYPOINT_UPDATE_VERSION:-$(cat "$update_dir/VERSION")}"
     validate_frontend_runtime "$expected_frontend_version"
+    write_runtime_manifest "$FRONTEND_HTML_DIR" "$expected_frontend_version"
   fi
 
   # Frontend es otro contenedor. La marca permite que su entrypoint cierre
@@ -419,6 +536,7 @@ PY
     # Engine corre con UID dedicado 10001. El backend aplica el update como
     # root, por lo que debe devolverle propiedad para que pueda consumir la
     # marca y reiniciarse.
+    write_runtime_manifest "$ENGINE_DIR" "$expected_payload_version"
     chown -R 10001:10001 "$ENGINE_DIR"
   fi
 
@@ -433,10 +551,12 @@ PY
     # releases anteriores requieren un reinicio manual unico para adoptar este
     # comportamiento, sin interrumpir ejecuciones en curso.
     : > "$WORKER_DIR/.treseko-update-restart"
+    write_runtime_manifest "$WORKER_DIR" "$expected_payload_version"
+    ENTRYPOINT_UPDATE_WORKER_STAGED="true"
   fi
 
   rm -f "$flag_file"
-  echo "Update pendiente aplicado; queda pendiente validar migraciones y health checks."
+  echo "Update pendiente aplicado; faltan migraciones, convergencia de componentes y confirmacion de version."
 }
 
 mark_update_applied() {
@@ -500,6 +620,7 @@ component_versions_converged() {
   expected_version="$1"
 
   if [ -z "$expected_version" ]; then
+    CONVERGENCE_REASON="falta la version esperada del update"
     echo "No se puede verificar la convergencia: falta la version esperada." >&2
     return 1
   fi
@@ -507,6 +628,7 @@ component_versions_converged() {
   # El frontend se sirve desde un volumen compartido, pero su proceso nginx
   # debe consumir la marca antes de considerar completado el update.
   if [ "${TRESEKO_DEPLOY_MODE:-docker}" = "docker" ] && [ -f "$FRONTEND_HTML_DIR/.treseko-update-restart" ]; then
+    CONVERGENCE_REASON="Frontend: nginx aun no consumo la marca de reinicio"
     return 1
   fi
   if ! FRONTEND_EXPECTED_VERSION="$expected_version" FRONTEND_HTML_DIR="$FRONTEND_HTML_DIR" python - <<'PY'
@@ -527,6 +649,7 @@ if str(metadata.get("version") or "").strip() != expected:
     raise SystemExit(1)
 PY
   then
+    CONVERGENCE_REASON="Frontend: VERSION o version.json distinto de ${expected_version}"
     return 1
   fi
 
@@ -547,24 +670,35 @@ except Exception:
     raise SystemExit(1)
 PY
   then
+    CONVERGENCE_REASON="Engine: /health no responde con la version ${expected_version}"
     return 1
   fi
   if [ -f "$ENGINE_DIR/.treseko-update-restart" ]; then
+    CONVERGENCE_REASON="Engine: el proceso aun no consumo la marca de reinicio"
     return 1
   fi
 
-  # Las instalaciones sin perfil automation no tienen worker que esperar. Si
-  # existe el token del runner, en cambio, la marca debe ser consumida por el
-  # proceso y el runtime debe contener la version esperada.
+  # La marca de reinicio del Worker se confirma fuera de esta funcion, una vez
+  # que el backend responde: su proceso solo la consume tras un heartbeat exitoso
+  # y, antes de arrancar la API, esa espera no puede terminar. Aqui solo se
+  # exige que el runtime instalado contenga la version esperada.
+  # Las instalaciones sin perfil automation no tienen worker que esperar.
   if [ -f "$WORKER_DIR/.runner-token" ]; then
-    if [ -f "$WORKER_DIR/.treseko-update-restart" ]; then
+    if [ ! -f "$WORKER_DIR/VERSION" ] || [ "$(tr -d '[:space:]' < "$WORKER_DIR/VERSION")" != "$expected_version" ]; then
+      CONVERGENCE_REASON="Automation Worker: VERSION distinto de ${expected_version}"
       return 1
     fi
+  elif [ "$ENTRYPOINT_UPDATE_WORKER_STAGED" = "true" ]; then
+    # El payload reescribio el runtime del worker. Aunque no haya proceso
+    # emparejado que consuma la marca, el codigo instalado debe ser el nuevo
+    # antes de dar la actualizacion por aplicada.
     if [ ! -f "$WORKER_DIR/VERSION" ] || [ "$(tr -d '[:space:]' < "$WORKER_DIR/VERSION")" != "$expected_version" ]; then
+      CONVERGENCE_REASON="Automation Worker: VERSION distinto de ${expected_version}"
       return 1
     fi
   fi
 
+  CONVERGENCE_REASON=""
   return 0
 }
 
@@ -573,20 +707,69 @@ wait_for_component_convergence() {
   timeout_seconds="${TRESEKO_UPDATE_COMPONENT_CONVERGENCE_TIMEOUT_SECONDS:-180}"
   started_at="$(date +%s)"
   deadline=$((started_at + timeout_seconds))
+  last_reason=""
 
   echo "Esperando convergencia de componentes en ${expected_version} (timeout ${timeout_seconds}s)."
   while :; do
     if component_versions_converged "$expected_version"; then
-      echo "Frontend, Engine y Worker convergieron en ${expected_version}."
+      # La marca de reinicio del Worker no puede consumirse antes de que el
+      # backend responda, asi que pre-arranque solo se confirma su VERSION y
+      # su reinicio se comprueba despues, con el backend ya en marcha.
+      if [ -f "$WORKER_DIR/.treseko-update-restart" ]; then
+        echo "Frontend y Engine convergieron en ${expected_version}; VERSION del Worker confirmada, reinicio del Worker pendiente."
+      else
+        echo "Frontend, Engine y Worker convergieron en ${expected_version}."
+      fi
       return 0
+    fi
+    if [ -n "$CONVERGENCE_REASON" ] && [ "$CONVERGENCE_REASON" != "$last_reason" ]; then
+      echo "Convergencia pendiente: $CONVERGENCE_REASON"
+      last_reason="$CONVERGENCE_REASON"
     fi
     now="$(date +%s)"
     if [ "$now" -ge "$deadline" ]; then
       echo "La actualizacion no convergio en todos los componentes antes del timeout." >&2
+      if [ -n "$CONVERGENCE_REASON" ]; then
+        echo "Componente pendiente: $CONVERGENCE_REASON" >&2
+      fi
       return 1
     fi
     sleep 2
   done
+}
+
+write_installed_version() {
+  target="$1"
+  staged_version_file="$ENTRYPOINT_UPDATE_DIR/VERSION"
+  mkdir -p "$(dirname "$target")"
+  if [ -r "$staged_version_file" ]; then
+    cp "$staged_version_file" "$target"
+  else
+    printf '%s\n' "$ENTRYPOINT_UPDATE_VERSION" > "$target"
+  fi
+  committed_version="$(tr -d '[:space:]' < "$target")"
+  if [ "$committed_version" != "$ENTRYPOINT_UPDATE_VERSION" ]; then
+    echo "Version instalada no confirmada en $target: '$committed_version' != '$ENTRYPOINT_UPDATE_VERSION'." >&2
+    return 1
+  fi
+}
+
+# La version instalada es la ultima pieza del update. Solo se publica cuando
+# las migraciones corrieron y todos los componentes convergieron, de modo que
+# la instalacion nunca comunica una release que todavia no esta completa. Si
+# algo falla antes, el rollback restaura el VERSION anterior sin haberlo
+# cambiado nunca.
+commit_installed_version() {
+  if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" != "true" ] || [ -z "$ENTRYPOINT_UPDATE_VERSION" ]; then
+    return 0
+  fi
+  write_installed_version "$APP_DIR/VERSION"
+  if [ -n "$VERSION_FILE" ] && [ "$VERSION_FILE" != "$APP_DIR/VERSION" ]; then
+    # Instalaciones systemd publican la version desde TRESEKO_VERSION_FILE,
+    # que queda fuera de APP_DIR. Ambos archivos deben quedar en la release.
+    write_installed_version "$VERSION_FILE"
+  fi
+  echo "Version instalada confirmada en $ENTRYPOINT_UPDATE_VERSION."
 }
 
 # A one-shot database participant must not consume the shared update request,
@@ -595,6 +778,8 @@ wait_for_component_convergence() {
 # creates a startup cycle. Failure remains nonzero for the caller to recover.
 if [ "${1:-}" = "migrate-only" ]; then
   installation_mode_gate migrate-only
+  # The update coordinator owns prepared packages. A migration-only process
+  # must ignore update-ready, even when its marker points to an invalid path.
   backup_database
   run_migrations
   echo "Migraciones listas; no se aplicaron ni finalizaron updates de componentes."
@@ -616,6 +801,14 @@ if [ "${1:-}" = "coordinated-serve" ]; then
   exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
 fi
 
+# Local atomic updates use this persistent runtime after host-owned migration.
+# It is safe both during candidate verification and after later container
+# restarts: never apply a staged package, rerun migrations or remove the fence.
+if [ "${1:-}" = "atomic-serve" ]; then
+  echo "Iniciando backend bajo control del coordinador atomico; sin migraciones ni cambios de barrera."
+  exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+fi
+
 installation_mode_gate legacy
 apply_pending_update
 backup_database
@@ -623,12 +816,26 @@ run_migrations
 if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ]; then
   wait_for_component_convergence "$ENTRYPOINT_UPDATE_VERSION"
 fi
-mark_update_applied
-maintenance_off
-ENTRYPOINT_UPDATE_IN_PROGRESS="false"
-if [ -n "$ENTRYPOINT_UPDATE_FAILED_FILE" ]; then
-  rm -f "$ENTRYPOINT_UPDATE_FAILED_FILE"
+
+# El Automation Worker emparejado solo consume su marca de reinicio cuando un
+# heartbeat contra la API termina bien, y la API no puede responder antes de
+# aqui. Esperar esa marca antes de arrancar el backend nunca termina: por eso
+# el backend sube primero, todavia con el mantenimiento activo, y la tarea se
+# finaliza recien confirmado el reinicio del Worker.
+if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ] \
+  && [ -f "$WORKER_DIR/.treseko-update-restart" ] \
+  && [ -f "$WORKER_DIR/.runner-token" ] \
+  && [ "${1:-}" != "seed-admin" ]; then
+  start_backend_background
+  if ! wait_for_worker_restart_convergence "$ENTRYPOINT_UPDATE_VERSION"; then
+    echo "La actualizacion no converge en Automation Worker; se revierte el update." >&2
+    exit 1
+  fi
+  finalize_pending_update
+  serve_backend_background
 fi
+
+finalize_pending_update
 
 if [ "${1:-}" = "seed-admin" ]; then
   shift

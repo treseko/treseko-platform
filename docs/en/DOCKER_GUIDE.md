@@ -3,9 +3,8 @@
 <!-- Language: en -->
 
 Compose separates the frontend, backend, PostgreSQL, Redis, Engine and worker.
-It also declares a plugin profile, but this public snapshot does not include the
-`plugin-runner` context. It uses `compose.production.env` and file-based
-secrets.
+The optional `plugins` profile adds an isolated plugin runner. It uses
+`compose.production.env` and file-based secrets.
 
 ## File-based secrets
 
@@ -27,7 +26,7 @@ Base services: `db`, `redis`, `migrator`, `backend`, `engine` and `frontend`.
 | Profile | Service | Use |
 |---|---|---|
 | automation | automation-worker | Classic automation and declarative API automation. |
-| plugins | plugin-runner declared in Compose | Not operational in this snapshot: the public package does not contain its build context. |
+| plugins | plugin-runner | Isolated plugin execution; no DB, Redis, secrets or Docker socket access. |
 
 The worker must be registered and pairing approved in **Automation → Workers**.
 Its token persists in `treseko_worker_runtime`.
@@ -70,6 +69,5 @@ docker compose -f docker-compose.prod.yml --env-file compose.production.env logs
 ```
 
 Review the migrator, backend and secret permissions before deleting data. The
-`plugins` profile is declared in Compose, but cannot be built from this package
-because the public `plugin-runner` context is missing; do not enable it as if it
-were operational.
+plugin runner starts only when the `plugins` profile is explicitly enabled; it
+stays on a private network and receives no application credentials.

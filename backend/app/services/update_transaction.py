@@ -179,12 +179,78 @@ class UpdateTransaction:
                 if not previous.is_file():
                     raise TransactionFailure("Previous transaction journal is unavailable")
                 status = json.loads(previous.read_text()).get("status")
-                if status not in {"complete", "rolled_back"}:
+                if status not in {"complete", "rolled_back", "aborted"}:
                     raise TransactionFailure("Another installation transaction needs recovery")
         self._save({"journal": self.path.name, "transaction": transaction}, path=active)
 
     def _save(self, state, *, path=None):
         save_json(path or self.path, state)
+
+    def abort_unmutated_preparation(self, transaction: str, reason: str) -> dict:
+        """Abort only a preparation whose participants prove they wrote no state."""
+        if (not isinstance(reason, str) or not reason.strip() or len(reason) > 200
+                or "\n" in reason or "\r" in reason):
+            raise ValueError("A short, single-line abort reason is required")
+        with self._lock():
+            if not self.path.is_file():
+                raise TransactionFailure("Preparation journal is unavailable")
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+            if state.get("id") != transaction:
+                raise TransactionFailure("Preparation journal belongs to another transaction")
+            if state.get("status") == "aborted":
+                return state
+            if state.get("status") not in {"preparing", "ingress_pending", "recovery_pending", "abort_pending"}:
+                raise TransactionFailure("Only a pre-mutation preparation can be aborted")
+            if state.get("decision") not in {None, "abort"} or state.get("sealed") is True:
+                raise TransactionFailure("A decided or sealed transaction cannot be preparation-aborted")
+            if set(state.get("participants", {})) != set(self.participants):
+                raise TransactionFailure("Preparation participant inventory changed")
+            for name, node in state["participants"].items():
+                if node.get("completed") or node.get("pending") not in {None, "prepare"}:
+                    raise TransactionFailure(f"Participant {name} has progressed beyond preparation")
+                checker = getattr(self.participants[name], "can_abort_unmutated", None)
+                if not callable(checker) or checker(transaction) is not True:
+                    raise TransactionFailure(f"Participant {name} cannot prove preparation was unmutated")
+            if set(state.get("gates", {})) != set(self.gates):
+                raise TransactionFailure("Preparation gate inventory changed")
+
+            state["decision"] = "abort"
+            state["abort_reason"] = reason.strip()
+            state["status"] = "abort_pending"
+            self._save(state)
+            for name, gate in self.gates.items():
+                info = state["gates"][name]
+                if info.get("state") == "open":
+                    self._assert_gate_open(state, name)
+                    continue
+                if info.get("pending") == "release":
+                    # Reconcile an uncertain release by retrying the same
+                    # idempotent gate action; never infer open from the host marker.
+                    gate.release(transaction)
+                    self._assert_gate_open(state, name)
+                    info.update(pending=None, state="open", sealed=False)
+                    self._save(state)
+                    continue
+                else:
+                    gate.assert_closed(transaction)
+                self._gate_call(state, name, "release")
+                self._assert_gate_open(state, name)
+            for node in state["participants"].values():
+                node["pending"] = None
+            state["sealed"] = False
+            state["status"] = "aborted"
+            self._save(state)
+            return state
+
+    def _assert_gate_open(self, state, name):
+        gate = self.gates[name]
+        checker = getattr(gate, "assert_open", None)
+        if callable(checker):
+            checker(state["id"])
+            return
+        probe = getattr(gate, "_probe", None)
+        if not callable(probe) or probe() != 204:
+            raise TransactionFailure("Ingress reopening unconfirmed")
 
     def _call(self, state, name, operation):
         node = state["participants"][name]
@@ -217,7 +283,7 @@ class UpdateTransaction:
             self._claim_installation(transaction)
             if self.path.exists():
                 state = json.loads(self.path.read_text())
-                terminal = state["status"] in {"complete", "rolled_back"}
+                terminal = state["status"] in {"complete", "rolled_back", "aborted"}
                 legacy_quiesce = "quiesce_order" not in state
                 # Legacy journals have no quiesce_order: their participant key
                 # order is not reliable because save_json sorts object keys.

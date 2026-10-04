@@ -15,26 +15,80 @@ read_bundle_version() {
   fi
 }
 
-version_is_newer() {
-  candidate="$1"
-  installed="$2"
-  [ -n "$candidate" ] || return 1
-  [ "$candidate" != "$installed" ] || return 1
-  [ "$(printf '%s\n%s\n' "$installed" "$candidate" | sort -V | tail -n 1)" = "$candidate" ]
+# backend/entrypoint.sh escribe este manifiesto en cada runtime que reemplaza,
+# despues de verificar la firma y el checksum del paquete. Su presencia
+# identifica un bundle instalado por la propia actualizacion de la instalacion,
+# no un bundle divergente con la imagen.
+payload_runtime_version() {
+  runtime_dir="$1"
+  manifest="$runtime_dir/.treseko-runtime-manifest.json"
+  [ -f "$manifest" ] || return 1
+  [ -r "$runtime_dir/VERSION" ] || return 1
+  manifest_source="$(sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+  manifest_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+  [ "$manifest_source" = "legacy-payload" ] || return 1
+  [ -n "$manifest_version" ] || return 1
+  [ "$manifest_version" = "$(tr -d '[:space:]' < "$runtime_dir/VERSION")" ] || return 1
+  printf '%s\n' "$manifest_version"
 }
 
 if [ -d "$IMAGE_DIST_DIR" ]; then
   image_version="$(read_bundle_version "$IMAGE_DIST_DIR")"
   installed_version="$(read_bundle_version "$FRONTEND_HTML_DIR")"
 
-  # El actualizador del backend escribe el volumen compartido directamente.
-  # Una imagen anterior nunca debe sobrescribir esa actualización al reiniciar.
-  if [ -z "$installed_version" ] || version_is_newer "$image_version" "$installed_version"; then
-    echo "Sincronizando frontend inicial de la imagen${image_version:+ ($image_version)}."
-    find "$FRONTEND_HTML_DIR" -mindepth 1 ! -name '.maintenance' ! -name 'maintenance.html' -exec rm -rf {} +
-    cp -a "$IMAGE_DIST_DIR/." "$FRONTEND_HTML_DIR/"
+  image_digest="$(cat "$IMAGE_DIST_DIR/.treseko-content-digest" 2>/dev/null || true)"
+  computed_image_digest="$(/usr/local/bin/treseko-hash-component-tree "$IMAGE_DIST_DIR")"
+  if [ -z "$image_digest" ] || [ "$image_digest" != "$computed_image_digest" ]; then
+    echo "El bundle frontend de la imagen no coincide con su digest." >&2
+    exit 1
+  fi
+
+  installed_digest="$(/usr/local/bin/treseko-hash-component-tree "$FRONTEND_HTML_DIR")"
+  if [ "$installed_digest" != "$image_digest" ]; then
+    installed_payload_version=""
+    if [ "${TRESEKO_ATOMIC_RUNTIME_SYNC:-0}" != "1" ]; then
+      installed_payload_version="$(payload_runtime_version "$FRONTEND_HTML_DIR" || true)"
+    fi
+    if [ -n "$installed_payload_version" ]; then
+      # El updater de la instalacion acaba de instalar este bundle en el
+      # volumen: el contenido instalado manda frente a la semilla de la imagen.
+      echo "Bundle frontend actualizado por el paquete de update ${installed_payload_version}; se conserva el contenido instalado."
+      printf '%s\n' "$installed_digest" > "$FRONTEND_HTML_DIR/.treseko-content-digest"
+    else
+      if [ "${TRESEKO_ATOMIC_RUNTIME_SYNC:-0}" != "1" ]; then
+        existing_bundle_file="$(find "$FRONTEND_HTML_DIR" -type f \
+          ! -name '.maintenance' ! -name '.treseko-update-fence' \
+          ! -name '.treseko-update-draining' ! -name '.treseko-update-restart' \
+          ! -name '.treseko-content-digest' ! -name 'maintenance.html' -print -quit)"
+        if [ -n "$installed_version" ] || [ -n "$existing_bundle_file" ]; then
+          echo "El contenido frontend no coincide con la imagen; requiere el coordinador atomico." >&2
+          exit 1
+        fi
+      fi
+
+      echo "Sincronizando bundle frontend por digest${image_version:+ ($image_version)}."
+      find "$FRONTEND_HTML_DIR" -mindepth 1 -maxdepth 1 \
+        ! -name '.maintenance' \
+        ! -name '.treseko-update-fence' \
+        ! -name '.treseko-update-draining' \
+        ! -name '.treseko-update-restart' \
+        ! -name 'maintenance.html' \
+        -exec rm -rf -- {} \;
+      find "$IMAGE_DIST_DIR" -mindepth 1 -maxdepth 1 \
+        ! -name '.maintenance' \
+        ! -name '.treseko-update-fence' \
+        ! -name '.treseko-update-draining' \
+        ! -name '.treseko-update-restart' \
+        ! -name 'maintenance.html' \
+        -exec cp -a -- {} "$FRONTEND_HTML_DIR"/ \;
+      installed_digest="$(/usr/local/bin/treseko-hash-component-tree "$FRONTEND_HTML_DIR")"
+      if [ "$installed_digest" != "$image_digest" ]; then
+        echo "El volumen frontend no coincide con el bundle candidato despues de sincronizar." >&2
+        exit 1
+      fi
+    fi
   else
-    echo "Conservando frontend instalado ($installed_version); la imagen contiene $image_version."
+    echo "Bundle frontend verificado por digest${installed_version:+ ($installed_version)}."
   fi
 fi
 

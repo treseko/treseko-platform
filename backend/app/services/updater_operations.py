@@ -2,7 +2,7 @@ import re
 
 from .updater import *
 from .updater import _utc_iso, _pg_dump_url
-from .update_installation_mode import require as require_installation_mode
+from .update_installation_mode import require as require_installation_mode, require_atomic_update_coordinator
 from .error_sanitizer import sanitize_external_error
 
 

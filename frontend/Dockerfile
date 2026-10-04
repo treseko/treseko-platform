@@ -9,15 +9,20 @@ RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime
 
+RUN rm -f /usr/share/nginx/html/50x.html
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY --from=build /app/dist /opt/treseko/frontend-dist
+COPY hash_component_tree.sh /usr/local/bin/treseko-hash-component-tree
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/treseko-hash-component-tree \
+    && /usr/local/bin/treseko-hash-component-tree /opt/treseko/frontend-dist \
+       > /opt/treseko/frontend-dist/.treseko-content-digest
 
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+  CMD test -s /var/run/nginx.pid && kill -0 "$(cat /var/run/nginx.pid)" && nginx -t >/dev/null
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -15,10 +15,10 @@ técnicas de menor alcance y nunca pegues tokens en casos o evidencia.
 
 ## plugin-runner
 
-El profile `plugins` está declarado en el Compose, pero el snapshot público
-actual no contiene el contexto de build de `plugin-runner`. Por eso no está
-operativo ni debe iniciarse desde este paquete. La existencia del perfil no
-implica soporte disponible para complementos de terceros.
+El profile `plugins` agrega el Plugin Runner aislado. En 1.0.4 solo acepta la
+invocación declarativa `junit_xml.import_results`; no ejecuta código arbitrario,
+WASM ni plugins de terceros. Se mantiene en una red dedicada, sin DB, Redis,
+secretos ni socket Docker.
 
 ## Portabilidad
 

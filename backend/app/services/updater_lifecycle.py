@@ -1,7 +1,7 @@
 from .updater import *
 from .updater import _pg_dump_url, _utc_iso
 from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeError, CoordinatedBridgeSettings
-from .update_installation_mode import require as require_installation_mode
+from .update_installation_mode import require as require_installation_mode, require_atomic_update_coordinator
 
 async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
                      *, download_manifest: dict[str, Any] | None = None) -> None:
@@ -30,7 +30,20 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
             timeout_seconds=30,
         )
 
-        package_url = normalized_manifest["package_url"]
+        # El manifest firmado del catalogo solo conserva la referencia opaca de
+        # Premium (treseko-update://...). El router resuelve el DownloadGrant y
+        # entrega la URL HTTPS utilizable en download_manifest. Descartarla aqui
+        # hace que httpx intente abrir la referencia opaca y falle con
+        # "Request URL has an unsupported protocol 'treseko-update://'".
+        resolved = dict(download_manifest or normalized_manifest)
+        if (
+            str(resolved.get("checksum_sha256") or "").strip().lower()
+            != str(normalized_manifest.get("checksum_sha256") or "").strip().lower()
+            or resolved.get("package_size_bytes") != normalized_manifest.get("package_size_bytes")
+            or not str(resolved.get("package_url") or "").strip()
+        ):
+            raise ValueError("El manifest de descarga no esta vinculado al manifest autorizado.")
+        package_url = str(resolved["package_url"])
         package_path = await self._with_step_timeout(
             self._download_package(package_url, checksum, task_id, state),
             "descarga del paquete",

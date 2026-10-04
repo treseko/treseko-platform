@@ -10,6 +10,7 @@ from ...database import get_db
 from ... import auth, crud, models, schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...services.updater import get_update_service
+from ...services.update_installation_mode import InstallationModeError
 from .system_support import (
     request_client_ip as _request_client_ip,
 )
@@ -37,6 +38,8 @@ async def restart_prepared_system_update(
 ):
     try:
         result = await _update_service().restart_prepared_update(task_id)
+    except InstallationModeError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await crud.create_audit_log(

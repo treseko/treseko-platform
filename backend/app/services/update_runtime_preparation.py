@@ -25,7 +25,7 @@ from .update_participant_package import stage_verified_package
 from .update_transaction import TransactionFailure
 
 SCHEMA = 1
-COMPONENTS = {"backend", "frontend", "engine", "automation_worker"}
+COMPONENTS = {"backend", "frontend", "engine", "automation_worker", "plugin_runner"}
 PLATFORMS = {"linux/amd64", "linux/arm64"}
 _TX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _STAGE = Callable[[Path, dict[str, Any], Path], Path]

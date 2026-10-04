@@ -1,8 +1,8 @@
 # Guía Docker
 
-El Compose separa frontend, backend, PostgreSQL, Redis, Engine y worker. También
-declara un perfil de complementos, pero este snapshot público no incluye el
-contexto `plugin-runner`. Usa compose.production.env y secretos por archivo.
+El Compose separa frontend, backend, PostgreSQL, Redis, Engine y worker. El
+perfil opcional `plugins` agrega un runner aislado para complementos. Usa
+compose.production.env y secretos por archivo.
 
 ## Secretos por archivo
 
@@ -24,7 +24,7 @@ Servicios base: db, redis, migrator, backend, engine y frontend.
 | Profile | Servicio | Uso |
 |---|---|---|
 | automation | automation-worker | Automatización clásica y API declarativa. |
-| plugins | plugin-runner declarado en Compose | No operativo en este snapshot: el paquete público no contiene su contexto de build. |
+| plugins | plugin-runner | Ejecución aislada de complementos; perfil opcional, sin acceso a DB, Redis, secretos ni socket Docker. |
 
 El worker debe registrarse y aprobar pairing en Automatización → Workers. Su
 token persiste en treseko_worker_runtime.
@@ -67,6 +67,5 @@ docker compose -f docker-compose.prod.yml --env-file compose.production.env logs
 ```
 
 Revisá migrator, backend y permisos de secretos antes de borrar datos. El
-profile `plugins` está declarado en el Compose, pero no puede construirse desde
-este paquete porque falta el contexto público de `plugin-runner`; no lo
-habilites como si fuera operativo.
+runner de complementos solo se inicia al habilitar explícitamente el profile
+`plugins`; permanece en una red privada y no recibe credenciales de la app.

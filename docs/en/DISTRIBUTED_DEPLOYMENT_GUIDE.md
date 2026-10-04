@@ -13,6 +13,7 @@ flowchart LR
   A --> B[(PostgreSQL + Redis)]
   A --> C[AI Engine]
   A --> D[Unified Automation Worker]
+  A --> P[Isolated Plugin Runner]
   C --> L[Authorized LLM]
   C --> T1[Chatbot under test]
   D --> T2[Web and APIs under test]
@@ -25,7 +26,7 @@ flowchart LR
 | C | AI Engine | Private. |
 | D | One or more Automation Workers and their browsers | Private; each requires pairing. |
 | L | Authorized LLM provider | Controlled outbound access according to its configuration. |
-| Optional P | Declared plugin profile, but not included in this public snapshot | Not operational from this package. |
+| P | Optional `plugins` profile; only the declarative `junit_xml.import_results` entrypoint is accepted in 1.0.4. | Private dedicated network; no DB, Redis, secrets or Docker socket. |
 
 The worker processes classic automation and declarative API automation.
 Community supports one worker. Adding workers requires the Premium
@@ -36,8 +37,7 @@ and have a compatible scope.
 
 - Use a private network or VPN.
 - Allow only the necessary connections.
-- Do not expose PostgreSQL, Redis, Engine or the worker. If a future
-  distribution adds the plugin runner, it must also remain isolated.
+- Do not expose PostgreSQL, Redis, Engine, worker or Plugin Runner.
 - Set `FRONTEND_PUBLIC_URL` to the real public origin.
 - Transfer secrets through protected files.
 

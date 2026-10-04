@@ -1,4 +1,5 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { UpdateMaintenanceState } from '../updateMaintenance'
 import { useI18n } from '../../../i18n'
 
@@ -9,8 +10,13 @@ type UpdateMaintenanceOverlayProps = {
 
 export function UpdateMaintenanceOverlay({ state, onRetry }: UpdateMaintenanceOverlayProps) {
   const { t } = useI18n()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
   if (!state.active && !state.timedOut) return null
-  const remainingSeconds = Math.max(0, Math.ceil((state.until - Date.now()) / 1000))
+  const remainingSeconds = Math.max(0, Math.ceil((state.until - now) / 1000))
   const remainingLabel = state.timedOut
     ? t('configuracion.timeoutShort')
     : remainingSeconds > 60

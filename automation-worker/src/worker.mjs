@@ -12,6 +12,7 @@ import { createArtifactRuntime } from "./artifact-runtime.mjs";
 import { createWorkerValues } from "./worker-values.mjs";
 import { createResultDelivery } from "./result-delivery.mjs";
 import { createUpdateAdmission } from "./update-admission.mjs";
+import { createUpdateMarker } from "./update-marker.mjs";
 import { createClaimIntent } from "./claim-intent.mjs";
 import { createLeaseHeartbeat } from "./lease-manager.mjs";
 import { buildHeartbeatPayload } from "./heartbeat-payload.mjs";
@@ -27,7 +28,6 @@ const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const envPath = path.join(ROOT_DIR, ".env");
-const restartMarkerPath = path.join(ROOT_DIR, ".treseko-update-restart"); const rollbackMarkerPath = path.join(ROOT_DIR, ".treseko-update-rollback");
 const RUN_ONCE = process.argv.includes("--once");
 const startedAt = Date.now();
 const STARTED_AT_ISO = new Date(startedAt).toISOString();
@@ -203,7 +203,7 @@ async function heartbeat(status = "ONLINE") {
       uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
     })),
   });
-  restartIfUpdateIsReady();
+  updateMarker.consumeIfReady();
 }
 
 const leaseHeartbeat = createLeaseHeartbeat({
@@ -212,17 +212,7 @@ const leaseHeartbeat = createLeaseHeartbeat({
   log: (_event, message) => console.warn(message),
 });
 
-function restartIfUpdateIsReady() {
-  if (activeJobs > 0 || fs.existsSync(rollbackMarkerPath) || !fs.existsSync(restartMarkerPath)) return;
-  console.info("Actualizacion del worker lista; reiniciando el proceso para cargarla.");
-  try {
-    fs.unlinkSync(restartMarkerPath);
-  } catch (error) {
-    console.error("No se pudo consumir la marca de actualizacion del worker:", error?.message || error);
-    return;
-  }
-  process.exit(0);
-}
+const updateMarker = createUpdateMarker({ directory: ROOT_DIR, getActiveJobs: () => activeJobs });
 
 const {
   getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
@@ -308,6 +298,8 @@ async function loop() {
 
   while (true) {
     try {
+      // No depender del heartbeat: la API puede estar inaccesible durante el update.
+      updateMarker.consumeIfReady();
       // Unpaired/idle workers can also acknowledge a safe stop. Pending results
       // must still go through normal delivery/lease handling before readiness.
       if (!claimIntent.pending() && activeJobs === 0 && resultDelivery.pendingFiles().length === 0

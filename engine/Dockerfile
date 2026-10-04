@@ -3,7 +3,7 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /engine
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl rsync \
     && rm -rf /var/lib/apt/lists/*
 
 ARG OPENCODE_VERSION=1.18.5
@@ -30,14 +30,17 @@ COPY package.json package-lock.json ./
 RUN npm ci && npx playwright install --with-deps chromium
 COPY . .
 COPY . /opt/treseko/engine-source
+COPY hash_component_tree.sh /usr/local/bin/treseko-hash-component-tree
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/treseko-hash-component-tree \
+    && /usr/local/bin/treseko-hash-component-tree /opt/treseko/engine-source \
+       > /opt/treseko/engine-source/.treseko-content-digest
 
 ENV NODE_ENV=production
 
 EXPOSE 3010
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=240s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/entrypoint.sh"]

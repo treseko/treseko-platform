@@ -12,9 +12,13 @@ from typing import Any, Mapping
 from .update_participant_commands import load_private_json
 
 SCHEMA = 1
-ROLES = frozenset({"backend", "frontend", "engine", "automation_worker", "db"})
+REQUIRED_ROLES = frozenset({"backend", "frontend", "engine", "automation_worker", "db"})
+OPTIONAL_ROLES = frozenset({"plugin_runner"})
+ROLES = REQUIRED_ROLES | OPTIONAL_ROLES
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 PERSISTENT_BINDING_ROOTS = (Path("/etc/treseko/update"), Path("/var/lib/treseko/update"))
+SYSTEMD_UNIT_ROOT = Path("/etc/systemd/system")
+SYSTEMD_HELPER_ROOT = Path("/usr/local/libexec")
 TEMPLATE_DIR = Path(__file__).resolve().parents[3] / "scripts" / "systemd"
 
 
@@ -73,7 +77,8 @@ def _digest(value: Any) -> str:
 
 
 def _roles(value: Any) -> dict[str, str]:
-    if not isinstance(value, Mapping) or set(value) != ROLES:
+    if (not isinstance(value, Mapping) or not REQUIRED_ROLES <= set(value)
+            or set(value) - ROLES):
         raise CutoverPreparationError("topology_roles_incomplete")
     result = {}
     for role, service in value.items():
@@ -113,6 +118,16 @@ def _config(config: Mapping[str, Any]) -> dict[str, Any]:
     binding_path = _absolute(fixed["binding_path"], "binding_path")
     if not any(binding_path == root / "installation-binding.json" for root in PERSISTENT_BINDING_ROOTS):
         raise CutoverPreparationError("binding_path_not_persistent")
+    binding_root = binding_path.parent
+    expected_targets = {
+        "compose_override_path": binding_root / "coordinated.override.yaml",
+        "systemd_service_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.service",
+        "systemd_timer_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.timer",
+        "systemd_wrapper_path": SYSTEMD_HELPER_ROOT / "treseko-update-spool-wrapper",
+    }
+    for key, expected_path in expected_targets.items():
+        if _absolute(fixed[key], key) != expected_path:
+            raise CutoverPreparationError(f"{key}_not_allowlisted")
     paths = {key: _absolute(fixed[key], key) for key in fixed_keys
              if key.endswith("_path") or key in {"request_inbox", "package_inbox", "report_dir",
                                                    "control_dir", "host_bridge_wrapper", "host_bridge_config"}}
@@ -192,7 +207,8 @@ def _render(value: Mapping[str, Any]) -> dict[str, str]:
     templates = {
         "treseko-update-spool.service": ("treseko-update-spool.service.in", {
             "@TRESEKO_UPDATE_BRIDGE_CONFIG@": str(fixed["host_bridge_config"]),
-            "@TRESEKO_UPDATE_BRIDGE_WRAPPER@": str(fixed["host_bridge_wrapper"])}),
+            "@TRESEKO_UPDATE_BRIDGE_WRAPPER@": str(fixed["systemd_wrapper_path"]),
+            "@TRESEKO_UPDATE_BRIDGE_HELPER@": str(fixed["host_bridge_wrapper"])}),
         "treseko-update-spool.timer": ("treseko-update-spool.timer.in", {}),
         "treseko-update-spool-wrapper.sh": ("treseko-update-spool-wrapper.sh.in", {
             "@TRESEKO_UPDATE_BRIDGE_HELPER@": str(fixed["host_bridge_wrapper"])})}
@@ -214,6 +230,20 @@ def _render(value: Mapping[str, Any]) -> dict[str, str]:
     return result
 
 
+def _install_plan(value: Mapping[str, Any]) -> dict[str, Any]:
+    fixed = value["fixed"]
+    entries = {
+        "installation-binding.json": (fixed["binding_path"], "0600"),
+        "compose.override.yaml": (fixed["compose_override_path"], "0640"),
+        "treseko-update-spool.service": (fixed["systemd_service_path"], "0644"),
+        "treseko-update-spool.timer": (fixed["systemd_timer_path"], "0644"),
+        "treseko-update-spool-wrapper.sh": (fixed["systemd_wrapper_path"], "0755"),
+    }
+    return {"schema": 1, "owner": "root",
+            "files": {name: {"target": target, "mode": mode, "owner": "root"}
+                      for name, (target, mode) in entries.items()}}
+
+
 def _systemd_quote(value: str) -> str:
     if any(char in value for char in ("\n", "\r", "%", "\\")):
         raise CutoverPreparationError("rendered_path_unsafe")
@@ -223,19 +253,21 @@ def _systemd_quote(value: str) -> str:
 def prepare_cutover(config: Mapping[str, Any], output_dir: Path) -> dict[str, Any]:
     value = _config(config)
     _preconditions(value)
+    rendered = _render(value)
+    install_plan = _install_plan(value)
     output_dir = _absolute(str(output_dir), "output_dir")
     if output_dir.exists():
         raise CutoverPreparationError("output_dir_exists")
     output_dir.mkdir(mode=0o700, parents=False)
-    rendered = _render(value)
     for name, content in rendered.items():
         path = output_dir / name
         path.write_text(content)
-        path.chmod(0o600 if name == "installation-binding.json" else 0o640)
+        path.chmod(int(install_plan["files"][name]["mode"], 8))
     bundle = {"schema": 1, "kind": "offline_cutover_bundle", "operational": False,
               "installation_id": value["installation_id"], "scope": value["topology"]["scope"],
               "compose_project": value["topology"]["project"], "services": value["services"],
               "binding_target": str(value["fixed"]["binding_path"]),
+              "install_plan": install_plan,
               "artifacts": {name: _digest(content) for name, content in rendered.items()}}
     (output_dir / "bundle.json").write_text(json.dumps(bundle, sort_keys=True, indent=2) + "\n")
     (output_dir / "bundle.json").chmod(0o600)

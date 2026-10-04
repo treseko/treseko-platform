@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules
+build
+coverage
+logs
+*.log
+*.jsonl
+__pycache__
+*.pyc

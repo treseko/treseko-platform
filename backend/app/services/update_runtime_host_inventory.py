@@ -21,7 +21,8 @@ from .update_transaction import TransactionFailure
 from .update_transport import IDENTIFIER
 
 SCHEMA = 1
-COMPONENTS = frozenset({"backend", "frontend", "engine", "automation_worker"})
+COMPONENTS = frozenset({"backend", "frontend", "engine", "automation_worker", "plugin_runner"})
+REQUIRED_COMPONENTS = frozenset({"backend", "frontend", "engine", "automation_worker"})
 PLATFORMS = frozenset({"linux/amd64", "linux/arm64"})
 MAX_TIMEOUT = 3600
 
@@ -190,8 +191,8 @@ def _validate_config(config: Mapping[str, Any]) -> None:
                 or not math.isfinite(timeout) or not 0 < timeout <= MAX_TIMEOUT):
             raise ValueError("Runtime host timeout is invalid")
         declared.extend(components)
-    if set(declared) != COMPONENTS:
-        raise ValueError("Runtime host components must cover every required component")
+    if not REQUIRED_COMPONENTS <= set(declared) or set(declared) - COMPONENTS:
+        raise ValueError("Runtime host components must cover every required component and only supported optional components")
 
 
 def _verify_manifest(manifest: Mapping[str, Any]) -> None:

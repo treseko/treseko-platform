@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import re
 import shlex
@@ -135,6 +136,101 @@ def validate(config: Mapping[str, Any], root: Path, helper_names=None) -> dict[s
         "network": config["network"],
         "mounts": _mounts(config["mounts"], root, helper_names),
     }
+
+
+def validate_active_compose_state(participant_config: Path, root: Path,
+                                  launcher_config: Mapping[str, Any]) -> None:
+    """Require every Compose participant to have an isolated, mounted live model.
+
+    The participant router contains only operator-owned file paths. Resolve those
+    paths through the installation root-prefix, then validate the actual private
+    participant configs and their initial Compose models before installing the
+    helper wrappers. PostgreSQL has its own runtime contract and is intentionally
+    excluded.
+    """
+    root = root.resolve()
+
+    def private_json(path: Path, label: str, *, max_bytes: int = 1024 * 1024) -> dict[str, Any]:
+        try:
+            info = path.lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                    or info.st_mode & 0o077 or info.st_size > max_bytes):
+                raise ValueError(f"Unsafe private {label}")
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise ValueError(f"Invalid private {label}") from exc
+        if not isinstance(value, dict) or value.get("schema") != 1:
+            raise ValueError(f"Invalid private {label}")
+        return value
+
+    def rooted_path(raw: Any, label: str) -> Path:
+        path = _path(raw, label)
+        candidate = (root / str(path).lstrip("/")).resolve()
+        if candidate != root and root not in candidate.parents:
+            raise ValueError(f"{label} escapes the installation root")
+        current = root
+        for part in candidate.relative_to(root).parts:
+            current /= part
+            if current.is_symlink():
+                raise ValueError(f"{label} contains a symlink")
+        return candidate
+
+    routes = private_json(participant_config, "participant router")
+    if "participants" in routes:
+        if set(routes) != {"schema", "participants"} or not isinstance(routes["participants"], dict) or not routes["participants"]:
+            raise ValueError("Invalid private participant router")
+        mounts = launcher_config.get("mounts", {}).get("participant", [])
+        readonly_mounts = {item["source"] for item in mounts if item.get("mode") == "ro"}
+        if any(not isinstance(value, str) or value not in readonly_mounts
+               for value in routes["participants"].values()):
+            raise ValueError("Routed participant configs must be mounted ro in the participant helper")
+        participant_files = [rooted_path(value, "participant config")
+                             for value in routes["participants"].values()]
+    else:
+        participant_files = [participant_config]
+
+    mounts = launcher_config.get("mounts", {}).get("participant", [])
+    writable_mounts = [Path(item["source"]) for item in mounts if item.get("mode") == "rw"]
+    active_files: set[str] = set()
+    for config_path in participant_files:
+        participant = private_json(config_path, "participant config")
+        runtime = participant.get("runtime")
+        if not isinstance(runtime, dict) or runtime.get("type") != "docker-compose":
+            continue
+        active = _path(runtime.get("active_compose_file"), "active Compose state file")
+        active_key = str(active)
+        if active_key in active_files:
+            raise ValueError("Compose participants cannot share an active model")
+        active_files.add(active_key)
+        active_mount = any(active == mount or active.parent == mount for mount in writable_mounts)
+        if not active_mount:
+            raise ValueError("Active Compose state must be mounted rw in the participant helper")
+        active_host_path = rooted_path(active_key, "active Compose state file")
+        service = runtime.get("service")
+        if active_host_path.exists():
+            try:
+                info = active_host_path.lstat()
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                        or info.st_mode & 0o077 or info.st_size > 16 * 1024 * 1024):
+                    raise ValueError("Unsafe active Compose state file")
+                model = json.loads(active_host_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, UnicodeError) as exc:
+                raise ValueError("Invalid active Compose state file") from exc
+            if (not isinstance(model, dict) or not isinstance(model.get("services"), dict)
+                    or not isinstance(service, str) or not isinstance(model["services"].get(service), dict)):
+                raise ValueError("Active Compose state does not define its configured service")
+        else:
+            parent = active_host_path.parent
+            runtime_parent = active.parent
+            if runtime_parent not in writable_mounts:
+                raise ValueError("Missing active Compose files require a writable directory mount")
+            try:
+                info = parent.lstat()
+            except OSError as exc:
+                raise ValueError("Active Compose state directory is unavailable") from exc
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                    or info.st_mode & 0o077):
+                raise ValueError("Unsafe active Compose state directory")
 
 
 def binding(config: Mapping[str, Any], configs: Mapping[str, Path], config_hashes: Mapping[str, str],

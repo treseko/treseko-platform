@@ -1,4 +1,4 @@
-"""Host-owned admission bridge for the Engine 1.0.3 update protocol.
+"""Host-owned admission bridge for Engine update admission protocol v1.
 
 Docker is used only to inventory the pinned container and to run a read-only
 authenticated HTTP probe inside it.  Marker and tombstone mutations happen on

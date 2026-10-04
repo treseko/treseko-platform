@@ -6,7 +6,8 @@ param(
   [switch]$PurgeData,
   [switch]$ConfirmPurge,
   [switch]$Reset,
-  [switch]$ConfirmReset
+  [switch]$ConfirmReset,
+  [string]$InstallRoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,20 +65,67 @@ if ($LASTEXITCODE -ne 0) {
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Resolve-Path (Join-Path $ScriptDir "..")
-$LocalDir = Join-Path $RepoRoot ".treseko-local"
+$InstallRoot = if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $RepoRoot.Path } else { (Resolve-Path -LiteralPath $InstallRoot).Path }
+$LocalDir = Join-Path $InstallRoot ".treseko-local"
 $SecretsDir = Join-Path $LocalDir "secrets"
-$EnvFile = Join-Path $RepoRoot "compose.production.env"
+$EnvFile = Join-Path $InstallRoot "compose.production.env"
 $AdminEmail = "admin@qa.local"
+
+$ProjectName = $null
+if ($Update -or $Uninstall -or $Reset) {
+  $ProjectNameLine = Get-Content -LiteralPath $EnvFile | Where-Object { $_ -match '^TRESEKO_COMPOSE_PROJECT_NAME=' } | Select-Object -Last 1
+  if ($ProjectNameLine) { $ProjectName = $ProjectNameLine.Substring('TRESEKO_COMPOSE_PROJECT_NAME='.Length) }
+  if ([string]::IsNullOrWhiteSpace($ProjectName)) {
+    $composeProjectsJson = & docker compose ls --all --format json
+    Assert-LastExitCode "La consulta de proyectos Compose existentes"
+    $composeProjects = ($composeProjectsJson | Out-String) | ConvertFrom-Json
+    $oldComposePath = [System.IO.Path]::GetFullPath((Join-Path $InstallRoot "docker-compose.prod.yml"))
+    $matches = @($composeProjects | Where-Object {
+      $project = $_
+      @(([string]$project.ConfigFiles).Split(',')) | Where-Object {
+        [string]::Equals([System.IO.Path]::GetFullPath($_.Trim()), $oldComposePath, [System.StringComparison]::OrdinalIgnoreCase)
+      } | Select-Object -First 1
+    } | Select-Object -ExpandProperty Name -Unique)
+    if ($matches.Count -eq 1) { $ProjectName = [string]$matches[0] }
+  }
+  if ($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]*$') {
+    throw "No se pudo identificar sin ambiguedad el proyecto Compose existente; se cancela para evitar crear volumenes paralelos."
+  }
+  if ($Update -and -not $ProjectNameLine) {
+    $envItem = Get-Item -LiteralPath $EnvFile -Force
+    if ($envItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+      throw "El archivo de ambiente no puede ser un enlace simbolico."
+    }
+    Add-Content -LiteralPath $EnvFile -Value "TRESEKO_COMPOSE_PROJECT_NAME=$ProjectName" -Encoding ASCII
+  }
+}
 
 function Invoke-Compose {
   param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
-  & docker compose -f docker-compose.prod.yml --env-file compose.production.env @Arguments
-  Assert-LastExitCode "Docker Compose"
+  $composePreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell 5.1 promotes native stderr (including Compose
+    # progress) to ErrorRecord objects. Capture it without Stop aborting before
+    # the real native exit code can be checked.
+    $ErrorActionPreference = "Continue"
+    if ($ProjectName) {
+      $composeOutput = & docker compose --project-directory $RepoRoot.Path -p $ProjectName -f (Join-Path $RepoRoot.Path "docker-compose.prod.yml") --env-file $EnvFile @Arguments 2>&1
+    } else {
+      $composeOutput = & docker compose -f (Join-Path $RepoRoot.Path "docker-compose.prod.yml") --env-file $EnvFile @Arguments 2>&1
+    }
+    $composeExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $composePreference
+  }
+  foreach ($line in $composeOutput) { Write-Host $line }
+  if ($composeExitCode -ne 0) {
+    throw "Docker Compose fallo con codigo $composeExitCode."
+  }
 }
 
 function Test-RecognizedInstallation {
   if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) { return $false }
-  if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot "docker-compose.prod.yml") -PathType Leaf)) { return $false }
+  if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot "docker-compose.prod.yml") -PathType Leaf)) { return $false }
   if (-not (Test-Path -LiteralPath $SecretsDir -PathType Container)) { return $false }
   foreach ($name in @("db-password", "database-url", "secret-key", "ai-credentials-master-key", "ai-engine-internal-token", "admin-password")) {
     if (-not (Test-Path -LiteralPath (Join-Path $SecretsDir $name) -PathType Leaf)) { return $false }
@@ -86,7 +134,7 @@ function Test-RecognizedInstallation {
 }
 
 function Assert-PurgePaths {
-  $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('\', '/')
+  $root = (Resolve-Path -LiteralPath $InstallRoot).Path.TrimEnd('\', '/')
   $local = [System.IO.Path]::GetFullPath($LocalDir).TrimEnd('\', '/')
   $env = [System.IO.Path]::GetFullPath($EnvFile)
   if ($local -ne "$root$([System.IO.Path]::DirectorySeparatorChar).treseko-local") { throw "Ruta de purga insegura: $LocalDir" }
@@ -97,13 +145,13 @@ if (($Update -or $Uninstall) -and -not (Test-RecognizedInstallation)) {
   throw "No existe $EnvFile; no se puede actualizar o desinstalar sin la configuracion existente."
 }
 
-Push-Location $RepoRoot
+Push-Location $RepoRoot.Path
 try {
   if ($Uninstall) {
     if ($PurgeData) {
       Assert-PurgePaths
       Write-Host "PURGA: deteniendo contenedores y eliminando volumenes y configuracion local de $RepoRoot."
-      Invoke-Compose down -v --remove-orphans
+      Invoke-Compose down '-v' --remove-orphans
     } else {
       Write-Host "Desinstalacion conservadora: se conservan volumenes y configuracion."
       Invoke-Compose down --remove-orphans
@@ -115,11 +163,21 @@ try {
     exit 0
   }
   if ($Update) {
-    Write-Host "Actualizando con compose.production.env y secretos existentes..."
-    Invoke-Compose build
-    Invoke-Compose up -d db redis
-    Invoke-Compose run --rm migrator
-    Invoke-Compose up -d backend engine frontend
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if (-not $pythonCommand -and -not $pythonLauncher) {
+      throw "Falta Python 3 para ejecutar la actualizacion atomica (comando python o launcher py)."
+    }
+    $expectedVersion = (Get-Content -Raw -Path (Join-Path $RepoRoot "VERSION")).Trim()
+    $atomicUpdateScript = Join-Path $RepoRoot.Path "scripts/atomic_local_update.py"
+    if ($pythonCommand) {
+      & $pythonCommand.Source $atomicUpdateScript --docker (Get-Command docker).Source --project $ProjectName `
+        --candidate-root $RepoRoot.Path --install-root $InstallRoot --env-file $EnvFile --version $expectedVersion
+    } else {
+      & $pythonLauncher.Source -3 $atomicUpdateScript --docker (Get-Command docker).Source --project $ProjectName `
+        --candidate-root $RepoRoot.Path --install-root $InstallRoot --env-file $EnvFile --version $expectedVersion
+    }
+    Assert-LastExitCode "La actualizacion atomica"
     exit 0
   }
 } finally {
@@ -131,7 +189,7 @@ if ($Reset -and (Test-RecognizedInstallation)) {
   Push-Location $RepoRoot
   try {
     Write-Host "Reiniciando entorno local y volumenes..."
-    Invoke-Compose down -v --remove-orphans
+    Invoke-Compose down '-v' --remove-orphans
   } finally {
     Pop-Location
   }
@@ -185,22 +243,31 @@ AUTO_BACKUP_ENABLED=true
 LOG_LEVEL=INFO
 "@ | Set-Content -Encoding UTF8 -Path $EnvFile
 
-Push-Location $RepoRoot
+if ([string]::IsNullOrWhiteSpace($ProjectName)) {
+  $newConfigJson = & docker compose --project-directory $RepoRoot.Path -f (Join-Path $RepoRoot.Path "docker-compose.prod.yml") --env-file $EnvFile config --format json
+  Assert-LastExitCode "La identidad Compose de la nueva instalacion"
+  $newConfig = ($newConfigJson | Out-String) | ConvertFrom-Json
+  $ProjectName = [string]$newConfig.name
+  if ($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]*$') { throw "Docker Compose devolvio una identidad invalida para la nueva instalacion." }
+  Add-Content -LiteralPath $EnvFile -Value "TRESEKO_COMPOSE_PROJECT_NAME=$ProjectName" -Encoding ASCII
+}
+
+Push-Location $RepoRoot.Path
 try {
   if ($Reset) {
     Write-Host "Reiniciando entorno local y volumenes..."
-    Invoke-Compose down -v --remove-orphans
+    Invoke-Compose down '-v' --remove-orphans
   }
 
   Write-Host "Construyendo y levantando Treseko local..."
   Invoke-Compose build
-  Invoke-Compose up -d db redis
+  Invoke-Compose up '-d' db redis
   Invoke-Compose run --rm migrator
   Get-Content -Raw -Path $AdminPasswordFile |
     docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm -T `
       --entrypoint python backend /app/seed_admin.py --password-stdin
   Assert-LastExitCode "La creacion del administrador inicial"
-  Invoke-Compose up -d backend engine frontend
+  Invoke-Compose up '-d' backend engine frontend
   Assert-LastExitCode "El arranque de backend, Engine y frontend"
 
   if ($WithDemo) {

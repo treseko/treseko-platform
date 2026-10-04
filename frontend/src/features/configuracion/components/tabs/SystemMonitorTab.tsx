@@ -4,6 +4,7 @@ import { Activity, Clock, Copy, Cpu, Database, HardDrive, Monitor, RefreshCw, Ro
 import { dateTimeMs, formatDateTime } from '../../../../shared/utils/dateTime'
 import { fetchSystemMonitorSummary, type FetchWithAuth, type SystemMonitorComponent, type SystemMonitorSummary, type SystemMonitorWorker } from '../../api/configuracionApi'
 import { useI18n } from '../../../../i18n'
+import { systemMonitorDetailLabel, systemStatusLabel } from '../../updatePresentation'
 
 type SystemMonitorTabProps = {
   fetchWithAuth: FetchWithAuth
@@ -108,7 +109,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
                   <div className="small text-muted">{t('configuracion.systemMonitorAvailability')}</div>
                   <div className="display-6 fw-bold lh-1">{summary?.uptime_percent ?? 0}%</div>
                 </div>
-                <Badge bg={statusVariant(summary?.overall_status || 'OFFLINE')}>{summary?.overall_status || t('configuracion.systemMonitorLoadingStatus')}</Badge>
+                <Badge bg={statusVariant(summary?.overall_status || 'OFFLINE')}>{summary?.overall_status ? systemStatusLabel(summary.overall_status, t) : t('configuracion.systemMonitorLoadingStatus')}</Badge>
               </div>
               <ProgressBar now={summary?.uptime_percent || 0} variant={summary?.overall_status === 'ONLINE' ? 'success' : 'warning'} style={{ height: 8 }} />
               <div className="small text-muted mt-2">
@@ -118,10 +119,10 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
           </Col>
           <Col lg={8}>
             <Row className="g-3 h-100">
-              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemMonitorOnline')}</div><div className="h4 text-success mb-0">{totals.online}</div></div></Col>
+              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemStatusOnline')}</div><div className="h4 text-success mb-0">{totals.online}</div></div></Col>
               <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemMonitorAttention')}</div><div className="h4 text-warning mb-0">{totals.degraded}</div></div></Col>
-              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemMonitorOffline')}</div><div className="h4 text-danger mb-0">{totals.offline}</div></div></Col>
-              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemMonitorWorkersOnline')}</div><div className="h4 text-primary mb-0">{totals.workersOnline}</div></div></Col>
+              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemStatusOffline')}</div><div className="h4 text-danger mb-0">{totals.offline}</div></div></Col>
+              <Col sm={3}><div className="border rounded-3 p-3 bg-light h-100"><div className="small text-muted">{t('configuracion.systemMonitorWorkersOnlineLabel')}</div><div className="h4 text-primary mb-0">{totals.workersOnline}</div></div></Col>
             </Row>
           </Col>
         </Row>
@@ -147,11 +148,11 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
                     <div className="fw-bold d-flex align-items-center gap-2"><Icon size={16} /> {component.name}</div>
                     <div className="small text-muted">{component.type}</div>
                   </td>
-                  <td><Badge bg={statusVariant(component.status)}>{component.status}</Badge></td>
+                  <td><Badge bg={statusVariant(component.status)}>{systemStatusLabel(component.status, t)}</Badge></td>
                   <td className="small fw-semibold">{component.version || t('configuracion.systemMonitorNoData')}</td>
                   <td className="small text-break">{component.target || t('configuracion.systemMonitorNoData')}</td>
                   <td className="small">{component.latency_ms ?? 0} ms</td>
-                  <td className="small" style={{ minWidth: 220 }}>{component.detail || t('configuracion.systemMonitorNoDetail')}</td>
+                  <td className="small" style={{ minWidth: 220 }}>{systemMonitorDetailLabel(component.detail || t('configuracion.systemMonitorNoDetail'), t)}</td>
                   <td className="text-end">
                     <Button
                       variant="outline-secondary"
@@ -200,7 +201,7 @@ export function SystemMonitorTab({ fetchWithAuth, showFeedback, copyToClipboard 
                     <div className="small text-muted">{worker.type} · {worker.runner_id.slice(0, 8)} · PID {worker.pid || t('configuracion.systemMonitorNoData')}</div>
                     <div className="small text-muted">{worker.tags.join(', ') || t('configuracion.systemMonitorNoTags')}</div>
                   </td>
-                  <td><Badge bg={statusVariant(worker.status)}>{worker.status}</Badge></td>
+                  <td><Badge bg={statusVariant(worker.status)}>{systemStatusLabel(worker.status, t)}</Badge></td>
                   <td className="small fw-semibold">{worker.version || worker.capabilities?.worker_version || worker.capabilities?.component_version || t('configuracion.systemMonitorNoData')}</td>
                   <td className="small">
                     <div>{worker.hostname || t('configuracion.systemMonitorHostNotReported')}</div>

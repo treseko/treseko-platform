@@ -17,10 +17,10 @@ technical accounts and never paste tokens into cases or evidence.
 
 ## plugin-runner
 
-The `plugins` profile is declared in Compose, but the current public snapshot
-does not contain the `plugin-runner` build context. It is therefore not
-operational and must not be started from this package. The existence of the
-profile does not imply support for third-party plugins.
+The `plugins` profile adds the isolated Plugin Runner. In 1.0.4 it accepts only
+the declarative `junit_xml.import_results` invocation; it does not execute
+arbitrary code, WASM or third-party plugins. It has a dedicated network with no
+DB, Redis, secrets or Docker socket access.
 
 ## Portability
 

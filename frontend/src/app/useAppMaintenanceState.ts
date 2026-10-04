@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { API_BASE } from "./constants";
-import { UPDATE_MAINTENANCE_EVENT, announceUpdateMaintenance, clearUpdateMaintenanceSignal, isTerminalUpdateStatus, readUpdateMaintenanceSignal, updateMaintenanceConnectionState } from "../features/configuracion/updateMaintenance";
+import { UPDATE_MAINTENANCE_EVENT, announceUpdateMaintenance, clearUpdateMaintenanceSignal, isTerminalUpdateStatus, readUpdateMaintenanceSignal, shouldRenewUpdateMaintenance, updateMaintenanceConnectionState } from "../features/configuracion/updateMaintenance";
 export function useAppMaintenanceState({ options }: { options: any }): void {
   const { fetchWithAuth, updateMaintenanceState, setUpdateMaintenanceState, t } = options;
   const pollingRef = useRef(false);
@@ -75,6 +75,16 @@ export function useAppMaintenanceState({ options }: { options: any }): void {
         }
         if (data?.status === "restarting") {
           if (cancelled) {
+            pollingRef.current = false;
+            return;
+          }
+          if (!shouldRenewUpdateMaintenance(activeSignal)) {
+            setUpdateMaintenanceState(
+              updateMaintenanceConnectionState({
+                lastCheckedAt: Date.now(),
+                message: t('configuracion.maintenanceStillRestarting'),
+              }),
+            );
             pollingRef.current = false;
             return;
           }

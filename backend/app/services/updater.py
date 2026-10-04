@@ -273,6 +273,7 @@ UpdateService._update_state = _updater_history._update_state
 UpdateService._append_event = _updater_history._append_event
 UpdateService._load_history = _updater_history._load_history
 UpdateService._read_applied_update_task_id = _updater_history._read_applied_update_task_id
+UpdateService._read_convergence_pending_task_id = _updater_history._read_convergence_pending_task_id
 UpdateService._persist_history = _updater_history._persist_history
 UpdateService._schedule_db_history_persist = _updater_history._schedule_db_history_persist
 UpdateService._persist_db_history_snapshot = _updater_history._persist_db_history_snapshot

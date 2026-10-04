@@ -16,6 +16,7 @@ flowchart LR
   B --> E[Motor IA]
   W[Automation Worker unificado] -->|polling y resultados| B
   B --> H[Runner HTTP declarativo]
+  B -->|contrato interno| PR[Plugin Runner aislado]
   E --> L[Proveedor LLM]
   E --> C[Chatbot bajo prueba]
   W --> S[Web y APIs bajo prueba]
@@ -30,11 +31,10 @@ flowchart LR
 | Redis | Coordinación y colas. | Sin puerto público. |
 | Motor IA | Workflows de generación y evaluación. | Privada. |
 | Automation Worker | Automatización clásica y API declarativa; toma jobs por polling y devuelve resultados. | Privada; requiere pairing. |
-| plugin-runner | Perfil declarado para complementos aislados; no está incluido en este snapshot público. | No operativo desde este paquete. |
+| Plugin Runner | Acepta el entrypoint declarativo `junit_xml.import_results`; no ejecuta código arbitrario ni WASM. | Profile `plugins`, red privada aislada; sin DB, Redis, secretos ni socket Docker. |
 
-El worker usa el profile automation. El profile plugins está declarado en el
-Compose, pero este snapshot público no contiene el contexto `plugin-runner`;
-no se debe iniciar ni considerar operativo desde este paquete.
+El worker usa el profile `automation`. El profile `plugins` es opcional y solo
+debe habilitarse cuando la instalación tenga complementos configurados.
 
 ## Ejecuciones
 
@@ -62,9 +62,8 @@ enlaces compartidos siguen RBAC.
 
 ## Seguridad
 
-- PostgreSQL, Redis, Engine y worker permanecen en red privada. Si se incorpora
-  un runner de complementos en una distribución futura, también deberá quedar
-  aislado en red privada.
+- PostgreSQL, Redis, Engine, worker y Plugin Runner permanecen en redes
+  privadas; Plugin Runner tiene una red dedicada sin acceso a datos internos.
 - Inyectá credenciales mediante archivos de secretos, nunca en Git o frontend.
 - El backend evalúa capability, nivel y alcance organización/proyecto.
 - Respaldá PostgreSQL y adjuntos antes de actualizar.

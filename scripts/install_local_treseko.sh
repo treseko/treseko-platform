@@ -12,6 +12,7 @@ Opciones:
   --http-port PUERTO   Puerto local del frontend. Default: 9095
   --with-demo          Carga datos demo despues de crear el admin.
   --update             Actualiza una instalacion existente sin regenerar nada.
+  --install-root RUTA  Reutiliza config/secretos de una instalacion ya existente.
   --uninstall          Detiene y elimina contenedores/redes, conservando datos.
   --purge-data         Con --uninstall, elimina tambien volumenes y config local.
   --confirm-purge      Confirmacion no interactiva obligatoria para --purge-data.
@@ -33,6 +34,7 @@ UNINSTALL="false"
 PURGE_DATA="false"
 CONFIRM_PURGE="false"
 CONFIRM_RESET="false"
+INSTALL_ROOT_OVERRIDE=""
 ADMIN_EMAIL="admin@qa.local"
 
 while [ "$#" -gt 0 ]; do
@@ -48,6 +50,10 @@ while [ "$#" -gt 0 ]; do
     --update)
       UPDATE="true"
       shift
+      ;;
+    --install-root)
+      INSTALL_ROOT_OVERRIDE="${2:?Falta valor para --install-root}"
+      shift 2
       ;;
     --uninstall)
       UNINSTALL="true"
@@ -108,12 +114,16 @@ fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOCAL_DIR="${REPO_ROOT}/.treseko-local"
+INSTALL_ROOT="${REPO_ROOT}"
+if [ -n "$INSTALL_ROOT_OVERRIDE" ]; then
+  INSTALL_ROOT="$(cd -- "$INSTALL_ROOT_OVERRIDE" 2>/dev/null && pwd -P)" || { echo "La ruta de instalacion no existe: $INSTALL_ROOT_OVERRIDE" >&2; exit 1; }
+fi
+LOCAL_DIR="${INSTALL_ROOT}/.treseko-local"
 SECRETS_DIR="${LOCAL_DIR}/secrets"
-ENV_FILE="${REPO_ROOT}/compose.production.env"
+ENV_FILE="${INSTALL_ROOT}/compose.production.env"
 
 is_recognized_installation() {
-  [ -f "$ENV_FILE" ] && [ -f "${REPO_ROOT}/docker-compose.prod.yml" ] && [ -d "$SECRETS_DIR" ] || return 1
+  [ -f "$ENV_FILE" ] && [ -f "${INSTALL_ROOT}/docker-compose.prod.yml" ] && [ -d "$SECRETS_DIR" ] || return 1
   for secret in db-password database-url secret-key ai-credentials-master-key ai-engine-internal-token admin-password; do
     [ -f "${SECRETS_DIR}/${secret}" ] || return 1
   done
@@ -121,7 +131,7 @@ is_recognized_installation() {
 
 assert_purge_paths() {
   local root local_dir env_file
-  root="$(cd -- "$REPO_ROOT" && pwd -P)"
+  root="$(cd -- "$INSTALL_ROOT" && pwd -P)"
   local_dir="$(cd -- "$(dirname -- "$LOCAL_DIR")" && pwd -P)/$(basename -- "$LOCAL_DIR")"
   env_file="$(cd -- "$(dirname -- "$ENV_FILE")" && pwd -P)/$(basename -- "$ENV_FILE")"
   case "$local_dir" in "$root/.treseko-local") ;; *) echo "Ruta de purga insegura: $LOCAL_DIR" >&2; exit 1 ;; esac
@@ -157,8 +167,31 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+PROJECT_NAME=""
+if [ "$UPDATE" = "true" ] || [ "$UNINSTALL" = "true" ] || [ "$RESET" = "true" ]; then
+  require_cmd python3
+  PROJECT_NAME="$(sed -n 's/^TRESEKO_COMPOSE_PROJECT_NAME=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r')"
+  if [ -z "$PROJECT_NAME" ]; then
+    compose_projects="$(docker compose ls --all --format json)" || { echo "No se pudo consultar la identidad Compose existente." >&2; exit 1; }
+    PROJECT_NAME="$(printf '%s' "$compose_projects" | python3 -c 'import json,os,sys; target=os.path.realpath(sys.argv[1]); rows=json.load(sys.stdin); names=set(); [(names.add(str(row.get("Name", "")))) for row in rows if any(os.path.realpath(item.strip()) == target for item in str(row.get("ConfigFiles", "")).split(",") if item.strip())]; print(next(iter(names)) if len(names)==1 else "")' "${INSTALL_ROOT}/docker-compose.prod.yml")"
+  fi
+  if [ -z "$PROJECT_NAME" ] || [[ ! "$PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "No se pudo identificar sin ambiguedad el proyecto Compose existente; se cancela para evitar crear volumenes paralelos." >&2
+    exit 1
+  fi
+  if [ "$UPDATE" = "true" ] && ! grep -q '^TRESEKO_COMPOSE_PROJECT_NAME=' "$ENV_FILE"; then
+    [ ! -L "$ENV_FILE" ] || { echo "El archivo de ambiente no puede ser un enlace simbolico." >&2; exit 1; }
+    printf 'TRESEKO_COMPOSE_PROJECT_NAME=%s\n' "$PROJECT_NAME" >> "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+  fi
+fi
+
 compose() {
-  docker compose -f "${REPO_ROOT}/docker-compose.prod.yml" --env-file "$ENV_FILE" "$@"
+  if [ -n "$PROJECT_NAME" ]; then
+    docker compose --project-directory "$REPO_ROOT" -p "$PROJECT_NAME" -f "${REPO_ROOT}/docker-compose.prod.yml" --env-file "$ENV_FILE" "$@"
+  else
+    docker compose -f "${REPO_ROOT}/docker-compose.prod.yml" --env-file "$ENV_FILE" "$@"
+  fi
 }
 
 if [ "$UPDATE" = "true" ] || [ "$UNINSTALL" = "true" ]; then
@@ -189,11 +222,12 @@ if [ "$UNINSTALL" = "true" ]; then
 fi
 
 if [ "$UPDATE" = "true" ]; then
-  echo "Actualizando Treseko con compose.production.env y secretos existentes..."
-  compose build
-  compose up -d db redis
-  compose run --rm migrator
-  compose up -d backend engine frontend
+  require_cmd python3
+  expected_version=$(tr -d '\r\n' < "${REPO_ROOT}/VERSION")
+  python3 "${REPO_ROOT}/scripts/atomic_local_update.py" \
+    --docker "$(command -v docker)" --project "$PROJECT_NAME" \
+    --candidate-root "$REPO_ROOT" --install-root "$INSTALL_ROOT" \
+    --env-file "$ENV_FILE" --version "$expected_version"
   exit 0
 fi
 
@@ -242,6 +276,16 @@ DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
 LOG_LEVEL=INFO
 ENV
+
+if [ -z "$PROJECT_NAME" ]; then
+  new_config="$(docker compose --project-directory "$REPO_ROOT" -f "${REPO_ROOT}/docker-compose.prod.yml" --env-file "$ENV_FILE" config --format json)" || { echo "No se pudo resolver la identidad Compose para la nueva instalacion." >&2; exit 1; }
+  PROJECT_NAME="$(printf '%s' "$new_config" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("name", ""))')"
+  if [[ ! "$PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "Docker Compose devolvio una identidad invalida para la nueva instalacion." >&2
+    exit 1
+  fi
+  printf 'TRESEKO_COMPOSE_PROJECT_NAME=%s\n' "$PROJECT_NAME" >> "$ENV_FILE"
+fi
 
 echo "Construyendo y levantando Treseko local..."
 compose build

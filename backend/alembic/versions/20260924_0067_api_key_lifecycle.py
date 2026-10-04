@@ -17,7 +17,7 @@ def upgrade() -> None:
     if "estado" not in columns:
         op.add_column(
             "api_keys",
-            sa.Column("estado", sa.String(length=20), nullable=True, server_default="ACTIVE"),
+            sa.Column("estado", sa.String(length=20), nullable=True),
         )
     bind.execute(
         sa.text(

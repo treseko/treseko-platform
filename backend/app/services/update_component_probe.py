@@ -52,7 +52,7 @@ class DockerContainerProbe:
 class DockerHttpComponentProbe(DockerContainerProbe):
     def __init__(self, docker, component, port):
         super().__init__(docker)
-        if component not in {"backend", "engine"} or type(port) is not int or not 1 <= port <= 65535:
+        if component not in {"backend", "engine", "plugin_runner"} or type(port) is not int or not 1 <= port <= 65535:
             raise ValueError("Supported component and port required")
         self.component, self.port = component, port
 
@@ -63,13 +63,23 @@ class DockerHttpComponentProbe(DockerContainerProbe):
             raise ValueError("Pinned container identity required")
         before = self._identity(context)
         def get(path):
+            if self.component == "plugin_runner":
+                url = f"http://127.0.0.1:{self.port}{path}"
+                script = (
+                    "fetch(" + json.dumps(url) + ").then(async response => { "
+                    "if (!response.ok) process.exit(2); "
+                    "process.stdout.write(await response.text())"
+                    "}).catch(() => process.exit(3))"
+                )
+                return self._run(["exec", context["container_id"], "node", "-e", script])
             return self._run(["exec", context["container_id"], "curl", "--fail", "--silent", "--show-error",
                               "--noproxy", "*", "--proto", "=http", "--connect-timeout", "2",
                               "--max-time", "5", "--max-filesize", "65536",
                               f"http://127.0.0.1:{self.port}{path}"])
         health = get("/health")
         version = health.get("version")
-        expected_service = "backend" if self.component == "backend" else "treseko-engine"
+        expected_service = {"backend": "backend", "engine": "treseko-engine",
+                            "plugin_runner": "plugin-runner"}[self.component]
         if (health.get("status") != "ok" or health.get("service") != expected_service
                 or not isinstance(version, str)
                 or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?", version)):
@@ -86,7 +96,7 @@ class DockerHttpComponentProbe(DockerContainerProbe):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--docker", required=True)
-    parser.add_argument("--component", choices=["backend", "engine"], required=True)
+    parser.add_argument("--component", choices=["backend", "engine", "plugin_runner"], required=True)
     parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
     try:

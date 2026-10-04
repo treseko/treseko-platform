@@ -24,6 +24,15 @@ Su `quiesce_order` es explícitamente `worker -> engine -> backend -> frontend
 -> postgres`: PostgreSQL se drena al final porque el participante PG requiere
 que Worker y Engine ya estén quiesced.
 
+La topología obliga a cubrir Backend, Frontend, Engine, Automation Worker y
+PostgreSQL; `plugin_runner` se declara y actualiza cuando está instalado. El
+paquete no es una actualización exclusiva de la UI: cada participante se
+prepara, aplica, verifica y activa dentro de la misma transacción coordinada.
+Las versiones futuras siguen el mismo flujo por salto (por ejemplo,
+1.0.4→1.0.5→1.0.6). Al construir cada paquete, `FROM_VERSIONS` debe declarar
+explícitamente las versiones de origen que ese paquete firmado admite; el
+controller no convierte una versión arbitraria en una actualización válida.
+
 ```text
 plan    -> validación readonly de participantes, gates y runtime_hosts
 prepare -> plan -> distribute del archivo local firmado -> prepare-runtimes

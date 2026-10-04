@@ -102,3 +102,10 @@ class DockerIngressGate:
         self._run(['exec', self.container, 'sh', '-c', script, 'treseko-gate', transaction])
         if self._probe() != 503:
             raise TransactionFailure('Owned ingress fence is not enforced')
+
+    def assert_open(self, transaction: str):
+        if not IDENTIFIER.fullmatch(transaction):
+            raise ValueError('Invalid gate transaction')
+        self._check_target()
+        if self._probe() != 204:
+            raise TransactionFailure('Ingress reopening is not confirmed')

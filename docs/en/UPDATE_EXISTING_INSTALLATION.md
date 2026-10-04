@@ -26,6 +26,15 @@ Its `quiesce_order` is explicitly `worker -> engine -> backend -> frontend
 -> postgres`: PostgreSQL is drained last because the PG participant requires
 Worker and Engine to already be quiesced.
 
+The topology requires Backend, Frontend, Engine, Automation Worker, and
+PostgreSQL; `plugin_runner` is declared and updated when installed. This is not
+a UI-only update: each participant is prepared, applied, verified, and
+activated within the same coordinated transaction. Future releases use the
+same per-release flow (for example, 1.0.4→1.0.5→1.0.6). When building each
+package, `FROM_VERSIONS` must explicitly declare the source versions accepted
+by that signed package; the controller does not make an arbitrary version a
+valid update source.
+
 ```text
 plan    -> read-only validation of participants, gates, and runtime_hosts
 prepare -> plan -> distribute the signed local file -> prepare-runtimes

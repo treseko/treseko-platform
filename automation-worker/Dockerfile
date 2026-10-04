@@ -12,7 +12,7 @@ ARG TRESEKO_WORKER_INSTALL_PUPPETEER="true"
 WORKDIR /worker
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates rsync \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
@@ -21,11 +21,18 @@ COPY package.json package-lock.json ./
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 CYPRESS_INSTALL_BINARY=0 PUPPETEER_SKIP_DOWNLOAD=1 npm ci \
     && npx playwright install --with-deps ${TRESEKO_WORKER_BROWSERS} \
     && if [ "${TRESEKO_WORKER_INSTALL_CYPRESS}" = "true" ]; then npx cypress install; fi \
-    && if [ "${TRESEKO_WORKER_INSTALL_PUPPETEER}" = "true" ]; then node node_modules/puppeteer/install.mjs; fi
+    && if [ "${TRESEKO_WORKER_INSTALL_PUPPETEER}" = "true" ] \
+       && [ "$(dpkg --print-architecture)" != arm64 ]; then node node_modules/puppeteer/install.mjs; fi
 COPY . .
 COPY . /opt/treseko/worker-source
+COPY hash_component_tree.sh /usr/local/bin/treseko-hash-component-tree
+# On Linux ARM64, use Playwright's native Chromium instead of Puppeteer's
+# x86_64 Chrome-for-Testing download. Overrides and project config still win.
+COPY src/docker-puppeteer-config.cjs /root/.config/puppeteer/config.cjs
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/treseko-hash-component-tree \
+    && /usr/local/bin/treseko-hash-component-tree /opt/treseko/worker-source \
+       > /opt/treseko/worker-source/.treseko-content-digest
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["npm", "start"]

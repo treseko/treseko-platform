@@ -22,7 +22,7 @@ from .update_transaction import TransactionFailure
 class DockerImagePreparation:
     def __init__(self, docker: str, stage: Path, component: str, checksum: str, platform: str):
         if (not Path(docker).is_absolute() or not stage.is_absolute()
-                or component not in {"backend", "frontend", "engine", "automation_worker"}
+                or component not in {"backend", "frontend", "engine", "automation_worker", "plugin_runner"}
                 or not re.fullmatch(r"[a-f0-9]{64}", checksum)
                 or platform not in {"linux/amd64", "linux/arm64"}):
             raise ValueError("Explicit verified stage, component, checksum and platform required")
@@ -82,9 +82,15 @@ class DockerImagePreparation:
         descriptor = os.open(directory / log_name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "wb") as log:
             try:
-                result = subprocess.run([self.docker, "build", "--platform", self.platform,
-                                         "--tag", tag, "--label", "io.treseko.prepared-image=" + owner,
-                                         "--file", str(recipe), str(context)],
+                argv = [self.docker, "build", "--platform", self.platform,
+                        "--tag", tag, "--label", "io.treseko.prepared-image=" + owner]
+                if self.component == "plugin_runner":
+                    version = (self.stage / "VERSION").read_text().strip()
+                    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?", version):
+                        raise TransactionFailure("Plugin Runner release version is invalid")
+                    argv += ["--build-arg", "TRESEKO_RELEASE_VERSION=" + version]
+                argv += ["--file", str(recipe), str(context)]
+                result = subprocess.run(argv,
                                         stdout=log, stderr=subprocess.STDOUT, timeout=1800)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise TransactionFailure("Image build uncertain; retain preparation receipt") from exc

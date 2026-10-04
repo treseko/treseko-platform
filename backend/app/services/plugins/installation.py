@@ -1,8 +1,8 @@
 """Safe local installation of official declarative plugins.
 
 Artifacts are validated as bytes and deliberately never imported, extracted or
-executed in the API process. WASM remains unavailable until the isolated runner
-is deployed.
+executed in the API process. WASM artifacts are not supported by the current
+declarative runner contract.
 """
 
 from __future__ import annotations

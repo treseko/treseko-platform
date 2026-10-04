@@ -28,6 +28,16 @@ En Windows PowerShell:
 py installer\treseko_installer.py
 ```
 
+Al iniciar, consulta la versión del Frontend y la salud/versión del Backend en
+el puerto elegido. Distingue una instalación activa de una carpeta con archivos
+locales. Si detecta otro servicio, versiones distintas entre componentes, una
+raíz que no coincide con la instalación o una actualización pendiente, bloquea
+la acción para evitar instalar encima o iniciar otra actualización. También
+bloquea instalar la misma versión o una anterior. Si Docker está detenido,
+muestra la última versión registrada y verifica la raíz antes de actualizar.
+`Paquete` elige la versión destino; `Instalación existente` permite seleccionar
+la raíz que contiene la configuración y los datos persistentes.
+
 El instalador gráfico requiere Python 3 y Tkinter; en Ubuntu minimal instalá
 `python3-tk` antes de abrirlo.
 
@@ -36,10 +46,13 @@ release estable de `treseko/treseko-platform` en GitHub, descarga el núcleo por
 HTTPS, valida sus archivos principales y continúa con la instalación. No
 descarga código desde URLs configurables por el usuario.
 
-Si el release incluye una versión más nueva del instalador gráfico, la versión
-descargada reemplaza el proceso actual en el siguiente paso. Los servicios
-nuevos deben estar declarados en Compose o en los scripts del release para que
-formen parte de la instalación.
+Si se ejecuta el launcher Python y el release incluye una GUI más nueva, el
+bootstrap puede reiniciarla con el paquete descargado y conservar separada la
+raíz de datos existente. Un ejecutable standalone ya compilado no puede cargar
+código Python descargado dentro de sí mismo; para actualizar desde una GUI
+standalone anterior, descargá y ejecutá el instalador gráfico de la versión
+destino. Los servicios nuevos deben estar declarados en Compose o en los
+scripts del release para que formen parte de la instalación.
 
 La interfaz usa el instalador Bash en Ubuntu/macOS y el instalador PowerShell
 en Windows. En Apple Silicon se requiere Docker Desktop para Apple Silicon.
@@ -69,11 +82,35 @@ inicio del proceso y aprobación en Automatización → Workers.
 
 ### Actualizar una instalación existente
 
-Usá `--update` (o `-Update` en PowerShell) desde el mismo paquete o desde una
-release compatible. El archivo `compose.production.env`, los secretos y los
-volúmenes existentes son la fuente de verdad: el script los reutiliza sin
-reescribirlos ni ejecutar `seed_admin`. Solo construye imágenes, ejecuta el
-migrador y vuelve a levantar los servicios.
+Usá `--update` (o `-Update` en PowerShell) desde el paquete de la release
+destino. El archivo `compose.production.env` y los secretos existentes se
+reutilizan sin reescribirlos ni ejecutar `seed_admin`. Bash y PowerShell usan
+el mismo coordinador transaccional. Primero copia el árbol completo del paquete
+destino a `.treseko-local/releases/<version>-<hash>` (excluye Git y la
+configuración mutable local), registra hashes por archivo y comprueba que la
+copia coincida con el candidato. Construye y valida las imágenes desde esa
+copia; después detiene el proyecto completo, respalda
+todos sus volúmenes con datos y etiqueta las imágenes anteriores con IDs
+inmutables. Solo entonces inicia la migración. La versión nueva se mantiene
+bajo una barrera HTTP que cubre SPA, API, WebSocket y recursos hasta que
+Compose confirma salud y se verifican las versiones de Backend, Frontend,
+Engine y los workers opcionales activos. Si falla una fase, restaura los
+volúmenes y el Compose anterior antes de volver a abrir el servicio. Si el
+proceso o el equipo se interrumpe, la próxima ejecución reconcilia el journal
+antes de empezar otra actualización.
+
+El archivo `.treseko-local/active-release.json` se reemplaza atómicamente solo
+después de validar la release nueva mientras la barrera sigue cerrada. Si una
+fase anterior falla, la release previa sigue activa. Los directorios versionados
+y sus manifiestos se conservan para recuperación y auditoría.
+
+Este modo prioriza consistencia sobre disponibilidad: el servicio local queda
+fuera de línea durante la migración y la validación. Los snapshots de Docker y
+las etiquetas de imágenes anteriores se conservan para recuperación; ocupan
+espacio y no se eliminan con una actualización posterior. El flujo exige una
+instalación Compose identificable, los cinco servicios base activos y una
+versión destino cuyo Nginx de Frontend admita la barrera global; si no puede
+demostrar esas condiciones, se detiene sin actualizar.
 
 ```bash
 scripts/install_local_treseko.sh --update
@@ -85,6 +122,16 @@ scripts/install_local_treseko.sh --update
 
 La actualización falla si no existe `compose.production.env`. No combines
 `--update` con `--with-demo`.
+
+El instalador gráfico delega en el mismo flujo local según el sistema operativo:
+Bash en macOS/Linux y PowerShell en Windows. La GUI no aplica componentes por
+su cuenta. La opción Configuración → Actualizaciones es una ruta distinta y
+solo admite instalaciones con binding válido del coordinador de host; si falta,
+la API rechaza la solicitud antes de crear una tarea y la interfaz indica usar
+el instalador local del equipo host. No hay fallback de aplicación legacy
+porque no ofrece la misma transacción atómica. La integración operativa del
+coordinador de host para esa opción sigue pendiente y no debe confundirse con
+la actualización local atómica.
 
 ### Desinstalación conservadora
 
@@ -190,9 +237,15 @@ docker compose -f docker-compose.prod.yml --env-file compose.production.env --pr
 ```
 
 Community admite un solo worker. Agregar workers requiere la
-capability/entitlement Premium. El profile `plugins` está declarado en el
-Compose, pero este snapshot público no contiene el contexto de build de
-`plugin-runner`; no lo habilites ni lo consideres operativo desde este paquete.
+capability/entitlement Premium. El runner de complementos es opcional y se
+inicia solo cuando la instalación lo necesita:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile plugins up -d plugin-runner
+```
+
+El runner queda aislado en una red privada y no recibe acceso a la base de
+datos, Redis, secretos ni socket Docker.
 
 ## Primer inicio
 

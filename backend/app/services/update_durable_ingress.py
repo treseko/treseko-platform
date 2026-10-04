@@ -133,6 +133,13 @@ class DurableDockerIngressGate(DockerIngressGate):
                 if (not state or state['transaction'] != transaction or state['phase'] != 'sealed'
                         or owner != transaction or draining_owner is not None or self._probe() != 503):
                     raise TransactionFailure('Owned ingress seal is not enforced')
+            elif action == 'assert_open':
+                if (not state or state['transaction'] != transaction or state['phase'] != 'released'
+                        or owner is not None or draining_owner is not None
+                        or marker.exists() or draining_marker.exists() or not terminal.exists()
+                        or json.loads(self._read(terminal)) != {'transaction': transaction, 'binding': binding}
+                        or self._probe() != 204):
+                    raise TransactionFailure('Owned ingress reopening is not confirmed')
             else:
                 if not state or state['transaction'] != transaction:
                     raise TransactionFailure('Unknown ingress release rejected')
@@ -160,6 +167,9 @@ class DurableDockerIngressGate(DockerIngressGate):
 
     def assert_sealed(self, transaction):
         self._change('assert_sealed', transaction)
+
+    def assert_open(self, transaction):
+        self._change('assert_open', transaction)
 
     def release(self, transaction):
         self._change('release', transaction)
