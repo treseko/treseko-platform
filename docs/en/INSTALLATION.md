@@ -60,6 +60,23 @@ installer on Windows. Apple Silicon requires Docker Desktop for Apple Silicon.
 The current graphical mode installs the Docker environment; it does not install
 native Windows or macOS services.
 
+The main application consists of the Frontend and Backend/API. PostgreSQL and
+Redis provide the base data and coordination services. The AI Engine and
+Automation Worker add-ons are installed and started on this computer; the AI
+provider is configured later. The Worker waits until a solution exists: set
+`QA_ORGANIZACION_ID` in `compose.production.env`, restart `automation-worker`,
+and approve pairing under **Automation → Workers**. Community supports one
+worker. The database schema is prepared during installation. Compose declares a
+`plugins` profile, but this installation neither starts it nor offers it as a
+component.
+
+New installations are limited to this computer by default (`127.0.0.1`). The
+installer can enable access from the local network; in that mode, other devices
+connect through the host's local IP address and selected port. Do not publish
+the port directly to the Internet: use a VPN or HTTPS proxy and configure the
+firewall. Updates preserve the network access configured for the existing
+installation.
+
 ```bash
 scripts/install_local_treseko.sh --http-port 9095
 ```
@@ -187,7 +204,13 @@ scripts/install_remote_treseko.sh usuario@servidor --http-port 9095
 
 The destination must be Linux with SSH. Secrets are generated, migrations are
 run, and the URL, initial user and temporary password are shown. Save it and
-change it at the first login.
+change it at the first login. The default remote destination is
+`/opt/treseko-platform`; change it with `--remote-dir PATH`. The GUI lets you
+choose that directory and a different port. Remote installation is for new
+installations only: if the selected directory is not empty, it stops without
+overwriting or merging files. For a host that requires an
+interactive `sudo` password, configure non-interactive sudo access for the SSH
+user before starting the GUI flow.
 
 ## Manual installation
 

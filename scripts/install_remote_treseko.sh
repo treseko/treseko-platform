@@ -79,6 +79,19 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+if ! [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] || (( 10#$SSH_PORT < 1 || 10#$SSH_PORT > 65535 )); then
+  echo "--ssh-port debe ser un numero entre 1 y 65535." >&2
+  exit 1
+fi
+if ! [[ "$HTTP_PORT" =~ ^[0-9]{1,5}$ ]] || (( 10#$HTTP_PORT < 1 || 10#$HTTP_PORT > 65535 )); then
+  echo "--http-port debe ser un numero entre 1 y 65535." >&2
+  exit 1
+fi
+if [[ "$REMOTE_DIR" != /* || "$REMOTE_DIR" == "/" ]]; then
+  echo "--remote-dir debe ser una ruta absoluta distinta de la raiz." >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -110,16 +123,29 @@ shell_quote() {
   printf '%q' "$1"
 }
 
+# Fail closed before packaging or uploading anything. Only a nonexistent or
+# empty real directory is a valid destination; never merge into user data.
+REMOTE_ROOT="${REMOTE_DIR%/}"
+if ! ssh -p "$SSH_PORT" "$TARGET" \
+  "test ! -e $(shell_quote "$REMOTE_ROOT") && test ! -L $(shell_quote "$REMOTE_ROOT") || { test -d $(shell_quote "$REMOTE_ROOT") && test ! -L $(shell_quote "$REMOTE_ROOT") && test -z \"\$(find $(shell_quote "$REMOTE_ROOT") -mindepth 1 -print -quit)\"; }"; then
+  echo "El destino remoto ${REMOTE_DIR} no esta vacio o no se pudo comprobar. No se copiaron ni modificaron archivos." >&2
+  exit 1
+fi
+
 ADMIN_PASSWORD="$(generate_secret 24)"
 DB_PASSWORD="$(generate_secret 32)"
 SECRET_KEY="$(generate_secret 64)"
 AI_CREDENTIALS_MASTER_KEY="$(generate_secret 64)"
 AI_ENGINE_INTERNAL_TOKEN="$(generate_secret 64)"
-ARCHIVE="$(mktemp /tmp/treseko-platform.XXXXXX.tgz)"
-REMOTE_ARCHIVE="/tmp/treseko-platform.tgz"
+ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/treseko-platform.XXXXXX")"
+REMOTE_ARCHIVE="/tmp/$(basename "$ARCHIVE")"
+REMOTE_UPLOADED="false"
 
 cleanup() {
   rm -f "$ARCHIVE"
+  if [ "$REMOTE_UPLOADED" = "true" ]; then
+    ssh -o BatchMode=yes -p "$SSH_PORT" "$TARGET" "rm -f -- $(shell_quote "$REMOTE_ARCHIVE")" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -142,11 +168,12 @@ COPYFILE_DISABLE=1 tar --no-xattrs \
   -C "$REPO_ROOT" .
 
 echo "Subiendo paquete a ${TARGET}..."
+REMOTE_UPLOADED="true"
 scp -P "$SSH_PORT" "$ARCHIVE" "${TARGET}:${REMOTE_ARCHIVE}"
 
 echo "Instalando Treseko en ${TARGET}:${REMOTE_DIR}..."
 ssh -p "$SSH_PORT" "$TARGET" \
-  "TRESEKO_REMOTE_DIR=$(shell_quote "$REMOTE_DIR") TRESEKO_HTTP_PORT=$(shell_quote "$HTTP_PORT") TRESEKO_INSTALL_DOCKER=$(shell_quote "$INSTALL_DOCKER") TRESEKO_WORKER_BROWSERS=$(shell_quote "$WORKER_BROWSERS") TRESEKO_WORKER_INSTALL_CYPRESS=$(shell_quote "$WORKER_INSTALL_CYPRESS") TRESEKO_WORKER_INSTALL_PUPPETEER=$(shell_quote "$WORKER_INSTALL_PUPPETEER") TRESEKO_DB_PASSWORD=$(shell_quote "$DB_PASSWORD") TRESEKO_SECRET_KEY=$(shell_quote "$SECRET_KEY") TRESEKO_AI_CREDENTIALS_MASTER_KEY=$(shell_quote "$AI_CREDENTIALS_MASTER_KEY") TRESEKO_AI_ENGINE_INTERNAL_TOKEN=$(shell_quote "$AI_ENGINE_INTERNAL_TOKEN") TRESEKO_ADMIN_PASSWORD=$(shell_quote "$ADMIN_PASSWORD") TRESEKO_SUDO_PASSWORD=$(shell_quote "${TRESEKO_SUDO_PASSWORD:-}") bash -c 'remote_script=\$(mktemp); cat >"\$remote_script"; bash "\$remote_script"; result=\$?; rm -f "\$remote_script"; exit "\$result"'" <<'REMOTE_BODY'
+  "TRESEKO_REMOTE_DIR=$(shell_quote "$REMOTE_DIR") TRESEKO_REMOTE_ARCHIVE=$(shell_quote "$REMOTE_ARCHIVE") TRESEKO_HTTP_PORT=$(shell_quote "$HTTP_PORT") TRESEKO_INSTALL_DOCKER=$(shell_quote "$INSTALL_DOCKER") TRESEKO_WORKER_BROWSERS=$(shell_quote "$WORKER_BROWSERS") TRESEKO_WORKER_INSTALL_CYPRESS=$(shell_quote "$WORKER_INSTALL_CYPRESS") TRESEKO_WORKER_INSTALL_PUPPETEER=$(shell_quote "$WORKER_INSTALL_PUPPETEER") TRESEKO_DB_PASSWORD=$(shell_quote "$DB_PASSWORD") TRESEKO_SECRET_KEY=$(shell_quote "$SECRET_KEY") TRESEKO_AI_CREDENTIALS_MASTER_KEY=$(shell_quote "$AI_CREDENTIALS_MASTER_KEY") TRESEKO_AI_ENGINE_INTERNAL_TOKEN=$(shell_quote "$AI_ENGINE_INTERNAL_TOKEN") TRESEKO_ADMIN_PASSWORD=$(shell_quote "$ADMIN_PASSWORD") TRESEKO_SUDO_PASSWORD=$(shell_quote "${TRESEKO_SUDO_PASSWORD:-}") bash -c 'remote_script=\$(mktemp); cat >"\$remote_script"; bash "\$remote_script"; result=\$?; rm -f "\$remote_script"; exit "\$result"'" <<'REMOTE_BODY'
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -159,14 +186,31 @@ if [ "$(id -u)" -ne 0 ]; then
       echo "Sudo requiere autenticacion y no se proporciono una contraseña para la sesion remota." >&2
       exit 1
     fi
-    if ! printf '%s\n' "$TRESEKO_SUDO_PASSWORD" | sudo -S -v >/dev/null; then
+    if ! printf '%s\n' "$TRESEKO_SUDO_PASSWORD" | sudo -S -p '' -v >/dev/null; then
       echo "No se pudo autenticar sudo en el servidor remoto." >&2
       exit 1
     fi
+    # With timestamp_type=tty, sudo -v in a non-interactive SSH command does
+    # not guarantee a reusable timestamp. Re-exec with the password on stdin
+    # rather than relying on sudo -n immediately after validation.
+    exec sudo -S -p '' env \
+      TRESEKO_REMOTE_DIR="$TRESEKO_REMOTE_DIR" \
+      TRESEKO_REMOTE_ARCHIVE="$TRESEKO_REMOTE_ARCHIVE" \
+      TRESEKO_HTTP_PORT="$TRESEKO_HTTP_PORT" \
+      TRESEKO_INSTALL_DOCKER="$TRESEKO_INSTALL_DOCKER" \
+      TRESEKO_WORKER_BROWSERS="$TRESEKO_WORKER_BROWSERS" \
+      TRESEKO_WORKER_INSTALL_CYPRESS="$TRESEKO_WORKER_INSTALL_CYPRESS" \
+      TRESEKO_WORKER_INSTALL_PUPPETEER="$TRESEKO_WORKER_INSTALL_PUPPETEER" \
+      TRESEKO_DB_PASSWORD="$TRESEKO_DB_PASSWORD" \
+      TRESEKO_SECRET_KEY="$TRESEKO_SECRET_KEY" \
+      TRESEKO_AI_CREDENTIALS_MASTER_KEY="$TRESEKO_AI_CREDENTIALS_MASTER_KEY" \
+      TRESEKO_AI_ENGINE_INTERNAL_TOKEN="$TRESEKO_AI_ENGINE_INTERNAL_TOKEN" \
+      TRESEKO_ADMIN_PASSWORD="$TRESEKO_ADMIN_PASSWORD" \
+      bash "$0" <<< "$TRESEKO_SUDO_PASSWORD"
   fi
-  unset TRESEKO_SUDO_PASSWORD
   exec sudo -n env \
     TRESEKO_REMOTE_DIR="$TRESEKO_REMOTE_DIR" \
+    TRESEKO_REMOTE_ARCHIVE="$TRESEKO_REMOTE_ARCHIVE" \
     TRESEKO_HTTP_PORT="$TRESEKO_HTTP_PORT" \
     TRESEKO_INSTALL_DOCKER="$TRESEKO_INSTALL_DOCKER" \
     TRESEKO_WORKER_BROWSERS="$TRESEKO_WORKER_BROWSERS" \
@@ -180,6 +224,16 @@ if [ "$(id -u)" -ne 0 ]; then
     bash "$0"
 fi
 SUDO=""
+
+# Recheck on the destination immediately before extraction to close the gap
+# between the local preflight/upload and privileged filesystem writes.
+if [ -e "$TRESEKO_REMOTE_DIR" ] || [ -L "$TRESEKO_REMOTE_DIR" ]; then
+  if [ ! -d "$TRESEKO_REMOTE_DIR" ] || [ -L "$TRESEKO_REMOTE_DIR" ] || \
+    [ -n "$(find "$TRESEKO_REMOTE_DIR" -mindepth 1 -print -quit)" ]; then
+    echo "El destino remoto ${TRESEKO_REMOTE_DIR} dejo de estar vacio; se cancela sin extraer archivos." >&2
+    exit 1
+  fi
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   if [ "${TRESEKO_INSTALL_DOCKER}" != "true" ]; then
@@ -206,7 +260,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}"
-$SUDO tar --no-same-owner --no-same-permissions -xzf /tmp/treseko-platform.tgz -C "${TRESEKO_REMOTE_DIR}"
+$SUDO tar --no-same-owner --no-same-permissions -xzf "${TRESEKO_REMOTE_ARCHIVE}" -C "${TRESEKO_REMOTE_DIR}"
 $SUDO chmod 0755 "${TRESEKO_REMOTE_DIR}"
 $SUDO find "${TRESEKO_REMOTE_DIR}" -type f -name '._*' -delete
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}/secrets"
@@ -349,8 +403,9 @@ fi
 
 echo "automation-worker iniciado. Si no tiene token, quedara esperando emparejamiento desde Automatizacion > Workers."
 
-rm -f /tmp/treseko-platform.tgz
+$SUDO rm -f -- "${TRESEKO_REMOTE_ARCHIVE}"
 REMOTE_BODY
+REMOTE_UPLOADED="false"
 
 cat <<SUMMARY
 

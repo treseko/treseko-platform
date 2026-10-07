@@ -4,18 +4,23 @@ import { executeApiSelection } from './apiExecutionActions'
 
 test('manual API selection closes the selector and opens a pending console', async () => {
   const events: string[] = []
+  const requestUrls: string[] = []
   let run: any = null
-  const fetchWithAuth = async () => new Response(JSON.stringify({
+  const fetchWithAuth = async (url: string) => {
+    requestUrls.push(url)
+    return new Response(JSON.stringify({
     entorno_nombre: 'API QA', dataset_id: 'dataset-1', dataset_nombre: 'Dataset QA',
     variables_resueltas: { customer_name: 'QA' },
-  }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
   await executeApiSelection({
     mode: 'manual',
     executeNow: false,
     canUseAutomatedExecution: true,
     selectedExecutionEnvironmentId: 'environment-1',
     selectedExecutionDatasetId: 'dataset-1',
-    currentProjectId: 'project-1', currentBuildId: 'build-1',
+    managingProjectId: 'stale-project', currentProjectId: 'old-project', currentBuildId: 'build-1',
+    buildsList: [{ id: 'build-1', projectId: 'build-project' }],
     fetchWithAuth,
     setExecutionLoading: () => undefined,
     setCurrentExecutionRun: value => { run = value },
@@ -28,6 +33,7 @@ test('manual API selection closes the selector and opens a pending console', asy
   }, [{ id: 'case-1', title: 'Health check' }])
 
   assert.equal(run.apiExecutionResults.pending, true)
+  assert.ok(requestUrls.some(url => url.includes('/proyectos/build-project/api-tests/execute')))
   assert.equal(run.apiExecutionResults.dataset_name, 'Dataset QA')
   assert.equal(run.apiExecutionResults.dataset_previews['case-1'].variables_resueltas.customer_name, 'QA')
   assert.deepEqual(events, [
@@ -74,6 +80,7 @@ test('manual API execution does not require the automated execution permission',
     selectedExecutionDatasetId: 'dataset-1',
     currentProjectId: 'project-1',
     currentBuildId: 'build-1',
+    buildsList: [{ id: 'build-1', projectId: 'project-1' }],
     fetchWithAuth,
     setExecutionLoading: () => undefined,
     setCurrentExecutionRun: () => undefined,
@@ -107,7 +114,7 @@ test('manual API re-execution sends the request even when the console is no long
   await executeApiSelection({
     mode: 'manual', executeRequest: true, executeNow: false, canUseAutomatedExecution: false,
     selectedExecutionEnvironmentId: 'environment-1', selectedExecutionDatasetId: 'dataset-1',
-    currentProjectId: 'project-1', currentBuildId: 'build-1', fetchWithAuth,
+    currentProjectId: 'project-1', currentBuildId: 'build-1', buildsList: [{ id: 'build-1', projectId: 'project-1' }], fetchWithAuth,
     setExecutionLoading: () => undefined, setCurrentExecutionRun: value => { run = value },
     setSelectedTest: () => undefined, setExecutionMode: () => undefined,
     setExecutionModalCaseIds: () => undefined, setShowExecSelector: () => undefined,
@@ -140,7 +147,7 @@ test('automated API execution opens the asynchronous monitor without waiting for
   const result = await executeApiSelection({
     mode: 'automated', executeRequest: true, canUseAutomatedExecution: true,
     selectedExecutionEnvironmentId: 'environment-1', selectedExecutionDatasetId: 'dataset-1',
-    currentProjectId: 'project-1', currentBuildId: 'build-1', fetchWithAuth,
+    currentProjectId: 'project-1', currentBuildId: 'build-1', buildsList: [{ id: 'build-1', projectId: 'project-1' }], fetchWithAuth,
     setExecutionLoading: () => undefined, setCurrentExecutionRun: value => { run = value },
     setAutomationMonitor: value => { monitor = value }, setSelectedTest: () => undefined,
     setExecutionMode: () => undefined, setExecutionModalCaseIds: () => undefined,
@@ -163,7 +170,7 @@ test('automated API result opens the completed monitor instead of the manual con
   const result = await executeApiSelection({
     mode: 'automated', executeRequest: true, canUseAutomatedExecution: true,
     selectedExecutionEnvironmentId: 'environment-1', selectedExecutionDatasetId: 'dataset-1',
-    currentProjectId: 'project-1', currentBuildId: 'build-1',
+    currentProjectId: 'project-1', currentBuildId: 'build-1', buildsList: [{ id: 'build-1', projectId: 'project-1' }],
     fetchWithAuth: async () => new Response(JSON.stringify({
       run_id: 'run-api-complete', status: 'PASSED',
       executions: [{ case_id: 'case-1', status: 'PASO', result: { status: 'PASSED' } }],
@@ -188,6 +195,7 @@ test('automated API execution reports when no compatible worker is available', a
     mode: 'automated', executeRequest: true, canUseAutomatedExecution: true,
     selectedExecutionEnvironmentId: 'environment-1', currentProjectId: 'project-1',
     currentBuildId: 'build-1',
+    buildsList: [{ id: 'build-1', projectId: 'project-1' }],
     fetchWithAuth: async () => new Response(JSON.stringify({
       pending: false, status: 'BLOCKED', message: 'No hay un worker API compatible conectado.',
     }), { status: 202, headers: { 'content-type': 'application/json' } }),

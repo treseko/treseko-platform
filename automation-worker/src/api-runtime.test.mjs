@@ -6,6 +6,38 @@ import test from "node:test";
 import { performance } from "node:perf_hooks";
 import { createApiRuntime } from "./api-runtime.mjs";
 
+test("worker espera la configuracion de solucion antes de pedir pairing", async () => {
+  let fetchCalls = 0;
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api",
+    REQUEST_TIMEOUT_MS: 1000,
+    RUNNER_NAME: "Worker QA",
+    ORGANIZACION_ID: "",
+    tokenPath: "/tmp/worker-token",
+    pairingStatePath: "/tmp/worker-pairing",
+    workerInstanceId: "qa-worker-instance",
+    state: { runnerToken: "", runnerId: "", activeCorrelationId: "" },
+    capabilities: () => ({}),
+    isInvalidRunnerTokenError: () => false,
+    clearRunnerCredentials() {},
+    saveTokenFile() {},
+    traceEntry() {},
+    traceRequestId: () => "qa-request-id",
+    errorFromResponse: () => new Error("unexpected HTTP error"),
+    safeJsonParse: () => null,
+    sleep: async () => {},
+    performance,
+  });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => { fetchCalls += 1; throw new Error("unexpected fetch"); };
+  try {
+    await runtime.registerIfNeeded();
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("persiste el pairing pendiente antes de esperar la aprobacion", async (t) => {
   const stateDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "treseko-worker-pairing-"));
   const pairingStatePath = path.join(stateDirectory, "pairing-state.json");

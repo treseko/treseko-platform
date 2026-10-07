@@ -6,6 +6,7 @@ export function createApiRuntime(deps) {
     capabilities, isInvalidRunnerTokenError, clearRunnerCredentials, saveTokenFile,
     traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
   } = deps;
+let missingOrganizationScopeReported = false;
 
 async function fetchJson(url, options = {}) {
   const requestId = options.requestId || traceRequestId();
@@ -104,6 +105,13 @@ async function registerIfNeeded() {
 
   const registrationToken = process.env.QA_REGISTRATION_TOKEN || "";
   if (!registrationToken || registrationToken.includes("paste_registration_token_here")) {
+    if (!ORGANIZACION_ID) {
+      if (!missingOrganizationScopeReported) {
+        console.info("Worker instalado y en espera. Configura QA_ORGANIZACION_ID con el ID de una solución y reinicia el servicio para iniciar el pairing.");
+        missingOrganizationScopeReported = true;
+      }
+      return;
+    }
     await pairWithPlatform();
     return;
   }

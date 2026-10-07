@@ -4,6 +4,7 @@ import { isValidUUID } from '../../app/validation'
 import type { AttachmentMeta } from '../../EvidenceUpload'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import type { TranslationKey } from '../../i18n'
+import { resolveExecutionProjectId } from './executionProject'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
@@ -17,6 +18,7 @@ type CreateManualExecutionActionsParams = {
   activeBuildCaseIds: string[]
   managingProjectId: string | null
   currentProjectId: string
+  buildsList?: Array<{ id?: string; projectId?: string }>
   componentsList: any[]
   executionSnapshots: any[]
   stepResults: Record<number, string>
@@ -69,6 +71,7 @@ export function createManualExecutionActions({
   activeBuildCaseIds,
   managingProjectId,
   currentProjectId,
+  buildsList = [],
   componentsList,
   executionSnapshots,
   snapshotNotes,
@@ -322,7 +325,7 @@ export function createManualExecutionActions({
       historyTotal: refreshedHistory.total ?? refreshedHistory.length,
       historyStats: refreshedHistory.stats || null,
     } : c))
-    const projectId = managingProjectId || currentProjectId
+    const projectId = resolveExecutionProjectId({ buildsList, currentBuildId, currentProjectId, managingProjectId })
     if (projectId && isValidUUID(projectId)) {
       await loadCasosFromBackend(projectId, componentsList, { preserveExecutionState: true })
       if (currentBuildId && isValidUUID(currentBuildId)) {

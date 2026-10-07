@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.4-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.6-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -12,14 +12,17 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Novedades de 1.0.4
+### Novedades de 1.0.6
 
-- Catálogo RBAC y controles de configuración alineados con las capacidades efectivas del backend.
-- Mejoras de localización y generación HTML localizada para la landing pública.
-- Contratos de actualización con mantenimiento, reintentos, evidencia RC y rollback de startup más explícitos.
-- Validaciones adicionales para licencias, entitlements, límites y estados de actualización.
-- Correcciones de callbacks, webhooks, deep links, controles MCP y drawer móvil.
-- Redacción de secretos y aislamiento del entorno de procesos hijos reforzados.
+- Casos y ejecución de pruebas API y conversacionales.
+- Asistencia con IA para requisitos, historias y casos de prueba.
+- Reportes y trazabilidad ampliados, con permisos de equipo más claros.
+- Integraciones gobernadas y actualizaciones de componentes con verificaciones de recuperación.
+
+La secuencia de releases Community publicados incluye 1.0.1, 1.0.2 y 1.0.6;
+1.0.3, 1.0.4 y 1.0.5 no se publicaron como releases Community. Consultá el
+[historial de releases](https://github.com/treseko/treseko-platform/releases)
+para verificar las versiones y archivos disponibles.
 
 ### Novedades de 1.0.2
 
@@ -84,7 +87,7 @@ Muchas organizaciones terminan combinando planillas, Jira, carpetas de evidencia
 
 ## Flujo De Trabajo
 
-Flujo funcional de Treseko Community 1.0.4:
+Flujo funcional de Treseko Community 1.0.6:
 
 ```mermaid
 flowchart TB
@@ -144,7 +147,7 @@ Cada tipo de reporte responde una pregunta distinta:
 
 ## Arquitectura
 
-Arquitectura operativa de Treseko Community 1.0.4:
+Arquitectura operativa de Treseko Community 1.0.6:
 
 ```mermaid
 flowchart TB
@@ -391,10 +394,11 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión estable: `1.0.4`
+Versión Community más reciente publicada: `1.0.6`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
-changelog incluido para conocer su alcance y los cambios incorporados.
+[changelog](CHANGELOG.md) y los [releases publicados](https://github.com/treseko/treseko-platform/releases)
+para conocer su alcance y los artefactos disponibles.
 
 ## Licencia Del Repositorio
 

@@ -62,6 +62,14 @@ No pegues tokens manualmente salvo que uses el flujo legacy. El flujo normal cre
 
 En esta version el worker se vincula a una solucion/organizacion concreta. Para eso debe tener configurado `QA_ORGANIZACION_ID` antes de iniciar el flujo de vinculacion. Ese valor es el UUID de la solucion que se ve en Treseko.
 
+La instalacion Community inicia el servicio Worker en el mismo equipo que
+Treseko. Si aun no existe una solucion, permanece en espera sin crear solicitudes
+de pairing. Una vez creada, configura `QA_ORGANIZACION_ID` en
+`compose.production.env`, reinicia `automation-worker` y aprueba la solicitud en
+**Automatizacion → Workers**. Para ubicar el Worker en otro servidor, sigue esta
+guia e instala/vincula el componente por separado; el asistente grafico todavia
+no aprovisiona un host remoto.
+
 Mientras el worker este vinculado a esa solucion, solo debe tomar jobs pertenecientes a proyectos, componentes, builds y casos de esa misma solucion. Esto evita que una instancia con varias soluciones mezcle ejecuciones o evidencias entre clientes/equipos.
 
 El modelo de worker global para toda la instancia queda previsto para una version futura con un campo de alcance explicito, por ejemplo `INSTANCE` o `SOLUTION`. Hasta que ese modelo exista, no asumas que un worker aprobado en una solucion funcionara automaticamente para todas.

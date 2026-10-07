@@ -26,10 +26,17 @@ EMBEDDED_SERVER_RESPONSE_PUBLIC_KEY = ""
 EMBEDDED_SERVER_RESPONSE_PUBLIC_KEYS: tuple[str, ...] = ("4J76WRigKKrKfp1C0rPvOA1iXa6j5j6WLWQSMEHP3EE",)
 INSTANCE_ID_ENV = "TRESEKO_INSTANCE_ID"
 INSTANCE_ID_FILE_ENV = "TRESEKO_INSTANCE_ID_FILE"
+DISABLE_ONLINE_LICENSE_CHECKS_ENV = "TRESEKO_DISABLE_ONLINE_LICENSE_CHECKS"
 
 
 class PremiumVerificationError(RuntimeError):
     pass
+
+
+def _ensure_online_license_checks_enabled() -> None:
+    disabled = str(os.getenv(DISABLE_ONLINE_LICENSE_CHECKS_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}
+    if disabled:
+        raise PremiumVerificationError("Las verificaciones online de licencias están deshabilitadas en esta instancia")
 
 
 def _canonical_payload(value: dict[str, Any]) -> bytes:
@@ -328,6 +335,7 @@ def normalize_verification_state(remote: dict[str, Any], license_data: dict[str,
 
 
 async def activate_license_online(license_data: dict[str, Any], *, timeout_seconds: float = 5.0) -> dict[str, Any]:
+    _ensure_online_license_checks_enabled()
     local_state = evaluate_license(license_data)
     if local_state.get("edition") != "premium" or local_state.get("state") != "active":
         raise PremiumVerificationError(local_state.get("reason") or "La licencia local no es valida")
@@ -356,6 +364,7 @@ async def heartbeat_license_online(
     timeout_seconds: float = 5.0,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, Any]:
+    _ensure_online_license_checks_enabled()
     local_state = evaluate_license(license_data)
     # An expired local document may still be renewed online. Invalid or revoked
     # documents remain blocked and cannot bootstrap a renewal.

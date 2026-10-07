@@ -59,6 +59,23 @@ en Windows. En Apple Silicon se requiere Docker Desktop para Apple Silicon.
 La modalidad gráfica actual instala el entorno Docker; no instala servicios
 nativos de Windows o macOS.
 
+La aplicación principal consta de Frontend y Backend/API. PostgreSQL y Redis
+son los servicios base de datos y coordinación. Los complementos Engine de IA y
+Automation Worker se instalan y se inician en esta computadora; el proveedor de
+IA se configura después. El Worker queda en espera hasta que se cree una
+solución: configura `QA_ORGANIZACION_ID` en `compose.production.env`, reinicia
+`automation-worker` y aprueba el pairing desde **Automatización → Workers**.
+Community admite un worker. Durante la instalación también se prepara la
+estructura de la base de datos. El Compose declara un perfil `plugins`, pero
+esta instalación no lo inicia ni lo ofrece como componente.
+
+En instalaciones nuevas, el acceso queda limitado a esta computadora por
+defecto (`127.0.0.1`). El instalador permite habilitar el acceso desde la red
+local; en ese modo, otros equipos usan la IP local del host y el puerto elegido.
+No publiques el puerto directamente en Internet: usa una VPN o un proxy HTTPS
+y configura el firewall. Las actualizaciones conservan el acceso de red
+configurado en la instalación existente.
+
 ```bash
 scripts/install_local_treseko.sh --http-port 9095
 ```
@@ -187,7 +204,12 @@ scripts/install_remote_treseko.sh usuario@servidor --http-port 9095
 
 El destino debe ser Linux con SSH. Se generan secretos, se ejecutan migraciones
 y se muestra URL, usuario inicial y contraseña temporal. Guardala y cambiala en
-el primer login.
+el primer login. El destino remoto predeterminado es `/opt/treseko-platform`; se
+puede cambiar con `--remote-dir RUTA`. La ventana gráfica permite elegir esa
+carpeta y un puerto distinto. El instalador remoto es solo para instalaciones
+nuevas: si la carpeta elegida no está vacía, se detiene sin sobrescribir ni
+mezclar archivos. Para un host con `sudo` interactivo, configurá acceso sudo no
+interactivo para el usuario SSH antes de iniciar el flujo gráfico.
 
 ## Instalación manual
 

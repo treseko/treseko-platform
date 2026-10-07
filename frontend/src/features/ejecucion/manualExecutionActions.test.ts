@@ -24,7 +24,8 @@ const createActions = (
     { id: 'case-1', name: 'Caso actual' },
     { id: 'case-2', name: 'Caso siguiente' }
   ],
-  selectedTest = activeExecutionTests[0]
+  selectedTest = activeExecutionTests[0],
+  overrides: Record<string, any> = {}
 ) => {
   const state: any = { selectedTest, casosList: activeExecutionTests, currentExecutionCase: { id: 'execution-1' } }
   const applyState = (current: any, update: any) => typeof update === 'function' ? update(current) : update
@@ -90,7 +91,8 @@ const createActions = (
   setShowRedmineDrawer: () => undefined,
   setRedmineBugs: () => undefined,
   t: key => key,
-  showFeedback: () => undefined
+  showFeedback: () => undefined,
+  ...overrides,
 } as any)
   return Object.assign(actions, { getState: () => state })
 }
@@ -108,6 +110,25 @@ test('advancing an active manual run keeps the finished case visible until the n
     'update-case-list'
   ])
   assert.equal(events.includes('set-status-sin-correr'), false)
+})
+
+test('completion reloads cases from the project that owns the selected build when workspace context is stale', async () => {
+  const loadedProjects: string[] = []
+  const buildId = '11111111-1111-4111-8111-111111111111'
+  const actions = createActions([], { id: 'run-1' }, [{ id: 'case-1', name: 'Caso actual' }], { id: 'case-1', name: 'Caso actual' }, {
+    currentBuildId: buildId,
+    buildsList: [{ id: buildId, projectId: '22222222-2222-4222-8222-222222222222' }],
+    managingProjectId: 'stale-project',
+    currentProjectId: 'old-project',
+    generalExecutionStatus: 'PASO',
+    fetchWithAuth: async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    loadCasoExecutionHistory: async () => [],
+    loadCasosFromBackend: async projectId => { loadedProjects.push(projectId) },
+  })
+
+  await actions.handleCompleteCase()
+
+  assert.deepEqual(loadedProjects, ['22222222-2222-4222-8222-222222222222'])
 })
 
 test('advancing without an active run still resets the next case state', async () => {

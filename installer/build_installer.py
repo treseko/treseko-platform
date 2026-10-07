@@ -32,20 +32,20 @@ def version() -> str:
     return value
 
 
-def artifact_name(target: str, value: str) -> str:
+def artifact_name(target: str) -> str:
     if target == "windows":
-        suffix = "windows-x64.exe"
+        return "Treseko-Windows-x64.exe"
     elif target == "linux":
-        suffix = "linux-x64.AppImage"
+        return "Treseko-Linux-x64.AppImage"
     else:
-        suffix = f"macos-{macos_architecture()}.app"
-    return f"Treseko-Installer-v{value}-{suffix}"
+        return f"Treseko-macOS-{macos_architecture()}.app"
 
 
 def require_files() -> None:
     required = [
         ROOT / "VERSION",
         INSTALLER / "treseko_installer.py",
+        INSTALLER / "treseko_installer_qt.py",
         INSTALLER / "treseko-installer.png",
         INSTALLER / "treseko_installer_windows.spec",
         INSTALLER / "treseko_installer_linux.spec",
@@ -124,7 +124,7 @@ def run(command: list[str], *, cwd: Path, env: dict[str, str]) -> None:
 
 
 def validate_artifact(path: Path, target: str, value: str) -> None:
-    expected = artifact_name(target, value)
+    expected = artifact_name(target)
     if path.name != expected:
         raise SystemExit(f"Nombre de artefacto inesperado: {path.name} (esperado {expected})")
     if target == "macos":
@@ -140,6 +140,10 @@ def validate_artifact(path: Path, target: str, value: str) -> None:
             raise SystemExit(f"Bundle macOS sin Info.plist: {plist_path}")
         if not icon_path.is_file() or not icon_path.stat().st_size:
             raise SystemExit(f"Bundle macOS sin icono .icns: {icon_path}")
+        codesign = shutil.which("codesign")
+        if not codesign:
+            raise SystemExit("macOS build bloqueado: falta codesign para sellar el bundle .app.")
+        run([codesign, "--verify", "--deep", "--strict", str(path)], cwd=ROOT, env=os.environ.copy())
         try:
             metadata = plistlib.loads(plist_path.read_bytes())
         except (OSError, plistlib.InvalidFileException, ValueError) as exc:
@@ -182,7 +186,7 @@ def build_native_macos(output_dir: Path, product_version: str, temp: Path) -> Pa
     if not executable.is_file() or not os.access(executable, os.X_OK):
         raise SystemExit("Swift no produjo el ejecutable nativo TresekoInstaller.")
     icon = macos_icon(INSTALLER / "treseko-installer.png", temp)
-    app = output_dir / artifact_name("macos", product_version)
+    app = output_dir / artifact_name("macos")
     contents = app / "Contents"
     macos = contents / "MacOS"
     resources = contents / "Resources"
@@ -196,6 +200,8 @@ def build_native_macos(output_dir: Path, product_version: str, temp: Path) -> Pa
         "CFBundleExecutable": "Treseko-Installer",
         "CFBundleIdentifier": "com.treseko.community.installer",
         "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleDevelopmentRegion": "es",
+        "CFBundleLocalizations": ["es", "en"],
         "CFBundleName": "Treseko Installer",
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": product_version,
@@ -206,6 +212,10 @@ def build_native_macos(output_dir: Path, product_version: str, temp: Path) -> Pa
         "NSHighResolutionCapable": True,
         "NSPrincipalClass": "NSApplication",
     }, (contents / "Info.plist").open("wb"))
+    codesign = shutil.which("codesign")
+    if not codesign:
+        raise SystemExit("macOS build bloqueado: falta codesign para firmar el bundle .app.")
+    run([codesign, "--force", "--deep", "--sign", "-", "--timestamp=none", str(app)], cwd=ROOT, env=os.environ.copy())
     return app
 
 
@@ -217,7 +227,7 @@ def main() -> int:
     args = parser.parse_args()
     require_files()
     value = version()
-    name = artifact_name(args.target, value)
+    name = artifact_name(args.target)
     print(f"Treseko installer {value} · target={args.target} · artifact={name}")
     if args.plan:
         print("Plan solamente: interfaz nativa de cada plataforma + validación de estructura, nombre y versión.")

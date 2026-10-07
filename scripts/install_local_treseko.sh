@@ -9,7 +9,8 @@ Uso:
   scripts/install_local_treseko.sh [opciones]
 
 Opciones:
-  --http-port PUERTO   Puerto local del frontend. Default: 9095
+  --http-port PUERTO   Puerto del frontend. Default: 9095
+  --bind-address IP    127.0.0.1 (solo este equipo) o 0.0.0.0 (red). Default: 127.0.0.1
   --with-demo          Carga datos demo despues de crear el admin.
   --update             Actualiza una instalacion existente sin regenerar nada.
   --install-root RUTA  Reutiliza config/secretos de una instalacion ya existente.
@@ -27,6 +28,7 @@ USAGE
 }
 
 HTTP_PORT="9095"
+BIND_ADDRESS="127.0.0.1"
 WITH_DEMO="false"
 RESET="false"
 UPDATE="false"
@@ -41,6 +43,10 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --http-port)
       HTTP_PORT="${2:?Falta valor para --http-port}"
+      shift 2
+      ;;
+    --bind-address)
+      BIND_ADDRESS="${2:?Falta valor para --bind-address}"
       shift 2
       ;;
     --with-demo)
@@ -86,6 +92,16 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if ! [[ "$HTTP_PORT" =~ ^[0-9]{1,5}$ ]] || (( 10#$HTTP_PORT < 1 || 10#$HTTP_PORT > 65535 )); then
+  echo "--http-port debe ser un numero entre 1 y 65535." >&2
+  exit 1
+fi
+
+if [[ "$BIND_ADDRESS" != "127.0.0.1" && "$BIND_ADDRESS" != "0.0.0.0" ]]; then
+  echo "--bind-address solo admite 127.0.0.1 o 0.0.0.0." >&2
+  exit 1
+fi
 
 if [ "$UPDATE" = "true" ] && [ "$UNINSTALL" = "true" ]; then
   echo "--update y --uninstall son incompatibles." >&2
@@ -266,6 +282,7 @@ chmod 0600 "${SECRETS_DIR}"/* 2>/dev/null || true
 cat > "$ENV_FILE" <<ENV
 APP_ENV=production
 TRESEKO_HTTP_PORT=${HTTP_PORT}
+TRESEKO_BIND_ADDRESS=${BIND_ADDRESS}
 TRESEKO_DB_PASSWORD_FILE=${SECRETS_DIR}/db-password
 TRESEKO_DATABASE_URL_FILE=${SECRETS_DIR}/database-url
 TRESEKO_SECRET_KEY_FILE=${SECRETS_DIR}/secret-key
@@ -275,6 +292,7 @@ DB_USER=treseko
 DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
 LOG_LEVEL=INFO
+QA_ORGANIZACION_ID=
 ENV
 
 if [ -z "$PROJECT_NAME" ]; then
@@ -294,7 +312,7 @@ compose run --rm migrator
 compose run --rm \
   -v "${SECRETS_DIR}/admin-password:/run/secrets/admin-password:ro" \
   --entrypoint python backend /app/seed_admin.py --password-file /run/secrets/admin-password
-compose up -d backend engine frontend
+compose --profile automation up -d backend engine frontend automation-worker
 
 if [ "$WITH_DEMO" = "true" ]; then
   echo "Cargando datos demo..."

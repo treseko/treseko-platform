@@ -1,7 +1,8 @@
 import { API_BASE } from '../../app/constants'
+import { resolveExecutionProjectId } from './executionProject'
 
 export async function executeApiSelection(context: any, tests: any[]) {
-  const { mode = 'manual', canUseAutomatedExecution, selectedExecutionEnvironmentId, executionEnvironmentId, executionDatasetPreview, executionRunId, executionTests, currentExecutionRun, setExecutionLoading, managingProjectId, currentProjectId, currentBuildId, selectedExecutionDatasetId, executionDatasetId, fetchWithAuth, setCurrentExecutionRun, setSelectedTest, setExecutionMode, setExecutionModalCaseIds, setShowExecSelector, setActiveExecutionCaseIds, setViewMode, setAutomationMonitor, showFeedback } = context
+  const { mode = 'manual', canUseAutomatedExecution, selectedExecutionEnvironmentId, executionEnvironmentId, executionDatasetPreview, executionRunId, executionTests, currentExecutionRun, setExecutionLoading, managingProjectId, currentProjectId, currentBuildId, buildsList, selectedExecutionDatasetId, executionDatasetId, fetchWithAuth, setCurrentExecutionRun, setSelectedTest, setExecutionMode, setExecutionModalCaseIds, setShowExecSelector, setActiveExecutionCaseIds, setViewMode, setAutomationMonitor, showFeedback } = context
   const t = typeof context.t === 'function' ? context.t : (key: string) => key
   const notify = typeof showFeedback === 'function' ? showFeedback : () => undefined
   const environmentId = executionEnvironmentId || selectedExecutionEnvironmentId
@@ -38,7 +39,7 @@ export async function executeApiSelection(context: any, tests: any[]) {
         if (!response.ok) throw new Error(payload?.detail?.message || payload?.detail || payload?.message || t('ejecutarPruebas.apiResolveDataFailed', { status: response.status }))
         previews[String(test.id)] = payload
       }
-      const projectId = managingProjectId || currentProjectId
+      const projectId = resolveExecutionProjectId({ buildsList, currentBuildId, currentProjectId, managingProjectId })
       if (!projectId) throw new Error(t('ejecutarPruebas.apiProjectMissing'))
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/api-tests/execute`, {
         method: 'POST',
@@ -66,7 +67,7 @@ export async function executeApiSelection(context: any, tests: any[]) {
   }
   setExecutionLoading(true)
   try {
-    const projectId = managingProjectId || currentProjectId
+    const projectId = resolveExecutionProjectId({ buildsList, currentBuildId, currentProjectId, managingProjectId })
     if (!projectId) throw new Error(t('ejecutarPruebas.apiProjectMissing'))
     const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/api-tests/execute`, { method: 'POST', body: JSON.stringify({ build_id: currentBuildId, entorno_id: environmentId, dataset_id: datasetId, case_ids: tests.map(test => test.id), origen: mode === 'automated' ? 'AUTOMATIZADA' : 'MANUAL', ...(mode === 'manual' && executionRunId ? { run_id: executionRunId } : {}) }) })
     const payload = await response.json().catch(() => ({}))

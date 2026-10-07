@@ -2,6 +2,8 @@ name: Build GUI installer
 
 on:
   workflow_dispatch:
+  release:
+    types: [published]
   push:
     paths:
       - "VERSION"
@@ -28,18 +30,24 @@ jobs:
           python -m PyInstaller --version
           python -u installer/build_installer.py --target windows 2>&1 | Tee-Object windows-build.log
           if ($LASTEXITCODE -ne 0) { throw "Windows build failed with exit code $LASTEXITCODE" }
+      - name: Smoke-test Qt interface without Tkinter
+        shell: pwsh
+        run: |
+          $artifact = "dist/Treseko-Windows-x64.exe"
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          & $artifact --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Qt GUI smoke test failed with exit code $LASTEXITCODE" }
       - name: Verify Windows artifact
         shell: pwsh
         run: |
-          $version = (Get-Content VERSION -Raw).Trim()
-          $artifact = "dist/Treseko-Installer-v$version-windows-x64.exe"
+          $artifact = "dist/Treseko-Windows-x64.exe"
           if (-not (Test-Path $artifact)) { throw "Missing artifact: $artifact" }
           $bytes = [System.IO.File]::ReadAllBytes($artifact)
           if ($bytes.Length -lt 1024 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "Invalid PE artifact: $artifact" }
       - uses: actions/upload-artifact@v4
         with:
           name: treseko-installer-windows-${{ github.sha }}
-          path: dist/Treseko-Installer-v*-windows-x64.exe
+          path: dist/Treseko-Windows-x64.exe
           if-no-files-found: error
 
   linux:
@@ -51,6 +59,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --disable-pip-version-check -r installer/requirements-build.txt
+      - name: Install Qt platform runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libglib2.0-0 libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 libx11-xcb1 libxcb-glx0 libxcb-util1 libxcb-keysyms1 libxcb-cursor0 libxcb-randr0 libxcb-sync1 libxcb-shape0 libxcb-image0 libxcb-xfixes0 libxcb-shm0 libxcb-render-util0 libxcb-render0 libxcb-icccm4
       - name: Install appimagetool
         shell: bash
         run: |
@@ -63,15 +75,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(tr -d '\r\n' < VERSION)"
-          artifact="dist/Treseko-Installer-v${version}-linux-x64.AppImage"
+          artifact="dist/Treseko-Linux-x64.AppImage"
           test -s "$artifact"
           test -x "$artifact"
           test "$(dd if="$artifact" bs=1 count=4 2>/dev/null)" = $'\177ELF'
+      - name: Smoke-test Qt interface without Tkinter
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_QPA_PLATFORM=offscreen dist/Treseko-Linux-x64.AppImage --smoke-test
       - uses: actions/upload-artifact@v4
         with:
           name: treseko-installer-linux-${{ github.sha }}
-          path: dist/Treseko-Installer-v*-linux-x64.AppImage
+          path: dist/Treseko-Linux-x64.AppImage
           if-no-files-found: error
 
   macos:
@@ -95,14 +111,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(tr -d '\r\n' < VERSION)"
-          artifact="dist/Treseko-Installer-v${version}-macos-${{ matrix.arch }}.app"
+          artifact="dist/Treseko-macOS-${{ matrix.arch }}.app"
           test -d "$artifact"
           test -x "$artifact/Contents/MacOS/Treseko-Installer"
           test -s "$artifact/Contents/Info.plist"
           test -s "$artifact/Contents/Resources/treseko-installer.icns"
+          ditto -c -k --sequesterRsrc --keepParent "$artifact" "$artifact.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: treseko-installer-macos-${{ matrix.arch }}-${{ github.sha }}
-          path: dist/Treseko-Installer-v*-macos-${{ matrix.arch }}.app
+          path: dist/Treseko-macOS-${{ matrix.arch }}.app.zip
           if-no-files-found: error
+
+  attach-release-installers:
+    if: github.event_name == 'release' && github.event.action == 'published'
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: treseko-installer-windows-${{ github.sha }}
+          path: release-assets/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: treseko-installer-linux-${{ github.sha }}
+          path: release-assets/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: treseko-installer-macos-arm64-${{ github.sha }}
+          path: release-assets/macos
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            release-assets/windows/Treseko-Windows-x64.exe
+            release-assets/linux/Treseko-Linux-x64.AppImage
+            release-assets/macos/Treseko-macOS-arm64.app.zip
+          fail_on_unmatched_files: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

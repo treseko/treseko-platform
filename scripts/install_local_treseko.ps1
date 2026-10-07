@@ -1,5 +1,6 @@
 param(
-  [int]$HttpPort = 9095,
+  [ValidateRange(1, 65535)][int]$HttpPort = 9095,
+  [ValidateSet("127.0.0.1", "0.0.0.0")][string]$BindAddress = "127.0.0.1",
   [switch]$WithDemo,
   [switch]$Update,
   [switch]$Uninstall,
@@ -232,6 +233,7 @@ $ComposeAiEngineInternalTokenFile = $AiEngineInternalTokenFile.Replace('\', '/')
 @"
 APP_ENV=production
 TRESEKO_HTTP_PORT=$HttpPort
+TRESEKO_BIND_ADDRESS=$BindAddress
 TRESEKO_DB_PASSWORD_FILE=$ComposeDbPasswordFile
 TRESEKO_DATABASE_URL_FILE=$ComposeDatabaseUrlFile
 TRESEKO_SECRET_KEY_FILE=$ComposeSecretKeyFile
@@ -241,6 +243,7 @@ DB_USER=treseko
 DB_NAME=treseko
 AUTO_BACKUP_ENABLED=true
 LOG_LEVEL=INFO
+QA_ORGANIZACION_ID=
 "@ | Set-Content -Encoding UTF8 -Path $EnvFile
 
 if ([string]::IsNullOrWhiteSpace($ProjectName)) {
@@ -267,8 +270,8 @@ try {
     docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm -T `
       --entrypoint python backend /app/seed_admin.py --password-stdin
   Assert-LastExitCode "La creacion del administrador inicial"
-  Invoke-Compose up '-d' backend engine frontend
-  Assert-LastExitCode "El arranque de backend, Engine y frontend"
+  Invoke-Compose '--profile' 'automation' up '-d' backend engine frontend automation-worker
+  Assert-LastExitCode "El arranque de backend, Engine, Worker y frontend"
 
   if ($WithDemo) {
     Write-Host "Cargando datos demo..."

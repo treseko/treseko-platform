@@ -26,6 +26,7 @@ from tkinter import filedialog, messagebox, ttk
 from installer.bootstrap import build_gui_handoff_args, publish_release_tree
 from installer.runtime_detection import compare_versions, detect_runtime, has_unfinished_update, installed_version, runtime_matches_installation
 from installer.release_client import parse_latest_release
+from installer.compose_bind_compat import persist_compose_bind_address, prepare_compose_bind_address
 
 
 class TresekoInstaller(tk.Tk):
@@ -53,6 +54,7 @@ class TresekoInstaller(tk.Tk):
                 self.installation_root = cached_installation
         self.icon_path = Path(initial.icon).expanduser().resolve() if initial and getattr(initial, "icon", None) else None
         self.port_var = tk.StringVar(value=initial.port if initial and initial.port else "9095")
+        self.share_network_var = tk.BooleanVar(value=False)
         self.demo_var = tk.BooleanVar(value=bool(initial.demo) if initial else False)
         self.mode_var = tk.StringVar(value=initial.mode if initial and initial.mode in {"new", "update", "uninstall", "reset"} else "new")
         self.purge_var = tk.BooleanVar(value=False)
@@ -74,6 +76,7 @@ class TresekoInstaller(tk.Tk):
         self._busy_widgets: list[tk.Widget] = []
         self._existing_install_widgets: list[tk.Widget] = []
         self._new_install_widgets: list[tk.Widget] = []
+        self._network_access_widgets: list[tk.Widget] = []
         self._purge_widget: ttk.Checkbutton | None = None
         self._icon_image: tk.PhotoImage | None = None
         self._set_window_icon()
@@ -112,6 +115,29 @@ class TresekoInstaller(tk.Tk):
         platform_box = ttk.LabelFrame(content, text="Equipo detectado", padding=12)
         platform_box.pack(fill="x", pady=(0, 10))
         ttk.Label(platform_box, textvariable=self.platform_var, wraplength=680).pack(anchor="w")
+        components = ttk.LabelFrame(content, text="Aplicación", padding=12)
+        components.pack(fill="x", pady=(0, 10))
+        for title, detail in (
+            ("Interfaz web", "Pantallas para gestionar proyectos, pruebas y resultados."),
+            ("Backend y API", "Reglas, acceso de usuarios y comunicación de la plataforma."),
+        ):
+            ttk.Label(components, text=f"✓  {title}", font=("Arial", 10, "bold")).pack(anchor="w")
+            ttk.Label(components, text=detail, wraplength=660, foreground="#52627b").pack(anchor="w", padx=(24, 0), pady=(0, 4))
+        data_services = ttk.LabelFrame(content, text="Servicios de datos", padding=12)
+        data_services.pack(fill="x", pady=(0, 10))
+        for title, detail in (
+            ("PostgreSQL", "Base de datos que conserva proyectos, casos y resultados."),
+            ("Redis", "Colas y coordinación interna entre servicios."),
+        ):
+            ttk.Label(data_services, text=f"✓  {title}", font=("Arial", 10, "bold")).pack(anchor="w")
+            ttk.Label(data_services, text=detail, wraplength=660, foreground="#52627b").pack(anchor="w", padx=(24, 0), pady=(0, 4))
+        ttk.Label(content, text="Durante la instalación: se crea o actualiza la estructura de la base de datos.", foreground="#52627b", wraplength=680).pack(anchor="w", pady=(0, 10))
+        addons = ttk.LabelFrame(content, text="Complementos Treseko", padding=12)
+        addons.pack(fill="x", pady=(0, 10))
+        ttk.Label(addons, text="✓  Motor de IA", font=("Arial", 10, "bold")).pack(anchor="w")
+        ttk.Label(addons, text="Se inicia con la instalación estándar; el proveedor de IA se configura después.", wraplength=660, foreground="#52627b").pack(anchor="w", padx=(24, 0), pady=(0, 4))
+        ttk.Label(addons, text="✓  Worker de automatización · se instala en este equipo", font=("Arial", 10, "bold")).pack(anchor="w", pady=(4, 0))
+        ttk.Label(addons, text="Queda en espera hasta vincularlo desde Automatización → Workers, después de crear una solución. Community admite un worker.", wraplength=660, foreground="#52627b").pack(anchor="w", padx=(24, 0), pady=(0, 4))
         config = ttk.LabelFrame(content, text="Configuración de instalación", padding=12)
         config.pack(fill="x", pady=(0, 10))
         port_row = ttk.Frame(config)
@@ -122,6 +148,15 @@ class TresekoInstaller(tk.Tk):
         self.port_entry.bind("<KeyRelease>", lambda _e: self._validate_port_inline())
         self.port_hint = ttk.Label(port_row, text="http://localhost:puerto", foreground="#52627b")
         self.port_hint.pack(side="left")
+        access = ttk.LabelFrame(config, text="Acceso a Treseko", padding=8)
+        access.pack(fill="x", pady=(4, 8))
+        local_access = ttk.Radiobutton(access, text="Solo este equipo (recomendado)", variable=self.share_network_var, value=False)
+        local_access.pack(anchor="w")
+        ttk.Label(access, text="Abre Treseko desde esta computadora; no acepta conexiones de otros equipos.", foreground="#52627b", wraplength=640).pack(anchor="w", padx=(22, 0), pady=(0, 4))
+        network_access = ttk.Radiobutton(access, text="Compartir en la red local", variable=self.share_network_var, value=True)
+        network_access.pack(anchor="w")
+        ttk.Label(access, text="Otros equipos de tu red podrán conectarse. El acceso desde Internet depende del firewall y requiere configurar un proxy HTTPS o VPN.", foreground="#8a5b00", wraplength=640).pack(anchor="w", padx=(22, 0))
+        self._network_access_widgets = [local_access, network_access]
         new_mode = ttk.Radiobutton(config, text="Instalación nueva (no modifica una instalación previa)", variable=self.mode_var, value="new")
         new_mode.pack(anchor="w", pady=2)
         update_mode = ttk.Radiobutton(config, text="Actualizar (reutiliza exactamente configuración, secretos y volúmenes)", variable=self.mode_var, value="update")
@@ -377,6 +412,9 @@ class TresekoInstaller(tk.Tk):
             widget.configure(state="normal" if can_new else "disabled")
         install_allowed = can_update if self.mode_var.get() == "update" else can_new if self.mode_var.get() == "new" else recognized and not journal_pending
         self.install_button.configure(state="normal" if install_allowed else "disabled")
+        access_enabled = self.mode_var.get() in {"new", "reset"}
+        for widget in self._network_access_widgets:
+            widget.configure(state="normal" if access_enabled else "disabled")
         if show_purge:
             if not self._purge_container.winfo_ismapped():
                 self._purge_container.pack(fill="x", pady=(7, 0), before=self._purge_container.master.winfo_children()[-1])
@@ -441,6 +479,7 @@ class TresekoInstaller(tk.Tk):
         """Lee Tkinter únicamente en el hilo principal."""
         return {
             "port": self.port_var.get().strip(),
+            "bind_address": "0.0.0.0" if self.share_network_var.get() else "127.0.0.1",
             "demo": bool(self.demo_var.get()),
             "mode": self.mode_var.get(),
             "purge": bool(self.purge_var.get()),
@@ -685,6 +724,14 @@ class TresekoInstaller(tk.Tk):
         root = config["package"]
         port, demo, mode = str(config["port"]), bool(config["demo"]), str(config["mode"])
         script = self._platform_script(root if isinstance(root, Path) else None)
+        process_env = os.environ.copy()
+        if mode == "new":
+            try:
+                prepare_compose_bind_address(root if isinstance(root, Path) else Path(root))
+            except (OSError, ValueError) as exc:
+                self.events.put(("install", f"ERROR|No se puede preparar el acceso de red con seguridad: {exc}"))
+                return
+            process_env["TRESEKO_BIND_ADDRESS"] = str(config["bind_address"])
         # Un release antiguo puede contener el compose y la instalación ya
         # existente, pero todavía no conocer --update/--uninstall. Cuando la
         # GUI se ejecuta desde el bundle standalone, usar sus scripts nuevos
@@ -741,7 +788,7 @@ class TresekoInstaller(tk.Tk):
         self.events.put(("log", "\nIniciando instalación...\n"))
         process: subprocess.Popen[str] | None = None
         try:
-            process = subprocess.Popen(command, cwd=str(root), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            process = subprocess.Popen(command, cwd=str(root), env=process_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             with self._process_lock:
                 self._active_process = process
             assert process.stdout is not None
@@ -769,6 +816,11 @@ class TresekoInstaller(tk.Tk):
             else:
                 self.events.put(("cancelled", "Instalación cancelada. No se ejecutaron acciones adicionales."))
         elif result == 0:
+            if mode == "new":
+                try:
+                    persist_compose_bind_address(root if isinstance(root, Path) else Path(root), str(config["bind_address"]))
+                except (OSError, ValueError) as exc:
+                    self.events.put(("log", f"ADVERTENCIA|La instalación terminó, pero no se pudo guardar la dirección de escucha: {exc}\n"))
             self.events.put(("uninstall-success" if mode == "uninstall" else "install-success", port))
         else:
             self.events.put(("install", f"ERROR|El instalador terminó con código {result}. Revisá la actividad."))

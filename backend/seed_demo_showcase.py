@@ -58,7 +58,7 @@ PROJECTS = (
             ("Staging Web", "https://staging-commerce.demo.treseko.local", "staging"),
         ),
         builds=(
-            ("v1.5.0-rc.2", -3, 4, "PREPARACION"),
+            ("v1.5.0-rc.2", -3, 4, "ACTIVA"),
             ("v1.4.0", -12, -8, "HISTORICA"),
             ("v1.3.0", -20, -16, "HISTORICA"),
         ),

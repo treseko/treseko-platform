@@ -33,17 +33,22 @@ duplica la lógica de Docker, secretos, migraciones ni creación del administrad
 
 Desde la raíz de `treseko-platform`:
 
-El ejecutable requiere Python 3 y Tkinter. En Ubuntu minimal, instalá
-`python3-tk` antes de abrirlo.
+Los instaladores Windows y Linux se compilan con Qt for Python (PySide6) y no
+usan Tkinter. macOS mantiene su aplicación nativa SwiftUI. Los artefactos
+incluyen su runtime gráfico y no requieren instalar Python. Windows y Linux
+comparten la interfaz Qt; macOS usa una interfaz SwiftUI nativa con un flujo
+equivalente.
 
 ```bash
-python3 installer/treseko_installer.py
+python3 -m pip install -r installer/requirements-build.txt
+python3 installer/treseko_installer_qt.py
 ```
 
 En Windows PowerShell:
 
 ```powershell
-py installer\treseko_installer.py
+py -m pip install -r installer\requirements-build.txt
+py installer\treseko_installer_qt.py
 ```
 
 En Windows también podés abrir `installer/launch_installer.bat`. En Ubuntu o
@@ -59,52 +64,27 @@ cp installer/treseko-installer.png ~/.local/share/icons/hicolor/512x512/apps/tre
 cp installer/treseko-installer.desktop ~/.local/share/applications/
 ```
 
-El launcher usa el icono PNG incluido en `installer/` cuando se ejecuta sobre
-Linux; macOS y Windows conservan sus launchers existentes.
+El launcher inicia la UI Qt compartida en Windows y Linux; macOS conserva su
+aplicación SwiftUI.
 
-La distribución mínima de arranque incluye `installer/treseko-installer.png`,
-por lo que el launcher y el acceso `.desktop` no dependen de que viaje también
-`frontend/public/`. La ventana comprueba Docker, Compose v2, el motor Docker, el puerto elegido y
-la integridad mínima del paquete antes de iniciar la instalación. También
-consulta `version.json` y el health check del Backend en el puerto elegido para
-mostrar las versiones en ejecución de Frontend y Backend. Si no coinciden, el
-puerto pertenece a otra aplicación o la instalación no puede identificarse, no
-permite instalar ni actualizar encima. Para actualizar exige que la raíz
-seleccionada corresponda a la instalación detectada, que la versión destino sea
-más nueva y que no exista una transacción de actualización pendiente. Si Docker
-está detenido, muestra la última versión registrada y vuelve a validar el
-destino antes de modificarlo. Si se abre
-sola desde `Descargas` y faltan los archivos principales, consulta el último
-release estable oficial de GitHub, lo descarga por HTTPS, valida su estructura
-y lo guarda en una caché versionada. Durante el proceso muestra la salida real
-del instalador y permite abrir la aplicación al finalizar.
+La UI Qt presenta el destino (este equipo o un servidor Linux por SSH), los
+componentes, el puerto, el ámbito de red y una confirmación antes de iniciar.
+Consulta el release estable oficial, descarga el paquete y valida su versión;
+cuando el índice de distribución está disponible, comprueba además tamaño y
+SHA-256 del paquete. La instalación y actualización se delegan en los scripts
+oficiales del release y se muestra su salida.
 
-Al terminar el bootstrap, la GUI reconoce automáticamente una instalación
-existente en los paquetes directos de `~/.cache/treseko/packages/` cuando
-contiene `compose.production.env` y sus secretos locales válidos. También se
-puede elegir manualmente otra carpeta con `Cambiar`. Cuando la instalación es
-reconocida aparece el botón visible `Desinstalar Treseko`; la acción conserva
-datos por defecto y la purga requiere la confirmación adicional habitual.
-El selector `Instalación existente` permite apuntar a una raíz fuera de la
-caché; es independiente de `Paquete`, que define la versión destino.
+La opción remota instala un servidor Linux mediante SSH y usa la configuración
+SSH del equipo cliente. En Windows se requiere Git Bash o WSL para ese modo.
 
-Si se ejecuta el launcher Python y ese release también incluye una GUI más
-nueva, el bootstrap la abre automáticamente con el paquete nuevo y la raíz de
-datos reconocida por separado. Un ejecutable standalone congelado no puede
-reemplazar su propio código por el Python descargado. Para actualizar desde un
-standalone anterior, descargá y ejecutá directamente el instalador gráfico de
-la versión destino; no inicies el update desde el standalone viejo. Un servicio
-nuevo, como un worker, debe estar declarado en el Compose y/o en el script del
-release para que pueda instalarse; la GUI no inventa servicios que no estén en
-el paquete.
+## Empaquetado y nombres estables
 
-## Empaquetado versionado
-
-La versión se lee exclusivamente desde `VERSION`. El builder no copia el
-repositorio completo: el ejecutable contiene la GUI Tkinter y
-`treseko-installer.png`; la plataforma se obtiene después mediante el bootstrap
-oficial de GitHub/cache. No se incluyen `.env`, secretos, datos, Docker images,
-frontend compilado ni la plataforma completa.
+La versión se lee exclusivamente desde `VERSION`. Windows y Linux empaquetan
+la GUI PySide6 con PyInstaller; macOS genera una aplicación SwiftUI nativa. No
+se incluyen `.env`, secretos, datos, Docker images, frontend compilado ni la
+plataforma completa. Los nombres de los archivos no llevan versión porque cada
+instalador consulta el release estable más reciente de GitHub; la versión sigue
+incluida en los metadatos del binario y del bundle.
 
 Desde la raíz de `treseko-platform`:
 
@@ -126,12 +106,12 @@ Artefactos esperados en `dist/`:
 
 | Target | Runner nativo | Artefacto |
 |---|---|---|
-| Windows x64 | `windows-2022` | `Treseko-Installer-v<VERSION>-windows-x64.exe` |
-| Linux x64 | `ubuntu-24.04` | `Treseko-Installer-v<VERSION>-linux-x64.AppImage` |
-| macOS arm64 | `macos-14` | `Treseko-Installer-v<VERSION>-macos-arm64.app` |
+| Windows x64 | `windows-2022` | `Treseko-Windows-x64.exe` |
+| Linux x64 | `ubuntu-24.04` | `Treseko-Linux-x64.AppImage` |
+| macOS arm64 | `macos-14` | `Treseko-macOS-arm64.app` (`.zip` en GitHub) |
 
 En macOS, descargá el artefacto correspondiente a la arquitectura de tu Mac,
-descomprimilo y abrí `Treseko-Installer-v<VERSION>-macos-<arch>.app` con doble
+descomprimilo y abrí `Treseko-macOS-<arch>.app` con doble
 clic. El primer arranque puede mostrar una advertencia de Gatekeeper porque
 el binario todavía no está firmado ni notarizado por Apple; la firma,
 notarización y distribución pública quedan pendientes. Un `.app` es el bundle

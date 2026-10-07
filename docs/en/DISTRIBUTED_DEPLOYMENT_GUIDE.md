@@ -5,7 +5,7 @@
 Separate services when automation, browsers or the AI Engine compete with the
 interface and PostgreSQL. This does not create a separate API worker.
 
-Recommended topology for Treseko Community 1.0.4:
+Recommended topology for Treseko Community:
 
 ```mermaid
 flowchart LR
@@ -32,6 +32,16 @@ The worker processes classic automation and declarative API automation.
 Community supports one worker. Adding workers requires the Premium
 capability/entitlement; each one must be paired with the correct organization
 and have a compatible scope.
+
+The Community installer starts the Worker on the same host as the main
+services. It waits until a solution exists and `QA_ORGANIZACION_ID` is
+configured; pairing must then be approved. It can also be installed manually on
+another machine by following [`automation-worker/README.md`](../automation-worker/README.md);
+the graphical installer does not provision remote hosts yet. Although the
+diagram shows the Engine as a separate node, the included Compose file pins
+`ENGINE_URL` to the local `engine` service. Moving it to another host requires
+adapting the deployment and private Backend–Engine connection. The graphical
+installer does not configure that topology yet.
 
 ## Network
 

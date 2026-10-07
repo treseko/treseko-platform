@@ -232,7 +232,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${TRESEKO_HTTP_PORT:-9095}:80"
+      - "${TRESEKO_BIND_ADDRESS:-0.0.0.0}:${TRESEKO_HTTP_PORT:-9095}:80"
     volumes:
       - treseko_frontend_html:/usr/share/nginx/html
     depends_on:

@@ -7,7 +7,7 @@ ICON = Path(os.environ["TRESEKO_ICON"])
 NAME = os.environ.get("TRESEKO_ARTIFACT_NAME", "Treseko-Installer")
 
 a = Analysis(
-    [str(ROOT / "installer" / "treseko_installer.py")],
+    [str(ROOT / "installer" / "treseko_installer_qt.py")],
     pathex=[str(ROOT)],
     binaries=[],
     datas=[(str(ROOT / "installer" / "treseko-installer.png"), "installer")],

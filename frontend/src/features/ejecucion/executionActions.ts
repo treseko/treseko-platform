@@ -7,7 +7,9 @@ import type { TranslationKey } from '../../i18n'
 import { createIaLog as iaLog, type ExecutionMode, type FeedbackVariant } from './executionPresentation'
 import { getExecutionStatusesByCaseId } from './executionRunStatus'
 import { isBuildExecutable } from '../../app/buildState'
+import { readBackendError } from '../../app/errorMessages'
 import { executeApiSelection } from './apiExecutionActions'
+import { resolveExecutionProjectId } from './executionProject'
 type CreateExecutionActionsParams = {
   managingProjectId: string | null
   currentProjectId: string
@@ -156,7 +158,7 @@ export function createExecutionActions({
     return { tests: executableTests, assignedIds: latestAssignedIds }
   }
   const createExecutionRun = async (mode: ExecutionMode, tests: any[], assignedIdsOverride?: string[]) => {
-    const projectId = managingProjectId || currentProjectId
+    const projectId = resolveExecutionProjectId({ buildsList, currentBuildId, currentProjectId, managingProjectId })
     if (!projectId || !isValidUUID(projectId)) throw new Error(t('ejecutarPruebas.executionProjectInvalid'))
     if (tests.length === 0) throw new Error(t('ejecutarPruebas.executionNoCasesSelected'))
     const executionBuild = buildsList.find(build => build.id === currentBuildId)
@@ -194,8 +196,7 @@ export function createExecutionActions({
       })
     })
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(errorText || t('configuracion.backendResponded', { status: response.status }))
+      throw new Error(await readBackendError(response, t('configuracion.backendResponded', { status: response.status })))
     }
     return response.json()
   }
@@ -286,7 +287,7 @@ export function createExecutionActions({
     const requestedTests = Array.isArray(executionOptions?.tests) ? executionOptions.tests.filter(Boolean) : []
     const tests = requestedTests.length > 0 ? requestedTests : (executionModalTests.length > 0 ? executionModalTests : (selectedTest ? [selectedTest] : []))
     const isApiSelection = Boolean(executionOptions?.forceApi) || (tests.length > 0 && tests.every(test => String(test?.format || test?.formato_prueba || '').toUpperCase() === 'API'))
-    if (isApiSelection) return executeApiSelection({ mode, executeRequest: executionOptions?.executeRequest === true, executeNow: executionOptions?.executeNow === true, canUseAutomatedExecution, selectedExecutionEnvironmentId, executionEnvironmentId: executionOptions?.environmentId || currentExecutionRun?.apiExecutionResults?.environment_id, executionDatasetPreview: executionDatasetPreview || currentExecutionRun?.apiExecutionResults?.dataset_preview, executionRunId: executionOptions?.runId || currentExecutionRun?.apiExecutionResults?.run_id, executionTests: currentExecutionRun?.apiExecutionResults?.tests || tests, currentExecutionRun, selectedExecutionDatasetId, executionDatasetId: executionOptions?.datasetId || currentExecutionRun?.apiExecutionResults?.dataset_id, setExecutionLoading, managingProjectId, currentProjectId, currentBuildId, fetchWithAuth, setCurrentExecutionRun, setSelectedTest, setExecutionMode, setExecutionModalCaseIds, setShowExecSelector, setActiveExecutionCaseIds, setViewMode, setAutomationMonitor, showFeedback, t }, tests)
+    if (isApiSelection) return executeApiSelection({ mode, executeRequest: executionOptions?.executeRequest === true, executeNow: executionOptions?.executeNow === true, canUseAutomatedExecution, selectedExecutionEnvironmentId, executionEnvironmentId: executionOptions?.environmentId || currentExecutionRun?.apiExecutionResults?.environment_id, executionDatasetPreview: executionDatasetPreview || currentExecutionRun?.apiExecutionResults?.dataset_preview, executionRunId: executionOptions?.runId || currentExecutionRun?.apiExecutionResults?.run_id, executionTests: currentExecutionRun?.apiExecutionResults?.tests || tests, currentExecutionRun, selectedExecutionDatasetId, executionDatasetId: executionOptions?.datasetId || currentExecutionRun?.apiExecutionResults?.dataset_id, setExecutionLoading, managingProjectId, currentProjectId, currentBuildId, buildsList, fetchWithAuth, setCurrentExecutionRun, setSelectedTest, setExecutionMode, setExecutionModalCaseIds, setShowExecSelector, setActiveExecutionCaseIds, setViewMode, setAutomationMonitor, showFeedback, t }, tests)
     if (mode === 'automated' && !canUseAutomatedExecution) {
       showFeedback(
         t('ejecutarPruebas.manualPermissionRequired'),

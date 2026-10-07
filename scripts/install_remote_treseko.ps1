@@ -2,9 +2,9 @@ param(
   [Parameter(Mandatory = $true, Position = 0)]
   [string]$Target,
 
-  [int]$SshPort = 22,
-  [string]$RemoteDir = "/opt/treseko-platform",
-  [int]$HttpPort = 9095,
+  [ValidateRange(1, 65535)][int]$SshPort = 22,
+  [ValidateScript({ $_.StartsWith('/') -and $_ -ne '/' -and $_ -notmatch '[\r\n]' })][string]$RemoteDir = "/opt/treseko-platform",
+  [ValidateRange(1, 65535)][int]$HttpPort = 9095,
   [switch]$SkipDockerInstall
 )
 
@@ -58,7 +58,8 @@ Require-Command tar
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Resolve-Path (Join-Path $ScriptDir "..")
 $Archive = Join-Path $env:TEMP ("treseko-platform-{0}.tgz" -f ([guid]::NewGuid().ToString("N")))
-$RemoteArchive = "/tmp/treseko-platform.tgz"
+$RemoteArchive = "/tmp/treseko-platform-$([guid]::NewGuid().ToString('N')).tgz"
+$RemoteUploaded = $false
 
 $AdminEmail = "admin@qa.local"
 $AdminPassword = New-TresekoSecret 24
@@ -69,6 +70,15 @@ $AiEngineInternalToken = New-TresekoSecret 64
 $InstallDocker = if ($SkipDockerInstall) { "false" } else { "true" }
 
 try {
+  $RemoteRoot = $RemoteDir.TrimEnd('/')
+  if ([string]::IsNullOrWhiteSpace($RemoteRoot)) { throw "RemoteDir debe ser una ruta absoluta distinta de /." }
+  $QuotedRemoteRoot = ConvertTo-BashSingleQuoted $RemoteRoot
+  $Preflight = @"
+test ! -e $QuotedRemoteRoot && test ! -L $QuotedRemoteRoot || { test -d $QuotedRemoteRoot && test ! -L $QuotedRemoteRoot && test -z "`$(find $QuotedRemoteRoot -mindepth 1 -print -quit)"; }
+"@
+  $Preflight | ssh -p $SshPort $Target bash -s
+  Assert-LastExitCode "La comprobacion de que el destino remoto esta vacio"
+
   Write-Host "Preparando paquete local..."
   tar `
     --exclude .git `
@@ -86,9 +96,11 @@ try {
   Write-Host "Subiendo paquete a $Target..."
   scp -P $SshPort $Archive "${Target}:${RemoteArchive}"
   Assert-LastExitCode "La subida del paquete por SCP"
+  $RemoteUploaded = $true
 
   $RemoteScript = @'
 set -euo pipefail
+trap 'rm -f -- "${TRESEKO_REMOTE_ARCHIVE}"' EXIT
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
@@ -97,6 +109,16 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
   fi
   SUDO="sudo"
+fi
+
+if ! $SUDO bash -c '
+  target="$1"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    [ -d "$target" ] && [ ! -L "$target" ] && [ -z "$(find "$target" -mindepth 1 -print -quit)" ] || exit 1
+  fi
+' _ "$TRESEKO_REMOTE_DIR"; then
+  echo "El destino remoto ${TRESEKO_REMOTE_DIR} no esta vacio; no se modificaron archivos." >&2
+  exit 1
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -120,7 +142,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}"
-$SUDO tar -xzf /tmp/treseko-platform.tgz -C "${TRESEKO_REMOTE_DIR}"
+$SUDO tar --no-same-owner --no-same-permissions -xzf "${TRESEKO_REMOTE_ARCHIVE}" -C "${TRESEKO_REMOTE_DIR}"
 $SUDO mkdir -p "${TRESEKO_REMOTE_DIR}/secrets"
 
 DATABASE_URL="postgresql+asyncpg://treseko:${TRESEKO_DB_PASSWORD}@db:5432/treseko"
@@ -155,14 +177,14 @@ $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.en
 $SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env run --rm \
   -v "${TRESEKO_REMOTE_DIR}/secrets/admin-password:/run/secrets/admin-password:ro" \
   --entrypoint python backend /app/seed_admin.py --password-file /run/secrets/admin-password
-$SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env up -d backend engine frontend
+$SUDO docker compose -f docker-compose.prod.yml --env-file compose.production.env --profile automation up -d backend engine frontend automation-worker
 
-rm -f /tmp/treseko-platform.tgz
 '@
 
   Write-Host "Instalando Treseko en $Target..."
   $Bootstrap = @"
 TRESEKO_REMOTE_DIR=$(ConvertTo-BashSingleQuoted $RemoteDir)
+TRESEKO_REMOTE_ARCHIVE=$(ConvertTo-BashSingleQuoted $RemoteArchive)
 TRESEKO_HTTP_PORT=$(ConvertTo-BashSingleQuoted ([string]$HttpPort))
 TRESEKO_INSTALL_DOCKER=$(ConvertTo-BashSingleQuoted $InstallDocker)
 TRESEKO_DB_PASSWORD=$(ConvertTo-BashSingleQuoted $DbPassword)
@@ -194,6 +216,9 @@ $RemoteScript
   Write-Host "Guarda esta contrasena ahora. Treseko pedira cambiarla en el primer login."
 }
 finally {
+  if ($RemoteUploaded) {
+    "rm -f -- $(ConvertTo-BashSingleQuoted $RemoteArchive)" | ssh -p $SshPort -o BatchMode=yes $Target bash -s *> $null
+  }
   if (Test-Path $Archive) {
     Remove-Item $Archive -Force
   }

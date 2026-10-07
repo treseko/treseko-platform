@@ -14,6 +14,9 @@ COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend/app /app/app
+# Starlette requires the mounted static root to exist even when a deployment
+# does not ship any evidence or branding assets.
+RUN mkdir -p /app/app/static
 COPY backend/alembic /app/alembic
 COPY backend/alembic.ini /app/alembic.ini
 COPY backend/seed_admin.py /app/seed_admin.py
