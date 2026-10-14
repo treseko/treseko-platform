@@ -52,7 +52,7 @@ type AppShellProps = {
   currentBuildId: string
   sortBuildsNewestFirst: (builds: any[]) => any[]
   onBuildChange: (build: any) => void
-  canAccessConfig: boolean
+  canAccessConfig: boolean, canAccessNotifications?: boolean
   systemEdition?: 'community' | 'premium'
   branding?: BrandingState
 }
@@ -79,7 +79,7 @@ export function AppShell({
   currentBuildId,
   sortBuildsNewestFirst,
   onBuildChange,
-  canAccessConfig,
+  canAccessConfig, canAccessNotifications = false,
   systemEdition = 'community',
   branding = DEFAULT_BRANDING
 }: AppShellProps) {
@@ -146,7 +146,7 @@ export function AppShell({
   const isAdminSession = loggedUser.role === 'ADMIN'
   const brandName = branding.effective_brand_name || DEFAULT_BRANDING.effective_brand_name
   const brandLogoUrl = resolveAssetUrl(branding.effective_logo_url) || DEFAULT_BRANDING.effective_logo_url
-  const notificationState = useAppNotifications({ loggedUserId: loggedUser.id, loggedUserEmail: loggedUser.email, locale, t })
+  const notificationState = useAppNotifications({ enabled: systemEdition === 'premium' && canAccessNotifications, loggedUserId: loggedUser.id, loggedUserEmail: loggedUser.email, locale, t })
 
   const navigateMobile = (moduleId: ModuleId) => {
     onModuleNavigation(moduleId)
@@ -487,7 +487,7 @@ export function AppShell({
               </Dropdown.Menu>
             </Dropdown>
 
-            <NotificationInbox state={notificationState} locale={locale} t={t} />
+            {systemEdition === 'premium' && canAccessNotifications && <NotificationInbox state={notificationState} locale={locale} t={t} />}
           </div>
         </header>
 

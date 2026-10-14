@@ -25,7 +25,7 @@ vi.mock('./useAppNotifications', () => ({
   }),
 }))
 
-vi.mock('./NotificationInbox', () => ({ NotificationInbox: () => null }))
+vi.mock('./NotificationInbox', () => ({ NotificationInbox: () => <div data-testid="notification-inbox" /> }))
 
 afterEach(cleanup)
 
@@ -68,5 +68,16 @@ describe('AppShell mobile drawer', () => {
     fireEvent.keyDown(drawer, { key: 'Escape' })
     await waitFor(() => expect(document.activeElement).toBe(trigger))
     expect(drawer).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('only shows the notification inbox in Premium', () => {
+    const { rerender } = render(<I18nProvider><AppShell {...baseProps} /></I18nProvider>)
+    expect(screen.queryByTestId('notification-inbox')).not.toBeInTheDocument()
+
+    rerender(<I18nProvider><AppShell {...baseProps} canAccessNotifications systemEdition="premium" /></I18nProvider>)
+    expect(screen.getByTestId('notification-inbox')).toBeInTheDocument()
+
+    rerender(<I18nProvider><AppShell {...baseProps} systemEdition="premium" /></I18nProvider>)
+    expect(screen.queryByTestId('notification-inbox')).not.toBeInTheDocument()
   })
 })

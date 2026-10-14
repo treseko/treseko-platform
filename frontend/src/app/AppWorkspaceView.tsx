@@ -174,7 +174,7 @@ export function AppWorkspaceView({ options }: { options: any }) {
         currentBuildId={currentBuildId}
         sortBuildsNewestFirst={sortBuildsNewestFirst}
         onBuildChange={guardedBuildChange}
-        canAccessConfig={canAccessModule("configuracion")}
+        canAccessConfig={canAccessModule("configuracion")} canAccessNotifications={canAccessCapability("notificaciones.inbox")}
         systemEdition={systemEdition}
         branding={branding}
       >

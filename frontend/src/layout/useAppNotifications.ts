@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from '../app/constants'
 
-type NotificationOptions = { loggedUserId?: string, loggedUserEmail?: string, locale: string, t: (key: any, values?: any) => string }
+type NotificationOptions = { enabled: boolean, loggedUserId?: string, loggedUserEmail?: string, locale: string, t: (key: any, values?: any) => string }
 
-export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }: NotificationOptions) {
+export function useAppNotifications({ enabled, loggedUserId, loggedUserEmail, locale, t }: NotificationOptions) {
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationPreferences, setNotificationPreferences] = useState<any[]>([])
 
   const loadNotifications = async () => {
+    if (!enabled) return
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
     setNotificationsLoading(true)
@@ -22,6 +23,7 @@ export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }
   }
 
   const loadNotificationPreferences = async () => {
+    if (!enabled) return
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
     try {
@@ -32,6 +34,7 @@ export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }
   }
 
   const saveNotificationPreferences = async (nextPreference: any) => {
+    if (!enabled) return
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
     const otherPreferences = notificationPreferences.filter(item => !(item.event_type === null && item.channel === 'in_app'))
@@ -63,6 +66,7 @@ export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }
   })
 
   const markNotificationRead = async (notification: any) => {
+    if (!enabled) return
     const token = localStorage.getItem('qa_access_token')
     if (!token || notification?.read_at) return
     try {
@@ -73,6 +77,7 @@ export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }
   }
 
   const markAllNotificationsRead = async () => {
+    if (!enabled) return
     const token = localStorage.getItem('qa_access_token')
     if (!token) return
     try {
@@ -83,11 +88,17 @@ export function useAppNotifications({ loggedUserId, loggedUserEmail, locale, t }
   }
 
   useEffect(() => {
+    if (!enabled) {
+      setNotifications([])
+      setNotificationPreferences([])
+      setNotificationsLoading(false)
+      return
+    }
     void loadNotifications()
     void loadNotificationPreferences()
     const timer = window.setInterval(() => { void loadNotifications() }, 60000)
     return () => window.clearInterval(timer)
-  }, [loggedUserId, loggedUserEmail])
+  }, [enabled, loggedUserId, loggedUserEmail])
 
   const globalInAppPreference = notificationPreferences.find(item => !item.event_type && item.channel === 'in_app')
   const muteUntilValue = globalInAppPreference?.quiet_hours_json?.mute_until
