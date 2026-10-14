@@ -1,4 +1,0 @@
-# Pinned build toolchain for the shared Qt GUI on Windows and Linux.
-PyInstaller==6.15.0
-Pillow==11.3.0
-PySide6==6.9.2

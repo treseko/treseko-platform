@@ -156,6 +156,7 @@ export function CaseManagementModals({ context }: Props) {
       <Form.Label className="fw-bold x-small text-muted">{t('casos.copyName').toUpperCase()}</Form.Label>
       <Form.Control name="a11y-casemanagementmodalstsx-150" aria-label={t('casos.formField')}
         value={cloneSuiteName}
+        maxLength={150}
         onChange={(event) => setCloneSuiteName(event.target.value)}
         className="bg-light border-light-subtle shadow-none text-dark fw-bold"
         placeholder={t('casos.copySuitePlaceholder')}

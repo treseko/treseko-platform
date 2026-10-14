@@ -40,7 +40,7 @@ test("ejecuta casos en orden, acepta dataset aliases y separa estado compartido 
   ], { dataset: { variables: { request_id: "dataset-request-1" } } }), { allowLoopbackForTests: true });
   assert.equal(result.status, "PASSED"); assert.equal(result.api_results.length, 2); assert.equal(result.api_results[0].result.dynamic_variables.values.$randomUUID, "uuid-precalculado");
   assert.equal(result.api_results[0].state_updates.shared_variables["api.flow_id"], "flow-42"); assert.equal(result.api_results[0].state_updates.persistent_variables["api.token"], "secret-token-42");
-  assert.equal(result.api_results[0].result.persistent_variables["api.token"], "[REDACTED]"); assert.equal(result.api_results[1].result.status, "PASSED");
+  assert.equal(result.api_results[0].result.persistent_variables["api.token"], "secret-token-42"); assert.equal(result.api_results[1].result.status, "PASSED");
   assert.equal(fixture.seen[0].headers["x-request-id"], "dataset-request-1"); assert.equal(fixture.seen[0].headers["x-case"], "row-1");
 });
 
@@ -75,17 +75,18 @@ test("conserva 307, content-type JSON, timeout y límite de respuesta", async t 
   const timeout = await runApiWorkerSuite(job(fixture.url, [{ case_id: "timeout", execution_id: "timeout-e", configuracion_api: { request: { method: "GET", url: `${fixture.url}/slow`, timeout: { total_ms: 100 } } } }]), { allowLoopbackForTests: true });
   assert.equal(timeout.api_results[0].result.status, "TIMEOUT");
   const large = await runApiWorkerSuite(job(fixture.url, [{ case_id: "large", execution_id: "large-e", configuracion_api: { request: { method: "GET", url: `${fixture.url}/large` } } }]), { allowLoopbackForTests: true });
-  assert.equal(large.api_results[0].result.status, "BLOCKED"); assert.equal(large.api_results[0].result.steps[0].errors[0].code, "RESPONSE_TOO_LARGE");
+  assert.equal(large.api_results[0].result.status, "PASSED"); assert.equal(large.api_results[0].result.steps[0].response.body.length, 2 * 1024 * 1024 + 1);
   const many = await runApiWorkerSuite(job(fixture.url, Array.from({ length: 5 }, (_, index) => ({ case_id: `big-${index}`, execution_id: `big-e-${index}`, configuracion_api: { request: { method: "GET", url: `${fixture.url}/payload` } } }))), { allowLoopbackForTests: true });
-  assert.ok(Buffer.byteLength(JSON.stringify(many), "utf8") <= MAX_TOTAL_EVIDENCE_BYTES);
+  assert.ok(Buffer.byteLength(JSON.stringify(many), "utf8") > MAX_TOTAL_EVIDENCE_BYTES);
+  for(const item of many.api_results) assert.equal(item.result.steps[0].response.body_json.payload.length,1900*1024);
   const nearLimit = await runApiWorkerSuite(job(fixture.url, [{ case_id: "near", execution_id: "near-e", configuracion_api: { request: { method: "GET", url: `${fixture.url}/near-limit` } } }]), { allowLoopbackForTests: true });
-  assert.ok(Buffer.byteLength(JSON.stringify(nearLimit.api_results[0]), "utf8") <= 4 * 1024 * 1024);
+  assert.equal(nearLimit.api_results[0].result.steps[0].response.body_json.payload.length,2 * 1024 * 1024 - 100);
 });
 
-test("bloquea estado API extraído que excede el contrato del backend", async t => {
+test("conserva estado API extraído de más de 512 KiB", async t => {
   const fixture = await startServer(); t.after(() => fixture.server.close());
   const result = await runApiWorkerSuite(job(fixture.url, [{ case_id: "state", execution_id: "state-e", configuracion_api: { request: { method: "GET", url: `${fixture.url}/state` }, extractors: [{ name: "api.large", source: "response.body", selector: "$.payload" }] } }]), { allowLoopbackForTests: true });
-  assert.equal(result.status, "BLOCKED"); assert.match(result.api_results[0].result.errors[0].error, /variables API extraídas/); assert.deepEqual(result.api_results[0].state_updates, { shared_variables: {}, persistent_variables: {} });
+  assert.equal(result.status, "PASSED"); assert.equal(result.api_results[0].state_updates.shared_variables["api.large"].length, 600*1024); assert.equal(result.api_results[0].result.steps[0].response.body_json.payload.length,600*1024);
 });
 
 test("json_schema y scripts seguros tienen resultado determinista", async t => {

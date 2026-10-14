@@ -14,6 +14,7 @@ from .domain_models.inventory import *
 from .domain_models.wiki import *
 from .domain_models.traceability import *
 from .domain_models.scheduler import *
+from .domain_models.ai_execution_assets import *
 from .domain_models.settings import *
 from .domain_models.system_updates import *
 from .domain_models.quality_intelligence import *

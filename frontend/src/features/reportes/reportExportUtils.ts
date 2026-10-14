@@ -2,6 +2,8 @@ import { formatDateTime } from '../../shared/utils/dateTime'
 import { escapeHtml, escapeSpreadsheetHtmlCell } from '../../shared/utils/exportSecurity'
 import { REPORT_VISIBLE_FORMATS, isReportVisibleFormat } from './reportFormatVisibility'
 
+export const structuredReportValue = (value: unknown): string => value == null ? '' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+
 type Translate = (key: string) => string
 
 type ReportExportInput = {
@@ -79,7 +81,7 @@ export function buildReportTablesHtml({ suiteTree, projectMetrics, reportStats, 
       turno: Number(turn.index || turn.turn_number || index + 1),
       mensaje: turn.message || turn.request?.body?.message || '',
       respuesta: turn.responseText || turn.response_text || turn.response?.message || '',
-      esperado: turn.expected || turn.resultado_esperado || '',
+      esperado: structuredReportValue(turn.expected ?? turn.resultado_esperado),
       estado: turn.status || t('common.notAvailable'),
       http: turn.statusCode || turn.status_code || '',
       latencia: turn.latencyMs || turn.latency_ms || 0,
@@ -106,8 +108,7 @@ export function buildReportTablesHtml({ suiteTree, projectMetrics, reportStats, 
       ${priorityRows.length ? priorityRows.map(([prioridad, data]: [string, any]) => `<tr><td>${escapeSpreadsheetHtmlCell(priorityLabel(prioridad, t))}</td><td>${escapeSpreadsheetHtmlCell(data.total)}</td><td>${escapeSpreadsheetHtmlCell(data.pasados)}</td><td>${escapeSpreadsheetHtmlCell(data.fallados)}</td><td>${escapeSpreadsheetHtmlCell(data.bloqueados)}</td><td>${escapeSpreadsheetHtmlCell(data.pendientes || 0)}</td></tr>`).join('') : `<tr><td colspan="6">${t('reportes.noBugsForExport')}</td></tr>`}
     </tbody></table>
     <h2>${t('reportes.suitesAndCases')}</h2>
-     ${suiteRows.length ? suiteRows.map(row => `<tr><td>${escapeSpreadsheetHtmlCell(row.tipo)}</td><td>${escapeSpreadsheetHtmlCell(row.suite)}</td><td>${escapeSpreadsheetHtmlCell(row.codigo)}</td><td>${escapeSpreadsheetHtmlCell(row.titulo)}</td><td>${escapeSpreadsheetHtmlCell(resultLabel(row.estado, t))}</td><td>${escapeSpreadsheetHtmlCell(priorityLabel(row.prioridad, t))}</td><td>${escapeSpreadsheetHtmlCell(modeLabel(row.modo || '', t))}</td><td>${escapeSpreadsheetHtmlCell(row.total)}</td><td>${escapeSpreadsheetHtmlCell(row.pasados)}</td><td>${escapeSpreadsheetHtmlCell(row.fallados)}</td><td>${escapeSpreadsheetHtmlCell(row.bloqueados)}</td><td>${escapeSpreadsheetHtmlCell(row.pendientes)}</td><td>${escapeSpreadsheetHtmlCell(row.tasa)}</td><td>${escapeSpreadsheetHtmlCell(row.fecha)}</td><td>${escapeSpreadsheetHtmlCell(row.ejecutado_por)}</td><td>${escapeSpreadsheetHtmlCell(row.observaciones)}</td></tr>`).join('') : `<tr><td colspan="16">${t('reportes.noSuiteCasesForExport')}</td></tr>`}
-    <table><thead><tr><th>${t('reportes.type')}</th><th>${t('reportes.suite')}</th><th>${t('reportes.code')}</th><th>${t('reportes.title')}</th><th>${t('reportes.status')}</th><th>${t('reportes.priority')}</th><th>${t('reportes.format')}</th><th>${t('reportes.executionMode')}</th><th>${t('reportes.total')}</th><th>${t('reportes.passed')}</th><th>${t('reportes.failed')}</th><th>${t('reportes.blocked')}</th><th>${t('reportes.pending')}</th><th>${t('reportes.resolutionRate')}</th><th>${t('reportes.date')}</th><th>${t('reportes.executedBy')}</th><th>${t('reportes.observations')}</th></tr></thead><tbody>
+    <table class="case-results"><thead><tr><th>${t('reportes.type')}</th><th>${t('reportes.suite')}</th><th>${t('reportes.code')}</th><th>${t('reportes.title')}</th><th>${t('reportes.status')}</th><th>${t('reportes.priority')}</th><th>${t('reportes.format')}</th><th>${t('reportes.executionMode')}</th><th>${t('reportes.total')}</th><th>${t('reportes.passed')}</th><th>${t('reportes.failed')}</th><th>${t('reportes.blocked')}</th><th>${t('reportes.pending')}</th><th>${t('reportes.resolutionRate')}</th><th>${t('reportes.date')}</th><th>${t('reportes.executedBy')}</th><th>${t('reportes.observations')}</th></tr></thead><tbody>
       ${suiteRows.length ? suiteRows.map(row => `<tr><td>${escapeSpreadsheetHtmlCell(row.tipo)}</td><td>${escapeSpreadsheetHtmlCell(row.suite)}</td><td>${escapeSpreadsheetHtmlCell(row.codigo)}</td><td>${escapeSpreadsheetHtmlCell(row.titulo)}</td><td>${escapeSpreadsheetHtmlCell(resultLabel(row.estado, t))}</td><td>${escapeSpreadsheetHtmlCell(priorityLabel(row.prioridad, t))}</td><td>${escapeSpreadsheetHtmlCell(formatLabel(row.formato || '', t))}</td><td>${escapeSpreadsheetHtmlCell(modeLabel(row.modo || '', t))}</td><td>${escapeSpreadsheetHtmlCell(row.total)}</td><td>${escapeSpreadsheetHtmlCell(row.pasados)}</td><td>${escapeSpreadsheetHtmlCell(row.fallados)}</td><td>${escapeSpreadsheetHtmlCell(row.bloqueados)}</td><td>${escapeSpreadsheetHtmlCell(row.pendientes)}</td><td>${escapeSpreadsheetHtmlCell(row.tasa)}</td><td>${escapeSpreadsheetHtmlCell(row.fecha)}</td><td>${escapeSpreadsheetHtmlCell(row.ejecutado_por)}</td><td>${escapeSpreadsheetHtmlCell(row.observaciones)}</td></tr>`).join('') : `<tr><td colspan="17">${t('reportes.noSuiteCasesForExport')}</td></tr>`}
     </tbody></table>
     <h2>${t('reportes.formatMetrics')}</h2>
@@ -115,6 +116,7 @@ export function buildReportTablesHtml({ suiteTree, projectMetrics, reportStats, 
       ${formatRows.map(([format, data]: [string, any]) => `<tr><td>${escapeSpreadsheetHtmlCell(formatLabel(format, t))}</td><td>${escapeSpreadsheetHtmlCell(resultLabel(data.status, t))}</td><td>${escapeSpreadsheetHtmlCell(data.total)}</td><td>${escapeSpreadsheetHtmlCell(data.executed)}</td><td>${escapeSpreadsheetHtmlCell(data.passed)}</td><td>${escapeSpreadsheetHtmlCell(data.failed)}</td><td>${escapeSpreadsheetHtmlCell(data.blocked)}</td><td>${escapeSpreadsheetHtmlCell(`${Number(data.coverage_percent || 0).toFixed(1)}%`)}</td><td>${escapeSpreadsheetHtmlCell(`${Number(data.success_executed_percent || 0).toFixed(1)}%`)}</td></tr>`).join('') || `<tr><td colspan="9">${t('reportes.noFormatMetricsForExport')}</td></tr>`}
     </tbody></table>
     <h2>${t('reportes.formatModeMatrix')}</h2>
+    <p>${escapeHtml(t('reportes.formatModeMatrixDescription'))}</p>
     <table><thead><tr><th>${t('reportes.format')}</th>${matrixModes.map(mode => `<th>${escapeSpreadsheetHtmlCell(modeLabel(mode, t))}</th>`).join('')}<th>${t('reportes.total')}</th></tr></thead><tbody>
       ${matrixFormats.map(format => {
         const total = matrixModes.reduce((sum, mode) => sum + Number(formatModeMatrix?.[format]?.[mode]?.total || 0), 0)

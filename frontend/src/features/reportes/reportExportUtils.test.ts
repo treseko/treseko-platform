@@ -29,6 +29,7 @@ test('export builds summary and visible format metrics for happy path', () => {
   }))
 
   assert.match(html, /reportes\.executiveSummary/)
+  assert.match(html, /reportes\.formatModeMatrixDescription/)
   assert.match(html, /87\.5%/)
   assert.match(html, /reportes\.formatClassic/)
   assert.doesNotMatch(html, /99/)

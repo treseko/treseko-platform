@@ -1,6 +1,5 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { getEdgeUiMeta } from '../../../modules/ai-workflow/config/edge-ui.config'
-import { WORKFLOW_LAYOUT_CONFIG } from '../../../modules/ai-workflow/config/workflow-layout.config'
 import { APP_META_FONT_SIZE } from '../../../shared/ui/typography'
 import type { AiWorkflow, AiWorkflowEdge, AiWorkflowNode } from '../types/configuracion'
 import {
@@ -83,33 +82,6 @@ export const applyDefaultWorkflowLayout = (rawNodes: Node[]) => {
       position: defaultWorkflowPositions[workflowNode.type] || node.position,
     }
   }) as Node[]
-}
-
-export const createWorkflowElkGraph = (
-  rawNodes: Node[],
-  mappedEdges: Edge[],
-  nodesByIdForEdges: Map<string, AiWorkflowNode>,
-) => {
-  const layoutEdges = mappedEdges.filter(edge => !isFeedbackWorkflowEdge(edge.data as AiWorkflowEdge, nodesByIdForEdges))
-  return {
-    id: 'workflow',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': WORKFLOW_LAYOUT_CONFIG.direction,
-      'elk.spacing.nodeNode': String(WORKFLOW_LAYOUT_CONFIG.nodeSeparation),
-      'elk.spacing.edgeEdge': String(WORKFLOW_LAYOUT_CONFIG.edgeSeparation),
-      'elk.layered.spacing.nodeNodeBetweenLayers': String(WORKFLOW_LAYOUT_CONFIG.rankSeparation),
-      'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      'elk.edgeRouting': 'ORTHOGONAL',
-    },
-    children: rawNodes.map(node => ({ id: node.id, width: WORKFLOW_LAYOUT_CONFIG.nodeWidth, height: WORKFLOW_LAYOUT_CONFIG.nodeHeight })),
-    edges: layoutEdges.map(edge => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
-  }
-}
-
-export const applyElkWorkflowLayout = (rawNodes: Node[], layouted: any) => {
-  const positions = new Map((layouted.children || []).map((child: any) => [child.id, { x: child.x || 0, y: child.y || 0 }]))
-  return rawNodes.map(node => ({ ...node, position: positions.get(node.id) || node.position })) as Node[]
 }
 
 export const createWorkflowDraftFromSource = (source?: AiWorkflow | null) => {

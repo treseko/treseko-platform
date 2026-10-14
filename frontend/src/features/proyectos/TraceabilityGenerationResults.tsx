@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { Badge, Button, Col, Form, Row, Table } from 'react-bootstrap'
 import { Eye } from 'lucide-react'
+import { GenerationSemanticReview, GenerationContextNotice } from './GenerationSemanticReview'
 
 export function TraceabilityGenerationResults({ options }: { options: any }) {
   const { generationRun, generationStep, locale, tx, t, generationBusy, generationCompletedCount, generationRequestedCount, generationCandidates, preflightExcludedStories, selectedCandidateCount, generationRequirement, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor } = options
@@ -11,6 +12,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
   }, { PASS: 0, WARN: 0, FAIL: 0 })
   return (
     <>
+              <GenerationContextNotice analysis={generationRun?.analysis} />
               {generationRun && generationStep === "configuration" && (
                 <div className="border-start border-primary border-3 bg-light px-3 py-3">
                   <div className="small text-uppercase text-muted fw-semibold">
@@ -227,6 +229,7 @@ export function TraceabilityGenerationResults({ options }: { options: any }) {
                               className="bg-light"
                             >
                               <td colSpan={5} className="p-3">
+                                <GenerationSemanticReview review={candidate.quality?.semantic_review} criteria={candidate.acceptance_criteria} />
                                 <div className={`border rounded p-2 mb-3 small ${proposalQuality(candidate) === "FAIL" ? "border-danger bg-danger-subtle" : proposalQuality(candidate) === "WARN" ? "border-warning bg-warning-subtle" : "border-success bg-success-subtle"}`}>
                                   <span className="fw-semibold">{t('proyectos.qualityLabel', { label: t(`proyectos.${proposalQualityMeta(candidate).label}`) })}</span>
                                   {candidate.rule_findings?.length ? (

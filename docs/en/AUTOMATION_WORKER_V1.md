@@ -43,6 +43,10 @@ Do not confuse this with the external reporting API. An external runner uses `PO
 
 The worker can return logs, screenshots and other artifacts. Treseko associates them with the execution and its steps so they are available when analyzing a failure or creating an internal bug.
 
+Playwright worker functions attempt to capture the final page, in addition to the existing failure capture. When unavailable, `final_screenshot_status=UNAVAILABLE` records that absence without changing the case verdict. Playwright worker functions and Playwright Test record video unless `record_video=false`; inspect returned artifacts to confirm availability.
+
+The isolated Linux process uses `.treseko-runtime` as its HOME. Workspace collection excludes that worker-owned directory and the generated root `package.json`. User evidence with the same names in subdirectories remains unchanged.
+
 For API jobs, the sensitive payload remains encrypted until the authenticated worker claims the job. State variables travel separately from visible evidence and are not included in reports.
 
 ## Troubleshooting

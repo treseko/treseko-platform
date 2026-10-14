@@ -8,6 +8,7 @@ import type {
   StrictAIAction,
 } from './action-types.ts';
 
+import { semanticEvidenceRequirement } from './semantic-expectations.ts';
 import { normalizeText, parseStepData } from './step-contract-base.ts';
 
 function assertionId(step: QAEngineStep, index: number): string {
@@ -177,6 +178,12 @@ function parseExpectationFragment(step: QAEngineStep, fragment: string, assertio
 }
 
 export function buildStepContract(step: QAEngineStep): StepContract {
+  const semanticRequirement = semanticEvidenceRequirement(step);
+  if (semanticRequirement) return {
+    version: 1, step_number: step.number, assertions: [], recognized_fragments: [],
+    unresolved_fragments: [step.expected || '', semanticRequirement].filter(Boolean),
+    coverage: 'none', requires_semantic_audit: true,
+  };
   if (step.validation_plan) {
     const assertions = step.validation_plan.assertions.map((item, index) => ({
       ...item,

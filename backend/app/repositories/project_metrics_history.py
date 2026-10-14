@@ -1,7 +1,8 @@
 from .repository_context import *
-from sqlalchemy import case
+from sqlalchemy import func
 from .bug_version_metrics import bug_history_version_fields
 from .repository_metrics_attachment_helpers import _visible_case_filter
+from .report_metrics_calculation import is_terminal_result
 
 def _safe_percent(numerator, denominator): return round((numerator / denominator) * 100, 2) if denominator else 0.0
 
@@ -23,16 +24,15 @@ async def build_project_history(context):
             # PREPARACION es un borrador futuro y no debe distorsionar las métricas.
             models.Build.estado.in_(("ACTIVA", "HISTORICA")),
         ).order_by(
-            # La build seleccionada siempre debe ser la referencia actual.
-            # Algunas builds creadas/importadas no tienen fecha_inicio y
-            # quedarían detrás de una build histórica aunque sean más nuevas.
-            case((models.Build.id == build.id, 0), else_=1),
-            models.Build.fecha_inicio.desc().nullslast(),
-            models.Build.fecha_creacion.desc(),
-            models.Build.id.desc(),
-        ).limit(10)
+            func.coalesce(models.Build.fecha_inicio, models.Build.fecha_creacion).desc(),
+            models.Build.fecha_creacion.desc(), models.Build.id.desc(),
+        )
     )
-    builds_historico = result_historico.scalars().all()
+    all_builds = result_historico.scalars().all()
+    current_index = next((i for i, item in enumerate(all_builds) if item.id == build.id), None)
+    previous_build = all_builds[current_index + 1] if current_index is not None and current_index + 1 < len(all_builds) else None
+    # Keep the selected build and its true predecessor even outside the last ten.
+    builds_historico = list({item.id: item for item in [build, *([previous_build] if previous_build else []), *all_builds]}.values())[:10]
 
     historico = []
     for b in builds_historico:
@@ -88,7 +88,7 @@ async def build_project_history(context):
         result_b_versions = await db.execute(
             select(models.CasoPrueba.id, models.CasoPrueba.master_id).filter(
                 models.CasoPrueba.master_id.in_(b_assigned_master_ids),
-                *_visible_case_filter(),
+                models.CasoPrueba.proyecto_id == proyecto_id,
             )
         )
         b_master_by_version_id = {
@@ -102,7 +102,7 @@ async def build_project_history(context):
                 models.TestRun.build_id == b.id,
                 models.EjecucionCaso.caso_id.in_(b_version_case_ids),
                 models.EjecucionCaso.estado_resultado != models.EstadoResultado.SIN_CORRER,
-            )
+            ).order_by(models.EjecucionCaso.fecha_ejecucion.desc(), models.EjecucionCaso.id.desc())
         )
         b_ejecuciones = result_ejec.scalars().all()
 
@@ -124,15 +124,17 @@ async def build_project_history(context):
             elif info['estado'] == "BLOQUEADO":
                 b_stats["bloqueados"] += 1
 
+        completed_count = sum(is_terminal_result(info['estado']) for info in b_caso_estado.values())
+
         historico.append({
             "build_id": str(b.id),
             "build_name": b.nombre,
             "estado": b.estado,
             "activo": b.activo,
             "total_asignados": len(b_assigned_master_ids),
-            "ejecutados": len(b_caso_estado),
-            "cobertura_porcentaje": _safe_percent(len(b_caso_estado), len(b_assigned_master_ids)),
-            "exito_sobre_ejecutados_porcentaje": _safe_percent(b_stats["pasados"], len(b_caso_estado)),
+            "ejecutados": completed_count,
+            "cobertura_porcentaje": _safe_percent(completed_count, len(b_assigned_master_ids)),
+            "exito_sobre_ejecutados_porcentaje": _safe_percent(b_stats["pasados"], completed_count),
             "pasados": b_stats["pasados"],
             "fallados": b_stats["fallados"],
             "bloqueados": b_stats["bloqueados"],
@@ -140,15 +142,7 @@ async def build_project_history(context):
             "fecha": b.fecha_creacion.isoformat() if b.fecha_creacion else None
         })
 
-    current_history_index = next(
-        (idx for idx, item in enumerate(historico) if item.get("build_id") == str(build.id)),
-        None,
-    )
-    previous_history = (
-        historico[current_history_index + 1]
-        if current_history_index is not None and len(historico) > current_history_index + 1
-        else None
-    )
+    previous_history = next((item for item in historico if previous_build and item.get("build_id") == str(previous_build.id)), None)
     comparison = {}
     if previous_history:
         comparison = {

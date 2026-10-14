@@ -48,10 +48,12 @@ services:
       MAX_BACKUPS: ${MAX_BACKUPS:-3}
       CHECK_PENDING_UPDATE: ${CHECK_PENDING_UPDATE:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AUTOMATION_RESULT_UPLOAD_DIR: /data/worker-results
       TRESEKO_DEPLOY_MODE: docker
     volumes:
       - treseko_update_data:/data/updates
       - treseko_backend_backups:/data/backups
+      - treseko_worker_results:/data/worker-results
       - treseko_backend_static:/app/app/static
       - treseko_frontend_html:/usr/share/nginx/html
       - treseko_engine_runtime:/engine
@@ -162,9 +164,15 @@ services:
       AI_API_ENDPOINT: ${AI_API_ENDPOINT:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
-      MCP_RUNTIME_RESOLVER_URL: http://backend:8000/api/mcp/internal/runtime-credential
+      MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS: ${MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS:-http://backend:8000}
+      MCP_RUNTIME_RESOLVER_URL: http://backend:8000/mcp/internal/runtime-credential
       MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS: http://backend:8000
       MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP: "true"
+      AI_VIDEO_DIR: /engine/videos
+      AI_DRY_RUN_VIDEO_TTL_HOURS: ${AI_DRY_RUN_VIDEO_TTL_HOURS:-24}
+      AI_DRY_RUN_VIDEO_MAX_MB: ${AI_DRY_RUN_VIDEO_MAX_MB:-512}
+      AI_VIDEO_REGULAR_MAX_MB: ${AI_VIDEO_REGULAR_MAX_MB:-10240}
+      AI_VIDEO_DISK_RESERVE_MB: ${AI_VIDEO_DISK_RESERVE_MB:-512}
       QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
     mem_limit: ${ENGINE_MEM_LIMIT:-2g}
     pids_limit: ${ENGINE_PIDS_LIMIT:-256}
@@ -184,8 +192,12 @@ services:
       dockerfile: Dockerfile
     profiles: ["automation"]
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
     environment:
       QA_API_BASE: http://backend:8000
+      QA_RESULT_SPOOL_DIR: /worker/.state/result-spool
+      QA_CLAIM_INTENT_DIR: /worker/.state/claim-intent
+      QA_UPDATE_CONTROL_DIR: /worker/.state/update-control
       QA_RUNNER_TOKEN_FILE: /worker/.runner-token
       QA_ORGANIZACION_ID: ${QA_ORGANIZACION_ID:-}
       QA_POLL_INTERVAL_MS: ${QA_POLL_INTERVAL_MS:-5000}
@@ -240,6 +252,7 @@ services:
         condition: service_healthy
 
 volumes:
+  treseko_worker_results:
   treseko_postgres_data:
   treseko_redis_data:
   treseko_backend_static:

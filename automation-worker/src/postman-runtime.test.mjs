@@ -42,3 +42,15 @@ test("Postman runtime rechaza destinos fuera de la allowlist antes de enviar", a
     /allowlist del ambiente/,
   );
 });
+
+test('Postman preserves complete request headers and large response bytes', async t => {
+  const body=Buffer.alloc(3*1024*1024,120);
+  const server=http.createServer((req,res)=>res.end(body));
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();server.close();});
+  const collection=collectionFor(`http://127.0.0.1:${server.address().port}/`);
+  collection.item[0].request.header=[{key:'Authorization',value:'Bearer original-business-token'}];
+  const result=await runPostmanCollection({collection,allowedHosts:['127.0.0.1'],timeoutMs:5000});
+  assert.equal(result.requests[0].request.header[0].value,'Bearer original-business-token');
+  assert.equal(Buffer.from(result.requests[0].response.body_base64,'base64').compare(body),0);
+});

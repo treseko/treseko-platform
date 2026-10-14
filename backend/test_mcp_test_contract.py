@@ -76,17 +76,62 @@ def test_supported_modes_and_format_contracts_survive_portability_parse():
     assert cases["perf"]["dataset"] == [{"users": "10"}]
 
 
+def test_mcp_accepts_bounded_playwright_script_as_review_data():
+    script = """import { test, expect } from '@playwright/test';
+test('health', async ({ page }) => {
+  await page.goto('/health');
+  await expect(page).toHaveTitle(/Health/);
+});"""
+    content = _package_with_cases([{
+        "external_id": "playwright",
+        "titulo": "Playwright health",
+        "tipo_prueba": "AUTOMATIZADA",
+        "formato_prueba": "CLASICA",
+        "framework": "playwright:typescript",
+        "script_automatizado": script,
+        "pasos": [],
+    }])
+
+    parsed = case_portability.parse_import("treseko/tcases-v1", content)
+    item = parsed["cases"][0]
+    mcp_import._validate_ai_package(parsed)
+
+    assert item["framework"] == "playwright:typescript"
+    assert item["script_automatizado"] == script
+    assert item["formato_prueba"] == "CLASICA"
+    assert item["tipo_prueba"] == "AUTOMATIZADA"
+
+
+@pytest.mark.parametrize("script", [
+    "async ({page, variables}) => { await page.locator('[data-test=password]').fill(variables.sauce_password); }",
+    "await page.getByLabel('Password').fill(variables.password);",
+    "await page.fill('[data-test=password]', variables.password);",
+    "await page.locator('[data-test=password]').fill('');",
+    "const password = variables.password; const token = variables.token;",
+])
+def test_mcp_import_allows_credential_references_and_empty_negative_inputs(script):
+    mcp_import._validate_ai_package({'cases': [{'script_automatizado': script}]})
+
+
+@pytest.mark.parametrize("script", [
+    "const password = 'inline-secret';",
+    "const sauce_password = 'inline-secret';",
+    'const headers = {"Authorization": "Bearer inline-secret"};',
+    "await page.locator('[data-test=password]').fill('inline-secret');",
+    "await page.getByLabel('Password').fill('inline-secret');",
+    "await page.fill('[data-test=password]', 'inline-secret');",
+])
+def test_mcp_import_still_rejects_inline_credential_literals(script):
+    with pytest.raises(ValueError, match='credenciales o secretos'):
+        mcp_import._validate_ai_package({'cases': [{'script_automatizado': script}]})
+
+
 @pytest.mark.asyncio
 async def test_mcp_preview_exposes_governed_mode_metadata_without_raw_content(monkeypatch):
     monkeypatch.setattr(mcp_router.access_control, "require_component_access",
                         lambda *_args: _async(SimpleNamespace(proyecto_id=PROJECT_ID)))
-    result = await mcp_import.preview_import(_EmptyDb(), object(), SimpleNamespace(id=PROJECT_ID), _arguments())
-    items = {item["external_id"]: item for item in result["items"]}
-    assert items["classic"]["formato_prueba"] == "CLASICA"
-    assert items["classic"]["pasos"][0]["accion"] == "Open"
-    assert items["api"]["configuracion_api"]["request"]["url"] == "/health"
-    assert items["perf"]["formato_prueba"] == "PERFORMANCE"
-    assert "content_base64" not in json.dumps(result)
+    with pytest.raises(ValueError, match="PERFORMANCE.*fuera de alcance"):
+        await mcp_import.preview_import(_EmptyDb(), object(), SimpleNamespace(id=PROJECT_ID), _arguments())
 
 
 @pytest.mark.asyncio
@@ -103,20 +148,51 @@ async def test_mcp_commit_delegates_all_governed_modes_unchanged(monkeypatch):
     monkeypatch.setattr(mcp_import.access_control, "require_build_access",
                         lambda *_args: _async(SimpleNamespace(proyecto_id=PROJECT_ID, componente_id=COMPONENT_ID, activo=True, estado="ACTIVA")))
     monkeypatch.setattr(mcp_import.access_control, "is_build_active", lambda _build: True)
-    args = _arguments(confirmation="APPLY_CASE_IMPORT", idempotency_key="contract-1",
-                      package_sha256=mcp_import.package_sha256(_arguments()["content_base64"]))
+    content = _package_with_cases(_package_cases()[:2])
+    args = _arguments(content_base64=base64.b64encode(content).decode(), confirmation="APPLY_CASE_IMPORT", idempotency_key="contract-1")
+    args["package_sha256"] = mcp_import.package_sha256(args["content_base64"])
     args["preview_token"] = mcp_import.make_preview_token(PROJECT_ID, args)
     result = await mcp_import.commit_import(object(), SimpleNamespace(id=uuid4()), SimpleNamespace(id=PROJECT_ID), args)
     assert result["status"] == "COMPLETED"
-    assert {item["formato_prueba"] for item in captured["cases"]} == {"CLASICA", "API", "PERFORMANCE"}
+    assert {item["formato_prueba"] for item in captured["cases"]} == {"CLASICA", "API"}
     assert captured["cases"][1]["configuracion_api"]["request"]["url"] == "/health"
+
+
+@pytest.mark.asyncio
+async def test_mcp_commit_rejects_performance_before_persistence_or_execution(monkeypatch):
+    async def unexpected_commit(*_args, **_kwargs):
+        raise AssertionError("PERFORMANCE reached commit executor")
+
+    monkeypatch.setattr(case_portability, "commit_import", unexpected_commit)
+    content = _package_with_cases(_package_cases())
+    args = _arguments(content_base64=base64.b64encode(content).decode(), confirmation="APPLY_CASE_IMPORT", idempotency_key="performance-1")
+    args["package_sha256"] = mcp_import.package_sha256(args["content_base64"])
+    args["preview_token"] = mcp_import.make_preview_token(PROJECT_ID, args)
+    with pytest.raises(ValueError, match="PERFORMANCE.*fuera de alcance"):
+        await mcp_import.commit_import(object(), SimpleNamespace(id=uuid4()), SimpleNamespace(id=PROJECT_ID), args)
+
+
+@pytest.mark.asyncio
+async def test_mcp_preview_redacts_postman_api_key_secret_from_response_and_audit(monkeypatch):
+    cases = [{"external_id": "secret", "titulo": "Secret", "tipo_prueba": "AUTOMATIZADA",
+              "formato_prueba": "API", "configuracion_api": {"request": {"auth": {
+                  "type": "api_key", "header": "X-API-Key", "value": "nested-secret"}}}}]
+    content = _package_with_cases(cases)
+    monkeypatch.setattr(mcp_router.access_control, "require_component_access",
+                        lambda *_args: _async(SimpleNamespace(proyecto_id=PROJECT_ID)))
+    with pytest.raises(ValueError, match="credencial|secreto|API key") as error:
+        await mcp_import.preview_import(_EmptyDb(), object(), SimpleNamespace(id=PROJECT_ID),
+                                        _arguments(content_base64=base64.b64encode(content).decode()))
+    assert "nested-secret" not in str(error.value)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload", [
     {"script_automatizado": "rm -rf /"},
+    {"script_automatizado": "const password = 'inline-secret';"},
     {"configuracion_api": {"request": {"url": "https://attacker.invalid"}}},
     {"configuracion_api": {"auth": {"password": "secret"}}},
+    {"configuracion_api": {"post_response_script": "pm.test('status', () => true);"}},
     {"configuracion_api": {"execution": {"parallelism": 8}}},
 ])
 async def test_ai_mcp_import_rejects_urls_credentials_scripts_and_parallelism(monkeypatch, payload):
@@ -148,6 +224,18 @@ def _package_with_cases(cases):
         archive.writestr("manifest.json", json.dumps(manifest))
         for name, value in values.items(): archive.writestr(name, json.dumps(value))
     return stream.getvalue()
+
+
+def _package_cases():
+    return [
+        {"external_id": "classic", "titulo": "Classic", "tipo_prueba": "MANUAL", "formato_prueba": "CLASICA",
+         "pasos": [{"accion": "Open", "resultado_esperado": "Visible"}]},
+        {"external_id": "api", "titulo": "API", "tipo_prueba": "AUTOMATIZADA", "formato_prueba": "API",
+         "configuracion_api": {"schema_version": "treseko.api-test/v2", "request": {"method": "GET", "url": "/health"},
+                               "execution": {"iterations": 1, "parallelism": 1}}},
+        {"external_id": "perf", "titulo": "Performance", "tipo_prueba": "AUTOMATIZADA_AI", "formato_prueba": "PERFORMANCE",
+         "dataset": [{"users": "10"}]},
+    ]
 
 
 async def _async(value):

@@ -16,7 +16,7 @@ type Props = {
 export function BugTransitionModal({ target, form, builds, busy, isCorrected, onChange, onClose, onConfirm }: Props) {
   const { t } = useI18n()
   const corrected = Boolean(target && isCorrected(target.estado))
-  const reopening = target?.estado === 'REABIERTO'
+  const reopening = Boolean(target && ['RESUELTO','CERRADO','DUPLICADO','NO_REPRODUCIBLE','NO_CORRESPONDE'].includes(target.bug.estado) && !['RESUELTO','CERRADO','DUPLICADO','NO_REPRODUCIBLE','NO_CORRESPONDE'].includes(target.estado))
   return (
     <Modal show={Boolean(target)} onHide={onClose} centered>
       <Modal.Header closeButton>

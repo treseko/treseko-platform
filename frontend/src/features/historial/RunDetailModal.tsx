@@ -18,7 +18,7 @@ type RunDetailModalProps = {
   focusedExecutionId?: string
   getStatusColor: (status: string) => string
   onHide: () => void
-  onOpenEvidence: (attachment: any) => void
+  onRetry?: () => void; onOpenEvidence: (attachment: any) => void
   isExternalChildModalOpen?: boolean
   onMarkAiReviewed?: (executionId: string, note?: string) => Promise<void> | void
   canViewEvidence?: boolean
@@ -376,7 +376,7 @@ export function RunDetailModal({
   detailError,
   focusedExecutionId,
   getStatusColor,
-  onHide,
+  onHide, onRetry,
   onOpenEvidence,
   isExternalChildModalOpen = false,
   onMarkAiReviewed,
@@ -507,11 +507,11 @@ export function RunDetailModal({
   }
 
   return <RunDetailView options={{
-    t, detail, detailLoading, detailError, onHide, focusedCase, focusError, displayCases,
+    t, detail, detailLoading, detailError, onHide, onRetry, focusedCase, focusError, displayCases,
     canViewEvidence, onOpenEvidence, getStatusColor, runStateLabel,
     executionModeBadge, executionModeCopy, caseTypeBadge, caseTypeCopy,
     effectiveExecutionMode, effectiveExecutionModeLabel, getExecutionId,
-    buildHistoryAiReportPayload, createChatbotBug, markAiReviewed, markingReviewIds, reviewActionError,
+    buildHistoryAiReportPayload, createChatbotBug: detail?.can_create_bug && canViewEvidence && canAccessCapability?.('bugs.ver', 'read') && canAccessCapability?.('bugs.crear', 'edit') ? createChatbotBug : undefined, markAiReviewed, markingReviewIds, reviewActionError,
     reviewConfirmCase, setReviewConfirmCase, reviewNote, setReviewNote, aiReportCase,
     setAiReportCase, showExecutionSnapshot, setShowExecutionSnapshot,
     showTechnicalVariables, setShowTechnicalVariables, frozenVariables,

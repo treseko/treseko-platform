@@ -32,7 +32,7 @@ type ExecutionSelectorModalProps = {
   removeExecutionModalCase: (testId: string) => void
   restoreExecutionModalCases: (testIds: string[]) => void
   onShowDatasetHelp: () => void
-  onStart: (mode: 'manual' | 'automated' | 'ia') => void
+  onStart: (mode: 'manual' | 'automated' | 'ia', options?: { recordVideo: boolean }) => void
   canStartManualExecution: boolean
   canUseAutomatedExecution: boolean
   canUseIaExecution: boolean
@@ -69,6 +69,7 @@ export function ExecutionSelectorModal({
   onScheduleIa
 }: ExecutionSelectorModalProps) {
   const { t } = useI18n()
+  const [recordVideo, setRecordVideo] = useState(true)
   const [startingMode, setStartingMode] = useState<'manual' | 'automated' | 'ia' | null>(null)
   const lastAutoEnvironmentKey = useRef('')
   const lastAutoEnvironmentId = useRef('')
@@ -77,7 +78,7 @@ export function ExecutionSelectorModal({
   }, [executionLoading])
   const startExecution = (mode: 'manual' | 'automated') => {
     setStartingMode(mode)
-    onStart(mode)
+    onStart(mode, { recordVideo })
   }
   const scheduleIa = () => {
     setStartingMode('ia')
@@ -207,6 +208,7 @@ export function ExecutionSelectorModal({
         <Modal.Title className="fw-bold text-dark">{t('ejecutarPruebas.executionEngine')}</Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4 d-flex flex-column gap-3 text-dark">
+        <div><Form.Check id="automation-record-video" type="switch" label={t('motorIa.recordVideo')} checked={recordVideo} onChange={e => setRecordVideo(e.target.checked)} /><div className="small text-muted">{t('motorIa.videoSupportedRunners')}</div></div>
         <div className="small text-muted bg-light border rounded-3 p-2">
           {t('ejecutarPruebas.selectedCasesSummary', { selected: executionModalTests.length, total: totalKnownCaseCount })}
           {executionModalDiscardedCount > 0 && (

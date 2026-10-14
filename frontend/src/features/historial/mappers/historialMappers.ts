@@ -4,6 +4,7 @@ export const emptyHistorialFilters = {
   build_id: '',
   component_id: '',
   status: '',
+  run_result: '',
   origin: '',
   runner_id: '',
   environment_id: '',

@@ -123,11 +123,12 @@ async def complete_ai_engine_execution(
         config=metadata.get("chatbot_config_snapshot") if isinstance(metadata, dict) else None,
         result=(payload.ai_report or {}).get("chatbot_resultado") if isinstance(payload.ai_report, dict) else None,
     ) if is_chatbot else False
-    if is_chatbot:
+    complete_data = (execution.evidence_policy or {}).get("complete_data") is True
+    if is_chatbot and not complete_data:
         execution.evidence_policy = evidence_policy_marker(public_chatbot_evidence)["evidence_policy"]
     # Conversational evidence follows the same explicit opt-in used by manual
     # execution. Other AI workflows keep their installation-level policy.
-    sanitize_output = (not public_chatbot_evidence) if is_chatbot else bool(evidence_policy.get("sanitization_enabled", True))
+    sanitize_output = False if complete_data else ((not public_chatbot_evidence) if is_chatbot else bool(evidence_policy.get("sanitization_enabled", True)))
     report_summary = payload.metadata.get("ai_report_summary") if isinstance(payload.metadata, dict) else None
     if not isinstance(report_summary, dict):
         report_summary = {}
@@ -264,6 +265,9 @@ async def complete_ai_engine_execution(
         if execution.ai_human_review_required
         else models.AiReviewStatus.NO_REQUIERE_REVISION
     )
+    from ..services.ai_video_recordings import register_recording
+    if current_run:
+        await register_recording(db, ai_report, current_run.proyecto_id, execution_id=execution.id)
     execution.ai_report = sanitize_ai_report_payload(ai_report) if sanitize_output else ai_report
 
     snapshots_result = await db.execute(

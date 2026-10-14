@@ -225,6 +225,9 @@ async def build_bug_evidence_context(context):
         case_evidence = list(case.get("evidencias") or [])
         for evidence in case_evidence:
             evidence_items.append({
+                "suite": case.get("suite_breadcrumb"), "prioridad": case.get("prioridad"),
+                "responsable": case.get("ejecutado_por"), "execution_mode": case.get("execution_mode"),
+                "estado": status, "linked_bugs": case.get("bugs") or [],
                 "case_code": case.get("codigo"),
                 "case_title": case.get("titulo"),
                 "bug": None,
@@ -267,7 +270,7 @@ async def build_bug_evidence_context(context):
             "diagnosis": reason_text,
             "has_evidence": has_evidence,
             "bug": [
-                {"codigo": bug.codigo, "estado": bug.estado, "severidad": bug.severidad}
+                {"codigo": bug.codigo, "estado": bug.estado, "severidad": bug.severidad, "is_open": _bug_status_is_open(bug.estado)}
                 for bug in unique_linked.values()
             ],
             "responsable": case.get("ejecutado_por"),
@@ -284,6 +287,9 @@ async def build_bug_evidence_context(context):
     for bug_item in bug_items:
         if not bug_item["has_evidence"]:
             evidence_items.append({
+                "suite": bug_item.get("suite"), "prioridad": bug_item.get("prioridad"),
+                "responsable": bug_item.get("responsable"), "execution_mode": bug_item.get("execution_mode"),
+                "estado": bug_item.get("estado"), "linked_bugs": [bug_item],
                 "case_code": bug_item.get("case_code"),
                 "case_title": bug_item.get("case_title"),
                 "bug": bug_item.get("codigo"),

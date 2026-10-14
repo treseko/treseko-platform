@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { API_BASE } from '../../app/constants'
 
 const CLOSED = new Set(['RESUELTO', 'CERRADO', 'DUPLICADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE'])
@@ -14,6 +14,8 @@ export function useBugTransitions(options: any) {
   const [quickTransitioningBugId, setQuickTransitioningBugId] = useState<string | null>(null)
   const [transitionTarget, setTransitionTarget] = useState<{ bug: any; estado: string } | null>(null)
   const [transitionForm, setTransitionForm] = useState({ resolution_build_id: '', resolucion: '', motivo_cierre: '' })
+  const selectedBugRef = useRef(selectedBug)
+  selectedBugRef.current = selectedBug
   const compatibleBuilds = (bug: any) => buildsList.filter((build: any) => {
     const componentId = build.componente_id || build.component_id
     return build.activo !== false && (!bug?.componente_id || !componentId || String(componentId) === String(bug.componente_id))
@@ -27,7 +29,7 @@ export function useBugTransitions(options: any) {
       if (!response.ok) throw new Error(await errorMessage(response))
       const updated = await response.json()
       setBugs((current: any[]) => current.map((item) => item.id === bug.id ? { ...item, ...updated } : item))
-      if (selectedBug?.id === bug.id) { setSelectedBug(updated); hydrateDetailEditState(updated) }
+      if (selectedBugRef.current?.id === bug.id) { setSelectedBug(updated); hydrateDetailEditState(updated) }
       showFeedback(t('bugs.statusUpdated'), t('bugs.statusUpdatedMessage', { bug: updated.codigo || bug.codigo, status: updated.estado || estado }), 'success')
       onBugsChanged?.(); void loadBugs({ silent: true }); return true
     } catch (error: any) {
@@ -36,7 +38,7 @@ export function useBugTransitions(options: any) {
   }
   const requestTransition = (bug: any, estado: string) => {
     if (!bug?.id || estado === bug.estado) return
-    const reopening = CLOSED.has(String(bug.estado || '').toUpperCase()) && estado === 'REABIERTO'
+    const reopening = CLOSED.has(String(bug.estado || '').toUpperCase()) && !CLOSED.has(estado)
     if (!CLOSED.has(estado) && !reopening) { void perform(bug, estado); return }
     const choices = compatibleBuilds(bug)
     const defaultBuild = choices.find((item: any) => String(item.id) === String(currentBuildId)) || choices[0]
@@ -46,7 +48,7 @@ export function useBugTransitions(options: any) {
   }
   const confirmTransition = async () => {
     if (!transitionTarget) return
-    const reopening = transitionTarget.estado === 'REABIERTO'
+    const reopening = CLOSED.has(String(transitionTarget.bug.estado || '').toUpperCase()) && !CLOSED.has(transitionTarget.estado)
     if ((CORRECTED.has(transitionTarget.estado) || reopening) && !transitionForm.resolution_build_id) {
       showFeedback(t('bugs.buildRequired'), reopening ? t('bugs.selectReappearanceBuild') : t('bugs.selectCorrectionBuild'), 'warning'); return
     }

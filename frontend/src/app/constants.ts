@@ -2,10 +2,12 @@ import type { ModuleId, ModulePermissionMap, RoleKey } from './types'
 
 export const API_BASE = '/api'
 const runtimeEnv = ((import.meta as ImportMeta & { env?: Record<string, string | boolean> }).env || {}) as Record<string, string | boolean>
-export const IS_DEV_ENV = runtimeEnv.DEV === true
-export const ALLOW_LOCAL_FALLBACK = IS_DEV_ENV && runtimeEnv.VITE_ALLOW_LOCAL_FALLBACK === 'true'
-export const DEV_ADMIN_EMAIL = IS_DEV_ENV ? 'admin@qa.local' : ''
-export const DEV_ADMIN_PASSWORD = IS_DEV_ENV ? String(runtimeEnv.VITE_DEV_ADMIN_PASSWORD || '') : ''
+// Read Vite's DEV flag directly so production builds can eliminate local-only
+// credentials and fallback code instead of retaining them behind an alias.
+export const IS_DEV_ENV = import.meta.env?.DEV === true
+export const ALLOW_LOCAL_FALLBACK = import.meta.env?.DEV === true && runtimeEnv.VITE_ALLOW_LOCAL_FALLBACK === 'true'
+export const DEV_ADMIN_EMAIL = import.meta.env?.DEV === true ? 'admin@qa.local' : ''
+export const DEV_ADMIN_PASSWORD = import.meta.env?.DEV === true ? String(runtimeEnv.VITE_DEV_ADMIN_PASSWORD || '') : ''
 export const TRESEKO_TELEMETRY_ENDPOINT = 'https://verify.treseko.com/api/telemetry/onboarding'
 export const SUITE_COLORS = [
   '#F1F5F9',

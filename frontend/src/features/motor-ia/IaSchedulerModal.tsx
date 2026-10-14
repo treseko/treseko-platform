@@ -1,8 +1,9 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Badge, Button, Card, Col, Form, ListGroup, Modal, Row } from 'react-bootstrap'
 import { Clock, Cpu, Globe, Layers, Search, Send, Settings } from 'lucide-react'
 import { flattenSuites } from '../../testRepositoryUtils'
 import { useI18n } from '../../i18n'
+import { ScheduledMissionsPanel } from './ScheduledMissionsPanel'
 
 type IaSchedulerModalProps = {
   show: boolean
@@ -21,7 +22,9 @@ type IaSchedulerModalProps = {
   buildsList: any[]
   currentBuildId: string
   iaProvider: string
-  onLaunch: (mode?: 'now' | 'scheduled') => void
+  onLaunch: (mode?: 'now' | 'scheduled', options?: { recordVideo: boolean }) => void | Promise<void>
+  projectId?: string
+  fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>
 }
 
 export function IaSchedulerModal({
@@ -41,14 +44,26 @@ export function IaSchedulerModal({
   buildsList,
   currentBuildId,
   iaProvider,
-  onLaunch
+  onLaunch,
+  projectId,
+  fetchWithAuth
 }: IaSchedulerModalProps) {
   const { t } = useI18n()
+  const [recordVideo, setRecordVideo] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef(false)
+  const launch = async (mode: 'now' | 'scheduled') => {
+    if (submissionRef.current) return
+    submissionRef.current = true
+    setSubmitting(true)
+    try { await onLaunch(mode, { recordVideo }) }
+    finally { submissionRef.current = false; setSubmitting(false) }
+  }
   const query = schedulerSearch.toLowerCase()
   const caseDisplayCode = (test: any) => test.code || test.codigo || test.caseCode || test.id?.slice(0, 8) || 'SIN-ID'
 
   return (
-    <Modal dialogClassName="ai-scheduler-modal" show={show} onHide={onHide} size="xl" centered backdrop="static" contentClassName="border-0 shadow-lg rounded-4 overflow-hidden">
+    <Modal dialogClassName="ai-scheduler-modal" show={show} onHide={submitting ? () => undefined : onHide} size="xl" centered backdrop="static" contentClassName="border-0 shadow-lg rounded-4 overflow-hidden">
       <Modal.Header closeButton closeLabel={t('motorIa.close')} className="bg-dark text-white border-0 py-3">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2 fs-5">
           <Cpu size={22} className="text-info" /> {t('motorIa.schedulerTitle')}
@@ -141,6 +156,7 @@ export function IaSchedulerModal({
 
             <Card className="border-0 shadow-sm rounded-3 mb-3">
               <Card.Body className="p-3">
+                <Form.Check id="ia-mission-record-video" type="switch" className="mb-3" label={t('motorIa.recordVideo')} checked={recordVideo} onChange={e => setRecordVideo(e.target.checked)} />
                 <Form.Group className="mb-3">
                   <Form.Label className="x-small fw-bold text-muted mb-1">{t('motorIa.executionName')}</Form.Label>
                   <Form.Control name="a11y-iaschedulermodaltsx-146" aria-label={t('motorIa.executionName')} type="text" size="sm" value={execName} onChange={(e) => setExecName(e.target.value)} className="bg-light fw-bold text-dark" />
@@ -178,20 +194,20 @@ export function IaSchedulerModal({
                 </h3>
               </div>
               <div className="d-flex gap-2 ia-launch-actions">
-                <Button variant="outline-secondary" className="fw-bold shadow-none" onClick={onHide}>{t('motorIa.cancel')}</Button>
+                <Button variant="outline-secondary" className="fw-bold shadow-none" disabled={submitting} onClick={onHide}>{t('motorIa.cancel')}</Button>
                 <Button
                   variant="outline-primary"
                   className="fw-bold shadow-none d-flex justify-content-center align-items-center gap-2"
-                  disabled={selectedTestsForIa.length === 0 || !scheduledTime}
-                  onClick={() => onLaunch('scheduled')}
+                  disabled={submitting || selectedTestsForIa.length === 0 || !scheduledTime}
+                  onClick={() => void launch('scheduled')}
                 >
                   <Clock size={16} /> {t('motorIa.schedule')}
                 </Button>
                 <Button
                   variant="primary"
                   className="fw-bold flex-grow-1 shadow-sm d-flex justify-content-center align-items-center gap-2"
-                  disabled={selectedTestsForIa.length === 0}
-                  onClick={() => onLaunch('now')}
+                  disabled={submitting || selectedTestsForIa.length === 0}
+                  onClick={() => void launch('now')}
                 >
                   <Send size={16} /> {t('motorIa.executeNow')}
                 </Button>
@@ -199,6 +215,7 @@ export function IaSchedulerModal({
             </div>
           </Col>
         </Row>
+        {show && projectId && fetchWithAuth && <ScheduledMissionsPanel projectId={projectId} fetchWithAuth={fetchWithAuth} />}
       </Modal.Body>
     </Modal>
   )

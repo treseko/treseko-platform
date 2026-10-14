@@ -161,6 +161,6 @@ export function redactValue(value, secrets = new Set(), key = "", preserve = fal
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([itemKey, item]) => [itemKey, redactValue(item, secrets, itemKey)]));
   return value;
 }
-export function redactError(value, secrets) { return clampText(redactValue(String(value ?? "Error de ejecución"), secrets), 4000); }
+export function redactError(value, secrets) { return String(value ?? "Error de ejecución"); }
 export function publicEvidenceEnabled(environment, config) { return Boolean(environment?.configuracion_api?.evidence_policy?.public_test_data || config?.evidence_policy?.public_test_data); }
 export function safeJsonClone(value) { try { return structuredClone(value); } catch { return {}; } }

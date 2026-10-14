@@ -2,9 +2,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from .repository_context import *
+from .generation_guards import lock_authoring_project
+from .story_criteria import criterion_input, replace_story_criteria, story_edit_input
 
 
 async def _next_code(db, model, project_id, prefix):
+    await lock_authoring_project(db, project_id)
     rows = (await db.execute(select(model.codigo).where(model.proyecto_id == project_id))).scalars().all()
     maximum = 0
     for code in rows:
@@ -42,6 +45,8 @@ def _story_payload(item):
         "codigo": item.codigo, "titulo": item.titulo, "descripcion_markdown": item.descripcion_markdown,
         "criterios_aceptacion_markdown": item.criterios_aceptacion_markdown, "estado": "BORRADOR" if item.estado == "BORRADOR_IA" else item.estado,
         "criterios_estructuracion_estado": item.criterios_estructuracion_estado,
+        "acceptance_criteria": [criterion_input(c) for c in sorted(item.criterios_aceptacion, key=lambda c: c.orden) if c.activo],
+        "criterios_estructurados_count": sum(1 for c in item.criterios_aceptacion if c.activo),
         "prioridad": item.prioridad, "external_provider": item.external_provider,
         "external_reference": item.external_reference, "external_url": item.external_url,
         "creado_por": item.creado_por, "ultima_edicion_por": item.ultima_edicion_por,
@@ -145,7 +150,7 @@ async def get_requisito(db, requisito_id):
     return result.scalar_one_or_none()
 
 
-async def create_requisito(db, payload, user_id):
+async def create_requisito(db, payload, user_id, *, commit=True):
     data = payload.model_dump()
     component_ids = data.pop("componente_ids", [])
     await _validate_components(db, data["proyecto_id"], component_ids)
@@ -163,11 +168,11 @@ async def create_requisito(db, payload, user_id):
         external_reference=item.external_reference, external_url=item.external_url, editado_por=user_id,
         comentario_cambio="Creacion inicial",
     ))
-    await db.commit()
+    await db.commit() if commit else await db.flush()
     return await get_requisito(db, item.id)
 
 
-async def update_requisito(db, item, payload, user_id):
+async def update_requisito(db, item, payload, user_id, *, commit=True):
     data = payload.model_dump(exclude_unset=True)
     component_ids = data.pop("componente_ids", None)
     comment = data.pop("comentario_cambio", None) or "Edición de requisito"
@@ -192,7 +197,7 @@ async def update_requisito(db, item, payload, user_id):
         external_reference=item.external_reference, external_url=item.external_url, editado_por=user_id,
         comentario_cambio=comment,
     ))
-    await db.commit()
+    await db.commit() if commit else await db.flush()
     return await get_requisito(db, item.id)
 
 
@@ -241,12 +246,13 @@ async def list_historias(db, project_id, requisito_id=None, include_archived=Fal
 
 async def get_historia(db, historia_id):
     query = select(models.HistoriaUsuario).options(
-        selectinload(models.HistoriaUsuario.requisito), selectinload(models.HistoriaUsuario.casos)
+        selectinload(models.HistoriaUsuario.requisito), selectinload(models.HistoriaUsuario.casos),
+        selectinload(models.HistoriaUsuario.criterios_aceptacion)
     ).where(models.HistoriaUsuario.id == historia_id)
     return (await db.execute(query)).scalar_one_or_none()
 
 
-async def create_historia(db, payload, user_id):
+async def create_historia(db, payload, user_id, *, commit=True):
     data = payload.model_dump()
     acceptance_criteria = data.pop("acceptance_criteria", [])
     if acceptance_criteria and not str(data.get("criterios_aceptacion_markdown") or "").strip():
@@ -286,19 +292,25 @@ async def create_historia(db, payload, user_id):
         external_reference=item.external_reference, external_url=item.external_url, editado_por=user_id,
         comentario_cambio="Creacion inicial",
     ))
-    await db.commit()
+    await db.commit() if commit else await db.flush()
     return await get_historia(db, item.id)
 
 
-async def update_historia(db, item, payload, user_id):
-    data = payload.model_dump(exclude_unset=True)
+async def update_historia(db, item, payload, user_id, *, commit=True):
+    item, data, structured_supplied, criteria = await story_edit_input(db, item, payload)
     comment = data.pop("comentario_cambio", None) or "Edición de historia"
     comment = _build_story_history_comment(item, data, comment)
     functional_fields = {"titulo", "descripcion_markdown", "criterios_aceptacion_markdown"}
     changed = any(key in functional_fields and getattr(item, key) != value for key, value in data.items())
+    criteria_changed = "criterios_aceptacion_markdown" in data and item.criterios_aceptacion_markdown != data["criterios_aceptacion_markdown"]
     for key, value in data.items():
         setattr(item, key, value)
     item.ultima_edicion_por = user_id
+    if structured_supplied:
+        changed = await replace_story_criteria(db, item, criteria) or changed
+        item.ultima_actualizacion = utc_now()
+    elif criteria_changed:
+        item.criterios_estructuracion_estado = "PENDING_STRUCTURING"
     if changed:
         for link in item.casos:
             link.requiere_revision = True
@@ -309,7 +321,8 @@ async def update_historia(db, item, payload, user_id):
         external_reference=item.external_reference, external_url=item.external_url, editado_por=user_id,
         comentario_cambio=comment,
     ))
-    await db.commit()
+    await db.commit() if commit else await db.flush()
+    await db.refresh(item, attribute_names=["criterios_aceptacion"])
     return await get_historia(db, item.id)
 
 

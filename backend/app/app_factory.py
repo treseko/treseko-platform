@@ -197,6 +197,8 @@ async def startup_initialize_database():
     # The durable queue is coordinated by the backend, not by a browser tab.
     from .services.ai_execution_queue import start_ai_execution_scheduler
     start_ai_execution_scheduler()
+    from .services.mcp_execution_queue import start as start_mcp_dispatch
+    start_mcp_dispatch()
 
     try:
         async with engine.connect() as conn:
@@ -436,6 +438,8 @@ def create_app():
     global _configured
     if not _configured:
         install_backend_startup(app, startup_initialize_database)
+        from .services.mcp_execution_queue import stop as stop_mcp_dispatch
+        app.on_event("shutdown")(stop_mcp_dispatch)
         _mount_router_flat(api_router)
         _register_legacy_routes()
         _configured = True

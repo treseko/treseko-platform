@@ -291,3 +291,17 @@ test('normaliza respuestas incompletas del modelo sin inventar evidencia', () =>
   assert.deepEqual(audit.evidence_refs, []);
   assert.ok(audit.reason.length > 0);
 });
+
+
+test('does not approve a semantic step using only another steps evidence', () => {
+  const first = conclusiveStep(1);
+  const second = conclusiveStep(2);
+  second.attempts[0]!.validation_conclusive = false;
+  second.attempts[0]!.unresolved_expectations = ['Prove the cart is loaded and empty'];
+  const bundle = evidence({ steps: [first, second], summary: { total_steps: 2, passed_steps: 2, failed_steps: 0, conclusive_assertions: 1, failed_assertions: 0, screenshot_count: 2 } });
+  const audit = normalizeAuditDecision({ status: 'PASSED', confidence: 99, evidence_refs: ['step-1-attempt-1'], reason: 'Looks fine' });
+  assert.equal(resolveAuditConsensus(bundle, audit).final_status, 'BLOQUEADO');
+  const supported = { ...audit, evidence_refs: ['step-2-attempt-1-screenshot'] };
+  assert.equal(resolveAuditConsensus(bundle, supported).final_status, 'PASO');
+  assert.equal(resolveAuditConsensus(bundle, { ...supported, missing_evidence: ['Cart has not loaded'] }).final_status, 'BLOQUEADO');
+});

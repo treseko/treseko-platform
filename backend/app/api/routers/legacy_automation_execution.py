@@ -185,6 +185,7 @@ async def trigger_ai_run(
         )
         from ...services.ai_execution_queue import enqueue_ai_execution
         job = await enqueue_ai_execution(db, ejecucion, current_user.id)
+        job.payload_congelado = {**job.payload_congelado, "record_video": request.record_video if request else True}
         await db.commit()
         await realtime_event_bus.publish(
             run.proyecto_id,
@@ -207,6 +208,7 @@ async def trigger_ai_run(
             ejecucion_id,
             current_user.id,
             debug_mode=bool(request.debug_mode) if request else False,
+            record_video=request.record_video if request else True,
         )
         await realtime_event_bus.publish(
             run.proyecto_id,

@@ -1,5 +1,6 @@
 import copy
 from .repository_context import *
+from .case_mutation_policy import current_case_for_write, lock_case_master, require_archivable_masters
 async def clone_case_traceability(
     db: AsyncSession,
     original_master_id: UUID,
@@ -31,210 +32,6 @@ async def clone_case_traceability(
             caso_master_id=cloned_master_id,
             creado_por=original_link.creado_por,
         ))
-async def _clone_cases_for_suite(db: AsyncSession, original_suite_id: UUID, cloned_suite_id: UUID) -> int:
-    result = await db.execute(
-        select(models.CasoPrueba)
-        .options(selectinload(models.CasoPrueba.pasos))
-        .filter(
-            models.CasoPrueba.suite_id == original_suite_id,
-            models.CasoPrueba.activo == True
-        )
-    )
-    originals = result.scalars().all()
-    original_step_ids = [step.id for original in originals for step in original.pasos]
-    attachment_links_by_step = {}
-    if original_step_ids:
-        attachment_result = await db.execute(
-            select(models.PasoAttachment).filter(
-                models.PasoAttachment.paso_id.in_(original_step_ids)
-            )
-        )
-        for link in attachment_result.scalars().all():
-            attachment_links_by_step.setdefault(link.paso_id, []).append(link)
-    copied = 0
-    for original in originals:
-        cloned_title = await generate_unique_case_title(db, cloned_suite_id, original.titulo, for_copy=True)
-        cloned_case = models.CasoPrueba(
-            master_id=uuid.uuid4(),
-            codigo=await generate_case_code(db),
-            proyecto_id=original.proyecto_id,
-            suite_id=cloned_suite_id,
-            componente_id=original.componente_id,
-            titulo=cloned_title,
-            descripcion=original.descripcion,
-            precondiciones=original.precondiciones,
-            postcondiciones=original.postcondiciones,
-            version=1,
-            prioridad=original.prioridad,
-            criticidad=original.criticidad,
-            tipo_prueba=original.tipo_prueba,
-            formato_prueba=original.formato_prueba,
-            estado_caso=original.estado_caso,
-            dataset=copy.deepcopy(original.dataset),
-        configuracion_chatbot=copy.deepcopy(original.configuracion_chatbot or {}),
-        configuracion_api=copy.deepcopy(original.configuracion_api or {}),
-            etiquetas=copy.deepcopy(original.etiquetas or []),
-            script_automatizado=original.script_automatizado,
-            framework=original.framework,
-            creado_por=original.creado_por
-        )
-        db.add(cloned_case)
-        await db.flush()
-        await clone_case_traceability(db, original.master_id, cloned_case.master_id)
-        cloned_steps = []
-        for paso in original.pasos:
-            cloned_step = models.PasoPrueba(
-                caso_id=cloned_case.id,
-                numero_paso=paso.numero_paso,
-                accion=paso.accion,
-                datos=paso.datos,
-                resultado_esperado=paso.resultado_esperado,
-                metadata_ai=copy.deepcopy(paso.metadata_ai),
-            )
-            db.add(cloned_step)
-            cloned_steps.append((paso, cloned_step))
-        if cloned_steps:
-            await db.flush()
-            for original_step, cloned_step in cloned_steps:
-                for original_link in attachment_links_by_step.get(original_step.id, []):
-                    db.add(models.PasoAttachment(
-                        paso_id=cloned_step.id,
-                        attachment_id=original_link.attachment_id,
-                        tipo=original_link.tipo,
-                    ))
-        copied += 1
-    return copied
-async def _clone_suite_tree(
-    db: AsyncSession,
-    original: models.Suite,
-    new_parent_id: Optional[UUID],
-    nuevo_nombre: Optional[str] = None,
-    include_cases: bool = True
-) -> tuple[models.Suite, int, int]:
-    cloned = models.Suite(
-        proyecto_id=original.proyecto_id,
-        componente_id=original.componente_id,
-        parent_id=new_parent_id,
-        nombre=nuevo_nombre or original.nombre,
-        descripcion=original.descripcion,
-        color=original.color,
-        icono=getattr(original, "icono", None) or "folder",
-        orden=original.orden
-    )
-    db.add(cloned)
-    await db.flush()
-    suites_copiadas = 1
-    casos_copiados = await _clone_cases_for_suite(db, original.id, cloned.id) if include_cases else 0
-    result = await db.execute(
-        select(models.Suite).filter(models.Suite.parent_id == original.id, models.Suite.activo == True)
-    )
-    children = result.scalars().all()
-    for child in children:
-        _, child_suites, child_cases = await _clone_suite_tree(
-            db,
-            child,
-            cloned.id,
-            include_cases=include_cases
-        )
-        suites_copiadas += child_suites
-        casos_copiados += child_cases
-    return cloned, suites_copiadas, casos_copiados
-async def clone_suite(
-    db: AsyncSession,
-    suite_id: UUID,
-    nuevo_nombre: Optional[str] = None,
-    parent_id: Optional[UUID] = None,
-    include_cases: bool = True,
-    keep_original_parent_when_parent_omitted: bool = True
-):
-    db_suite = await get_suite(db, suite_id)
-    if not db_suite:
-        return None
-    if not db_suite.activo:
-        raise ValueError("No se puede copiar una suite inactiva")
-    target_parent_id = db_suite.parent_id if keep_original_parent_when_parent_omitted and parent_id is None else parent_id
-    if target_parent_id:
-        if target_parent_id == suite_id:
-            raise ValueError("No se puede copiar una suite dentro de si misma")
-        descendants = await get_all_descendant_suites(db, suite_id)
-        if any(descendant.id == target_parent_id for descendant in descendants):
-            raise ValueError("No se puede copiar una suite dentro de una de sus subsuites")
-        parent = await get_suite(db, target_parent_id)
-        if not parent or not parent.activo:
-            raise ValueError("La suite padre destino no existe o esta inactiva")
-        if parent.proyecto_id != db_suite.proyecto_id:
-            raise ValueError("La suite padre destino no pertenece al proyecto")
-        if parent.componente_id != db_suite.componente_id:
-            raise ValueError("La suite padre destino no pertenece al mismo componente")
-    cloned, suites_copiadas, casos_copiados = await _clone_suite_tree(
-        db,
-        db_suite,
-        target_parent_id,
-        nuevo_nombre or f"Copia de {db_suite.nombre}",
-        include_cases=include_cases
-    )
-    await db.commit()
-    await db.refresh(cloned)
-    return {
-        "suite": cloned,
-        "suites_copiadas": suites_copiadas,
-        "casos_copiados": casos_copiados
-    }
-async def clone_suite_recursive(db: AsyncSession, original_id: UUID, new_parent_id: UUID):
-    result = await db.execute(select(models.Suite).filter(models.Suite.id == original_id))
-    original = result.scalar_one_or_none()
-    if not original:
-        return
-    cloned = models.Suite(
-        proyecto_id=original.proyecto_id,
-        componente_id=original.componente_id,
-        parent_id=new_parent_id,
-        nombre=original.nombre,
-        descripcion=original.descripcion,
-        color=original.color,
-        icono=getattr(original, "icono", None) or "folder",
-        orden=original.orden
-    )
-    db.add(cloned)
-    await db.flush()
-    result = await db.execute(
-        select(models.Suite).filter(models.Suite.parent_id == original_id, models.Suite.activo == True)
-    )
-    children = result.scalars().all()
-    for child in children:
-        await clone_suite_recursive(db, child.id, cloned.id)
-async def move_suite(db: AsyncSession, suite_id: UUID, new_parent_id: Optional[UUID]) -> tuple[bool, str]:
-    db_suite = await get_suite(db, suite_id)
-    if not db_suite:
-        return False, "Suite no encontrada"
-    if new_parent_id:
-        if new_parent_id == suite_id:
-            return False, "No se puede mover una suite a sí misma"
-        descendants = await get_all_descendant_suites(db, suite_id)
-        if any(d.id == new_parent_id for d in descendants):
-            return False, "No se puede mover una suite a uno de sus descendientes"
-        result = await db.execute(select(models.Suite).filter(models.Suite.id == new_parent_id))
-        new_parent = result.scalar_one_or_none()
-        if not new_parent:
-            return False, "Suite padre no encontrada"
-        if new_parent.proyecto_id != db_suite.proyecto_id:
-            return False, "No se puede mover a una suite de otro proyecto"
-        if db_suite.componente_id and new_parent.componente_id and db_suite.componente_id != new_parent.componente_id:
-            return False, "No se puede mover a una suite de otro componente"
-        if not db_suite.componente_id and new_parent.componente_id:
-            db_suite.componente_id = new_parent.componente_id
-    db_suite.parent_id = new_parent_id
-    await db.commit()
-    await db.refresh(db_suite)
-    return True, "Suite movida correctamente"
-async def reorder_suites(db: AsyncSession, suite_ids: list[UUID]) -> bool:
-    for index, suite_id in enumerate(suite_ids):
-        result = await db.execute(select(models.Suite).filter(models.Suite.id == suite_id))
-        suite = result.scalar_one_or_none()
-        if suite:
-            suite.orden = index
-    await db.commit()
-    return True
 # --- CASOS DE PRUEBA ---
 async def generate_case_code(db: AsyncSession, prefix: str = "TC") -> str:
     result = await db.execute(
@@ -376,22 +173,6 @@ async def ensure_case_codes(db: AsyncSession, proyecto_id: Optional[UUID] = None
         await db.flush()
     if changed:
         await db.commit()
-async def create_caso_prueba(db: AsyncSession, caso: schemas.CasoPruebaCreate):
-    pasos_data = caso.pasos
-    caso_data = caso.model_dump(exclude={"pasos"})
-
-    if not caso_data.get("codigo"):
-        caso_data["codigo"] = await generate_case_code(db)
-    await _ensure_case_code_available(db, caso_data["proyecto_id"], caso_data.get("codigo"))
-    db_caso = models.CasoPrueba(**caso_data, master_id=uuid.uuid4())
-    db.add(db_caso)
-    await db.flush()
-    for paso in pasos_data:
-        db_paso = models.PasoPrueba(**paso.model_dump(), caso_id=db_caso.id)
-        db.add(db_paso)
-    await db.commit()
-    await db.refresh(db_caso)
-    return db_caso
 def _step_attachment_links_by_number(steps) -> dict[int, list[tuple[UUID, str]]]:
     return {step.numero_paso: [(link.attachment_id, link.tipo) for link in (step.attachments or [])] for step in steps}
 async def _copy_step_attachments(db: AsyncSession, source_links_by_number: dict[int, list[tuple[UUID, str]]], target_steps: list[models.PasoPrueba]) -> None:
@@ -473,6 +254,7 @@ async def _create_case_version(
     caso_data: dict,
     pasos_data: list,
     source_attachment_links: dict[int, list[tuple[UUID, str]]],
+    *, commit: bool = True,
 ):
     db_new_version = models.CasoPrueba(
         **caso_data,
@@ -484,54 +266,21 @@ async def _create_case_version(
     target_steps = [models.PasoPrueba(**_step_definition(paso), caso_id=db_new_version.id) for paso in pasos_data]
     db.add_all(target_steps)
     await _copy_step_attachments(db, source_attachment_links, target_steps)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(db_new_version)
     return db_new_version
 
 
-async def update_caso_metadata_versioned(db: AsyncSession, caso_id: UUID, update: schemas.CasoPruebaUpdateMetadata):
-    """Apply versionable metadata through the same immutable-version policy."""
-    latest_caso = await get_caso(db, caso_id)
-    if not latest_caso:
-        return None
-    update_data = update.model_dump(exclude_unset=True)
-    update_data.pop("estado_caso", None)
-    if not update_data:
-        return latest_caso
-
-    latest_steps_result = await db.execute(
-        select(models.PasoPrueba)
-        .options(selectinload(models.PasoPrueba.attachments))
-        .where(models.PasoPrueba.caso_id == latest_caso.id)
-    )
-    latest_steps = latest_steps_result.scalars().all()
-    source_attachment_links = _step_attachment_links_by_number(latest_steps)
-    caso_data = _case_model_data(latest_caso)
-    caso_data.update(update_data)
-
-    if not await has_executions(db, latest_caso.id):
-        for field, value in update_data.items():
-            setattr(latest_caso, field, value)
-        await db.commit()
-        await db.refresh(latest_caso)
-        return latest_caso
-
-    return await _create_case_version(
-        db,
-        latest_caso,
-        latest_caso.master_id,
-        caso_data,
-        latest_steps,
-        source_attachment_links,
-    )
-
-
-async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: schemas.CasoPruebaCreate):
-    result = await db.execute(select(models.CasoPrueba).filter(models.CasoPrueba.master_id == master_id).order_by(models.CasoPrueba.version.desc()).limit(1))
-    latest_caso = result.scalar_one_or_none()
+async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: schemas.CasoPruebaCreate, *, commit: bool = True):
+    latest_caso = await current_case_for_write(db, master_id)
     if not latest_caso: return None
+    if caso_update.estado_caso == models.EstadoCaso.ARCHIVADO:
+        await require_archivable_masters(db, [master_id])
     pasos_data = caso_update.pasos
-    caso_data = caso_update.model_dump(exclude={"pasos"})
+    caso_data = caso_update.model_dump(exclude={"pasos", "request_id"})
     caso_data["codigo"] = latest_caso.codigo or await generate_case_code(db)
     if not latest_caso.codigo:
         latest_caso.codigo = caso_data["codigo"]
@@ -549,6 +298,10 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
     latest_steps = latest_steps_result.scalars().all()
     source_attachment_links = _step_attachment_links_by_number(latest_steps)
     has_terminal_execution = await has_executions(db, latest_caso.id)
+    if caso_update.estado_caso in {models.EstadoCaso.ARCHIVADO, models.EstadoCaso.ACTIVO}:
+        versions = (await db.execute(select(models.CasoPrueba).where(models.CasoPrueba.master_id == master_id))).scalars().all()
+        for version in versions:
+            version.estado_caso = caso_update.estado_caso
     if not has_terminal_execution or not case_definition_changed(latest_caso, caso_data, latest_steps, pasos_data):
         for field, value in caso_data.items():
             if field in {"codigo", "creado_por"}:
@@ -569,7 +322,10 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
         target_steps = [models.PasoPrueba(**paso.model_dump(), caso_id=latest_caso.id) for paso in pasos_data]
         db.add_all(target_steps)
         await _copy_step_attachments(db, source_attachment_links, target_steps)
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         return await get_caso(db, latest_caso.id)
     return await _create_case_version(
         db,
@@ -577,7 +333,7 @@ async def update_caso_prueba(db: AsyncSession, master_id: UUID, caso_update: sch
         master_id,
         caso_data,
         pasos_data,
-        source_attachment_links,
+        source_attachment_links, commit=commit,
     )
 async def get_casos_proyecto(db: AsyncSession, proyecto_id: UUID, include_archived: bool = False, estado: Optional[str] = None):
     from sqlalchemy import func
@@ -673,3 +429,7 @@ async def delete_caso(db: AsyncSession, caso_id: UUID) -> tuple[bool, str]:
     db_caso.activo = False
     await db.commit()
     return True, "Caso eliminado correctamente"
+
+from .case_write_operations import create_caso_prueba, update_caso_metadata_versioned
+
+from .suite_structure import clone_suite, clone_suite_recursive, move_suite, reorder_suites

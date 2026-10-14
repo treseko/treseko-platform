@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { ALLOW_LOCAL_FALLBACK, API_BASE } from '../../app/constants'
 import { ERROR_CODES, formatAppError } from '../../app/errorCodes'
 import { mapBackendProjectToCard } from '../../app/mappers'
+import { loadProjectPages } from './projectPagination'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -26,6 +27,8 @@ type CreateProjectActionsParams = {
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   t: Translate
+  projectsLoadVersionRef?: { current: number }
+  projectCreateInFlightRef?: { current: boolean }
 }
 
 export function createProjectActions({
@@ -47,9 +50,13 @@ export function createProjectActions({
   setProjectsSource,
   setProjectSyncMessage,
   showFeedback,
-  t
+  t,
+  projectsLoadVersionRef = { current: 0 },
+  projectCreateInFlightRef = { current: false }
 }: CreateProjectActionsParams) {
   const loadProjectsFromBackend = async (knownOrganizations = organizations) => {
+    const version = ++projectsLoadVersionRef.current
+    const isCurrent = () => version === projectsLoadVersionRef.current
     setProjectsLoading(true)
     try {
       const activeKnownOrganizations = knownOrganizations.filter((org: any) => org.active !== false)
@@ -62,25 +69,22 @@ export function createProjectActions({
         setProjectSyncMessage(t('proyectos.noAssignedSolutions'))
         return
       }
-      const response = await fetchWithAuth(`${API_BASE}/proyectos/`)
-      if (!response.ok) {
-        const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
-      }
-
-      const projects = await response.json()
+      const projects = await loadProjectPages(fetchWithAuth, `${API_BASE}/proyectos/`, isCurrent)
+      if (!projects || !isCurrent()) return
       const fallbackOrgId = activeKnownOrganizations.find((org: any) => org.id === currentOrgId)?.id || activeKnownOrganizations[0]?.id || currentOrgId
       const mapped = projects.map((project: any) => mapBackendProjectToCard(project, fallbackOrgId))
 
       setProjectsList(mapped)
-      const selectedProject = mapped.find((project: any) => project.id === currentProjectId)
+      const selectedProject = mapped.find((project: any) => project.id === currentProjectId && project.orgId === fallbackOrgId)
         || mapped.find((project: any) => project.orgId === fallbackOrgId)
-        || mapped[0]
+
       if (selectedProject) {
         setCurrentProjectId(selectedProject.id)
         setCurrentOrgId(selectedProject.orgId)
         setSelectedOrganizationId(selectedProject.orgId)
       } else {
+        setCurrentOrgId(fallbackOrgId)
+        setSelectedOrganizationId(fallbackOrgId)
         setCurrentProjectId('')
         setCurrentCompId('')
         setCurrentBuildId('')
@@ -88,6 +92,7 @@ export function createProjectActions({
       setProjectsSource('backend')
       setProjectSyncMessage('')
     } catch (error: any) {
+      if (!isCurrent()) return
       if (error.message?.includes('403')) {
         setProjectsList([])
         setCurrentProjectId('')
@@ -106,12 +111,13 @@ export function createProjectActions({
         setProjectSyncMessage(formatAppError(ERROR_CODES.BACKEND_UNAVAILABLE, `${t('proyectos.projectsLoadError')} ${error.message || t('proyectos.backendUnavailable')}.`))
       }
     } finally {
-      setProjectsLoading(false)
+      if (isCurrent()) setProjectsLoading(false)
     }
   }
 
   const handleCreateProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (projectCreateInFlightRef.current) return
     const target = event.currentTarget
     const formData = new FormData(target)
     const pName = String(formData.get('projName') || '').trim()
@@ -124,70 +130,80 @@ export function createProjectActions({
       return
     }
 
-    const createLocalProject = () => {
-      const newProjId = `p${projectsList.length + 1}`
-      const localProject = {
-        id: newProjId,
-        orgId: orgSelect,
-        name: pName,
-        status: 'Activo',
-        health: 0,
-        testsCount: 0,
-        runsCount: 0,
-        team: 0,
-        redmineLinked: false
+    projectCreateInFlightRef.current = true
+    setProjectsLoading(true)
+    let created = false
+    try {
+      const createLocalProject = () => {
+        created = true
+        const newProjId = `p${projectsList.length + 1}`
+        const localProject = {
+          id: newProjId,
+          orgId: orgSelect,
+          name: pName,
+          status: 'Activo',
+          health: 0,
+          testsCount: 0,
+          runsCount: 0,
+          team: 0,
+          redmineLinked: false
+        }
+        setProjectsList(current => [...current, localProject])
+        setCurrentProjectId(newProjId)
+        setCurrentOrgId(orgSelect)
+        setProjectSyncMessage(t('proyectos.projectCreatedLocal'))
       }
-      setProjectsList([...projectsList, localProject])
-      setCurrentProjectId(newProjId)
-      setCurrentOrgId(orgSelect)
-      setProjectSyncMessage(t('proyectos.projectCreatedLocal'))
-    }
 
-    if (projectsSource === 'backend') {
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/proyectos/`, {
-          method: 'POST',
-          body: JSON.stringify({
-            nombre: pName,
-            descripcion: '',
-            activo: true,
-            organizacion_id: orgSelect
+      if (projectsSource === 'backend') {
+        try {
+          const response = await fetchWithAuth(`${API_BASE}/proyectos/`, {
+            method: 'POST',
+            body: JSON.stringify({
+              nombre: pName,
+              descripcion: '',
+              activo: true,
+              organizacion_id: orgSelect
+            })
           })
-        })
 
-        if (!response.ok) {
-          const error = await response.json().catch(() => null)
-          throw new Error(error?.detail || `Backend respondió ${response.status}`)
-        }
+          if (!response.ok) {
+            const error = await response.json().catch(() => null)
+            throw new Error(error?.detail || `Backend respondió ${response.status}`)
+          }
 
-        const project = await response.json()
-        const mapped = mapBackendProjectToCard(project, orgSelect)
-        setProjectsList([...projectsList, mapped])
-        setCurrentProjectId(mapped.id)
-        setCurrentOrgId(mapped.orgId)
-        setProjectSyncMessage(t('proyectos.projectCreatedBackend'))
-      } catch (error: any) {
-        if (ALLOW_LOCAL_FALLBACK) {
-          setProjectsSource('local')
-          createLocalProject()
-          setProjectSyncMessage(`${t('proyectos.projectPersistError')}: ${error.message}. ${t('proyectos.createdLocally')}`)
-        } else {
-          const message = formatAppError(ERROR_CODES.PROJECT_CREATE_FAILED, `No se pudo crear el proyecto en backend. ${error.message}.`)
-          setProjectSyncMessage(message)
-          showFeedback(t('proyectos.projectNotCreated'), message, 'danger')
+          const project = await response.json()
+          created = true
+          const mapped = mapBackendProjectToCard(project, orgSelect)
+          setProjectsList(current => [...current, mapped])
+          setCurrentProjectId(mapped.id)
+          setCurrentOrgId(mapped.orgId)
+          setProjectSyncMessage(t('proyectos.projectCreatedBackend'))
+        } catch (error: any) {
+          if (ALLOW_LOCAL_FALLBACK) {
+            setProjectsSource('local')
+            createLocalProject()
+            setProjectSyncMessage(`${t('proyectos.projectPersistError')}: ${error.message}. ${t('proyectos.createdLocally')}`)
+          } else {
+            const message = formatAppError(ERROR_CODES.PROJECT_CREATE_FAILED, `No se pudo crear el proyecto en backend. ${error.message}.`)
+            setProjectSyncMessage(message)
+            showFeedback(t('proyectos.projectNotCreated'), message, 'danger')
+          }
         }
-      }
-    } else {
-      if (ALLOW_LOCAL_FALLBACK) {
-        createLocalProject()
       } else {
-        const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, t('proyectos.localProjectCreationDisabled'))
-        setProjectSyncMessage(message)
-        showFeedback(t('proyectos.realModeActive'), message, 'warning')
+        if (ALLOW_LOCAL_FALLBACK) {
+          createLocalProject()
+        } else {
+          const message = formatAppError(ERROR_CODES.REAL_MODE_LOCAL_WRITE_DISABLED, t('proyectos.localProjectCreationDisabled'))
+          setProjectSyncMessage(message)
+          showFeedback(t('proyectos.realModeActive'), message, 'warning')
+        }
       }
-    }
 
-    target.reset()
+      if (created) target.reset()
+    } finally {
+      projectCreateInFlightRef.current = false
+      setProjectsLoading(false)
+    }
   }
 
   const handleUpdateProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -207,7 +223,7 @@ export function createProjectActions({
 
     const activo = status === 'Activo' || status === 'En QA'
     const updateLocalProject = () => {
-      setProjectsList(projectsList.map(project => (
+      setProjectsList(current => current.map(project => (
         project.id === managingProjectId
           ? { ...project, name, status, imageUrl }
           : project
@@ -234,7 +250,7 @@ export function createProjectActions({
 
         const updated = await response.json()
         const mapped = mapBackendProjectToCard(updated, currentOrgId)
-        setProjectsList(projectsList.map(project => (
+        setProjectsList(current => current.map(project => (
           project.id === mapped.id ? { ...project, ...mapped } : project
         )))
         setProjectSyncMessage(t('proyectos.projectChangesSavedBackend'))

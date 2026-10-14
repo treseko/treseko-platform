@@ -282,7 +282,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     const sourceComponentId = cloneSourceSuite.componente_id || cloneSourceSuite.componentId || ''
     return flattenSuites(suitesTree).filter((suite: any) => {
       const suiteComponentId = suite.componente_id || suite.componentId || ''
-      return suiteComponentId === sourceComponentId && !cloneSuiteIds.has(suite.id)
+      return suiteComponentId === sourceComponentId && !suite.archivado && suite.activo !== false && !cloneSuiteIds.has(suite.id)
     })
   }, [cloneSourceSuite, cloneSuiteIds, suitesTree])
   const cloneSuiteCasesCount = useMemo(() => {
@@ -377,7 +377,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
 
   const openCloneSuiteModal = (suite: any) => {
     setCloneSourceSuite(suite)
-    setCloneSuiteName(`Copia de ${suite.nombre}`)
+    setCloneSuiteName(`Copia de ${suite.nombre}`.slice(0, 150))
     setCloneSuiteParentId(suite.parent_id || suite.parentId || '')
   }
 

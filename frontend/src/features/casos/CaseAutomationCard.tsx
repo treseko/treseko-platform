@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Badge, Button, Card, Form } from "react-bootstrap";
 import { ChevronDown, ChevronRight, Code, PlayCircle, RefreshCw, Terminal } from "lucide-react";
 import { ScriptEditor } from "../../ScriptEditor";
@@ -7,6 +8,7 @@ import { VariableReferenceHints } from "./VariableReferenceHints";
 type Props = { context: any };
 
 export function CaseAutomationCard({ context }: Props) {
+  const [recordVideo, setRecordVideo] = useState(true);
   const {
     t, newTestType, canEditScripts, collapsedSections, setCollapsedSections,
     newTestFramework, setNewTestFramework, newTestLanguage, setNewTestLanguage,
@@ -83,7 +85,8 @@ export function CaseAutomationCard({ context }: Props) {
               <strong>{t('automatizacion.scriptRequired')}</strong>
             </div>
           )}
-          <ScriptEditor
+          <Form.Check id="worker-dry-run-record-video" type="switch" label={t('motorIa.recordVideo')} checked={recordVideo} onChange={e => setRecordVideo(e.target.checked)} className="mb-2" />
+            <ScriptEditor
             value={newTestScript}
             onChange={setNewTestScript}
             framework={newTestFramework}
@@ -251,6 +254,7 @@ export function CaseAutomationCard({ context }: Props) {
                     entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
                     dataset_id: uuidOrNull(selectedDryRunDataset?.id),
                     debug_mode: dryRunDebugMode,
+                    record_video: recordVideo,
                     pasos: newTestSteps.map((step: any, index: number) => ({
                       numero_paso: index + 1,
                       accion: step.action || '',

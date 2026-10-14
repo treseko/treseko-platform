@@ -1,4 +1,6 @@
 export default {
+  legacyCategory: 'Categoría anterior sin nombre disponible',
+  viewAsset: 'Ver activo',
   pageTitle: 'Inventario de Infraestructura',
   pageDescription: 'Assets de infraestructura, endpoints y servicios del proyecto. Las IPs pueden repetirse entre ambientes.',
   noProjectSelected: 'Selecciona una solución y un proyecto para continuar.',

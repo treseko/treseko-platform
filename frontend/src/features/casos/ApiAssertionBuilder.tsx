@@ -193,7 +193,7 @@ export function ApiAssertionBuilder({ assertions, onChange, advancedText, onAdva
 
   return (
     <div className="api-assertion-builder">
-      <div className="d-flex align-items-start gap-2 mb-3">
+      <div className="api-section-heading d-flex align-items-start gap-2 mb-3">
         <div>
           <Form.Label className="small fw-semibold mb-1">{t('casos.apiAssertionChecksTitle')}</Form.Label>
           <div className="small text-muted">{t('casos.apiAssertionChecksHelp')}</div>

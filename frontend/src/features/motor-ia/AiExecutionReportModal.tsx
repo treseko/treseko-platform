@@ -5,6 +5,7 @@ import { Eye, Images } from 'lucide-react'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import { CompactObject, JsonTechnicalDetails, MemoryCheckSummary } from './AiReportCompactData'
 import { AiExecutionStepsTab } from './AiExecutionStepsTab'
+import { RecordingEvidence } from './RecordingEvidence'
 
 type AiExecutionReportModalProps = {
   show: boolean
@@ -157,6 +158,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                     <span className="fw-bold">{report.case_title || aiReport.case_title || t('motorIa.aiCase')}</span>
                   </div>
                   <div className="small text-muted">{aiReport.summary || report.observations || t('motorIa.noSummary')}</div>
+                  <RecordingEvidence reference={aiReport.recording_ref} status={aiReport.recording_status} />
                 </div>
                 <div className="d-flex flex-wrap gap-2 align-items-start">
                   <Badge bg={statusColor(report.status || aiReport.status)}>{executionStatusLabel(report.status || aiReport.status, t)}</Badge>
@@ -195,7 +197,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                   )}
                   <Col md={3}><Card className="border p-3 h-100"><div className="x-small text-muted fw-bold text-uppercase">{t('motorIa.aiStatus')}</div><div className="fw-bold">{executionStatusLabel(report.status || aiReport.status, t)}</div></Card></Col>
                   <Col md={3}><Card className="border p-3 h-100"><div className="x-small text-muted fw-bold text-uppercase">{t('motorIa.consensus', { value: consensus || '-' })}</div><div className="fw-bold">{executionStatusLabel(consensus, t)}</div></Card></Col>
-                  <Col md={3}><Card className="border p-3 h-100"><div className="x-small text-muted fw-bold text-uppercase">{t('motorIa.confidence', { value: confidence ?? 0 })}</div><div className="fw-bold">{confidence ?? 0}%</div></Card></Col>
+                  <Col md={3}><Card className="border p-3 h-100"><div className="x-small text-muted fw-bold text-uppercase">{t('motorIa.confidenceShort')}</div><div className="fw-bold">{t('motorIa.confidenceLabel', { value: confidence ?? 0 })}</div><div className="small text-muted">{t(aiReport.confidence_assessment?.source === 'audit_consensus' ? 'motorIa.scoreAudit' : 'motorIa.scoreUnknown')}</div></Card></Col>
                   <Col md={3}><Card className="border p-3 h-100"><div className="x-small text-muted fw-bold text-uppercase">{t('motorIa.aiReview')}</div><div className="fw-bold">{reviewStatus === 'REQUIERE_REVISION' ? t('motorIa.requiresHumanReview') : reviewStatus === 'NO_REQUIERE_REVISION' ? t('motorIa.noHumanReviewRequired') : executionStatusLabel(reviewStatus, t)}</div></Card></Col>
                   {reviewStatus === 'REQUIERE_REVISION' && onMarkReviewed && report?.execution_id && (
                     <Col md={12}>
@@ -314,7 +316,7 @@ export function AiExecutionReportModal({ show, loading, error, report, onHide, o
                       {(event.reason || typeof event.confidence === 'number') && (
                         <div className="x-small text-muted mt-2">
                           {event.reason && <span>{t('motorIa.reasonLabel')}: {event.reason}</span>}
-                          {typeof event.confidence === 'number' && <span>{event.reason ? ' · ' : ''}{t('motorIa.confidenceLabel')}: {event.confidence}%</span>}
+                          {typeof event.confidence === 'number' && <span>{event.reason ? ' · ' : ''}{t('motorIa.confidenceLabel', { value: event.confidence })}</span>}
                         </div>
                       )}
                       {(event.action || event.input_json || event.output_json) && (

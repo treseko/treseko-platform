@@ -246,20 +246,14 @@ export function TraceabilityEditorModals({ options }: { options: any }) {
                 />
               </Col>
               <Col xs={12}>
-                <Form.Label>{editingStory ? tx("acceptanceMarkdown") : tx("structuredAcceptance")}</Form.Label>
-                {!editingStory && <><p className="small text-muted mb-2">{tx("acceptanceHintShort")}</p><AcceptanceCriteriaEditor criteria={storyForm.acceptance_criteria || []} onChange={(acceptance_criteria) => setStoryForm({ ...storyForm, acceptance_criteria })} /></>}
-                {editingStory &&
-                <Form.Control name="a11y-traceabilityeditormodalstsx-250" aria-label={t('proyectos.acceptanceMarkdown')}
-                  as="textarea"
-                  rows={4}
-                  value={storyForm.criterios_aceptacion_markdown}
-                  onChange={(event) =>
-                    setStoryForm({
-                      ...storyForm,
-                      criterios_aceptacion_markdown: event.target.value,
-                    })
-                  }
-                />}
+                <Form.Label>{tx("structuredAcceptance")}</Form.Label>
+                <p className="small text-muted mb-2">{tx("acceptanceHintShort")}</p>
+                {editingStory?.criterios_estructuracion_estado === 'PENDING_STRUCTURING' && storyForm.criterios_aceptacion_markdown &&
+                  <Form.Control as="textarea" rows={4} readOnly className="mb-2"
+                    aria-label={t('proyectos.acceptanceCriteria')}
+                    value={storyForm.criterios_aceptacion_markdown} />}
+                <AcceptanceCriteriaEditor criteria={storyForm.acceptance_criteria || []}
+                  onChange={(acceptance_criteria) => setStoryForm({ ...storyForm, acceptance_criteria })} />
               </Col>
               <Col md={6}>
                 <Form.Label>{tx("externalProvider")}</Form.Label>

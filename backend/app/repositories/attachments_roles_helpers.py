@@ -394,14 +394,19 @@ async def _persist_automation_artifacts(
     for index, artifact in enumerate(artifacts or [], start=1):
         content_type = artifact.content_type or "image/png"
         if content_type not in CONTENT_TYPE_EXTENSIONS:
-            continue
+            raise ValueError("Tipo de evidencia no admitido; se conserva el resultado en el worker")
         try:
             content = base64.b64decode(artifact.base64, validate=True)
-        except (binascii.Error, ValueError):
-            continue
-        if not content or len(content) > 10 * 1024 * 1024:
-            continue
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("La evidencia contiene base64 inválido") from exc
+        if not content:
+            raise ValueError("La evidencia está vacía")
         if not _content_matches_declared_type(content_type, content):
+            raise ValueError("El contenido de evidencia no coincide con su tipo")
+        if content_type == 'video/webm' and job.job_type == 'DRY_RUN':
+            from ..services.ai_video_recordings import import_worker_temporary_video
+            item = await import_worker_temporary_video(db, content, project_id)
+            persisted.append(item)
             continue
         filename = _safe_artifact_filename(
             artifact.filename,

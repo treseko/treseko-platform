@@ -21,6 +21,7 @@ export const makeLog = (
   step: extra.step,
   attempt: extra.attempt,
   confidence: extra.confidence,
+  confidence_source: extra.confidence_source,
   metrics: extra.metrics,
 })
 

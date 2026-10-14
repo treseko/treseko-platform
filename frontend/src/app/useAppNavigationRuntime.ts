@@ -74,7 +74,7 @@ export function useAppNavigationRuntime(options: any): any {
     openEditSuiteModal,
     openMoveSuiteModal,
     updateSuiteArchiveStatus,
-    handleDeleteSuite,
+    handleDeleteSuite, handleReorderSuite,
     openEditCase,
     updateCaseArchiveStatus,
     loadCasoVersions,
@@ -130,7 +130,7 @@ export function useAppNavigationRuntime(options: any): any {
     buildCaseIds, testSearchQuery, canAccessCapability, selectSuiteTarget,
     setExpandedSuites, openCreateCaseInSuite, openCreateSuiteModal,
     openEditSuiteModal, openMoveSuiteModal, updateSuiteArchiveStatus,
-    handleDeleteSuite, openEditCase, updateCaseArchiveStatus, loadCasoVersions,
+    handleDeleteSuite, handleReorderSuite, openEditCase, updateCaseArchiveStatus, loadCasoVersions,
     handleDeleteCaso, getSuiteExecutionMetrics, handleSelectTestForExecution,
     showFeedback, organizeCase,
   });

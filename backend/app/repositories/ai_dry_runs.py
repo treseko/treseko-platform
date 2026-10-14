@@ -31,6 +31,7 @@ async def run_ai_engine_dry_run(
     task_payload = {
         "correlation_id": correlation_id,
         "dry_run": True,
+        "record_video": payload.record_video,
         "case_code": payload.codigo or "AI-DRY-RUN",
         "case_title": payload.titulo,
         "task": f"Dry-run IA del caso manual {payload.codigo or 'AI-DRY-RUN'}: {payload.titulo}\nPrecondiciones: {payload.precondiciones or '-'}\nPasos:\n{guidance}\nPostcondiciones: {payload.postcondiciones or '-'}",
@@ -93,6 +94,9 @@ async def run_ai_engine_dry_run(
             "provider": result_metadata.get("provider") or provider_payload.get("provider"),
             "model": result_metadata.get("model") or provider_payload.get("model"),
         }
+    from ..services.ai_video_recordings import register_recording
+    await register_recording(db, data.get('ai_report') or {}, payload.proyecto_id, temporary=True)
+    await db.commit()
     return schemas.AiEngineDryRunResult(**data)
 
 # --- PORTABILIDAD ---

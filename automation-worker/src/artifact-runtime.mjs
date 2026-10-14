@@ -26,10 +26,7 @@ function contentTypeForFile(filePath) {
 
 function artifactFromBuffer({ filename, contentType = "image/png", buffer, type = "screenshot", stepNumber = null }) {
   if (!buffer?.length) return null;
-  const safeBuffer = /^text\//.test(contentType) || contentType === "application/json" || contentType === "application/xml"
-    ? Buffer.from(redactTraceText(Buffer.from(buffer).toString("utf8")), "utf8")
-    : Buffer.from(buffer);
-  if (!safeBuffer.length || safeBuffer.length > ARTIFACT_MAX_BYTES) return null;
+  const safeBuffer = Buffer.from(buffer);
   return {
     type,
     filename,
@@ -41,30 +38,35 @@ function artifactFromBuffer({ filename, contentType = "image/png", buffer, type 
 
 function artifactFromFile(filePath, type = "screenshot") {
   try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile() || stat.size <= 0 || stat.size > ARTIFACT_MAX_BYTES) return null;
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile() || stat.size <= 0) return null;
     return artifactFromBuffer({
       filename: path.basename(filePath),
       contentType: contentTypeForFile(filePath),
       buffer: fs.readFileSync(filePath),
       type,
     });
-  } catch {
-    return null;
+  } catch(error) {
+    if(error?.code==='ENOENT')return null;
+    throw new Error(`No se pudo conservar la evidencia ${path.basename(filePath)}: ${error.message}`);
   }
 }
 
-function collectArtifacts(rootDir) {
+function collectArtifacts(rootDir, { workerWorkspace = false } = {}) {
   const artifacts = [];
   const visit = (dir) => {
     let entries = [];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
+    } catch(error) {
+      throw new Error(`No se pudo leer el directorio de evidencias: ${error.message}`);
     }
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
+      // These root paths belong to the worker, not to the test. A user's
+      // nested package.json (or any other evidence) remains eligible.
+      if (workerWorkspace && path.resolve(dir) === path.resolve(rootDir)
+          && ['package.json', '.treseko-runtime'].includes(entry.name)) continue;
       if (entry.isDirectory()) {
         visit(fullPath);
       } else if (ARTIFACT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {

@@ -1,4 +1,15 @@
 export default {
+  effortPerCase: 'Esfuerzo por caso',
+  avgPerAttempt: 'Promedio por intento',
+  fullExportScope: 'Exporta el reporte completo de la build; los filtros de detalle no se aplican.',
+
+  sharedHistoryLoadError: 'No se pudo cargar el historial de informes.',
+  showMoreRecords: 'Mostrar más',
+  shownRecords: '{shown} de {total} registros',
+  noLinkedBug: 'Sin bug asociado',
+  noLatencyMeasurement: 'Sin medición',
+
+  metricsStaleNotice: 'Se muestran los últimos datos obtenidos; el refresco falló.',
   metricsLoadError: 'No se pudieron cargar métricas',
   pageTitle: 'Centro de Control de Build QA',
   pageDescription: 'Reportes analiticos, trazabilidad, bugs, evidencias y decision QA de la build.',
@@ -88,7 +99,7 @@ export default {
   formatMetrics: 'Métricas por formato de prueba',
   formatMetricsDescription: 'Indicadores comunes por formato y métricas específicas de cada tipo de prueba.',
   formatModeMatrix: 'Matriz de formato y modo de ejecución',
-  formatModeMatrixDescription: 'Casos asignados a esta build, cruzados por formato y forma real de ejecución.',
+  formatModeMatrixDescription: 'Historial de ejecuciones por formato y modo, incluidas repeticiones. Los totales pueden superar los casos asignados.',
   aiExecutions: 'Ejecuciones IA',
   aiReview: 'Revision IA',
   aiAvgConfidence: 'Confianza promedio',

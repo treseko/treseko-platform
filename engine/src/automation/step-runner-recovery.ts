@@ -98,16 +98,13 @@ export function deterministicRecoveryAction(step: QAEngineStep, observation: Bro
   const text = normalizeText(`${step.action || ''} ${step.data || ''} ${step.expected || ''}`);
   const expectedFalseClaim = extractExpectedFalseClaim(step);
   if (expectedFalseClaim) {
-    const corpus = observationCorpus(observation);
-    const claimWords = wordsForMatch(expectedFalseClaim);
-    const claimLooksSupported = claimWords.length > 0 && claimWords.every((word) => corpus.includes(word));
+    // A claim is a proposition, not a bag of words. Preserve it for the
+    // evidence-based semantic auditor; never infer its truth here.
     const action: StrictAIAction = {
-      action: claimLooksSupported ? 'finish' : 'fail',
+      action: 'finish',
       value: expectedFalseClaim,
-      reason: claimLooksSupported
-        ? `La afirmacion negativa "${expectedFalseClaim}" aparece respaldada por el contenido visible.`
-        : `Fallo funcional esperado: la pagina no respalda la afirmacion "${expectedFalseClaim}".`,
-      confidence: 98,
+      reason: `Afirmacion pendiente de auditoria semantica con evidencia: "${expectedFalseClaim}".`,
+      confidence: 0,
       step_number: step.number,
     };
     if (step.expected) action.expected = step.expected;

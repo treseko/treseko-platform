@@ -1,4 +1,6 @@
 export default {
+  legacyCategory: 'Previous category name unavailable',
+  viewAsset: 'View asset',
   pageTitle: 'Infrastructure Inventory',
   pageDescription: 'Infrastructure assets, endpoints and project services. IPs may repeat across environments.',
   noProjectSelected: 'Select a solution and a project to continue.',

@@ -1,4 +1,12 @@
 export default {
+  historyLoadError: "No se pudo actualizar el historial. Se conservan los últimos datos disponibles.",
+  saveProgress: "Guardar avance",
+  progressSaved: "Avance guardado",
+  progressSavedDescription: "Puedes retomar esta ejecución sin finalizar el caso.",
+  progressSaveError: "No se pudo guardar el avance",
+  completeTurnsBeforePass: "Para aprobar, envía todos los turnos. Para finalizar antes con fallo o bloqueo, indica el motivo.",
+  progressConnectionError: "No se pudo actualizar el progreso. Se muestra el último estado conocido.",
+
   manualCaseCompleted: 'Caso completado', manualCaseCompletedMessage: 'Este caso terminó, pero todavía hay casos del lote sin ejecutar. Seleccioná otro caso de la lista para continuar.',
   bugsViewPermission: 'Necesitas permiso para ver bugs antes de consultar o reportar uno.', bugsCreatePermission: 'Necesitas permiso para crear bugs. Solicítalo a un administrador.',
   manualBatchCompleted: 'Lote completado', manualBatchCompletedMessage: 'Se han ejecutado todos los casos seleccionados.', internalBugReportPending: 'Reporte pendiente', internalBugReportPendingMessage: 'El fallo quedó guardado. Puedes crear el bug interno más adelante desde el caso o su historial.', executionCompleted: 'Ejecución completada', executionCompletedWithBugDecision: 'Resultado final: {status}. El reporte de bug interno ya tiene una decisión registrada para esta ejecución.', executionCompletedMessage: 'Resultado final: {status}.', verdictRequired: 'Veredicto requerido', verdictRequiredMessage: 'Selecciona un resultado general para ejecutar este caso sin pasos.', documentationRequired: 'Documentación requerida', documentationRequiredMessage: 'Agrega un comentario o adjunta evidencia antes de guardar este fallo o bloqueo.', completionFailed: 'No se pudo completar', saveExecutionError: 'Error al guardar la ejecución.', incompleteExecution: 'Ejecución incompleta', completePreviousSteps: 'Completa los pasos anteriores antes de guardar el resultado final.', completeAllSteps: 'Marca todos los pasos como PASO o registra un FALLO/BLOQUEO para cerrar la ejecución.',

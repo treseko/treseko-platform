@@ -1,9 +1,53 @@
 import type { Page } from 'playwright';
-import type { BrowserObservation, ExecutionCheckpoint, QAEngineStep, StepContract, StrictAIAction, StructuredHistoryItem } from './action-types.ts';
+import type { BrowserObservation, ExecutionCheckpoint, QAEngineStep, StepContract, StepRunResult, StrictAIAction, StructuredHistoryItem } from './action-types.ts';
 import { normalizeUrl } from './action-executor.ts';
 import { observeBrowser } from './observation.ts';
 import { buildStepContract, evaluateStepContract, parseStepData, stepDataValue } from './step-contract.ts';
 import { interpretStepData } from './context-data-interpreter.ts';
+
+export function confidenceRecord(source: 'model' | 'rules') {
+  return { confidence_source: source, confidence_calibration: 'uncalibrated' as const };
+}
+
+export function confidencePayload(action: { confidence: number; confidence_source?: string }) {
+  return { confidence: action.confidence, confidence_source: action.confidence_source, confidence_calibration: 'uncalibrated' as const };
+}
+
+export function finalizeStepResult(input: {
+  step: QAEngineStep;
+  execution: { ok: boolean; command?: string; message?: string; error?: string };
+  action: StrictAIAction;
+  validation: { ok: boolean };
+  postValidation: { conclusive?: boolean };
+  contract: StepContract;
+  history: StructuredHistoryItem[];
+  screenshot?: string;
+}): { result: StepRunResult; reason: string } {
+  const { step, execution, action, validation, postValidation, contract, history, screenshot } = input;
+  const status = execution.command === 'postActionValidation'
+    ? (postValidation.conclusive ? 'FALLO' : 'BLOQUEADO')
+    : statusFromAction(action, execution.ok);
+  const reason = execution.ok
+    ? action.reason || `Paso ${step.number} ejecutado correctamente`
+    : execution.message || action.reason || `Paso ${step.number} no pudo ejecutarse`;
+  const result: StepRunResult = {
+    number: step.number,
+    status,
+    observations: reason,
+    history,
+    confidence: confidenceFromHistory(history),
+    contract,
+    checkpoints: history.map((item) => item.checkpoint).filter(Boolean) as ExecutionCheckpoint[],
+    ...(screenshot ? { screenshot_base64: screenshot } : {}),
+  };
+  if (!execution.ok) {
+    result.error_log = execution.error || execution.message;
+    result.failure_category = execution.command === 'postActionValidation'
+      ? 'expected_result_not_met'
+      : (validation.ok ? 'model_blocked' : 'invalid_model_action');
+  }
+  return { result, reason };
+}
 
 export function stepGoal(task: string, step: QAEngineStep, contract: StepContract): string {
   return [
@@ -97,11 +141,10 @@ export function isUrlNavigationStep(step: QAEngineStep): boolean {
 }
 
 export function confidenceFromHistory(history: StructuredHistoryItem[]): number {
-  const values = history
-    .map((item) => Number(item.action?.confidence || 0))
-    .filter((value) => value > 0);
-  if (!values.length) return 0;
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  // Keep the terminal action's internal score; averaging rules and model
+  // self-assessments creates a number with no interpretable provenance.
+  const value = Number(history.at(-1)?.action?.confidence ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 }
 
 export function normalizeText(value: string): string {

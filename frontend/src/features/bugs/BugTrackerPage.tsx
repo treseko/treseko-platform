@@ -6,11 +6,9 @@ import { type EvidenceViewerItem } from '../../shared/components/EvidenceViewerM
 import { WorkspaceContextEmptyState } from '../../shared/components/WorkspaceContextEmptyState'
 import { BugTrackerView } from './BugTrackerView'
 import { useI18n } from '../../i18n'
-import { BUG_PRIORITY_OPTIONS } from './bugPresentation'
-import { apiErrorMessage, EXTERNAL_ISSUE_PROVIDERS, bugBuildOriginLabel, bugComponentLabel, compactUnique } from './bugTrackerHelpers'
-import { BugTransitionModal } from './BugTransitionModal'
+import { apiErrorMessage, EXTERNAL_ISSUE_PROVIDERS, compactUnique } from './bugTrackerHelpers'
 import { useBugTransitions } from './useBugTransitions'
-import type { BugListScope } from '../../app/types'
+import { useBugTrackerList } from './useBugTrackerList'
 
 type BugTrackerPageProps = {
   currentUserId?: string
@@ -22,6 +20,7 @@ type BugTrackerPageProps = {
   appUsers?: any[]
   fetchWithAuth: (url: string, options?: any) => Promise<Response>
   showFeedback: (title: string, message: string, variant?: string) => void
+  hasSystemFeature?: (feature: string) => boolean
   canAccessCapability?: (capabilityId: string, level?: string) => boolean
   onOpenManualBugDrawer?: () => void
   refreshToken?: number
@@ -46,6 +45,7 @@ export function BugTrackerPage({
   fetchWithAuth,
   showFeedback,
   canAccessCapability,
+  hasSystemFeature,
   onOpenManualBugDrawer,
   refreshToken = 0,
   onBugsChanged,
@@ -82,16 +82,12 @@ export function BugTrackerPage({
       && (!currentCompId || String(buildComponentId) === String(currentCompId))
   })
 
-  const [bugs, setBugs] = useState<any[]>([])
-  const [summary, setSummary] = useState<any>({})
-  const [loading, setLoading] = useState(false)
   const [selectedBug, setSelectedBug] = useState<any | null>(null)
   const [conversationalContext, setConversationalContext] = useState<any | null>(null)
   const [conversationalContextLoading, setConversationalContextLoading] = useState(false)
   const [apiContext, setApiContext] = useState<any | null>(null)
   const [apiContextLoading, setApiContextLoading] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [filters, setFilters] = useState({ q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', scope: 'all' as BugListScope })
   const [comment, setComment] = useState('')
   const [commentAttachments, setCommentAttachments] = useState<AttachmentMeta[]>([])
   const [externalForm, setExternalForm] = useState({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
@@ -101,8 +97,19 @@ export function BugTrackerPage({
   const [viewerEvidence, setViewerEvidence] = useState<EvidenceViewerItem | null>(null)
   const [savingDetail, setSavingDetail] = useState(false)
   const [showStatusHelp, setShowStatusHelp] = useState(false)
-  const hasLoadedBugsRef = useRef(false)
-  const loadedProjectIdRef = useRef<string | undefined>(undefined)
+  const detailBaseline = useRef('')
+  const detailSequence = useRef(0)
+  const draftSignature = (form: any, rows: any[]) => JSON.stringify([form, rows.map(({ key, value }) => ({ key, value }))])
+  const isDetailDirty = Boolean(detailOpen && detailBaseline.current && detailBaseline.current !== draftSignature(detailForm, additionalContextRows))
+  const dirtyRef = useRef(false)
+  dirtyRef.current = isDetailDirty
+  useEffect(() => {
+    if (!detailOpen || (!isDetailDirty && !comment.trim() && !commentAttachments.length)) return
+    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [detailOpen, isDetailDirty, comment, commentAttachments.length])
+  useEffect(() => () => { detailSequence.current++; consumedDeepLinkBugRef.current = '' }, [])
   const consumedDeepLinkBugRef = useRef('')
 
   const currentUserId = currentUserIdProp || (() => {
@@ -115,66 +122,19 @@ export function BugTrackerPage({
     }
   })()
 
-  const canTransitionTo = (estado: string) => {
+  const canTransitionTo = (estado: string, bug = selectedBug) => {
     const normalized = String(estado || '').toUpperCase()
-    if (normalized === 'RESUELTO') return canResolve
-    if (normalized === 'CERRADO') return canClose
+    if (normalized === 'DUPLICADO') return false // A duplicate must identify its original bug.
+    if (normalized === 'RESUELTO') return canResolve && Boolean(currentUserId) && String(bug?.asignado_a || '') === String(currentUserId)
+    if (['CERRADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE'].includes(normalized)) return canClose
     return canTriage
   }
 
-  const loadBugs = async (options?: { silent?: boolean }, filterOverride?: Record<string, any>) => {
-    if (!currentProjectId || !canView) {
-      setBugs([])
-      setSummary({})
-      setLoading(false)
-      return
-    }
-    const silent = Boolean(options?.silent)
-    if (!silent) setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      const activeFilters = filterOverride || filters
-      Object.entries(activeFilters).forEach(([key, value]) => {
-        if (key !== 'scope' && value) params.set(key, value)
-      })
-      if (activeFilters.scope === 'mine' && currentUserId) params.set('asignado_a', currentUserId)
-      if (activeFilters.scope === 'unassigned') params.set('sin_asignar', 'true')
-      params.set('limit', '100')
-      const [listResponse, summaryResponse] = await Promise.all([
-        fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/?${params.toString()}`),
-        fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/bugs/summary/${filterOverride?.build_id || filters.build_id ? `?build_id=${encodeURIComponent(filterOverride?.build_id || filters.build_id)}&build_scope=${encodeURIComponent(filterOverride?.build_scope || filters.build_scope || 'reported')}` : ''}`),
-      ])
-      if (!listResponse.ok) throw new Error(await listResponse.text())
-      const listPayload = await listResponse.json()
-      setBugs(Array.isArray(listPayload) ? listPayload : (listPayload.items || []))
-      if (summaryResponse.ok) setSummary(await summaryResponse.json())
-      hasLoadedBugsRef.current = true
-      loadedProjectIdRef.current = currentProjectId
-    } catch (error: any) {
-      showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorLoading'), 'danger')
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }
-
-  const initialFiltersKey = JSON.stringify(initialFilters || {})
-
-  useEffect(() => {
-    if (!initialFiltersKey || initialFiltersKey === '{}') return
-    const nextFilters = { q: '', estado: '', severidad: '', prioridad: '', tipo_contexto: '', build_id: '', build_scope: 'reported', scope: 'all' as BugListScope, ...initialFilters }
-    setFilters(nextFilters)
-    void loadBugs(undefined, nextFilters)
-    // Navigation from reports intentionally applies the complete filter set once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialFiltersKey])
-
-  useEffect(() => {
-    const sameProject = loadedProjectIdRef.current === currentProjectId
-    void loadBugs({ silent: hasLoadedBugsRef.current && sameProject })
-  }, [currentProjectId, refreshToken, canView])
+  const list = useBugTrackerList({ currentProjectId, currentUserId, canView, refreshToken, initialFilters, fetchWithAuth, showFeedback, t })
+  const { bugs, setBugs, summary, loading, filters, setFilters, loadBugs } = list
 
   const hydrateDetailEditState = (bug: any) => {
-    setDetailForm({
+    const nextForm = {
       titulo: bug.titulo || '',
       descripcion: bug.descripcion || '',
       resultado_esperado: bug.resultado_esperado || '',
@@ -199,16 +159,18 @@ export function BugTrackerPage({
       url_afectada: bug.url_afectada || '',
       navegador: bug.navegador || '',
       dispositivo: bug.dispositivo || '',
-      resolucion: bug.resolucion || '',
+      resolucion_pantalla: bug.resolucion_pantalla || '',
       sistema_operativo: bug.sistema_operativo || '',
       asignado_a: bug.asignado_a || '',
-    })
+    }
+    setDetailForm(nextForm)
     const context = bug.metadata_json?.additional_context
     const rows = Array.isArray(context)
       ? context.map((item: any, index: number) => ({ id: `context-${index}-${Date.now()}`, key: item?.key || '', value: item?.value || '' }))
       : context && typeof context === 'object'
         ? Object.entries(context).map(([key, value], index) => ({ id: `context-${index}-${Date.now()}`, key, value: String(value ?? '') }))
         : []
+    detailBaseline.current = draftSignature(nextForm, rows)
     setAdditionalContextRows(rows)
   }
 
@@ -242,11 +204,13 @@ export function BugTrackerPage({
     return response
   }
 
-  const openDetail = async (bug: any) => {
+  const openDetail = async (bug: any, preserveDraft = false) => {
+    const request = ++detailSequence.current
     try {
       const response = await resolveBugDetail(bug)
       if (!response.ok) throw new Error(await apiErrorMessage(response))
       const payload = await response.json()
+      if (request !== detailSequence.current) return null
       setSelectedBug(payload)
       setConversationalContext(null)
       setApiContext(null)
@@ -263,6 +227,7 @@ export function BugTrackerPage({
           const contextResponse = await fetchWithAuth(`${API_BASE}/bugs/${payload.id}/conversational-context/`)
           if (contextResponse.ok) {
             const context = await contextResponse.json()
+            if (request !== detailSequence.current) return null
             setConversationalContext(context)
             loadedConversationalContext = true
             if (String(payload.tipo_contexto || '').toUpperCase() !== 'CONVERSACIONAL') {
@@ -280,20 +245,27 @@ export function BugTrackerPage({
         setApiContextLoading(true)
         try {
           const apiResponse = await fetchWithAuth(`${API_BASE}/bugs/${payload.id}/api-context/`)
-          if (apiResponse.ok) setApiContext(await apiResponse.json())
+          if (apiResponse.ok) {
+            const evidence = await apiResponse.json()
+            if (request !== detailSequence.current) return null
+            setApiContext(evidence)
+          }
         } finally {
           setApiContextLoading(false)
         }
       }
-      hydrateDetailEditState(payload)
+      if (request !== detailSequence.current) return null
+      if (!preserveDraft) hydrateDetailEditState(payload)
       setMarkdown('')
-      setComment('')
-      setCommentAttachments([])
+      if (!preserveDraft) { setComment(''); setCommentAttachments([]) }
       setExternalForm({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
       setDetailOpen(true)
+      return true
     } catch (error: any) {
+      if (request !== detailSequence.current) return null
       setConversationalContextLoading(false)
       showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorOpenDetail'), 'danger')
+      return false
     }
   }
 
@@ -305,36 +277,21 @@ export function BugTrackerPage({
       onDeepLinkConsumed?.()
       return
     }
-    void openDetail({ id: deepLinkBugId }).finally(() => onDeepLinkConsumed?.())
+    void openDetail({ id: deepLinkBugId }).then(result => { if (result !== null) onDeepLinkConsumed?.() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkBugId, canView])
 
   const { quickTransitioningBugId, transitionTarget, transitionForm, setTransitionForm, setTransitionTarget,
     compatibleBuilds, requestTransition, confirmTransition, isCorrected } = useBugTransitions({ buildsList,
     currentBuildId, selectedBug, fetchWithAuth, showFeedback, setBugs, setSelectedBug,
-    hydrateDetailEditState, loadBugs, onBugsChanged, t })
-
-  const linkingBug = null
-  const setLinkingBug = (_value: any) => undefined
-  const linkComment = ''
-  const setLinkComment = (_value: string) => undefined
-  const linkingBugId = null
-  const onViewRelatedBug = undefined
-  const canLinkCurrentExecution = false
-  const onLinkExecutionToBug = undefined
-  const creatingInternalBugContextId = null
-  const relatedCaseBugs: any[] = []
-  const relatedCaseBugsLoading = false
-  const onCreateInternalBugFromExecution = undefined
-  const getBugDisplayBuild = bugBuildOriginLabel
-  const getBugDisplayComponent = bugComponentLabel
+    hydrateDetailEditState: (bug: any) => { if (!dirtyRef.current) hydrateDetailEditState(bug) }, loadBugs, onBugsChanged, t })
 
   const transitionBug = async (estado: string) => {
     if (selectedBug && canTransitionTo(estado)) requestTransition(selectedBug, estado)
   }
 
   const transitionBugInline = async (bug: any, estado: string) => {
-    if (!bug?.id || !canTransitionTo(estado) || estado === bug.estado) return
+    if (!bug?.id || !canTransitionTo(estado, bug) || estado === bug.estado) return
     requestTransition(bug, estado)
   }
 
@@ -348,9 +305,10 @@ export function BugTrackerPage({
     if (!response.ok) throw new Error(await apiErrorMessage(response))
     const updated = await response.json()
     setSelectedBug(updated)
-    hydrateDetailEditState(updated)
-    await loadBugs()
+    if (!dirtyRef.current) hydrateDetailEditState(updated)
+    await loadBugs({ silent: true })
     onBugsChanged?.()
+    return updated
   }
 
   const takeBug = async (bug: any) => {
@@ -372,19 +330,20 @@ export function BugTrackerPage({
     try {
       const isConversational = String(selectedBug.tipo_contexto || 'CLASICO').toUpperCase() === 'CONVERSACIONAL'
       const managementFields = ['titulo', 'severidad', 'prioridad', 'criticidad', 'impacto_negocio', 'frecuencia', 'asignado_a', 'notas_qa', 'bloquea_release', 'bloquea_caso']
-      const changes = isConversational
-        ? Object.fromEntries(managementFields.filter(field => Object.prototype.hasOwnProperty.call(detailForm, field)).map(field => [field, detailForm[field]]))
-        : { ...detailForm }
+      const [baselineForm, baselineContext] = JSON.parse(detailBaseline.current)
+      const changes = Object.fromEntries(Object.entries(detailForm).filter(([field, value]) =>
+        JSON.stringify(value) !== JSON.stringify(baselineForm[field]) && (!isConversational || managementFields.includes(field))))
       if (!canAssign) delete changes.asignado_a
-      const assignment = canAssign ? (detailForm.asignado_a || null) : undefined
-      await updateSelectedBug({
+      if ('asignado_a' in changes) changes.asignado_a = changes.asignado_a || null
+      const contextChanged = JSON.stringify(additionalContext) !== JSON.stringify(baselineContext)
+      const saved = await updateSelectedBug({
         ...changes,
-        ...(assignment !== undefined ? { asignado_a: assignment } : {}),
-        metadata_json: {
+        ...(contextChanged ? { metadata_json: {
           ...(selectedBug.metadata_json || {}),
           additional_context: additionalContext,
-        },
+        } } : {}),
       })
+      if (saved) hydrateDetailEditState(saved)
       showFeedback(t('bugs.bugUpdatedTitle'), t('bugs.bugUpdated'), 'success')
       return true
     } catch (error: any) {
@@ -422,7 +381,7 @@ export function BugTrackerPage({
       if (!response.ok) throw new Error(await response.text())
       setComment('')
       setCommentAttachments([])
-      await openDetail(selectedBug)
+      await openDetail(selectedBug, true)
     } catch (error: any) {
       showFeedback(t('bugs.pageTitle'), error?.message || t('bugs.errorAddComment'), 'danger')
     }
@@ -462,7 +421,7 @@ export function BugTrackerPage({
       if (!response.ok) throw new Error(await apiErrorMessage(response))
       const createdLink = await response.json()
       setExternalForm({ provider_id: 'redmine', external_issue_id: '', external_issue_url: '' })
-      await openDetail(selectedBug)
+      await openDetail(selectedBug, true)
       await loadBugs({ silent: true })
       const provider = EXTERNAL_ISSUE_PROVIDERS.find(item => item.id === createdLink.provider_id)?.label || createdLink.provider_id
       showFeedback(t('bugs.externalLink'), t('bugs.externalLinkSuccess', { provider, issue: createdLink.external_issue_id, bug: selectedBug.codigo }), 'success')
@@ -478,13 +437,13 @@ export function BugTrackerPage({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ attachment_id: attachment.id, tipo: 'BUG_EVIDENCE' }),
     })
-    if (response.ok) await openDetail(selectedBug)
+    if (response.ok) await openDetail(selectedBug, true)
   }
 
   const removeBugEvidence = async (attachment: AttachmentMeta) => {
     if (!selectedBug || !attachment?.id) return
     const response = await fetchWithAuth(`${API_BASE}/bugs/${selectedBug.id}/attachments/${attachment.id}/`, { method: 'DELETE' })
-    if (response.ok) await openDetail(selectedBug)
+    if (response.ok) await openDetail(selectedBug, true)
   }
 
   const bugGeneralAttachments = (selectedBug?.attachments || [])
@@ -534,6 +493,11 @@ export function BugTrackerPage({
   }
 
   const viewContext = {
+    list,
+    isDetailDirty,
+    resetDetailDraft: () => selectedBug && hydrateDetailEditState(selectedBug),
+    fetchWithAuth,
+    canMarkDuplicate: canTriage && Boolean(hasSystemFeature?.('bugs.enterprise')),
     t,
     canUse,
     canCreate,
@@ -583,7 +547,7 @@ export function BugTrackerPage({
     setTransitionTarget,
     confirmTransition,
     setShowStatusHelp,
-    setDetailOpen,
+    setDetailOpen: (open: boolean) => { if (!open) detailSequence.current++; setDetailOpen(open) },
     onDetailClosed,
     onOpenRelatedCase,
     onOpenRelatedExecution,
@@ -605,20 +569,6 @@ export function BugTrackerPage({
     transitionBugInline,
     takeBug,
     modalOnly,
-    linkingBug,
-    setLinkingBug,
-    linkComment,
-    setLinkComment,
-    linkingBugId,
-    onViewRelatedBug,
-    canLinkCurrentExecution,
-    onLinkExecutionToBug,
-    creatingInternalBugContextId,
-    relatedCaseBugs,
-    relatedCaseBugsLoading,
-    onCreateInternalBugFromExecution,
-    getBugDisplayBuild,
-    getBugDisplayComponent,
     setViewerEvidence,
     setExternalForm,
     setFilters,

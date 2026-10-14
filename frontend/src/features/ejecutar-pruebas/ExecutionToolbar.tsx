@@ -124,15 +124,19 @@ export function ExecutionToolbar({ options }: { options: any }) {
               )}
             </div>
           </div>
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 execution-toolbar-actions">
             <Button
               variant="outline-primary"
               size="sm"
               className="mobile-only align-items-center justify-content-center gap-1 fw-bold"
+              aria-label={mobileExplorerOpen ? 'Ocultar explorador' : 'Mostrar explorador'}
+              title={mobileExplorerOpen ? 'Ocultar explorador' : 'Mostrar explorador'}
               onClick={() => setMobileExplorerOpen((current) => !current)}
             >
-              <Folders size={14} />{" "}
-              {mobileExplorerOpen ? "Ocultar explorador" : "Explorador"}
+              <Folders size={16} aria-hidden="true" />
+              <span className="execution-toolbar-button-label">
+                {mobileExplorerOpen ? "Ocultar explorador" : "Explorador"}
+              </span>
             </Button>
             <Badge bg="light" text="dark" className="border">
               {selectedExecutionTests.length} sel.
@@ -142,9 +146,12 @@ export function ExecutionToolbar({ options }: { options: any }) {
                 variant="outline-secondary"
                 size="sm"
                 className="fw-bold d-flex align-items-center gap-1"
+                aria-label={t('ejecutarPruebas.buildHistory')}
+                title={t('ejecutarPruebas.buildHistory')}
                 onClick={onOpenBuildHistory}
               >
-                <History size={14} /> {t('ejecutarPruebas.buildHistory')}
+                <History size={16} aria-hidden="true" />
+                <span className="execution-toolbar-button-label">{t('ejecutarPruebas.buildHistory')}</span>
               </Button>
             )}
             {canStartAnyExecution && (
@@ -152,15 +159,17 @@ export function ExecutionToolbar({ options }: { options: any }) {
                 variant="primary"
                 size="sm"
                 className="fw-bold px-4 shadow-sm border-0"
+                aria-label={t('ejecutarPruebas.startExecution')}
                 disabled={selectedExecutionTests.length === 0}
                 title={
                   selectedExecutionTests.length === 0
                     ? "Selecciona al menos un caso ejecutable"
-                    : undefined
+                    : t('ejecutarPruebas.startExecution')
                 }
                 onClick={openExecutionSelector}
               >
-                <PlayCircle size={15} className="me-1" /> {t('ejecutarPruebas.startExecution')}
+                <PlayCircle size={16} aria-hidden="true" />
+                <span className="execution-toolbar-button-label">{t('ejecutarPruebas.startExecution')}</span>
               </Button>
             )}
           </div>

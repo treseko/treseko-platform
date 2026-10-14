@@ -1,4 +1,5 @@
 const casos = {
+  referenceSyncFailed: "O teste foi salvo, mas suas referências não puderam ser sincronizadas. Tente novamente para concluir o salvamento.",
   connectionType: 'Tipo de conexão',
   connectionPresetGenericHttp: 'HTTP JSON genérico',
   connectionPresetGenericHttpHelp: 'Para APIs HTTP que retornam um objeto JSON com a resposta.',

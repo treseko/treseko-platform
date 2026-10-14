@@ -1,33 +1,9 @@
-# Governed MCP
-
 <!-- Language: en -->
 
-Treseko MCP is disabled by default. Enabling it requires
-`TRESEKO_MCP_ENABLED=true`, an explicit tool allowlist, and a safe topology:
-`TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` for one process, or
-`shared_redis` with `REDIS_URL` (or `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) for
-multiple workers or replicas. Missing or ambiguous topology disables MCP.
+# MCP governance
 
-Authentication uses only a pausable or revocable `X-MCP-API-Key`; browser JWTs are not
-accepted. Project and organization membership are checked on every call.
+Tools are discovered through effective scopes and RBAC. Reads require `read`; mutations require `edit` on the capability, organization and project, confirmation and an idempotent receipt. Model instructions never grant permissions.
 
-The surface combines reads with governed write operations. The allowlist is
-intersected with each tool's RBAC capability and declared scopes. The catalog has
-no shell, filesystem, secrets,
-database, private network, or arbitrary execution.
+New workspace functions have separate read/write scopes. Revisions prevent stale overwrites and transactions bind changes, receipts and audit. Results preserve evidence, redact secrets and fail explicitly when limits are exceeded. MCP annotations describe operations; they do not replace authorization.
 
-The limits are 30 calls per minute, 64 KiB per request, and 256 KiB per
-response. Shared Redis is checked with a short timeout and safe caching; if it
-is unavailable, every MCP route, including `initialize`, discovery, and
-authentication, fails closed. Handlers return bounded, JSON-safe results;
-strings, lists, depth, and bytes are truncated or rejected before the JSON-RPC
-envelope is built.
-
-Credentials can move from `ACTIVE` to `PAUSED` and back to active;
-`REVOKED` is irreversible. The change requires edit capability, is audited,
-and blocks calls while paused.
-
-Calls and rejections are audited with bounded, sanitized details. Prompts,
-credentials, and complete results are not persisted. MCP is not exposed openly
-to the Internet, and mutations require a dedicated capability, allowlist,
-schema, and audit tests.
+See [MCP guide](MCP_GUIDE.md) and [MCP operations](MCP_OPERATIONS.md).

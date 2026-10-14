@@ -2,9 +2,10 @@
 
 <!-- Language: en -->
 
-Use the included installers. They generate `compose.production.env` and local
-secrets. The package also includes `.env.production.example` templates; they
-do not contain real secrets.
+Use the included Bash or PowerShell scripts. They generate
+`compose.production.env` and local secrets. Graphical desktop installers are
+temporarily excluded from this release. The package also includes
+`.env.production.example` templates; they do not contain real secrets.
 
 ## Requirements
 
@@ -14,51 +15,11 @@ do not contain real secrets.
 - Storage for PostgreSQL, evidence and backups.
 - A Linux host for remote installation over SSH.
 
-## Local installer
+## Local installation with scripts
 
-A cross-platform graphical installer is also included. It opens a window,
-checks Docker and Compose, validates the selected port, runs the installation
-while showing progress, and can open Treseko when it finishes:
-
-```bash
-python3 installer/treseko_installer.py
-```
-
-On Windows PowerShell:
-
-```powershell
-py installer\treseko_installer.py
-```
-
-At startup, it checks the Frontend version and the Backend health/version on
-the selected port. It distinguishes a running installation from a folder that
-only contains local files. If it detects another service, mismatched component
-versions, a root that does not match the installation, or a pending update, it
-blocks the action to avoid installing over an instance or starting another
-update. It also blocks installing the same or an older version. If Docker is
-stopped, it shows the last recorded version and validates the root before an
-update. `Package` selects the target version; `Existing installation` selects
-the root containing the configuration and persistent data.
-
-The graphical installer requires Python 3 and Tkinter; on minimal Ubuntu,
-install `python3-tk` before opening it.
-
-If it is opened from `Downloads` without the full package, it queries the
-latest stable `treseko/treseko-platform` release on GitHub, downloads the core
-over HTTPS, validates the required files, and continues the installation. It
-does not download code from user-configurable URLs.
-
-When launched through the Python entry point, the bootstrap can restart a newer
-GUI from the downloaded package while keeping the existing data root separate.
-An already frozen standalone executable cannot load downloaded Python code into
-itself; to update from an older standalone GUI, download and run the destination
-version's graphical installer. New services must be declared in Compose or in
-the release scripts to become part of the installation.
-
-The interface uses the Bash installer on Ubuntu/macOS and the PowerShell
-installer on Windows. Apple Silicon requires Docker Desktop for Apple Silicon.
-The current graphical mode installs the Docker environment; it does not install
-native Windows or macOS services.
+On Linux and macOS, use the Bash script. On Windows, use the PowerShell script.
+Both install the Docker Compose environment; they do not install native
+operating-system services. Docker and Compose requirements are listed above.
 
 The main application consists of the Frontend and Backend/API. PostgreSQL and
 Redis provide the base data and coordination services. The AI Engine and
@@ -140,9 +101,7 @@ scripts/install_local_treseko.sh --update
 The update fails if `compose.production.env` does not exist. Do not combine
 `--update` with `--with-demo`.
 
-The graphical installer delegates to the same local flow for each operating
-system: Bash on macOS/Linux and PowerShell on Windows. The GUI does not apply
-components itself. **Settings → Updates** is a separate route and only accepts
+**Settings → Updates** is a separate route and only accepts
 installations with a valid host-coordinator binding; otherwise, the API rejects
 the request before creating a task and the UI directs the user to run the local
 installer on the host. There is no legacy application fallback because it does
@@ -205,12 +164,11 @@ scripts/install_remote_treseko.sh usuario@servidor --http-port 9095
 The destination must be Linux with SSH. Secrets are generated, migrations are
 run, and the URL, initial user and temporary password are shown. Save it and
 change it at the first login. The default remote destination is
-`/opt/treseko-platform`; change it with `--remote-dir PATH`. The GUI lets you
-choose that directory and a different port. Remote installation is for new
-installations only: if the selected directory is not empty, it stops without
-overwriting or merging files. For a host that requires an
-interactive `sudo` password, configure non-interactive sudo access for the SSH
-user before starting the GUI flow.
+`/opt/treseko-platform`; change it with `--remote-dir PATH`. Remote installation
+is for new installations only: if the selected directory is not empty, it stops
+without overwriting or merging files. For a host that requires an interactive
+`sudo` password, configure non-interactive sudo access for the SSH user before
+running the script.
 
 ## Manual installation
 

@@ -66,6 +66,8 @@ function elapsedLabel(startedAt?: string, finishedAt?: string, now = Date.now())
 export function ApiAutomationMonitorModal({ show, run, fetchWithAuth, setAutomationMonitor, onHide, onOpenHistory }: ApiAutomationMonitorProps) {
   const { t } = useI18n()
   const [progress, setProgress] = useState<any>(run || {})
+  const [connectionError, setConnectionError] = useState(false)
+  const [retry, setRetry] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const runId = String(run?.run_id || run?.id || '')
 
@@ -83,7 +85,8 @@ export function ApiAutomationMonitorModal({ show, run, fetchWithAuth, setAutomat
   useEffect(() => {
     if (!runId) return
     let cancelled = false
-    let shouldPoll = true
+    let shouldPoll = !isTerminalApiStatus(run?.status)
+    let timer: number | undefined
 
     const loadProgress = async () => {
       try {
@@ -102,10 +105,12 @@ export function ApiAutomationMonitorModal({ show, run, fetchWithAuth, setAutomat
             }))
             shouldPoll = false
           }
+          if (!cancelled) setConnectionError(shouldPoll)
           return
         }
         const payload = await response.json()
         if (cancelled) return
+        setConnectionError(false)
         setProgress((previous: any) => ({ ...previous, ...payload }))
         setAutomationMonitor((previous: any) => ({
           ...previous,
@@ -114,19 +119,18 @@ export function ApiAutomationMonitorModal({ show, run, fetchWithAuth, setAutomat
         }))
         shouldPoll = !isTerminalApiStatus(payload.status)
       } catch (_) {
-        // The monitor remains usable with the last known state; the next tick retries.
+        if (!cancelled) setConnectionError(true)
+      } finally {
+        if (!cancelled && shouldPoll) timer = window.setTimeout(() => void loadProgress(), 2500)
       }
     }
 
-    loadProgress()
-    const interval = window.setInterval(() => {
-      if (shouldPoll) void loadProgress()
-    }, 2500)
+    if (shouldPoll) void loadProgress()
     return () => {
       cancelled = true
-      window.clearInterval(interval)
+      window.clearTimeout(timer)
     }
-  }, [fetchWithAuth, runId, setAutomationMonitor])
+  }, [fetchWithAuth, runId, setAutomationMonitor, retry])
 
   const executions = Array.isArray(progress.executions) ? progress.executions : []
   const total = Number(progress.total ?? executions.length ?? 0)
@@ -167,6 +171,7 @@ export function ApiAutomationMonitorModal({ show, run, fetchWithAuth, setAutomat
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
+          {connectionError && <Alert variant="warning">{t('ejecutarPruebas.progressConnectionError')} <Button size="sm" variant="outline-primary" onClick={() => setRetry(value => value + 1)}>{t('common.retry')}</Button></Alert>}
           <Alert variant="info" className="small">
             {t('ejecutarPruebas.apiMonitorBackground')}
           </Alert>

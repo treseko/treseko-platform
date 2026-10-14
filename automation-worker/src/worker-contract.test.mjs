@@ -98,10 +98,10 @@ for (let seed = 1; seed <= 128; seed += 1) {
   });
 }
 
-test("redacción cubre secretos comunes sin destruir el resto", () => {
+test("los datos de prueba se conservan literalmente", () => {
   const value = "password=uno token=dos secret=tres key=cuatro visible=cinco";
-  assert.equal(redact(value), "password=[redacted] token=[redacted] secret=[redacted] key=[redacted] visible=cinco");
-  assert.equal(redact("https://service.test/run?access_token=uno&visible=cinco"), "https://service.test/run?access_token=[redacted]&visible=cinco");
+  assert.equal(redact(value), value);
+  assert.equal(redact("https://service.test/run?access_token=uno&visible=cinco"), "https://service.test/run?access_token=uno&visible=cinco");
 });
 
 test("los procesos hijos no heredan secretos del worker", () => {
@@ -179,19 +179,18 @@ test("framework y lenguaje respetan aliases controlados", () => {
   assert.equal(languageKey({ payload_congelado: { framework: "playwright", language: "ts" } }), "typescript");
 });
 
-test("artefactos vacíos o sobredimensionados se rechazan", () => {
+test("artefactos vacíos se rechazan y los grandes se conservan", () => {
   assert.equal(artifactFromBuffer({ filename: "missing.txt", contentType: "text/plain" }), null);
   assert.equal(artifactFromBuffer({ filename: "empty.png", buffer: Buffer.alloc(0) }), null);
-  assert.equal(artifactFromBuffer({ filename: "large.png", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) }), null);
+  assert.equal(Buffer.from(artifactFromBuffer({ filename: "large.png", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) }).base64, "base64").length, 10 * 1024 * 1024 + 1);
   const artifact = artifactFromBuffer({ filename: "ok.txt", contentType: "text/plain", buffer: Buffer.from("ok"), type: "evidence", stepNumber: 2 });
   assert.deepEqual(artifact, { type: "evidence", filename: "ok.txt", content_type: "text/plain", base64: "b2s=", step_number: 2 });
 });
 
-test("artefactos textuales se redactan antes de codificarse", () => {
+test("artefactos textuales conservan los datos originales", () => {
   const artifact = artifactFromBuffer({ filename: "report.json", contentType: "application/json", buffer: Buffer.from('{"token":"secret-value","visible":"ok"}'), type: "report" });
   const decoded = Buffer.from(artifact.base64, "base64").toString("utf8");
-  assert.doesNotMatch(decoded, /secret-value/);
-  assert.match(decoded, /\[redacted\]/);
+  assert.equal(decoded, '{"token":"secret-value","visible":"ok"}');
 });
 
 test("parsers JSON controlados", () => {

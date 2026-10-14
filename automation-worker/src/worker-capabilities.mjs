@@ -16,6 +16,7 @@ export function createWorkerCapabilities({
   getPythonCommand,
   getSeleniumVersion,
   workerInstanceId,
+  getRuntimeAvailability,
   getActiveJobs,
   getActiveJobId,
 }) {
@@ -56,10 +57,12 @@ export function createWorkerCapabilities({
       postman_runtime: getPackageVersion("postman-runtime"),
       selenium: getSeleniumVersion(),
     };
+    const availability = getRuntimeAvailability?.();
+    if (availability) for (const name of Object.keys(frameworkLanguages)) if (!availability.frameworks.includes(name)) delete frameworkLanguages[name];
     const activeJobs = getActiveJobs();
     const activeJobId = getActiveJobId();
     const payload = {
-      frameworks: ["treseko-api", "postman", "playwright", "puppeteer", "cypress", "selenium"],
+      frameworks: availability?.frameworks || ["treseko-api", "postman", "playwright", "puppeteer", "cypress", "selenium"],
       component: "automation-worker",
       component_version: workerVersion,
       worker_version: workerVersion,
@@ -80,7 +83,8 @@ export function createWorkerCapabilities({
       selenium_version: versions.selenium,
       selenium_language: "python",
       python_bin: getPythonCommand(),
-      browsers: ["chromium", "firefox", "webkit", "chrome (puppeteer)", "cypress"],
+      browsers: availability?.browsers || ["chromium", "firefox", "webkit", "chrome (puppeteer)", "cypress"],
+      ...(availability ? {unavailable_runtimes:availability.unavailable} : {}),
       os: `${os.type()} ${os.release()}`,
       platform: process.platform,
       arch: process.arch,
@@ -96,6 +100,7 @@ export function createWorkerCapabilities({
       current_job_id: activeJobId || null,
       uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
     };
+    if (availability) for (const name of Object.keys(payload.language_status)) if (!availability.frameworks.includes(name)) delete payload.language_status[name];
     if (workerInstanceId) payload.worker_instance_id = workerInstanceId;
     return payload;
   }

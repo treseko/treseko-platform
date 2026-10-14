@@ -35,6 +35,7 @@ export function HistorialRoute(props: HistorialRouteProps) {
       environments={props.currentProjectEnvironments}
       appUsers={props.appUsers}
       initialFilters={props.historialInitialFilters}
+      historyState={props.historyState}
       pendingRunDetailId={props.pendingHistorialRunDetailId}
       onPendingRunDetailConsumed={() => props.setPendingHistorialRunDetailId('')}
       onLoadHistory={props.loadProjectRunHistory}

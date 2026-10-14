@@ -4,6 +4,7 @@ from ..services import config_service
 from ..services.ai_report_sanitizer import sanitize_ai_report_payload
 from ..services.execution_output_sanitizer import sanitize_execution_snapshot_item
 from ..services.api_evidence_policy import public_test_data_evidence_enabled
+from ..services.history_evidence import redact_history_evidence
 
 
 async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: bool | None = None):
@@ -34,7 +35,8 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
     user_result = await db.execute(select(models.Usuario).filter(models.Usuario.id == run.creado_por))
     user = user_result.scalar_one_or_none()
 
-    ejecuciones = await get_ejecuciones_run(db, run_id=run_id, skip=0, limit=500)
+    executions_result = await db.execute(select(models.EjecucionCaso).filter(models.EjecucionCaso.test_run_id == run_id).order_by(models.EjecucionCaso.fecha_ejecucion, models.EjecucionCaso.id))
+    ejecuciones = executions_result.scalars().all()
     caso_ids = [ejec.caso_id for ejec in ejecuciones]
     casos = {}
     if caso_ids:
@@ -94,9 +96,9 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
                 ],
             }
         has_ai_report = bool(ai_report) and is_ai_execution
-        # Chatbot reports intentionally retain the frozen QA contract and raw
+        # Frozen public QA evidence retains the frozen QA contract and raw
         # HTTP evidence. Access is still governed by the history capability.
-        ai_report = sanitize_ai_report_payload(ai_report) if ai_report and effective_sanitize and not is_chatbot else (ai_report or {})
+        ai_report = redact_history_evidence(ai_report) if ai_report and effective_sanitize else (ai_report or {})
         cases_detail.append({
             "id": str(ejec.id),
             "execution_id": str(ejec.id),
@@ -118,7 +120,9 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
             "public_test_data": public_evidence,
             "evidence_policy": {"public_test_data": public_evidence},
             "duracion_segundos": ejec.duracion_segundos,
-            "observaciones": sanitize_ai_report_payload(ejec.observaciones) if effective_sanitize and not is_chatbot else ejec.observaciones,
+            "observaciones": redact_history_evidence(ejec.observaciones) if effective_sanitize else ejec.observaciones,
+            "api_config_snapshot": redact_history_evidence(ejec.api_config_snapshot or {}) if effective_sanitize else (ejec.api_config_snapshot or {}),
+            "api_resultado": redact_history_evidence(ejec.api_resultado or {}) if effective_sanitize else (ejec.api_resultado or {}),
             "ai_report": ai_report,
             "has_ai_report": has_ai_report,
             "ai_confidence": ejec.ai_confidence or ai_report.get("confidence"),
@@ -129,8 +133,8 @@ async def get_test_run_detail(db: AsyncSession, run_id: UUID, sanitize_output: b
             "ai_reviewed_at": ejec.ai_reviewed_at.isoformat() if ejec.ai_reviewed_at else None,
             "ai_review_note": sanitize_ai_report_payload(ejec.ai_review_note) if effective_sanitize else ejec.ai_review_note,
             "ai_human_review_required": review_required,
-            "chatbot_config_snapshot": (ejec.chatbot_config_snapshot or {}) if is_chatbot else {},
-            "chatbot_resultado": (ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {}) if is_chatbot else {},
+            "chatbot_config_snapshot": (redact_history_evidence(ejec.chatbot_config_snapshot or {}) if effective_sanitize else (ejec.chatbot_config_snapshot or {})) if is_chatbot else {},
+            "chatbot_resultado": (redact_history_evidence(ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {}) if effective_sanitize else (ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {})) if is_chatbot else {},
             "chatbot_workflow_version": ((ejec.chatbot_resultado or ai_report.get("chatbot_resultado") or {}).get("workflow_version") if is_chatbot else None),
             "fecha_ejecucion": ejec.fecha_ejecucion.isoformat() if ejec.fecha_ejecucion else None,
             "snapshots": enriched_snapshots,

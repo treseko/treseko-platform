@@ -31,6 +31,7 @@ export type ProviderAdapterConfig = {
   endpoint: string;
   apiKey?: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 };
 
 export class ProviderRequestError extends Error {
@@ -218,7 +219,7 @@ export function normalizeProviderError(error: any): ProviderRequestError {
 export async function generateWithProvider(config: ProviderAdapterConfig, request: ProviderGenerateRequest): Promise<NormalizedProviderResult> {
   const prepared = providerRequest(config, request);
   try {
-    const response = await axios.post(prepared.url, prepared.body, { headers: prepared.headers, timeout: config.timeoutMs, maxRedirects: 0 });
+    const response = await axios.post(prepared.url, prepared.body, { headers: prepared.headers, timeout: config.timeoutMs, signal: config.signal, maxRedirects: 0 });
     return normalizeProviderResponse(prepared.kind, response.data, response.headers);
   } catch (error: any) {
     throw normalizeProviderError(error);

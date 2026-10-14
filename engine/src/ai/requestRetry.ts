@@ -8,6 +8,7 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
 
   while (attempts < context.maxRetries) {
     try {
+      if (context.abortSignal?.aborted) throw new ProviderRequestError('Solicitud IA cancelada', 'cancelled');
       const requestId = traceRequestId('engine-ai')
       const aiPayload = {
         model: context.model,
@@ -33,6 +34,7 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
         endpoint: context.endpoint,
         apiKey: context.apiKey,
         timeoutMs: context.requestTimeoutMs,
+        signal: context.abortSignal,
       }, {
         model: context.model,
         messages,
@@ -61,6 +63,10 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
         return {
           data: parsed as T,
           metrics: {
+            provider: context.provider,
+            model: context.model,
+            temperature: aiPayload.temperature,
+            fallbackUsed: fallbackIndex > 0,
             latencyMs: Date.now() - start,
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
@@ -84,6 +90,7 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
         })
       }
     } catch (error: any) {
+      if (context.abortSignal?.aborted) throw new ProviderRequestError('Solicitud IA cancelada', 'cancelled');
       traceEntry('error', {
         event_detail: 'ai_request_failed',
         endpoint: `${context.endpoint}/chat/completions`,

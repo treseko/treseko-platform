@@ -22,7 +22,6 @@ export function createHistorialActions({
   projectsSource,
   fetchWithAuth,
   setRunHistory,
-  setProjectSyncMessage,
   showFeedback,
   loadProjectMetrics,
   t,
@@ -38,21 +37,21 @@ export function createHistorialActions({
   const loadProjectRunHistory = async (filters: Record<string, any> = {}) => {
     if (!currentProjectId || !isValidUUID(currentProjectId) || projectsSource !== 'backend') return
     try {
-      const params = new URLSearchParams({ limit: '50' })
+      const params = new URLSearchParams({ limit: '50', paginated: 'true', view: 'historial' })
       Object.entries(filters).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '') return
         if (key === 'date_from') {
-          params.set(key, `${value}T00:00:00`)
+          params.set(key, new Date(`${value}T00:00:00`).toISOString())
           return
         }
         if (key === 'date_to') {
-          params.set(key, `${value}T23:59:59`)
+          params.set(key, new Date(`${value}T23:59:59.999`).toISOString())
           return
         }
         params.set(key, String(value))
       })
       const data = await fetchProjectRunHistory(fetchWithAuth, currentProjectId, params, t('historial.backendResponse'))
-      const normalizedRuns = (Array.isArray(data) ? data : []).map((run: any) => {
+      const normalizedRuns = (Array.isArray(data) ? data : data.items || []).map((run: any) => {
         return {
           id: run.id,
           runId: run.runId || run.id,
@@ -83,18 +82,22 @@ export function createHistorialActions({
           failed: run.failed || 0,
           blocked: run.blocked || 0,
           pending: run.pending || 0,
+          running: run.running || 0,
           status: run.status || 'pending',
           evidencias: Array.isArray(run.evidencias) ? run.evidencias : [],
+          evidenceCount: run.evidence_count ?? run.evidencias?.length ?? 0,
+          runState: run.estado_run || '',
         }
       })
       setRunHistory(normalizedRuns)
+      return { items: normalizedRuns, total: data.total ?? normalizedRuns.length }
     } catch (error: any) {
-      setProjectSyncMessage(`${t('historial.loadHistoryError')}: ${error.message}`)
+      throw new Error(`${t('historial.loadHistoryError')}: ${error.message}`)
     }
   }
 
-  const loadTestRunDetail = async (runId: string) => {
-    return fetchTestRunDetail(fetchWithAuth, runId, t('historial.backendResponse'))
+  const loadTestRunDetail = async (runId: string, view?: string) => {
+    return fetchTestRunDetail(fetchWithAuth, runId, t('historial.backendResponse'), view)
   }
 
   const markHistorialAiReviewed = async (executionId: string, note = 'Revision registrada desde historial') => {

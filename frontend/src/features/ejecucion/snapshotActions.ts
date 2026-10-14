@@ -6,6 +6,7 @@ import type { TranslationKey } from '../../i18n'
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
 type CreateSnapshotActionsParams = {
+  executionDraftRef?: { current: { dirty: boolean; version: number } }
   currentExecutionCase: any
   stepResults: Record<number, string>
   snapshotNotes: Record<number, string>
@@ -19,6 +20,7 @@ type CreateSnapshotActionsParams = {
 }
 
 export function createSnapshotActions({
+  executionDraftRef,
   currentExecutionCase,
   stepResults,
   snapshotNotes,
@@ -32,6 +34,7 @@ export function createSnapshotActions({
 }: CreateSnapshotActionsParams) {
   const persistExecutionSnapshots = async (snapshotsToSave: any[]) => {
     if (!currentExecutionCase?.id || snapshotsToSave.length === 0) return []
+    const draftVersion = executionDraftRef?.current.version
     const payload = {
       snapshots: snapshotsToSave.map(snapshot => ({
         id: snapshot.id,
@@ -50,19 +53,24 @@ export function createSnapshotActions({
       throw new Error(error?.detail || `Backend respondió ${response.status}`)
     }
     const updated = await response.json()
+    if (executionDraftRef && executionDraftRef.current.version !== draftVersion) return updated
     setExecutionSnapshots(updated)
     setStepResults(Object.fromEntries(updated.map((snap: any) => [snap.numero_paso, snap.estado_paso])))
     setSnapshotNotes(Object.fromEntries(updated.map((snap: any) => [snap.numero_paso, snap.comentarios || ''])))
     return updated
   }
 
+  const markDirty = () => { if (executionDraftRef) { executionDraftRef.current.dirty = true; executionDraftRef.current.version++ } }
+
   const handleSnapshotStatusChange = (snapshot: any, status: string) => {
     if (!snapshot?.id || !status) return
+    markDirty()
     setStepResults(prev => ({ ...prev, [snapshot.numero_paso]: status }))
     setExecutionSnapshots(prev => prev.map(item => item.id === snapshot.id ? { ...item, estado_paso: status } : item))
   }
 
   const handleSnapshotNoteChange = (stepNumber: number, value: string) => {
+    markDirty()
     setSnapshotNotes(prev => ({ ...prev, [stepNumber]: value }))
   }
 

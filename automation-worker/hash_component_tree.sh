@@ -10,7 +10,7 @@ fi
 (
   cd "$root"
   find . \
-    -type d \( -name .git -o -name node_modules -o -name .cache -o -name .pytest_cache \
+    -type d \( -name .git -o -name node_modules -o -name .cache -o -name .state -o -name .pytest_cache \
       -o -name coverage -o -name logs -o -name reports -o -name pending-deliveries \
       -o -name test-results \) -prune -o \
     -type f \( -name .treseko-content-digest -o -name .maintenance \

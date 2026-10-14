@@ -27,6 +27,7 @@ export function ReportesRoute(props: ReportesRouteProps) {
     <>
     <ReportesPage
       metricsLoading={props.metricsLoading}
+      metricsError={props.metricsError}
       projectMetrics={props.projectMetrics}
       expandedMetricSuites={props.expandedMetricSuites}
       setExpandedMetricSuites={props.setExpandedMetricSuites}

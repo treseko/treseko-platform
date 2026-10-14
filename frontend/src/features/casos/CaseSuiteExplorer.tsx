@@ -17,9 +17,9 @@ export function CaseSuiteExplorer({ context }: Props) {
   return (
 <div className={`authoring-sidebar border-end bg-light shadow-sm text-start d-flex flex-column z-1 position-relative ${mobileExplorerOpen ? 'is-open' : ''}`} style={{ width: `${suiteExplorerWidth}px`, minWidth: '260px', maxWidth: '560px', flexShrink: 0 }}>
   <div className="p-3 bg-white border-bottom fw-bold text-muted small d-flex flex-column gap-3 shadow-sm">
-    <div className="d-flex justify-content-between align-items-center">
+    <div className="suite-explorer-toolbar d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span className="text-uppercase" style={{ letterSpacing: '0.5px' }}>{t('casos.suiteExplorer')}</span>
-      <div className="d-flex align-items-center gap-2">
+      <div className="suite-explorer-toolbar-actions d-flex align-items-center gap-2 flex-shrink-0">
         <Dropdown align="end">
           <Dropdown.Toggle
             variant="link"

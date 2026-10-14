@@ -1,7 +1,6 @@
 import {
   ALLOWED_METHODS,
   ApiWorkerBlockedError,
-  MAX_RESPONSE_BYTES,
   enabledPairs,
   rejectUnresolvedTemplates,
   resolveVariables,
@@ -46,11 +45,9 @@ export function buildBody(body, headers = {}) {
 }
 
 async function readBody(response) {
-  const length = Number(response.headers.get("content-length"));
-  if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) throw new ApiWorkerBlockedError("La respuesta supera el límite de 2 MiB", "RESPONSE_TOO_LARGE");
   if (!response.body?.getReader) return { bytes: new Uint8Array(), truncated: false };
   const reader = response.body.getReader(); const chunks = []; let total = 0;
-  while (true) { const { done, value } = await reader.read(); if (done) break; total += value.byteLength; if (total > MAX_RESPONSE_BYTES) { await reader.cancel().catch(() => {}); throw new ApiWorkerBlockedError("La respuesta supera el límite de 2 MiB", "RESPONSE_TOO_LARGE"); } chunks.push(value); }
+  while (true) { const { done, value } = await reader.read(); if (done) break; total += value.byteLength; chunks.push(value); }
   const bytes = new Uint8Array(total); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   return { bytes, truncated: false };
 }
@@ -69,18 +66,23 @@ function headersForRedirect(headers, from, to, previousMethod, nextMethod) {
   return result;
 }
 
-export async function requestWithRedirects({ url, method, headers = {}, body, timeoutMs, redirects, environment, config, allowLoopbackForTests, cookieJar = {} }) {
+export async function requestWithRedirects({ url, method, headers = {}, body, timeoutMs, redirects, environment, config, allowLoopbackForTests, cookieJar = {}, signal }) {
+  const deadlineAt=Date.now()+Math.max(1,Math.min(Number(timeoutMs) || 45000,120000));
   let current = String(url); let currentMethod = String(method || "GET").toUpperCase(); let currentBody = body; const visited = new Set(); const redirectChain = [];
   for (let count = 0; count <= MAX_REDIRECTS; count += 1) {
+    if(signal?.aborted){const error=new Error('El worker perdió el lease de ejecución');error.code='LEASE_LOST';throw error;}
+    if(Date.now()>=deadlineAt){const error=new Error('La solicitud API superó el timeout configurado');error.code='API_TIMEOUT';throw error;}
     await validateDestination(current, environment, config, { allowLoopbackForTests });
     if (visited.has(current)) throw new ApiWorkerBlockedError("La solicitud entró en un ciclo de redirecciones", "REDIRECT_LOOP");
     visited.add(current);
     const requestHeaders = { ...headers }; if (!Object.keys(requestHeaders).some(key => key.toLowerCase() === "cookie") && Object.keys(cookieJar).length) requestHeaders.Cookie = cookieHeader(cookieJar);
-    const controller = Controller ? new Controller() : undefined; const timer = setTimeout(() => controller?.abort(), Math.max(100, Math.min(Number(timeoutMs) || 45000, 120000)));
+    const controller = Controller ? new Controller() : undefined; const timer = setTimeout(() => controller?.abort(), Math.max(1,deadlineAt-Date.now()));
+    const cancel=()=>controller?.abort();
+    signal?.addEventListener('abort',cancel,{once:true});
+    if(signal?.aborted)cancel();
     let response;
-    try { response = await fetch(current, { method: currentMethod, headers: requestHeaders, body: currentMethod === "GET" || currentMethod === "HEAD" ? undefined : currentBody, redirect: "manual", signal: controller?.signal }); }
-    catch (error) { if (error?.name === "AbortError") { const timeout = new Error("La solicitud API superó el timeout configurado"); timeout.code = "API_TIMEOUT"; throw timeout; } throw new Error("No se pudo completar la solicitud API"); }
-    finally { clearTimeout(timer); }
+    try {
+    response = await fetch(current, { method: currentMethod, headers: requestHeaders, body: currentMethod === "GET" || currentMethod === "HEAD" ? undefined : currentBody, redirect: "manual", signal: controller?.signal });
     for (const [key, value] of cookiesFromResponse(response)) cookieJar[key] = value;
     if (redirects?.follow && response.status >= 300 && response.status < 400 && response.headers.get("location")) {
       if (count === MAX_REDIRECTS) throw new ApiWorkerBlockedError("Se superó el límite de redirecciones", "REDIRECT_LIMIT");
@@ -88,10 +90,17 @@ export async function requestWithRedirects({ url, method, headers = {}, body, ti
       const nextMethod = methodAfterRedirect(currentMethod, response.status);
       redirectChain.push({ from: current, to: next, status: response.status, method: nextMethod });
       if (nextMethod !== currentMethod) currentBody = undefined;
-      headers = headersForRedirect(headers, current, next, currentMethod, nextMethod); currentMethod = nextMethod; current = next; continue;
+      headers = headersForRedirect(headers, current, next, currentMethod, nextMethod); currentMethod = nextMethod; current = next; await response.body?.cancel(); continue;
     }
     const bodyData = await readBody(response); const text = Buffer.from(bodyData.bytes).toString("utf8"); let bodyJson = null; try { bodyJson = text ? JSON.parse(text) : null; } catch { bodyJson = null; }
-    return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: text, body_json: bodyJson, cookies: Object.fromEntries(Object.entries(cookieJar)), size_bytes: bodyData.bytes.byteLength, url: current, redirects: redirectChain };
+    return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: text, body_base64: Buffer.from(bodyData.bytes).toString('base64'), body_json: bodyJson, cookies: Object.fromEntries(Object.entries(cookieJar)), size_bytes: bodyData.bytes.byteLength, url: current, redirects: redirectChain };
+    } catch(error) {
+      if(controller?.signal.aborted){
+        const failure=new Error(signal?.aborted?'El worker perdió el lease de ejecución':'La solicitud API superó el timeout configurado');
+        failure.code=signal?.aborted?'LEASE_LOST':'API_TIMEOUT';throw failure;
+      }
+      throw error;
+    } finally {clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
   }
   throw new ApiWorkerBlockedError("No se pudo completar la redirección", "REDIRECT_LIMIT");
 }

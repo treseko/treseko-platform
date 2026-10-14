@@ -1,25 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MarkerType, useReactFlow, useUpdateNodeInternals, type Edge, type Node } from '@xyflow/react'
 import { WorkflowNodeCard } from '../components/workflow/WorkflowNodeCard'
-import {
-  applyDefaultWorkflowLayout,
-  applyElkWorkflowLayout,
-  createWorkflowElkGraph,
-  createWorkflowNodesById,
-  mapWorkflowEdgesToFlowEdges,
-  mapWorkflowNodesToFlowNodes,
-} from '../mappers/workflowFlowMappers'
+import { applyDefaultWorkflowLayout, createWorkflowNodesById, mapWorkflowEdgesToFlowEdges, mapWorkflowNodesToFlowNodes } from '../mappers/workflowFlowMappers'
+import { applyWorkflowLayout } from '../mappers/workflowLayout'
 import { hasDefaultWorkflowTypes } from '../mappers/configuracionMappers'
 import type { AiWorkflow, AiWorkflowNode } from '../types/configuracion'
 import { useWorkflowDebugTrace } from './useWorkflowDebugTrace'
 import type { Dispatch, SetStateAction } from 'react'
-
-let elkInstance: Promise<InstanceType<typeof import('elkjs/lib/elk.bundled.js')['default']>> | null = null
-
-function getElkInstance() {
-  elkInstance ??= import('elkjs/lib/elk.bundled.js').then(({ default: ELK }) => new ELK())
-  return elkInstance
-}
 
 const workflowDebugAllowed = Boolean((import.meta as any).env?.DEV)
 const workflowEdgeDebugEnabled = workflowDebugAllowed && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('workflowEdgeDebug') === '1'
@@ -198,28 +185,19 @@ export function useWorkflowFlow({
       if (options.persistPositions) persistWorkflowNodePositions(workflow, layoutedNodes)
       return
     }
-    const graph = createWorkflowElkGraph(rawNodes, mappedEdges, nodesByIdForEdges)
-    getElkInstance()
-      .then(elk => elk.layout(graph as any))
-      .then(layouted => {
-        if (syncRevision !== syncRevisionRef.current) return
-        const layoutedNodes = applyElkWorkflowLayout(rawNodes, layouted)
-        if (workflowDebug) {
-          workflowDebugLog('after layout nodes/edges')
-          workflowDebugTable(layoutedNodes.map(node => ({ id: node.id, type: node.type, x: node.position?.x, y: node.position?.y })))
-          workflowDebugTable(mappedEdges.map(edge => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle })))
-          workflowDebugLog('after layout edge node id validation', mappedEdges.every(edge =>
-            layoutedNodes.some(node => node.id === edge.source) &&
-            layoutedNodes.some(node => node.id === edge.target)
-          ))
-        }
-        setFlowNodes(layoutedNodes)
-        if (options.persistPositions) persistWorkflowNodePositions(workflow, layoutedNodes)
-      })
-      .catch(() => {
-        if (syncRevision !== syncRevisionRef.current) return
-        setFlowNodes(rawNodes as Node[])
-      })
+    if (syncRevision !== syncRevisionRef.current) return
+    const layoutedNodes = applyWorkflowLayout(rawNodes, mappedEdges, nodesByIdForEdges)
+    if (workflowDebug) {
+      workflowDebugLog('after layout nodes/edges')
+      workflowDebugTable(layoutedNodes.map(node => ({ id: node.id, type: node.type, x: node.position?.x, y: node.position?.y })))
+      workflowDebugTable(mappedEdges.map(edge => ({ id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle })))
+      workflowDebugLog('after layout edge node id validation', mappedEdges.every(edge =>
+        layoutedNodes.some(node => node.id === edge.source) &&
+        layoutedNodes.some(node => node.id === edge.target)
+      ))
+    }
+    setFlowNodes(layoutedNodes)
+    if (options.persistPositions) persistWorkflowNodePositions(workflow, layoutedNodes)
   }
 
   useEffect(() => {

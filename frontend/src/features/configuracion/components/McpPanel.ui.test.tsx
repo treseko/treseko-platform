@@ -34,7 +34,7 @@ describe('McpPanel', () => {
   it('hides credential mutations while MCP is disabled', () => {
     renderPanel({ canEdit: true, enabled: false, status: 'disabled' })
     expect(screen.queryByRole('button', { name: /Crear/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Revocar/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /Revocar/i })).toBeEnabled()
     expect(screen.getAllByText(/deshabilitado/i).length).toBeGreaterThan(0)
   })
 

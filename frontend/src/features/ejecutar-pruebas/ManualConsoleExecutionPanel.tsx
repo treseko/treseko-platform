@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap'
 import { AlertCircle, Loader2, Save } from 'lucide-react'
 import { EvidenceUpload } from '../../EvidenceUpload'
@@ -34,8 +35,15 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
     evidenceBlockMessage,
     finishDisabled,
     isCompletingCase,
-    handleCompleteCase,
+    handleCompleteCase, progress,
   } = context
+  const [isSavingProgress, setIsSavingProgress] = useState(false)
+  const saveExecutionProgress = progress?.saveExecutionProgress
+  const saveProgress = saveExecutionProgress ? async () => {
+    setIsSavingProgress(true)
+    try { if (await saveExecutionProgress()) progress.showFeedback?.(t('ejecutarPruebas.progressSaved'), t('ejecutarPruebas.progressSavedDescription'), 'success') }
+    finally { setIsSavingProgress(false) }
+  } : undefined
 
   return (
     <>
@@ -182,7 +190,10 @@ export function ManualConsoleExecutionPanel({ context }: { context: any }) {
             ? t('ejecutarPruebas.documentationBlock')
             : t('ejecutarPruebas.documentEvidenceHint'))}
         </span>
-        <Button variant="success" className="manual-console-finish-button fw-bold shadow rounded-pill d-flex align-items-center justify-content-center gap-2" onClick={handleCompleteCase} disabled={finishDisabled} aria-busy={isCompletingCase} title={evidenceBlockMessage ? t('ejecutarPruebas.missingFailureDoc') : undefined}>
+        {saveProgress && <Button variant="outline-primary" onClick={saveProgress} disabled={isSavingProgress || isCompletingCase}>
+          {isSavingProgress ? t('ejecutarPruebas.savingResult') : t('ejecutarPruebas.saveProgress')}
+        </Button>}
+        <Button variant="success" className="manual-console-finish-button fw-bold shadow rounded-pill d-flex align-items-center justify-content-center gap-2" onClick={handleCompleteCase} disabled={finishDisabled || isSavingProgress} aria-busy={isCompletingCase} title={evidenceBlockMessage ? t('ejecutarPruebas.missingFailureDoc') : undefined}>
           {isCompletingCase ? <Loader2 size={20} className="spin" aria-hidden="true" /> : <Save size={20} aria-hidden="true"/>}
           {isCompletingCase ? t('ejecutarPruebas.savingResult') : t('ejecutarPruebas.finishAndSave')}
         </Button>

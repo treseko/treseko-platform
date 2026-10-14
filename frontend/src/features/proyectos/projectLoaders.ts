@@ -3,6 +3,7 @@ import { API_BASE } from '../../app/constants'
 import { mapBackendBuildToItem, mapBackendComponentToItem } from '../../app/mappers'
 import { isValidUUID } from '../../app/validation'
 import { isBuildExecutable } from '../../app/buildState'
+import { loadProjectPages } from './projectPagination'
 
 type CreateProjectLoadersParams = {
   projectsSource: 'local' | 'backend'
@@ -33,16 +34,11 @@ export function createProjectLoaders({
 }: CreateProjectLoadersParams) {
   const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
 
-  const loadComponentsForProject = async (projectId: string, preferredComponentId = currentCompId) => {
+  const loadComponentsForProject = async (projectId: string, preferredComponentId = currentCompId, isCurrent: () => boolean = () => true) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return []
     try {
-      const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/componentes/`)
-      if (!response.ok) {
-        const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
-      }
-
-      const components = await response.json()
+      const components = await loadProjectPages(fetchWithAuth, `${API_BASE}/proyectos/${projectId}/componentes/`, isCurrent)
+      if (!components || !isCurrent()) return []
       const mapped = components.map(mapBackendComponentToItem)
       setComponentsList(prev => [
         ...prev.filter(component => component.projectId !== projectId),
@@ -50,7 +46,7 @@ export function createProjectLoaders({
       ])
       return mapped
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar componentes: ${error.message}.`)
+      if (isCurrent()) setProjectSyncMessage(`No se pudieron cargar componentes: ${error.message}.`)
       return []
     }
   }
@@ -85,7 +81,7 @@ export function createProjectLoaders({
     }
   }
 
-  const loadBuildCaseIdsForProject = async (projectId: string, buildIds: string[]) => {
+  const loadBuildCaseIdsForProject = async (projectId: string, buildIds: string[], isCurrent: () => boolean = () => true) => {
     const validBuildIds = [...new Set(buildIds)].filter(buildId => buildId && isValidUUID(buildId))
     if (!projectId || !isValidUUID(projectId) || validBuildIds.length === 0 || projectsSource !== 'backend') return
     try {
@@ -95,23 +91,19 @@ export function createProjectLoaders({
         throw new Error(error?.detail || `Backend respondió ${response.status}`)
       }
       const grouped = await response.json()
+      if (!isCurrent()) return
       const nextEntries = Object.fromEntries(validBuildIds.map(buildId => [buildId, grouped[buildId] || []]))
       setBuildCaseIds(prev => ({ ...prev, ...nextEntries }))
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar conteos de casos por build: ${error.message}`)
+      if (isCurrent()) setProjectSyncMessage(`No se pudieron cargar conteos de casos por build: ${error.message}`)
     }
   }
 
-  const loadBuildsForProject = async (projectId: string, projectComponents = componentsList, componentOverride = currentCompId, preferredBuildId = '') => {
+  const loadBuildsForProject = async (projectId: string, projectComponents = componentsList, componentOverride = currentCompId, preferredBuildId = '', isCurrent: () => boolean = () => true) => {
     if (!projectId || projectsSource !== 'backend') return null
     try {
-      const response = await fetchWithAuth(`${API_BASE}/proyectos/${projectId}/builds/`)
-      if (!response.ok) {
-        const error = await response.json().catch(() => null)
-        throw new Error(error?.detail || `Backend respondió ${response.status}`)
-      }
-
-      const builds = await response.json()
+      const builds = await loadProjectPages(fetchWithAuth, `${API_BASE}/proyectos/${projectId}/builds/`, isCurrent)
+      if (!builds || !isCurrent()) return null
       const mapped = builds.map(mapBackendBuildToItem)
       setBuildsList(prev => [
         ...prev.filter(build => build.projectId !== projectId),
@@ -132,10 +124,11 @@ export function createProjectLoaders({
         || componentBuilds.find((build: any) => isBuildExecutable(build))
         || componentBuilds[0]
       setCurrentBuildId(selectedBuild?.id || '')
-      await loadBuildCaseIdsForProject(projectId, mapped.map((build: any) => build.id))
+      await loadBuildCaseIdsForProject(projectId, mapped.map((build: any) => build.id), isCurrent)
+      if (!isCurrent()) return null
       return { builds: mapped, activeBuildId: selectedBuild?.id || '', componentId }
     } catch (error: any) {
-      setProjectSyncMessage(`No se pudieron cargar builds: ${error.message}.`)
+      if (isCurrent()) setProjectSyncMessage(`No se pudieron cargar builds: ${error.message}.`)
       return null
     }
   }

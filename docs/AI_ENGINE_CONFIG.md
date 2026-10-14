@@ -77,6 +77,11 @@ a la ruta y evidencia certificadas por la instancia.
 4. Consultá Monitor y el detalle de ejecución para ver el mensaje de error.
 5. Probá con un caso pequeño antes de repetir una ejecución extensa.
 
+Para una investigación local de QA, las trazas del Engine pueden redirigirse
+con `QA_TEST_TRACE_DIR`. Mantené la carpeta privada: las trazas redactan
+secretos comunes, pero las solicitudes y respuestas aún pueden contener datos
+sensibles de usuarios o de prueba.
+
 Los dry-runs sirven para validar la preparación sin crear una ejecución,
 evidencia ni historial del proyecto.
 
@@ -99,3 +104,21 @@ Los borradores requieren `motor_ia.workflow_drafts:edit`; publicar requiere
 `motor_ia.workflow_view:read`. La activación con ejecuciones en curso exige la
 confirmación administrativa que solicita el backend. Un preflight fallido no
 se debe saltar editando directamente la base de datos.
+
+## Capacidades verificadas del proveedor
+
+El botón Probar distingue disponibilidad de cumplimiento JSON. Una respuesta no vacía confirma disponibilidad; `structured_json` solo se confirma si la sonda devuelve el JSON solicitado `{"ok":true}`. Esto no certifica los esquemas de historias, casos o acciones: cada workflow conserva su validación y revisión. La visión requiere superar dos sondas de imágenes; un resultado inconcluyente mantiene `vision_status=unknown`. El nombre del modelo y el escaneo del catálogo no reemplazan esas comprobaciones.
+
+La variable de despliegue `AI_DISABLE_THINKING` vale `false` por defecto. Si se activa, solicita deshabilitar el razonamiento a través del adaptador compatible. Requiere reiniciar el Engine y comprobar que el proveedor acepte esa opción; no cambia el modelo seleccionado ni certifica su calidad de generación.
+
+### Reparación de propuestas de historias
+
+Si el modelo incumple el contrato, el reintento conserva las instrucciones del usuario, el alcance y las reglas de la solicitud original. La reparación no confirma una propuesta por sí sola: mantiene la validación y revisión posterior. La aceptación automática de supuestos se limita a supuestos completos con riesgo explícito LOW; MEDIUM, valores desconocidos o campos incompletos no se aceptan mediante ese mecanismo.
+
+### Contrato de salida de autoría
+
+El análisis, la generación y la revisión de historias y casos solicitan únicamente su esquema de salida. El cliente usa un modo explícito `schema`, incluido en las reparaciones y la extracción de fuentes, para evitar añadir una segunda plantilla genérica de agente con `decision` vacío. Los agentes de ejecución conservan su contrato de contexto compartido. Este modo es interno; no requiere una opción nueva en la configuración de usuario.
+
+Una respuesta HTTP200 o un indicador SUCCESS del modelo no aprueba una propuesta. Continúan la validación estructural, la comprobación de referencias y la revisión de contenido. Una respuesta incompleta se rechaza; corregir el contrato de la solicitud no demuestra que cualquier modelo pueda generar casos válidos.
+
+Cada propuesta de caso debe conservar el `local_id` emitido por el autor: texto no vacío de hasta 80 caracteres. Si falta o es inválido, el Engine solicita una reparación y rechaza la respuesta si sigue incumpliendo el contrato, antes de la revisión semántica. No se inventan identificadores para completar respuestas del modelo.

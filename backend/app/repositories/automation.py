@@ -1,6 +1,7 @@
 from .repository_context import reexport_modules
 
 reexport_modules(globals(), [
+    "app.repositories.test_run_creation",
     "app.repositories.test_runs_automation_runners",
     "app.repositories.automation_preparation",
     "app.repositories.api_automation_jobs",

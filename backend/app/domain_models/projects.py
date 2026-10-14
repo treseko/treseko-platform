@@ -15,13 +15,15 @@ class Proyecto(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     codigo = Column(String(20), index=True, nullable=True)
     organizacion_id = Column(UUID(as_uuid=True), ForeignKey("organizaciones.id", ondelete="RESTRICT"), nullable=False, index=True)
-    nombre = Column(String(150), nullable=False, unique=True, index=True)
+    nombre = Column(String(150), nullable=False, index=True)
     descripcion = Column(Text)
     estado = Column(String(50), default="Activo", nullable=False)
     imagen_url = Column(String(500), nullable=True)
     report_settings = Column(JSON, default=dict, nullable=False)
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
     activo = Column(Boolean, default=True, nullable=False)
+
+    __table_args__ = (UniqueConstraint("organizacion_id", "nombre", name="uq_proyectos_organizacion_nombre"),)
 
     organizacion = relationship("Organizacion", back_populates="proyectos")
     componentes = relationship("Componente", back_populates="proyecto", cascade="all, delete-orphan")

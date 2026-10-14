@@ -13,3 +13,5 @@ test-results
 *.jsonl
 __pycache__
 *.pyc
+
+.state

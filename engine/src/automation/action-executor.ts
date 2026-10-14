@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { coordinateTargetAtPoint } from './coordinate-click-safety.ts';
 import type { ActionExecutionResult, BrowserObservation, StrictAIAction } from './action-types.ts';
 
 const ACTIONS_WITH_TARGET = new Set(['click', 'type', 'select', 'assert_visible']);
@@ -156,7 +157,7 @@ export function toCoordinateClickFallback(action: StrictAIAction, validationReas
   return {
     ...action,
     action: 'click_at',
-    target_ref: undefined,
+    coordinate_fallback: true,
     reason: `${reason || 'Click visual por coordenadas.'} Fallback visual: ${validationReason}`,
   };
 }
@@ -188,6 +189,7 @@ export async function executeStrictAction(page: Page, action: StrictAIAction): P
         const x = Number(action.x);
         const y = Number(action.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('click_at requiere coordenadas x/y');
+        if (action.coordinate_fallback && !await coordinateTargetAtPoint(page, action)) throw new Error('El objetivo cambio o esta cubierto; no se ejecuto el clic por coordenadas.');
         const previousUrl = page.url();
         command = `page.mouse.click(${Math.round(x)}, ${Math.round(y)})`;
         await page.mouse.click(x, y);

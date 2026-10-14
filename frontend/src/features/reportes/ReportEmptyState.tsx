@@ -1,5 +1,6 @@
 import { Card, Button } from 'react-bootstrap'
 import { BarChart3 } from 'lucide-react'
+export { ReportMetricsNotice } from './ReportMetricsNotice'
 
 export function ReportEmptyState({ t, loadProjectMetrics }: any) {
   return (

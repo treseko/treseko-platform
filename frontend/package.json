@@ -1,39 +1,46 @@
 {
   "name": "treseko-frontend",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "node --import tsx --test src/testRepositoryUtils.test.ts src/app/mappers.test.ts src/app/workspacePreferences.test.ts src/app/themes/themeCatalog.test.ts src/app/themes/themeCustomization.test.ts src/i18n/catalogs.test.ts src/features/onboarding/ForcePasswordChangeModal.test.ts src/features/configuracion/components/workflow/WorkflowBuilderToolbar.test.tsx src/features/configuracion/api/configuracionApi.test.ts src/features/configuracion/api/mcpConfigurationApi.test.ts src/features/proyectos/projectLoaders.test.ts src/features/proyectos/traceabilityPresentation.test.ts src/app/buildState.test.ts src/app/qaDataset.test.ts src/features/casos/caseFormat.test.ts src/features/casos/chatbotConfig.test.ts src/features/casos/caseVersionUtils.test.ts src/features/casos/caseUtils.test.ts src/features/ejecutar-pruebas/manualConsoleStatus.test.ts src/features/ejecutar-pruebas/ApiAutomationMonitorModal.test.ts src/features/ejecutar-pruebas/executionSelectorActions.test.ts src/features/ejecucion/manualExecutionActions.test.ts src/features/ejecucion/executionProject.test.ts src/features/ejecucion/apiExecutionActions.test.ts src/features/reportes/reportExportUtils.test.ts src/features/configuracion/configurationActions.test.ts src/features/configuracion/components/tabs/releaseNotes.test.ts",
+    "test:security": "node --test src/security/monaco-sanitizer-security-matrix.test.mjs src/security/axios-method-gadget-security-matrix.test.mjs src/security/dompurify-in-place-regression.test.mjs src/security/no-unused-socketio-client-security-matrix.test.mjs src/security/no-unused-react-router-security-matrix.test.mjs src/security/brace-expansion-security-matrix.test.mjs src/security/baseline-browser-mapping-security-matrix.test.mjs src/security/browserslist-security-matrix.test.mjs src/security/source-map-js-security-matrix.test.mjs src/security/nanoid-negative-size-security-matrix.test.mjs src/security/nanoid-zero-size-security-matrix.test.mjs src/security/js-yaml-omap-security-matrix.test.mjs src/security/js-yaml-empty-merge-security-matrix.test.mjs src/security/postcss-path-traversal-security-matrix.test.mjs src/security/postcss-no-from-security-matrix.test.mjs src/security/vitest-worker-security-matrix.test.mjs",
+    "test": "node --import tsx --test src/testRepositoryUtils.test.ts src/app/mappers.test.ts src/app/workspacePreferences.test.ts src/app/themes/themeCatalog.test.ts src/app/themes/themeCustomization.test.ts src/i18n/catalogs.test.ts src/features/onboarding/ForcePasswordChangeModal.test.ts src/features/configuracion/components/workflow/WorkflowBuilderToolbar.test.tsx src/features/configuracion/api/configuracionApi.test.ts src/features/configuracion/api/mcpConfigurationApi.test.ts src/features/proyectos/projectLoaders.test.ts src/features/proyectos/traceabilityPresentation.test.ts src/app/buildState.test.ts src/app/qaDataset.test.ts src/features/casos/caseFormat.test.ts src/features/casos/chatbotConfig.test.ts src/features/casos/caseVersionUtils.test.ts src/features/casos/caseUtils.test.ts src/features/ejecutar-pruebas/manualConsoleStatus.test.ts src/features/ejecutar-pruebas/ApiAutomationMonitorModal.test.ts src/features/ejecutar-pruebas/executionSelectorActions.test.ts src/features/ejecucion/manualExecutionActions.test.ts src/features/ejecucion/executionProject.test.ts src/features/ejecucion/apiExecutionActions.test.ts src/features/reportes/reportExportUtils.test.ts src/features/configuracion/configurationActions.test.ts src/features/configuracion/components/tabs/releaseNotes.test.ts src/features/ejecutar-pruebas/downloadCompleteEvidence.test.ts",
     "test:ui": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ai-missions": "node --test test/ai-server-missions.test.cjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@types/react-grid-layout": "^1.3.6",
     "@xyflow/react": "^12.11.1",
-    "axios": "^1.7.9",
+    "axios": "^1.20.0",
     "bootstrap": "^5.3.3",
-    "elkjs": "^0.11.1",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.7",
     "react-dom": "^19.0.0",
     "react-draggable": "4.5.0",
     "react-grid-layout": "^2.2.3",
-    "react-router-dom": "6.30.4",
-    "recharts": "^3.8.1",
-    "socket.io-client": "^4.8.1"
+    "recharts": "^3.8.1"
   },
   "overrides": {
-    "dompurify": "3.4.12",
-    "react-draggable": "4.5.0"
+    "dompurify": "3.4.16",
+    "react-draggable": "4.5.0",
+    "brace-expansion@^1.1.7": "1.1.21",
+    "brace-expansion@^5.0.5": "5.0.12",
+    "baseline-browser-mapping": "2.11.0",
+    "browserslist": "4.28.7",
+    "source-map-js": "1.2.2",
+    "nanoid": "3.3.18",
+    "js-yaml": "4.3.2",
+    "postcss": "8.5.23"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
@@ -51,6 +58,6 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "8.65.0",
     "vite": "^6.0.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   }
 }

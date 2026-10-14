@@ -1,19 +1,29 @@
 import { chromium } from 'playwright';
-import type { Browser, Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
+import { videoEvidenceStore, type VideoReference } from '../video-evidence.ts';
 import type { AIAction } from '../ai/client';
 
 export class BrowserController {
   private browser: Browser | null = null;
   private page: Page | null = null;
+  private context: BrowserContext | null = null;
+  private recording: ReturnType<ReturnType<typeof videoEvidenceStore>['begin']> | null = null;
+  private recordingEnabled = true;
+  private videoRef: VideoReference | null = null;
 
-  async init(headless = false, viewport: { width: number; height: number } = { width: 1920, height: 1080 }) {
+  async init(headless = false, viewport: { width: number; height: number } = { width: 1920, height: 1080 }, temporaryVideo = false, recordVideo = true) {
+    this.recordingEnabled = recordVideo;
     const width = Number.isFinite(viewport.width) ? Math.max(320, Math.round(viewport.width)) : 1920;
     const height = Number.isFinite(viewport.height) ? Math.max(320, Math.round(viewport.height)) : 1080;
     this.browser = await chromium.launch({
       headless,
       args: [`--window-size=${width},${height}`]
     });
-    const context = await this.browser.newContext({ viewport: { width, height }, screen: { width, height } });
+    try { if (recordVideo) this.recording = videoEvidenceStore().begin(temporaryVideo); }
+    catch { console.warn('Video evidence unavailable: storage capacity or configuration.'); }
+    const context = await this.browser.newContext({ viewport: { width, height }, screen: { width, height },
+      ...(this.recording ? { recordVideo: { dir: this.recording.directory, size: { width: 960, height: 540 } } } : {}) });
+    this.context = context;
     await context.addInitScript(() => {
       (globalThis as any).__name = (globalThis as any).__name || ((fn: unknown) => fn);
     });
@@ -191,6 +201,22 @@ export class BrowserController {
   }
 
   async close() {
-    if (this.browser) await this.browser.close();
+    const primaryVideo = this.page?.video();
+    try {
+      if (this.context) await this.context.close();
+    } finally {
+      if (this.browser) await this.browser.close();
+      this.context = null;
+      this.browser = null;
+      if (this.recording) {
+        try { this.videoRef = await videoEvidenceStore().finish(this.recording, await primaryVideo?.path()); }
+        catch { console.warn('Video evidence could not be finalized.'); }
+        this.recording = null;
+      }
+    }
   }
+
+  getVideoStatus() { return !this.recordingEnabled ? "DISABLED" : this.videoRef ? "AVAILABLE" : "UNAVAILABLE"; }
+
+  getVideoReference() { return this.videoRef; }
 }

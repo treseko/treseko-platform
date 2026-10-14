@@ -3,10 +3,14 @@ import { useWorkflowSchedulerLauncher } from "../features/configuracion/hooks/us
 import { createAuthActions } from "../features/auth/authActions";
 import { createProyectosActions } from "../features/proyectos/proyectosActions";
 import { createNavigationActions } from "./navigationActions";
+import { useRef } from "react";
 
 export function useAppActionServices(options: any): any {
-  const project = createProyectosActions(options);
-  const ia = createIaMissionActions(options);
+  const projectsLoadVersionRef = useRef(0);
+  const projectCreateInFlightRef = useRef(false);
+  const project = createProyectosActions({ ...options, projectsLoadVersionRef, projectCreateInFlightRef });
+  const iaMissionSubmissionRef = useRef(false);
+  const ia = createIaMissionActions({ ...options, iaMissionSubmissionRef });
   const navigation = createNavigationActions(options);
   const openIaSchedulerFromWorkflowBuilder = useWorkflowSchedulerLauncher(options);
   const auth = createAuthActions(options);

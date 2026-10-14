@@ -38,6 +38,7 @@ type CreateIaMissionActionsParams = {
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
   navigateToMotorIaOnLaunch?: boolean
   onAfterLaunch?: () => void
+  iaMissionSubmissionRef?: { current: boolean }
   readOnlyBuild?: boolean
 }
 
@@ -62,62 +63,20 @@ export function createIaMissionActions({
   t,
   navigateToMotorIaOnLaunch = true,
   onAfterLaunch,
+  iaMissionSubmissionRef = { current: false },
   readOnlyBuild = false
 }: CreateIaMissionActionsParams) {
-  const waitForIaExecutionToFinish = async (runId: string, executionId: string, timeoutMs = 20 * 60 * 1000) => {
-    const startedAt = Date.now()
-    const finalStatuses = new Set(FINAL_IA_STATUSES)
-    while (Date.now() - startedAt < timeoutMs) {
-      await new Promise(resolve => window.setTimeout(resolve, 2000))
-      const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
-      if (!response.ok) continue
-      let ejecuciones = await response.json()
-      let lastExecutionPageSize = ejecuciones.length
-      for (let skip = lastExecutionPageSize; lastExecutionPageSize === 200; skip += 200) {
-        const pageResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?skip=${skip}&limit=200`)
-        if (!pageResponse.ok) break
-        const page = await pageResponse.json()
-        lastExecutionPageSize = page.length
-        ejecuciones = [...ejecuciones, ...page]
-      }
-      const current = ejecuciones.find((item: any) => item.id === executionId)
-      if (!current || finalStatuses.has(String(current.estado_resultado || '').toUpperCase())) {
-        return current
-      }
-    }
-    return null
-  }
-
-  const handleLaunchIaMission = async (mode: 'now' | 'scheduled' = 'now') => {
+  const launchIaMission = async (mode: 'now' | 'scheduled' = 'now', options: { recordVideo?: boolean } = {}) => {
     if (readOnlyBuild) {
       showFeedback(t('motorIa.executionStartFailed'), t('motorIa.historicalBuildReadOnly'), 'warning')
       return
     }
     if (selectedTestsForIa.length === 0) return
     const scheduledIso = fromDateTimeLocalInput(scheduledTime)
-    if (mode === 'scheduled' && !scheduledIso) {
+    if (mode === 'scheduled' && (!scheduledIso || new Date(scheduledIso).getTime() <= Date.now())) {
       showFeedback(t('motorIa.scheduleRequired'), t('motorIa.scheduleRequiredMessage'), 'warning')
       return
     }
-    if (mode === 'scheduled' && scheduledIso) {
-      const delayMs = new Date(scheduledIso).getTime() - Date.now()
-      if (delayMs > 1000) {
-        window.setTimeout(() => {
-          handleLaunchIaMission('now')
-        }, delayMs)
-        setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
-        setShowIaScheduler(false)
-        showFeedback(
-          t('motorIa.missionScheduled'),
-          t('motorIa.missionScheduledMessage', { name: execName, date: formatDateTime(scheduledIso) }),
-          'success'
-        )
-        if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
-        onAfterLaunch?.()
-        return
-      }
-    }
-
     if (projectsSource === 'backend' && isValidUUID(currentProjectId)) {
       try {
         const executionBuild = buildsList.find(build => build.id === currentBuildId)
@@ -128,15 +87,14 @@ export function createIaMissionActions({
         if (selectedIaTests.some(test => test.componentId && test.componentId !== executionBuild.componentId)) {
           throw new Error(t('motorIa.componentBuildMismatch'))
         }
-        setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
-        const response = await fetchWithAuth(`${API_BASE}/test-runs/`, {
+        const response = await fetchWithAuth(`${API_BASE}/${mode === 'scheduled' ? 'ai-schedules' : 'ai-missions'}/`, {
           method: 'POST',
           body: JSON.stringify({
             proyecto_id: currentProjectId,
+            record_video: options.recordVideo !== false,
             build_id: executionBuild.id,
             nombre: execName || `Run IA - ${new Date().toISOString().slice(0, 10)}`,
-            origen: 'IA',
-            entorno: 'Staging (QA)',
+            ...(mode === 'scheduled' ? { scheduled_at: scheduledIso } : {}),
             caso_ids: selectedTestsForIa.filter(isValidUUID)
           })
         })
@@ -145,6 +103,14 @@ export function createIaMissionActions({
           throw new Error(errorText || t('motorIa.backendResponded', { status: response.status }))
         }
         const run = await response.json()
+        if (mode === 'scheduled') {
+          setShowIaScheduler(false)
+          showFeedback(t('motorIa.missionScheduled'), t('motorIa.missionScheduledMessage', { name: execName, date: formatDateTime(scheduledIso) }), 'success')
+          if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
+          onAfterLaunch?.()
+          return
+        }
+
         const ejecucionesResponse = await fetchWithAuth(`${API_BASE}/test-runs/${run.id}/ejecuciones/?limit=200`)
         if (ejecucionesResponse.ok) {
           let ejecuciones = await ejecucionesResponse.json()
@@ -191,61 +157,6 @@ export function createIaMissionActions({
           if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
           onAfterLaunch?.()
 
-          const started: any[] = []
-          let queueIndex = 0
-          const runNextIaExecution = async () => {
-            while (queueIndex < ejecuciones.length) {
-              const item = ejecuciones[queueIndex++]
-            const test = selectedIaTests.find(candidate => candidate.id === item.caso_id)
-            setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-              ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: t('motorIa.executionRunning') }
-              : stream
-            ))
-            setIaLogs(prev => [...prev, iaLog('run', `${test?.code || test?.codigo || t('motorIa.aiCase')} ${t('motorIa.executionStarting')}`, { caseCode: test?.code || test?.codigo, executionId: item.id })])
-            const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, { method: 'POST' })
-            const payload = await response.json().catch(() => null)
-            const result = {
-              ok: response.ok,
-              executionId: item.id,
-              caseId: item.caso_id,
-              caseCode: test?.code || test?.codigo || '',
-              caseTitle: test?.title || test?.titulo || t('motorIa.aiCase'),
-              error: payload?.detail || t('motorIa.backendResponded', { status: response.status }),
-            }
-            started.push(result)
-            if (response.ok) {
-              const finished = await waitForIaExecutionToFinish(run.id, item.id)
-              if (finished?.estado_resultado) {
-                setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-                  ? {
-                      ...stream,
-                      status: finished.estado_resultado === 'PASO' ? 'PASO' : finished.estado_resultado,
-                      endedAt: new Date().toISOString(),
-                      lastMessage: finished.observaciones || t('motorIa.executionFinishedWithStatus', { status: finished.estado_resultado }),
-                    }
-                  : stream
-                ))
-              }
-            }
-          }
-          }
-          Promise.all(Array.from({ length: Math.min(maxParallelIa, ejecuciones.length) }, () => runNextIaExecution()))
-            .then(() => {
-              setIaLogs(prev => [
-                ...prev,
-                iaLog('run', t('motorIa.sequenceComplete', { name: run.nombre, passed: started.filter(item => item.ok).length, total: started.length })),
-                ...started.filter(item => !item.ok).map(item => iaLog('error', `${item.caseTitle}: ${item.error}`, { caseCode: item.caseCode, executionId: item.executionId }))
-              ])
-              if (started.filter(item => item.ok).length === 0 && started.length > 0) {
-                showFeedback(t('motorIa.executionStartFailed'), humanizeAiError(started.find(item => !item.ok)?.error) || t('motorIa.executionStartFailedMessage'), 'danger')
-              }
-            })
-            .catch((error: any) => {
-              const message = humanizeAiError(error) || t('motorIa.launchFailedMessage')
-              setProjectSyncMessage(t('motorIa.executionErrorSync', { message }))
-              setIaLogs(prev => [...prev, iaLog('error', t('motorIa.executionErrorSync', { message }))])
-              showFeedback(t('motorIa.executionError'), message, 'danger')
-            })
           return
         }
         setProjectSyncMessage(t('motorIa.executionCreatedForBuild', { name: run.nombre, count: selectedTestsForIa.length }))
@@ -253,22 +164,25 @@ export function createIaMissionActions({
         const message = humanizeAiError(error) || t('motorIa.executionStartFailedMessage')
         setProjectSyncMessage(t('motorIa.buildExecutionCreationFailed', { message }))
         setIaLogs(prev => [...prev, iaLog('error', `${t('motorIa.executionStartFailed')}: ${message}`)])
-        setShowIaScheduler(false)
-        if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
-        onAfterLaunch?.()
+        if (mode === 'now') {
+          setShowIaScheduler(false)
+          if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
+          onAfterLaunch?.()
+        }
         showFeedback(t('motorIa.executionStartFailed'), message, 'danger')
         return
       }
     }
 
-    setIaQueue(prev => [...new Set([...prev, ...selectedTestsForIa])])
-    setShowIaScheduler(false)
-    const startedMessageKey = selectedTestsForIa.length === 1
-      ? 'motorIa.executionStartedSingleMessage'
-      : 'motorIa.executionStartedPluralMessage'
-    showFeedback(t('motorIa.executionStarted'), t(startedMessageKey, { count: selectedTestsForIa.length, build: buildsList.find(build => build.id === currentBuildId)?.name || t('motorIa.noBuild') }), 'success')
-    if (navigateToMotorIaOnLaunch) setActiveTab('motor_ia')
-    onAfterLaunch?.()
+    showFeedback(t('motorIa.executionStartFailed'), t('motorIa.executionStartFailedMessage'), 'danger')
+
+  }
+
+  const handleLaunchIaMission = async (mode: 'now' | 'scheduled' = 'now', options: { recordVideo?: boolean } = {}) => {
+    if (iaMissionSubmissionRef.current) return
+    iaMissionSubmissionRef.current = true
+    try { await launchIaMission(mode, options) }
+    finally { iaMissionSubmissionRef.current = false }
   }
 
   return {

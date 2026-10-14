@@ -10,15 +10,12 @@ from ...main_context import _emit_bug_event
 from ...services.edition.entitlement_service import require_feature
 from ...services.conversational_bug_context import infer_bug_is_conversational, resolve_bug_conversational_context
 from ...repositories.bug_integrations import _redact_bug_export_value, generate_bug_markdown
+from ...api.bug_access import ensure_bug_build_is_active as _ensure_bug_build_is_active
+from ...schema_sections.bug_listing_query import IncidentCenterListingOptions, ProjectBugListingOptions
 router = APIRouter(tags=["bugs"])
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 # --- ENDPOINTS BUG TRACKER INTERNO ---
 
-async def _ensure_bug_build_is_active(db: AsyncSession, bug: models.BugIssue) -> None:
-    try:
-        await crud.ensure_bug_build_is_active(db, bug)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
 @router.get("/proyectos/{proyecto_id}/bugs", response_model=schemas.BugListResponse)
 @router.get("/proyectos/{proyecto_id}/bugs/", response_model=schemas.BugListResponse)
 async def read_project_bugs(
@@ -42,10 +39,9 @@ async def read_project_bugs(
     tipo_contexto: Annotated[Optional[str], Query(max_length=20)] = None,
     chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
     chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
-    desde: Optional[datetime] = None,
-    hasta: Optional[datetime] = None,
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    desde: Optional[datetime] = None, hasta: Optional[datetime] = None,
+    skip: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    listing: Annotated[ProjectBugListingOptions, Query()] = ProjectBugListingOptions(),
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("bugs.ver", "read"))
 ):
@@ -76,6 +72,7 @@ async def read_project_bugs(
         hasta=hasta,
         skip=skip,
         limit=limit,
+        **listing.model_dump(exclude={"skip", "limit"}),
     )
 
 @router.get("/proyectos/{proyecto_id}/bugs/summary/", response_model=schemas.BugSummaryResponse)
@@ -99,6 +96,7 @@ async def read_incident_center(
     proyecto_id: Optional[UUID] = None,
     organizacion_id: Optional[UUID] = None,
     q: Annotated[Optional[str], Query(max_length=200)] = None,
+    listing: Annotated[IncidentCenterListingOptions, Query()] = IncidentCenterListingOptions(),
     componente_id: Optional[UUID] = None,
     build_id: Optional[UUID] = None,
     asignado_a: Optional[UUID] = None,
@@ -110,8 +108,7 @@ async def read_incident_center(
     tipo_contexto: Annotated[Optional[str], Query(pattern="^(CLASICO|API|CONVERSACIONAL)$")] = None,
     chatbot_turn_index: Annotated[Optional[int], Query(ge=0, le=10000)] = None,
     chatbot_finding_type: Annotated[Optional[str], Query(max_length=50)] = None,
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    skip: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=200)] = 50,
     db: AsyncSession = Depends(get_db),
     current_user: models.Usuario = Depends(auth.check_capability("incidencias.ver", "read")),
 ):
@@ -149,6 +146,7 @@ async def read_incident_center(
         organizacion_id=organizacion_id,
         allowed_project_ids=allowed_project_ids,
         q=q,
+        **listing.model_dump(exclude={"skip", "limit"}),
         componente_id=componente_id,
         build_id=build_id,
         asignado_a=asignado_a,
@@ -173,6 +171,7 @@ async def export_incident_center(
     proyecto_id: Optional[UUID] = None,
     organizacion_id: Optional[UUID] = None,
     q: Annotated[Optional[str], Query(max_length=200)] = None,
+    listing: Annotated[IncidentCenterListingOptions, Query()] = IncidentCenterListingOptions(),
     componente_id: Optional[UUID] = None,
     build_id: Optional[UUID] = None,
     asignado_a: Optional[UUID] = None,
@@ -225,6 +224,7 @@ async def export_incident_center(
         organizacion_id=organizacion_id,
         allowed_project_ids=allowed_project_ids,
         q=q,
+        **listing.model_dump(),
         componente_id=componente_id,
         build_id=build_id,
         asignado_a=asignado_a,

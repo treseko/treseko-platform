@@ -1,4 +1,6 @@
 from copy import deepcopy
+from math import ceil
+from types import SimpleNamespace
 
 from fastapi import APIRouter
 
@@ -27,37 +29,18 @@ async def _load_context(db: AsyncSession, execution: models.EjecucionCaso, run: 
         build = await db.get(models.Build, run.build_id)
         if build and not access_control.is_build_active(build):
             raise HTTPException(status_code=409, detail="La build está inactiva. No se puede modificar la ejecución.")
-    resolved = await crud.resolve_case_dataset(db, case.id, run.build_id, run.entorno_id, run.dataset_id)
-    variables = resolved.get("variables_resueltas", {}) if resolved else (run.variables_resueltas or {})
-    dataset = resolved.get("dataset_resuelto", []) if resolved else (run.datasets_resueltos or {}).get(str(case.id), [])
-    environment_config = (resolved or {}).get("configuracion_chatbot_ambiente") or {}
-    base_url = crud.get_ai_base_url_from_context(variables, []) or ""
-    dynamic_context = DynamicVariableContext(
-        execution.dynamic_seed or derive_case_dynamic_seed(getattr(run, "dynamic_seed", None), str(case.id))
-    )
-    if isinstance(execution.dynamic_variables, dict):
-        dynamic_context.values.update(
-            value for value in execution.dynamic_variables.items()
-            if value[1] != "[REDACTED]"
-        )
+    from ...services.chatbot_manual_context import freeze_manual_context, thaw_manual_context, validate_manual_context
+    private = thaw_manual_context(execution)
+    if private is None:
+        resolved = await crud.resolve_case_dataset(db, case.id, run.build_id, run.entorno_id, run.dataset_id)
+        environment = await db.get(models.Entorno, run.entorno_id) if run.entorno_id else None
+        private = freeze_manual_context(execution, case, run, resolved, environment)
+    validate_manual_context(private)
+    dynamic_context = DynamicVariableContext(execution.dynamic_seed or derive_case_dynamic_seed(getattr(run, 'dynamic_seed', None), str(case.id)))
+    dynamic_context.values.update(private.get('dynamic_values') or {})
     execution.dynamic_seed = dynamic_context.seed
-    context = crud.build_chatbot_context(
-        case, run, variables, dataset, base_url, environment_config, dynamic_variables=dynamic_context
-    )
-    errors = crud.validate_chatbot_execution_config(case, environment_config=environment_config, variables=variables)
-    if errors:
-        raise HTTPException(status_code=400, detail="No se puede ejecutar el Chatbot: " + " ".join(errors))
-    frozen_config = merge_chatbot_config(environment_config or {}, case.configuracion_chatbot or {})
-    environment = await db.get(models.Entorno, run.entorno_id) if run.entorno_id else None
-    public_evidence = public_test_data_evidence_enabled(
-        environment=environment,
-        case=case,
-        execution=execution,
-        config=context.get("config"),
-        result=execution.chatbot_resultado if isinstance(execution.chatbot_resultado, dict) else None,
-    )
-    execution.evidence_policy = evidence_policy_marker(public_evidence)["evidence_policy"]
-    return case, context, dynamic_context, frozen_config, environment, public_evidence
+    environment = SimpleNamespace(**private['environment']) if private.get('environment') else (await db.get(models.Entorno, run.entorno_id) if run.entorno_id else None)
+    return case, deepcopy(private['context']), dynamic_context, deepcopy(private['template']), environment, private['public']
 
 
 def _manual_evidence_payload(payload: dict, *, public_evidence: bool) -> dict:
@@ -194,8 +177,8 @@ async def send_chatbot_manual_turn(
     latencies = [int(item.get("latencyMs") or 0) for item in result["turns"]]
     result["performance"] = {
         "turn_count": len(result["turns"]), "total_latency_ms": sum(latencies),
-        "p95_latency_ms": sorted(latencies)[max(0, min(len(latencies) - 1, int(len(latencies) * 0.95) - 1))] if latencies else 0,
-        "http_error_count": sum(1 for item in result["turns"] if item.get("status") != "PASSED"),
+        "p95_latency_ms": sorted(latencies)[max(0, min(len(latencies) - 1, ceil(len(latencies) * 0.95) - 1))] if latencies else 0,
+        "http_error_count": sum(1 for item in result["turns"] if int(item.get("statusCode") or 0) == 0 or int(item.get("statusCode") or 0) >= 400),
     }
     suggested_status, suggested_finding = manual_result_suggestion(result)
     result["suggested_status"] = suggested_status
@@ -238,6 +221,12 @@ async def complete_chatbot_manual_execution(
     case, context, dynamic_context, _frozen_config, _environment, public_evidence = await _load_context(db, execution, run)
     result = _result_base(execution, context, execution.chatbot_resultado if isinstance(execution.chatbot_resultado, dict) else {})
     _require_manual_turn(result)
+    configured = (context.get('config', {}).get('conversation') or {}).get('turns') or []
+    if len(result['turns']) < len(configured):
+        if payload.status == 'PASO':
+            raise HTTPException(409, 'Debés enviar todos los turnos configurados antes de aprobar la conversación.')
+        if not (payload.notes or '').strip():
+            raise HTTPException(400, 'Indica el motivo para finalizar la conversación antes de completar sus turnos.')
     result["status"] = payload.status
     result["completed_at"] = utc_now().isoformat()
     result["human_evaluation"] = {"status": payload.status, "notes": payload.notes or "", "evaluator_id": str(current_user.id)}

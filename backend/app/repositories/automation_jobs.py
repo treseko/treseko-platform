@@ -1,6 +1,8 @@
 from .repository_context import *
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
 from sqlalchemy import update
+from ..services.automation_payloads import freeze_worker_payload
+from ..services.automation_dispatch_scope import validate_worker_job_scope
 
 
 async def create_automation_job_for_execution(
@@ -8,6 +10,8 @@ async def create_automation_job_for_execution(
     ejecucion_id: UUID,
     user_id: UUID,
     debug_mode: bool = False,
+    record_video: bool = True,
+    *, commit: bool = True, quota_checked: bool = False,
 ):
     execution_result = await db.execute(
         select(models.EjecucionCaso).filter(models.EjecucionCaso.id == ejecucion_id)
@@ -56,9 +60,13 @@ async def create_automation_job_for_execution(
     existing = existing_result.scalars().first()
     if existing:
         execution.execution_mode = models.ExecutionMode.AUTOMATIZADA
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         return existing
-    await enforce_weekly_automated_execution_limit(db, solution_id=project.organizacion_id)
+    if not quota_checked:
+        await enforce_weekly_automated_execution_limit(db, solution_id=project.organizacion_id)
     execution.execution_mode = models.ExecutionMode.AUTOMATIZADA
     execution.fecha_ejecucion = utc_now()
 
@@ -94,6 +102,7 @@ async def create_automation_job_for_execution(
         "framework_version": required_runtime,
         "language": required_language,
         "debug_mode": bool(debug_mode),
+        "record_video": bool(record_video),
         "script_format": _detect_automation_script_format(prepared_script, required_framework, required_language),
         "script": prepared_script,
         "functions": function_refs,
@@ -110,7 +119,7 @@ async def create_automation_job_for_execution(
             for snapshot in snapshots
         ],
     }
-    payload = schemas.redact_automation_sensitive_value(payload)
+    payload = freeze_worker_payload(payload)
     job = models.AutomationJob(
         organizacion_id=project.organizacion_id,
         proyecto_id=run.proyecto_id,
@@ -130,30 +139,13 @@ async def create_automation_job_for_execution(
     await db.flush()
     compatible_runner = await _find_compatible_runner_for_job(db, job)
     if not compatible_runner:
-        now = utc_now()
-        job.estado = models.AutomationJobStatus.BLOCKED_BY_RUNNER
-        job.error_message = f"No hay worker compatible disponible para {required_framework} + {required_language}"
-        job.fecha_fin = now
-        execution.estado_resultado = models.EstadoResultado.BLOQUEADO
-        execution.execution_mode = models.ExecutionMode.AUTOMATIZADA
-        execution.observaciones = job.error_message
-        execution.fecha_ejecucion = now
-        case.ultimo_resultado = models.EstadoResultado.BLOQUEADO.value
-        case.ultima_ejecucion_por = execution.ejecutado_por
-        case.ultima_ejecucion_fecha = now
-        pending_result = await db.execute(
-            select(models.EjecucionCaso.id)
-            .filter(
-                models.EjecucionCaso.test_run_id == execution.test_run_id,
-                models.EjecucionCaso.estado_resultado == models.EstadoResultado.SIN_CORRER,
-            )
-            .limit(1)
-        )
-        if pending_result.scalar_one_or_none() is None:
-            run.estado_run = models.EstadoRun.CERRADO
-            run.fecha_cierre = now
-    await db.commit()
-    await db.refresh(job)
+        job.estado = models.AutomationJobStatus.PENDING
+        job.metadata_resultado = {'waiting_for_runner': True}
+    if commit:
+        await db.commit()
+        await db.refresh(job)
+    else:
+        await db.flush()
     return job
 
 
@@ -206,13 +198,14 @@ async def create_automation_dry_run_job(
         "framework_version": required_runtime,
         "language": required_language,
         "debug_mode": bool(payload.debug_mode),
+        "record_video": payload.record_video,
         "script_format": _detect_automation_script_format(prepared_script, required_framework, required_language),
         "script": prepared_script,
         "functions": function_refs,
         "steps": _automation_steps_for_payload(payload.pasos),
     }
 
-    job_payload = schemas.redact_automation_sensitive_value(job_payload)
+    job_payload = freeze_worker_payload(job_payload)
     job = models.AutomationJob(
         job_type="DRY_RUN",
         organizacion_id=project.organizacion_id,
@@ -233,8 +226,8 @@ async def create_automation_dry_run_job(
 
     compatible_runner = await _find_compatible_runner_for_job(db, job)
     if not compatible_runner:
-        job.estado = models.AutomationJobStatus.BLOCKED_BY_RUNNER
-        job.error_message = f"No hay worker compatible disponible para {required_framework} + {required_language}"
+        job.estado = models.AutomationJobStatus.PENDING
+        job.metadata_resultado = {'waiting_for_runner': True}
 
     await db.commit()
     await db.refresh(job)
@@ -429,6 +422,19 @@ async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRun
     jobs = result.scalars().all()
     for job in jobs:
         if _runner_supports_job(runner, job):
+            try:
+                await validate_worker_job_scope(db, job)
+            except ValueError as exc:
+                job.estado = models.AutomationJobStatus.BLOCKED
+                job.error_message = str(exc)
+                job.fecha_fin = utc_now()
+                if job.ejecucion_id:
+                    execution = await db.get(models.EjecucionCaso, job.ejecucion_id)
+                    if execution:
+                        execution.estado_resultado = models.EstadoResultado.BLOQUEADO
+                        execution.observaciones = str(exc)
+                await db.commit()
+                continue
             return job
     return None
 
@@ -440,6 +446,7 @@ async def claim_automation_job(db: AsyncSession, job: models.AutomationJob, runn
         raise ValueError("El runner no tiene acceso a la solucion de este job")
     if not _runner_supports_job(runner, job):
         raise ValueError("El runner no es compatible con este job")
+    await validate_worker_job_scope(db, job)
     now = utc_now()
     lease_token = secrets.token_urlsafe(48)
     lease_expires_at = now + timedelta(seconds=max(60, int(job.timeout_seconds or 300)))

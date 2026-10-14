@@ -59,6 +59,7 @@ export function EjecutarPruebasRoute({
         currentBuildId={props.currentBuildId}
         readOnlyBuild={props.readOnlyBuild}
         currentCompId={props.currentCompId}
+        currentComponentName={props.currentComponentName}
         suitesTree={props.suitesTree}
         selectedSuiteId={props.selectedSuiteId}
         testSearchQuery={props.testSearchQuery}
@@ -138,6 +139,8 @@ export function EjecutarPruebasRoute({
         handleRemoveGeneralExecutionAttachment={props.handleRemoveGeneralExecutionAttachment}
         getExecutionCompletionPlan={props.getExecutionCompletionPlan}
         handleCompleteCase={props.handleCompleteCase}
+        saveExecutionProgress={props.saveExecutionProgress}
+        showFeedback={props.showFeedback}
         relatedCaseBugs={props.relatedCaseBugs}
         relatedCaseBugsLoading={props.relatedCaseBugsLoading}
         currentComponentName={props.currentComponentName}

@@ -545,8 +545,8 @@ PY
     mkdir -p "$WORKER_DIR"
     # Pairing and local configuration belong to this installation, including
     # workers whose backend is on another host. Never replace them from a release.
-    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec rm -rf {} +
-    find "$update_dir/automation-worker" -mindepth 1 -maxdepth 1 ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec cp -a {} "$WORKER_DIR/" \;
+    find "$WORKER_DIR" -mindepth 1 -maxdepth 1 ! -name '.state' ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec rm -rf {} +
+    find "$update_dir/automation-worker" -mindepth 1 -maxdepth 1 ! -name '.state' ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' ! -name '.env' -exec cp -a {} "$WORKER_DIR/" \;
     # Workers nuevos consumen esta marca cuando terminan el job activo. Las
     # releases anteriores requieren un reinicio manual unico para adoptar este
     # comportamiento, sin interrumpir ejecuciones en curso.

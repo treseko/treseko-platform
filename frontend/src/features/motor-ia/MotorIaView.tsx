@@ -113,7 +113,7 @@ export function MotorIaView({ options }: { options: any }) {
                         {' '}({[
                           log.step ? `${t('motorIa.stepShort')} ${log.step}` : '',
                           log.attempt ? `${t('motorIa.attemptShort')} ${log.attempt}` : '',
-                          typeof log.confidence === 'number' ? `${t('motorIa.confidenceShort')} ${log.confidence}%` : '',
+                          typeof log.confidence === 'number' ? `${t('motorIa.confidenceLabel', { value: log.confidence })} · ${t(log.confidence_source === 'rules' ? 'motorIa.scoreRules' : log.confidence_source === 'model' ? 'motorIa.scoreModel' : log.agent === 'AUDITOR' ? 'motorIa.scoreAudit' : 'motorIa.scoreUnknown')}` : '',
                           formatMetrics(t, log.metrics),
                         ].filter(Boolean).join(' · ')})
                       </span>

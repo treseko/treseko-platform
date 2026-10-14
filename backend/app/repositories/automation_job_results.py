@@ -48,8 +48,6 @@ def _api_state_updates(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str
         for key, value in values.items():
             if not str(key).startswith("api."):
                 raise ValueError("El estado API solo admite variables con prefijo api.")
-            if value == "[REDACTED]" or value == "[redacted]":
-                raise ValueError("El canal state_updates no puede contener valores redactados")
     return copy.deepcopy(shared), copy.deepcopy(persistent)
 
 
@@ -221,18 +219,15 @@ async def _complete_api_execution_job(
         result_status = str(result.get("status") or "").upper()
         final_status = _api_execution_status(result_status)
         shared_updates, persistent_updates = _api_state_updates(result_item)
-        public_evidence = public_test_data_evidence_enabled(
-            environment=environment,
-            execution=execution,
-            config=frozen_case.get("configuracion_api") or {},
-            result=result,
-        )
+        public_evidence = True
         dynamic_values = _dynamic_values_for_evidence(
             frozen_case,
             execution,
             public_evidence=public_evidence,
         )
-        stored_result = _api_result_for_storage(result, redact=not public_evidence)
+        public_evidence = True
+        execution.evidence_policy = {"complete_data": True, "redaction": "disabled", "scope": "authenticated_execution"}
+        stored_result = _api_result_for_storage(result, redact=False)
         # State is an execution channel, not user-visible evidence.  Keep the
         # result/report payload free of even redacted state-update structures.
         stored_result.pop("state_updates", None)

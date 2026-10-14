@@ -78,7 +78,7 @@ export function useCaseArchiveActions(options: any): any {
       setSelectedTest(null);
       setCaseEditorOpen(false);
       setEditingCasoMasterId(null);
-      showFeedback(archivado ? t('common.suiteArchived') : t('common.suiteRestored'), `${result.suites_afectadas || 1} suite(s) y ${result.casos_afectados || 0} prueba(s) actualizadas.`, "success");
+      showFeedback(archivado ? t('common.suiteArchived') : t('common.suiteRestored'), `${result.suites_afectadas ?? 1} suite(s) y ${result.casos_afectados ?? 0} prueba(s) actualizadas.${result.notice ? ` ${result.notice}` : ''}`, result.notice ? "warning" : "success");
     } catch (error: any) {
       showFeedback(archivado ? t('common.archiveSuiteFailed') : t('common.restoreSuiteFailed'), error?.message || t('common.suiteStatusUpdateFailed'), "danger");
     }

@@ -1,3 +1,4 @@
+import { ReportDetailList } from './ReportDetailList'
 import type { ReactNode } from 'react'
 import { Badge, Button, Card, Col, Form, Image as _UnusedImage, Row, Table } from 'react-bootstrap'
 import { Bug, Image as ImageIcon } from 'lucide-react'
@@ -17,7 +18,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
               <Button
                 variant="outline-secondary"
                 size="sm"
-                onClick={() => setDetailFilters({ suite: '', priority: '', status: '', owner: '', executionMode: '', bug: 'open', evidence: '' })}
+                onClick={() => setDetailFilters({ suite: '', priority: '', status: '', owner: '', executionMode: '', bug: '', evidence: '' })}
               >
                 Limpiar filtros
               </Button>
@@ -127,7 +128,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredReportBugs.slice(0, 8).map((bug: any) => (
+                    <ReportDetailList key={JSON.stringify(detailFilters)} items={filteredReportBugs} pageSize={8} tableColumns={visibleColumnCount('bugs')} t={t} renderItem={(bug: any) => (
                       <tr key={bug.id}>
                         {isColumnVisible('bugs', 'bug') && (
                         <td>
@@ -162,7 +163,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                         </td>
                         )}
                       </tr>
-                    ))}
+                    )} />
                     {filteredReportBugs.length === 0 && (
                       <tr><td colSpan={visibleColumnCount('bugs')} className="text-center text-muted py-4">{t('reportes.noBugsForExport')}</td></tr>
                     )}
@@ -185,7 +186,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredFailures.slice(0, 8).map((item: any) => (
+                    <ReportDetailList key={JSON.stringify(detailFilters)} items={filteredFailures} pageSize={8} tableColumns={visibleColumnCount('failures')} t={t} renderItem={(item: any) => (
                       <tr key={`${item.case_id}-${item.failed_step || 'case'}`}>
                         {isColumnVisible('failures', 'case') && (
                         <td>
@@ -196,7 +197,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                         )}
                         {isColumnVisible('failures', 'status') && <td><Badge bg={item.estado === 'FALLO' ? 'danger' : 'primary'}>{item.estado}</Badge></td>}
                         {isColumnVisible('failures', 'step') && <td className="small">{item.failed_step || t('common.case')}</td>}
-                        {isColumnVisible('failures', 'bug') && <td className="small">{item.bug?.length ? item.bug.map((bug: any) => bug.codigo).join(', ') : t('reportes.openBugs')}</td>}
+                        {isColumnVisible('failures', 'bug') && <td className="small">{item.bug?.length ? item.bug.map((bug: any) => bug.codigo).join(', ') : t('reportes.noLinkedBug')}</td>}
                         {isColumnVisible('failures', 'flags') && (
                         <td>
                           <div className="d-flex flex-wrap gap-1">
@@ -207,7 +208,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                         </td>
                         )}
                       </tr>
-                    ))}
+                    )} />
                     {filteredFailures.length === 0 && (
                       <tr><td colSpan={visibleColumnCount('failures')} className="text-center text-muted py-4">{t('reportes.noFailuresForFilters')}</td></tr>
                     )}
@@ -237,7 +238,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                   ))}
                 </Row>
                 <div className="d-flex flex-column gap-2">
-                  {filteredEvidenceItems.slice(0, 5).map((item: any, index: number) => (
+                  <ReportDetailList key={JSON.stringify(detailFilters)} items={filteredEvidenceItems} pageSize={5} t={t} renderItem={(item: any, index: number) => (
                     <div key={`${item.case_code}-${item.bug}-${index}`} className="border rounded-3 p-2 d-flex justify-content-between gap-2">
                       <div>
                         <div className="fw-semibold small">{item.case_code || item.bug || 'Evidencia'}</div>
@@ -247,7 +248,7 @@ export function ReportDetailWidgets(options: any): ReactNode[] {
                         {item.status}
                       </Badge>
                     </div>
-                  ))}
+                  )} />
                   {filteredEvidenceItems.length === 0 && <div className="text-center text-muted small py-4">{t('reportes.noEvidenceForFilters')}</div>}
                 </div>
               </Card>

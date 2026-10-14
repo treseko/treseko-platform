@@ -13,6 +13,15 @@ from app.main import app
 from app.services import mcp_governance as mcp
 
 
+@pytest.fixture(autouse=True)
+def mocked_activation(monkeypatch):
+    # Unit request doubles have no database. Activation consistency itself is
+    # covered against persisted settings in test_mcp_consolidation.py.
+    async def loaded():
+        return None
+    monkeypatch.setattr(mcp_router, "_ensure_persisted_mcp_activation", loaded)
+
+
 def _enable_mcp(monkeypatch):
     mcp.set_configured_mcp_enabled(True)
     monkeypatch.setenv("TRESEKO_MCP_DEPLOYMENT_TOPOLOGY", "single_process")
@@ -410,7 +419,7 @@ async def test_notification_returns_no_response_and_invalid_params_is_json_rpc(m
     monkeypatch.setattr(mcp_router, "_authorized_tools", lambda _user: [])
     request = SimpleNamespace(state=SimpleNamespace(correlation_id="c"), body=lambda: _async_value(b'{"jsonrpc":"2.0","method":"tools/list"}'))
     result = await mcp_router.mcp_json_rpc(request)
-    assert getattr(result, "status_code", None) == 204
+    assert getattr(result, "status_code", None) == 202
     request.body = lambda: _async_value(b'{"jsonrpc":"2.0","id":9,"method":"tools/call","params":[]}' )
     result = await mcp_router.mcp_json_rpc(request)
     assert result["error"]["code"] == -32602 and result["id"] == 9
@@ -508,7 +517,7 @@ async def test_auth_failure_audit_errors_are_best_effort(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_notification_database_failure_returns_http_204(monkeypatch):
+async def test_notification_database_failure_returns_http_202(monkeypatch):
     user = SimpleNamespace(id=uuid4())
     project_id = uuid4()
     _enable_mcp(monkeypatch)
@@ -540,7 +549,7 @@ async def test_notification_database_failure_returns_http_204(monkeypatch):
 
     result = await mcp_router.mcp_json_rpc(request)
 
-    assert result.status_code == 204
+    assert result.status_code == 202
 
 
 def test_rate_limiter_is_bounded_and_thread_safe():
@@ -610,7 +619,7 @@ async def test_parsed_oversized_preview_uses_non_persistent_sanitized_audit(monk
 
 
 @pytest.mark.asyncio
-async def test_oversized_valid_notification_returns_http_204(monkeypatch):
+async def test_oversized_valid_notification_returns_http_202(monkeypatch):
     user = SimpleNamespace(id=uuid4())
     _enable_mcp(monkeypatch)
     monkeypatch.setattr(mcp_router, "_technical_user", lambda _request: _async_value(user))
@@ -620,7 +629,7 @@ async def test_oversized_valid_notification_returns_http_204(monkeypatch):
 
     result = await mcp_router.mcp_json_rpc(request)
 
-    assert result.status_code == 204
+    assert result.status_code == 202
 
 
 @pytest.mark.asyncio

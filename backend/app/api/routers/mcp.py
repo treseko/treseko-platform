@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import re
 import secrets
@@ -34,10 +33,14 @@ from ...services.mcp_governance import (
     MCP_ENABLED_SETTING_KEY,
     HANDLERS,
     set_configured_mcp_enabled,
-    configured_mcp_enabled_state,
 )
+from ...services.mcp_errors import domain_rejection, invalid_tool_arguments
+from ...services.mcp_validation import InvalidToolArguments
+from ...services.mcp_guidance import INSTRUCTIONS
+from ...services.mcp_discovery import _tool_required_access_level, _authorized_tools, _configuration_tools, _scope_catalog, _read_bounded_body, _is_notification, _classify_request_id
+from ...services.mcp_unit_of_work import mutation_session
 from ...services.mcp_idempotency import fingerprint as idempotency_fingerprint
-from ...services.mcp_idempotency import reserve as reserve_idempotency
+from ...services.mcp_idempotency import reserve as reserve_idempotency, reserve_workspace
 from ...version import PRODUCT_VERSION
 from ...services.ai_credential_crypto import decrypt_ai_credential
 from ...services.error_contract import current_correlation_id
@@ -47,9 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _ensure_persisted_mcp_activation() -> None:
-    """Load activation before the first operational MCP request."""
-    if configured_mcp_enabled_state() is not None:
-        return
+    """Refresh persisted activation before each operational MCP request."""
     try:
         async with AsyncSessionLocal() as db:
             setting = await db.get(models.AppSetting, MCP_ENABLED_SETTING_KEY)
@@ -113,111 +114,18 @@ def _rpc_error(request_id, code: int, message: str):
 
 def _rpc_response(request_id, notification: bool, payload: dict):
     if notification:
-        return Response(status_code=204)
+        return Response(status_code=202)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(encoded) <= MCP_MAX_RESPONSE_BYTES:
         return payload
     fallback = _rpc_error(None, -32603, "Internal error")
     if len(json.dumps(fallback, separators=(",", ":")).encode("utf-8")) <= MCP_MAX_RESPONSE_BYTES:
         return fallback
-    return Response(status_code=204)
+    return Response(status_code=202)
 
 
 def _rpc_internal_error(request_id, notification: bool):
     return _rpc_response(request_id, notification, _rpc_error(request_id, -32603, "Internal error"))
-
-
-async def _read_bounded_body(request: Request, limit: int) -> tuple[bytes, bool]:
-    """Read at most limit+1 bytes; never buffer an oversized/chunked body."""
-    if not hasattr(request, "stream"):  # lightweight test doubles only
-        body = await request.body()
-        return body, len(body) > limit
-    body = bytearray()
-    async for chunk in request.stream():
-        if not chunk:
-            continue
-        remaining = limit + 1 - len(body)
-        body.extend(chunk[:remaining])
-        if len(body) > limit:
-            return bytes(body), True
-    return bytes(body), False
-
-
-def _is_notification(message: dict) -> bool:
-    return "id" not in message and message.get("jsonrpc") == "2.0" and isinstance(message.get("method"), str)
-
-
-def _classify_request_id(message: dict):
-    if "id" not in message:
-        return None, True
-    request_id = message["id"]
-    if request_id is None:
-        return None, True
-    if isinstance(request_id, bool) or not isinstance(request_id, (str, int, float)):
-        return None, False
-    if isinstance(request_id, float) and not math.isfinite(request_id):
-        return None, False
-    return request_id, True
-
-
-def _tool_required_access_level(tool: dict) -> str:
-    return "edit" if tool["operation"] in {"commit", "rollback"} else "read"
-
-
-def _authorized_tools(user) -> list[dict]:
-    """Expose only tools the technical identity may actually invoke.
-
-    The environment allowlist is necessary but not sufficient: discovery must
-    not disclose a tool whose declared capability the identity lacks.
-    """
-    return [
-        tool
-        for tool in public_tools(getattr(user, "mcp_scopes", None))
-        if auth.has_capability_permission(user, tool["capability"], _tool_required_access_level(tool))
-    ]
-
-
-def _configuration_tools(user) -> list[dict]:
-    """Expose RBAC-authorized tools to the configuration UI.
-
-    The UI is selecting scopes for a new credential, so it must not be
-    filtered by the scopes of an existing technical credential.
-    """
-    return [
-        tool
-        for tool in public_tools()
-        if auth.has_capability_permission(user, tool["capability"], _tool_required_access_level(tool))
-    ]
-
-
-def _scope_catalog(user) -> list[dict]:
-    """Return browser-safe scope metadata without exposing credentials."""
-    enabled_tools = {tool["name"]: tool for tool in public_tools()}
-    catalog = []
-    for scope, tool_names in SCOPE_TO_TOOLS.items():
-        tools = [enabled_tools[name] for name in sorted(tool_names) if name in enabled_tools]
-        if not tools:
-            continue
-        required_levels = []
-        for tool in tools:
-            required_levels.append(_tool_required_access_level(tool))
-        level = "edit" if "edit" in required_levels and all(
-            auth.has_capability_permission(user, tool["capability"], "edit") for tool in tools
-        ) else "read" if all(
-            auth.has_capability_permission(user, tool["capability"], "read") for tool in tools
-        ) else "none"
-        catalog.append({
-            "scope": scope,
-            "user_level": level,
-            "selectable": level != "none",
-            "tools": [{
-                "name": tool["name"],
-                "capability": tool["capability"],
-                "required_level": _tool_required_access_level(tool),
-                "operation": tool["operation"],
-            } for tool in tools],
-        })
-    return catalog
 
 
 @router.get("/configuration")
@@ -235,7 +143,7 @@ async def get_mcp_configuration(
     scope_catalog = _scope_catalog(current_user)
     return {
         "enabled": enabled,
-        "status": "available" if enabled else "disabled",
+        "status": "available" if mcp_enabled() else "disabled",
         "endpoint": "/api/mcp",
         "protocol_version": "2025-03-26",
         "authentication": {"header": "X-MCP-API-Key", "browser_session": True},
@@ -266,7 +174,7 @@ async def update_mcp_configuration(
         setting.value = {"enabled": enabled}
     await db.commit()
     set_configured_mcp_enabled(enabled)
-    return {"enabled": enabled, "status": "available" if enabled else "disabled"}
+    return {"enabled": enabled, "status": "available" if mcp_enabled() else "disabled"}
 
 
 async def _audit_mcp_event(request, user, *, tool=None, status: str, reason: str, arguments=None):
@@ -347,6 +255,11 @@ async def _require_mcp_project_scope(db, user, project_uuid: UUID, access_level:
 @router.get("/tools")
 async def discover_tools(request: Request):
     await _ensure_persisted_mcp_activation()
+    origin = getattr(request, "headers", {}).get("origin")
+    if origin:
+        allowed_origins = {value.strip() for value in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if value.strip()}
+        if origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Origin MCP no permitido")
     correlation_id = getattr(request.state, "correlation_id", "")
     if not mcp_enabled():
         raise HTTPException(status_code=404, detail="MCP no está habilitado")
@@ -363,6 +276,11 @@ async def discover_tools(request: Request):
 @router.post("")
 async def mcp_json_rpc(request: Request):
     await _ensure_persisted_mcp_activation()
+    origin = getattr(request, "headers", {}).get("origin")
+    if origin:
+        allowed_origins = {value.strip() for value in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if value.strip()}
+        if origin not in allowed_origins:
+            raise HTTPException(status_code=403, detail="Origin MCP no permitido")
     correlation_id = getattr(request.state, "correlation_id", "")
     if not mcp_enabled():
         raise HTTPException(status_code=404, detail="MCP no está habilitado")
@@ -430,9 +348,24 @@ async def mcp_json_rpc(request: Request):
         user = authenticated_user
     assert user is not None
     method = message["method"]
+    if method in {"initialize", "tools/list", "resources/list", "resources/read", "ping"} and not rate_limiter.allow(str(user.id)):
+        await _audit_mcp_event(request, user, status="rate_limited", reason="rate_limit")
+        return _rpc_response(request_id, notification, _rpc_error(request_id, -32603, "Rate limit exceeded; retry after the current 60-second window."))
     try:
         if method == "initialize":
-            result = {"protocolVersion": "2025-03-26", "serverInfo": {"name": "treseko-mcp", "version": PRODUCT_VERSION}, "capabilities": {"tools": {}}}
+            result = {"protocolVersion": "2025-03-26", "serverInfo": {"name": "treseko-mcp", "version": PRODUCT_VERSION}, "capabilities": {"tools": {}, "resources": {}}, "instructions": INSTRUCTIONS}
+        elif method == "resources/list":
+            from ...services.mcp_guidance import GUIDE_URI
+            result = {"resources": [{"uri": GUIDE_URI, "name": "Treseko MCP guidance", "description": "Authorized catalog, workflows, limits and retry rules", "mimeType": "application/json"}]}
+        elif method == "resources/read":
+            from ...services.mcp_guidance import GUIDE_URI, guide
+            if not isinstance(message.get("params"), dict) or message["params"].get("uri") != GUIDE_URI:
+                return _rpc_response(request_id, notification, _rpc_error(request_id, -32602, "Unknown resource"))
+            result = {"contents": [{"uri": GUIDE_URI, "mimeType": "application/json", "text": json.dumps(guide(_authorized_tools(user)), ensure_ascii=False)}]}
+        elif method == "ping":
+            result = {}
+        elif method == "notifications/initialized" and notification:
+            return Response(status_code=202)
         elif method == "tools/list":
             result = {"tools": _authorized_tools(user)}
             await _audit_mcp_event(request, user, status="success", reason="tools_list")
@@ -451,6 +384,9 @@ async def mcp_json_rpc(request: Request):
                 await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="insufficient_scope", arguments=params.get("arguments"))
                 response = _rpc_error(request_id, -32603, "Internal error")
                 return _rpc_response(request_id, notification, response)
+            if notification and tool.operation in {"commit", "rollback"}:
+                await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="mutation_requires_request_id")
+                return Response(status_code=202)
             required_level = _tool_required_access_level({"operation": tool.operation})
             if not auth.has_capability_permission(user, tool.capability, required_level):
                 await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="insufficient_rbac", arguments=params.get("arguments"))
@@ -458,19 +394,28 @@ async def mcp_json_rpc(request: Request):
                 return _rpc_response(request_id, notification, response)
             if not rate_limiter.allow(str(user.id)):
                 await _audit_mcp_event(request, user, tool=tool, status="rate_limited", reason="rate_limit")
-                response = _rpc_error(request_id, -32603, "Internal error")
+                response = _rpc_error(request_id, -32603, "Rate limit exceeded; retry after the current 60-second window.")
                 return _rpc_response(request_id, notification, response)
             try:
                 arguments = validate_tool_arguments(tool, params.get("arguments"))
+            except InvalidToolArguments as exc:
+                await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="invalid_arguments", arguments=params.get("arguments"))
+                response = invalid_tool_arguments(request_id, exc)
+                return _rpc_response(request_id, notification, response)
             except ValueError:
                 await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="invalid_arguments", arguments=params.get("arguments"))
                 response = _rpc_error(request_id, -32602, "Invalid params")
                 return _rpc_response(request_id, notification, response)
             bounded_response = None
             try:
-                project_uuid = UUID(arguments["project_id"])
-                async with AsyncSessionLocal() as db:
-                    if tool.read_only or tool.operation == "preview":
+                project_uuid = UUID(arguments["project_id"]) if "project_id" in arguments else None
+                session_context = AsyncSessionLocal() if tool.read_only or tool.operation == "preview" else mutation_session(AsyncSessionLocal)
+                async with session_context as db:
+                    from ...services.mcp_workspace import context as workspace_context
+                    from ...services.mcp_workspace_contracts import SPECS
+                    if tool.handler_key in SPECS:
+                        project = await workspace_context(db, user, tool, arguments)
+                    elif tool.read_only or tool.operation == "preview":
                         project = await _require_mcp_project_scope(db, user, project_uuid)
                     else:
                         project = await _require_mcp_project_scope(db, user, project_uuid, "edit")
@@ -513,13 +458,17 @@ async def mcp_json_rpc(request: Request):
                             and tool.handler_key not in {"cases.import.commit", "cases.import.rollback"}):
                         key = str(arguments["idempotency_key"]).strip()
                         fingerprint = idempotency_fingerprint(tool.name, project.id, arguments, user.id)
-                        reservation, cached_result = await reserve_idempotency(db, project.id, key, fingerprint)
+                        if tool.handler_key in SPECS:
+                            namespace = ("organization:" if tool.handler_key == "projects.create" else "project:") + str(project.id)
+                            reservation, cached_result = await reserve_workspace(db, namespace, key, fingerprint)
+                        else:
+                            reservation, cached_result = await reserve_idempotency(db, project.id, key, fingerprint)
                     if cached_result is not None:
                         bounded_result = cached_result
                         result = cached_result
                     else:
                         result = await handler(db, user, project, arguments) if (
-                        tool.operation in {"preview", "commit", "rollback"} or tool.handler_key.startswith(("cases.", "test-runs.", "test-results.", "bugs.", "quality.", "evidence.", "environments.", "datasets."))
+                        tool.handler_key in SPECS or tool.operation in {"preview", "commit", "rollback"} or tool.handler_key.startswith(("cases.", "components.", "suites.", "test-runs.", "test-results.", "bugs.", "quality.", "evidence.", "environments.", "datasets.", "builds.", "web."))
                         ) else await handler(db, user, project)
                         bounded_result = bound_tool_result(tool, result)
                         if reservation is not None:
@@ -529,17 +478,19 @@ async def mcp_json_rpc(request: Request):
                     response = {"jsonrpc": "2.0", "id": request_id, "result": {"content": [{"type": "text", "text": json.dumps(bounded_result, ensure_ascii=False, separators=(",", ":"))}]}}
                     bounded_response = _rpc_response(request_id, notification, response)
                     if not notification and bounded_response != response:
-                        await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="response_too_large", arguments=arguments)
+                        raise McpResultTooLarge("response exceeds transport limit")
                     else:
                         if tool.operation == "preview":
                             await _audit_mcp_event(request, user, tool=tool, status="success", reason="preview_complete", arguments=arguments)
                         else:
                             context = audit_request_context(request)
                             await crud.create_audit_log(db, usuario_id=user.id, accion="MCP_TOOL_CALL", recurso=tool.name, detalles={"tool": tool.name, "version": tool.version, "key_prefix": getattr(user, "mcp_key_prefix", None), "arguments": sanitize_arguments(arguments), "status": "success", "correlation_id": correlation_id}, ip_address=context["ip_address"], origen=context["origen"], correlation_id=correlation_id)
-            except (McpResultTooLarge, ValueError, TypeError, LookupError):
+            except (McpResultTooLarge, ValueError, TypeError, LookupError) as exc:
+                bounded_response = None
                 await _audit_mcp_event(request, user, tool=tool, status="rejected", reason="invalid_arguments")
-                response = _rpc_error(request_id, -32602, "Invalid params")
+                response = domain_rejection(request_id, exc)
             except Exception:  # noqa: BLE001 - never expose handler/database details
+                bounded_response = None
                 await _audit_mcp_event(request, user, tool=tool, status="error", reason="internal_error")
                 response = _rpc_error(request_id, -32603, "Internal error")
             return bounded_response if bounded_response is not None else _rpc_response(request_id, notification, response)

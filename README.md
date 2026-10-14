@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.6-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.7-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -12,14 +12,15 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Novedades de 1.0.6
+### Novedades de 1.0.7
 
-- Casos y ejecución de pruebas API y conversacionales.
-- Asistencia con IA para requisitos, historias y casos de prueba.
-- Reportes y trazabilidad ampliados, con permisos de equipo más claros.
-- Integraciones gobernadas y actualizaciones de componentes con verificaciones de recuperación.
+- MCP permite a asistentes descubrir herramientas y operar los flujos QA con permisos, confirmaciones y evidencia persistida.
+- La generación de historias y casos conserva aclaraciones, criterios de aceptación y revisión antes de crear registros.
+- Suites, ejecución, historial y reportes guardan avances recuperables y conservan resultados y evidencias según el formato de prueba.
+- La instalación de escritorio queda temporalmente fuera del paquete; se mantienen los scripts Bash y PowerShell.
 
-La secuencia de releases Community publicados incluye 1.0.1, 1.0.2 y 1.0.6;
+La secuencia de releases Community publicada incluye 1.0.1, 1.0.2 y 1.0.6.
+La versión preparada a continuación es 1.0.7;
 1.0.3, 1.0.4 y 1.0.5 no se publicaron como releases Community. Consultá el
 [historial de releases](https://github.com/treseko/treseko-platform/releases)
 para verificar las versiones y archivos disponibles.
@@ -87,7 +88,7 @@ Muchas organizaciones terminan combinando planillas, Jira, carpetas de evidencia
 
 ## Flujo De Trabajo
 
-Flujo funcional de Treseko Community 1.0.6:
+Flujo funcional de Treseko Community 1.0.7:
 
 ```mermaid
 flowchart TB
@@ -147,7 +148,7 @@ Cada tipo de reporte responde una pregunta distinta:
 
 ## Arquitectura
 
-Arquitectura operativa de Treseko Community 1.0.6:
+Arquitectura operativa de Treseko Community 1.0.7:
 
 ```mermaid
 flowchart TB
@@ -261,14 +262,12 @@ Desde Windows PowerShell:
 .\scripts\install_local_treseko.ps1 -HttpPort 9095
 ```
 
-### Instalador gráfico macOS
+### Instalación por script
 
-El workflow de empaquetado genera un `.app` nativo para Apple Silicon
-(`macos-14`, `arm64`) y otro para Intel (`macos-13`, `x64`). Descomprimí el
-artefacto y abrilo con doble clic. El `.app` es el bundle ejecutable; no se
-genera `.dmg`. La firma y notarización de Apple están pendientes, por lo que
-Gatekeeper puede mostrar una advertencia en el primer arranque. Ver el detalle
-en [`installer/README.md`](installer/README.md).
+Los instaladores gráficos para escritorio están temporalmente fuera de esta
+versión. La instalación se realiza con los scripts Bash y PowerShell incluidos;
+consultá [Instalación](docs/INSTALLATION.md) para elegir el flujo y revisar sus
+requisitos.
 
 Con datos demo:
 
@@ -395,6 +394,8 @@ Este arbol publico excluye intencionalmente:
 ## Versión
 
 Versión Community más reciente publicada: `1.0.6`
+
+Versión preparada para la próxima release: `1.0.7`
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 [changelog](CHANGELOG.md) y los [releases publicados](https://github.com/treseko/treseko-platform/releases)

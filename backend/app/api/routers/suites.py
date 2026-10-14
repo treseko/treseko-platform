@@ -3,6 +3,11 @@ from fastapi import APIRouter
 from ...main_context import *
 
 
+from ...repositories.case_mutation_policy import CaseArchiveConflict
+from ...repositories.suite_policy import suite_rows, lock_suite_project
+from ...repositories.suite_lifecycle import tree_has_cases
+from ...repositories.suite_requests import request_details, previous_request
+
 router = APIRouter(tags=["Suites"])
 
 async def _require_suite_access(
@@ -15,7 +20,31 @@ async def _require_suite_access(
     if not db_suite:
         raise HTTPException(status_code=404, detail="Suite no encontrada")
     await access_control.require_project_access(db, current_user, db_suite.proyecto_id, level)
+    if level == 'edit':
+        rows = await suite_rows(db, db_suite.proyecto_id)
+        db_suite = next((row for row in rows if row.id == suite_id and row.activo), None)
+        if not db_suite:
+            raise HTTPException(status_code=404, detail='Suite no encontrada')
     return db_suite
+
+
+async def _require_case_edit(db, user, suite, *, copying=False):
+    try:
+        affects_cases = copying or await tree_has_cases(db, suite)
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if affects_cases:
+        if not auth.has_capability_permission(user, 'crear_pruebas.casos', 'edit'):
+            raise HTTPException(status_code=403, detail='Esta operación afecta casos de prueba y requiere permiso para editarlos.')
+
+
+async def _mutate_suite(db, operation):
+    try:
+        return await operation
+    except (CaseArchiveConflict, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 async def _require_suite_reorder_access(
@@ -35,6 +64,11 @@ async def _require_suite_reorder_access(
     if len(contexts) != 1:
         raise HTTPException(status_code=400, detail="Las suites deben ser hermanas del mismo proyecto")
     project_id, parent_id, component_id = next(iter(contexts))
+    await lock_suite_project(db, project_id)
+    current_rows = await suite_rows(db, project_id)
+    current_contexts = {(row.proyecto_id, row.parent_id, row.componente_id) for row in current_rows if row.id in suite_ids}
+    if current_contexts != contexts:
+        raise HTTPException(status_code=409, detail='Las suites cambiaron de ubicación. Recarga antes de ordenarlas.')
     siblings = (await db.execute(select(models.Suite).filter(
         models.Suite.proyecto_id == project_id, models.Suite.parent_id == parent_id,
         models.Suite.componente_id == component_id, models.Suite.activo == True,
@@ -45,6 +79,22 @@ async def _require_suite_reorder_access(
     return suites[0]
 
 
+async def _publish_suite_change_nonfatal(*args, **kwargs):
+    try:
+        await realtime_event_bus.publish(*args, **kwargs)
+    except Exception:
+        logger.warning("Realtime publication failed after committed suite mutation", exc_info=True)
+
+
+async def _commit_suite_with_audit(db: AsyncSession, **audit):
+    try:
+        await crud.create_audit_log(db=db, **audit, commit=False)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="No se pudo guardar la suite; no se aplicaron cambios") from exc
+
+
 @router.post("/suites/", response_model=schemas.Suite)
 async def create_suite(
     request: Request,
@@ -53,6 +103,10 @@ async def create_suite(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.suites", "edit"))
 ):
     await access_control.require_project_access(db, current_user, suite.proyecto_id, "edit")
+    replay_details = request_details(suite)
+    previous = await _mutate_suite(db, previous_request(db, current_user.id, suite.proyecto_id, 'CREATE', replay_details))
+    if previous:
+        return previous[0]
     if suite.componente_id:
         component_result = await db.execute(
             select(models.Componente.id).filter(
@@ -68,19 +122,19 @@ async def create_suite(
             raise HTTPException(status_code=400, detail="La suite padre no pertenece al proyecto")
         if parent.componente_id and suite.componente_id and parent.componente_id != suite.componente_id:
             raise HTTPException(status_code=400, detail="La sub-suite debe pertenecer al mismo componente que la suite padre")
-    new_suite = await crud.create_suite(db=db, suite=suite)
+    new_suite = await _mutate_suite(db, crud.create_suite(db=db, suite=suite, commit=False))
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="CREATE",
         recurso="suite",
         recurso_id=new_suite.id,
-        detalles={"nombre": suite.nombre, "proyecto_id": str(suite.proyecto_id)},
+        detalles={"nombre": suite.nombre, "proyecto_id": str(suite.proyecto_id), **replay_details},
         ip_address=client_ip
     )
-    await realtime_event_bus.publish(
+    await _publish_suite_change_nonfatal(
         new_suite.proyecto_id,
         "suite.created",
         actor_id=current_user.id,
@@ -114,12 +168,12 @@ async def reorder_suites(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.suites", "edit"))
 ):
     first_suite_context = await _require_suite_reorder_access(db, current_user, reorder_request.orden)
-    exito = await crud.reorder_suites(db=db, suite_ids=reorder_request.orden)
+    exito = await _mutate_suite(db, crud.reorder_suites(db=db, suite_ids=reorder_request.orden, commit=False))
     if not exito:
         raise HTTPException(status_code=400, detail="Error al reordenar suites")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="REORDER",
@@ -128,7 +182,7 @@ async def reorder_suites(
         ip_address=client_ip
     )
     if first_suite_context:
-        await realtime_event_bus.publish(
+        await _publish_suite_change_nonfatal(
             first_suite_context.proyecto_id,
             "suite.reordered",
             actor_id=current_user.id,
@@ -147,12 +201,12 @@ async def update_suite(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.suites", "edit"))
 ):
     await _require_suite_access(db, current_user, suite_id, "edit")
-    updated = await crud.update_suite(db=db, suite_id=suite_id, suite_update=suite)
+    updated = await _mutate_suite(db, crud.update_suite(db=db, suite_id=suite_id, suite_update=suite, commit=False))
     if not updated:
         raise HTTPException(status_code=404, detail="Suite no encontrada")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="UPDATE",
@@ -161,7 +215,7 @@ async def update_suite(
         detalles=suite.model_dump(exclude_unset=True),
         ip_address=client_ip
     )
-    await realtime_event_bus.publish(
+    await _publish_suite_change_nonfatal(
         updated.proyecto_id,
         "suite.updated",
         actor_id=current_user.id,
@@ -181,12 +235,17 @@ async def archive_suite(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.suites", "edit"))
 ):
     suite_context = await _require_suite_access(db, current_user, suite_id, "edit")
-    exito, mensaje, detalles = await crud.archive_suite_tree(db=db, suite_id=suite_id, archivado=payload.archivado)
+    await _require_case_edit(db, current_user, suite_context)
+    try:
+        exito, mensaje, detalles = await crud.archive_suite_tree(db=db, suite_id=suite_id, archivado=payload.archivado, commit=False)
+    except (CaseArchiveConflict, ValueError) as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not exito:
         raise HTTPException(status_code=404, detail=mensaje)
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="ARCHIVE" if payload.archivado else "RESTORE",
@@ -196,7 +255,7 @@ async def archive_suite(
         ip_address=client_ip
     )
     if suite_context:
-        await realtime_event_bus.publish(
+        await _publish_suite_change_nonfatal(
             suite_context.proyecto_id,
             "suite.archived" if payload.archivado else "suite.restored",
             actor_id=current_user.id,
@@ -215,12 +274,13 @@ async def delete_suite(
     current_user: models.Usuario = Depends(auth.check_capability("crear_pruebas.suites", "edit"))
 ):
     suite_context = await _require_suite_access(db, current_user, suite_id, "edit")
-    exito, mensaje = await crud.delete_suite(db=db, suite_id=suite_id)
+    await _require_case_edit(db, current_user, suite_context)
+    exito, mensaje = await _mutate_suite(db, crud.delete_suite(db=db, suite_id=suite_id, commit=False))
     if not exito:
         raise HTTPException(status_code=400, detail=mensaje)
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="DELETE",
@@ -229,7 +289,7 @@ async def delete_suite(
         ip_address=client_ip
     )
     if suite_context:
-        await realtime_event_bus.publish(
+        await _publish_suite_change_nonfatal(
             suite_context.proyecto_id,
             "suite.deleted",
             actor_id=current_user.id,
@@ -252,6 +312,12 @@ async def clone_suite(
     body_was_provided = clone_request is not None
     payload = clone_request or schemas.SuiteCloneRequest(nuevo_nombre=nuevo_nombre)
     suite_context = await _require_suite_access(db, current_user, suite_id, "edit")
+    if payload.include_cases:
+        await _require_case_edit(db, current_user, suite_context, copying=True)
+    replay_details = request_details(payload, suite_id)
+    previous = await _mutate_suite(db, previous_request(db, current_user.id, suite_context.proyecto_id, 'CLONE', replay_details))
+    if previous:
+        return {'suite': previous[0], 'suites_copiadas': previous[1].get('suites_copiadas', 1), 'casos_copiados': previous[1].get('casos_copiados', 0)}
     if payload.parent_id:
         parent = await _require_suite_access(db, current_user, payload.parent_id, "edit")
         if parent.proyecto_id != suite_context.proyecto_id:
@@ -263,16 +329,17 @@ async def clone_suite(
             nuevo_nombre=payload.nuevo_nombre or nuevo_nombre,
             parent_id=payload.parent_id,
             include_cases=payload.include_cases,
-            keep_original_parent_when_parent_omitted=not body_was_provided
+            keep_original_parent_when_parent_omitted=not body_was_provided, commit=False
         )
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not clone_result:
         raise HTTPException(status_code=404, detail="Suite no encontrada")
     cloned = clone_result["suite"]
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="CLONE",
@@ -284,11 +351,12 @@ async def clone_suite(
             "parent_id": str(payload.parent_id) if payload.parent_id else None,
             "include_cases": payload.include_cases,
             "suites_copiadas": clone_result["suites_copiadas"],
-            "casos_copiados": clone_result["casos_copiados"]
+            "casos_copiados": clone_result["casos_copiados"],
+            **replay_details,
         },
         ip_address=client_ip
     )
-    await realtime_event_bus.publish(
+    await _publish_suite_change_nonfatal(
         cloned.proyecto_id,
         "suite.created",
         actor_id=current_user.id,
@@ -316,12 +384,12 @@ async def move_suite(
         parent = await _require_suite_access(db, current_user, move_request.parent_id, "edit")
         if parent.proyecto_id != suite_context.proyecto_id:
             raise HTTPException(status_code=400, detail="La suite padre no pertenece al proyecto")
-    exito, mensaje = await crud.move_suite(db=db, suite_id=suite_id, new_parent_id=move_request.parent_id)
+    exito, mensaje = await _mutate_suite(db, crud.move_suite(db=db, suite_id=suite_id, new_parent_id=move_request.parent_id, commit=False))
     if not exito:
         raise HTTPException(status_code=400, detail=mensaje)
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_suite_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="MOVE",
@@ -331,7 +399,7 @@ async def move_suite(
         ip_address=client_ip
     )
     if suite_context:
-        await realtime_event_bus.publish(
+        await _publish_suite_change_nonfatal(
             suite_context.proyecto_id,
             "suite.moved",
             actor_id=current_user.id,

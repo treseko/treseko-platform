@@ -67,6 +67,14 @@ class NodoEjecucion(Base):
     ultima_conexion = Column(UTCDateTime(), server_default=func.now())
 
 
+class InventoryCategory(Base):
+    __tablename__ = "inventory_categories"
+    id = Column(String(100), primary_key=True, default=lambda: str(uuid.uuid4()))
+    proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
+    nombre = Column(String(100), nullable=False)
+    __table_args__ = (UniqueConstraint("proyecto_id", "nombre", name="uq_inventory_category_project_name"),)
+
+
 class InventoryAsset(Base):
     __tablename__ = "inventory_assets"
 

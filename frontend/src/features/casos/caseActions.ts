@@ -10,12 +10,6 @@ type ConfirmAction = (options: { title: string; message: string; variant?: 'dang
 
 const CASES_PAGE_SIZE = 200
 
-// Several callers can refresh the project cases at the same time (for example
-// after saving a case while the initial load is still in flight). Keep only
-// the result of the most recent request so an older response cannot overwrite
-// a newer list in the UI.
-const casesLoadGenerationByProject = new Map<string, number>()
-
 type LoadCasesOptions = {
   preserveExecutionState?: boolean
   buildId?: string
@@ -35,6 +29,7 @@ export type ExecutionHistoryItems = any[] & {
   total: number
   stats: ExecutionHistoryStats
   hasMore: boolean
+  error?: string
   skip: number
   limit: number
 }
@@ -93,6 +88,8 @@ export const normalizeExecutionHistoryPayload = (
 }
 
 type CreateCaseActionsParams = {
+  contextHydrationVersionRef?: { current: number }
+  casesLoadVersionRef?: { current: number }
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   managingProjectId: string | null
@@ -127,6 +124,8 @@ type CreateCaseActionsParams = {
 }
 
 export function createCaseActions({
+  contextHydrationVersionRef = { current: 0 },
+  casesLoadVersionRef = { current: 0 },
   t,
   projectsSource,
   managingProjectId,
@@ -192,9 +191,9 @@ export function createCaseActions({
     options: LoadCasesOptions = {}
   ) => {
     if (!projectId || !isValidUUID(projectId) || projectsSource !== 'backend') return
-    const requestId = (casesLoadGenerationByProject.get(projectId) || 0) + 1
-    casesLoadGenerationByProject.set(projectId, requestId)
-    const isLatestRequest = () => casesLoadGenerationByProject.get(projectId) === requestId
+    const requestId = ++casesLoadVersionRef.current
+    const contextVersion = contextHydrationVersionRef.current
+    const isLatestRequest = () => casesLoadVersionRef.current === requestId && contextHydrationVersionRef.current === contextVersion
     const silent = Boolean(options.silent)
     if (!silent) setCasosLoading(true)
     try {
@@ -265,6 +264,9 @@ export function createCaseActions({
   const searchCasos = async () => {
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) return
+    const contextVersion = contextHydrationVersionRef.current
+    const requestId = ++casesLoadVersionRef.current
+    const isCurrent = () => contextHydrationVersionRef.current === contextVersion && casesLoadVersionRef.current === requestId
     const params = new URLSearchParams()
     if (casosSearchQuery) params.set('q', casosSearchQuery)
     if (casosFilterSuite) params.set('suite_id', casosFilterSuite)
@@ -276,10 +278,11 @@ export function createCaseActions({
 
     try {
       const data = await fetchCasePages(`/proyectos/${projectId}/casos/search`, params) as any
+      if (!isCurrent()) return
       setCasosSearchResults(data.items)
       setCasosTotal(data.total)
     } catch (error: any) {
-      setProjectSyncMessage(`${t('casos.searchCasesError')}: ${error.message}`)
+      if (isCurrent()) setProjectSyncMessage(`${t('casos.searchCasesError')}: ${error.message}`)
     }
   }
 
@@ -450,8 +453,8 @@ export function createCaseActions({
         throw new Error(`Backend respondió ${response.status}`)
       }
       return normalizeExecutionHistoryPayload(await response.json(), skip, limit)
-    } catch {
-      return emptyHistory()
+    } catch (error: any) {
+      return Object.assign(emptyHistory(), { error: error?.message || t('ejecutarPruebas.historyLoadError') })
     }
   }
 

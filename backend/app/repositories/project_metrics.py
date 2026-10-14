@@ -6,6 +6,8 @@ from .project_metrics_history import build_project_history
 from .project_metrics_rules import _qa_decision, _risk_level
 from .project_metrics_derived import build_derived_metrics
 from .project_metrics_formats import _empty_format_metrics, _empty_format_mode_metrics, _finalize_format_metrics, _finalize_format_mode_metrics
+from .report_chatbot_metrics import _chatbot_result_metrics
+from .report_metrics_calculation import api_latency_samples, chatbot_latency_samples, nearest_rank_p95, is_terminal_result
 BUG_OPEN_STATES = {"ABIERTO", "TRIAGE", "ASIGNADO", "EN_PROGRESO", "LISTO_PARA_RETEST", "EN_RETEST", "REABIERTO", "BLOQUEADO"}
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 BUG_SLA_HOURS = {"CRITICA": 24, "ALTA": 48, "MEDIA": 120, "BAJA": 240, "COSMETICA": 240}
@@ -19,42 +21,11 @@ def _safe_percent(numerator: int, denominator: int) -> float:
     return round((numerator / denominator) * 100, 2) if denominator else 0.0
 
 
-def _chatbot_result_metrics(result: Any) -> dict[str, Any]:
-    result = result if isinstance(result, dict) else {}
-    turns = [item for item in (result.get("turns") or []) if isinstance(item, dict)]
-    performance = result.get("performance") if isinstance(result.get("performance"), dict) else {}
-    assertions = [item for item in (result.get("assertions") or []) if isinstance(item, dict)]
-    failed_assertions = [item for item in assertions if item.get("passed") is False]
-    security = [item for item in (result.get("security_findings") or []) if isinstance(item, dict)]
-    memory_checks = [item for item in (result.get("memory_checks") or []) if isinstance(item, dict)]
-    tool_results = [item for item in (result.get("tools") or []) if isinstance(item, dict)]
-    http_errors = [item for item in (result.get("http_errors") or [])]
-    latencies = sorted(float(item.get("latencyMs") or item.get("latency_ms") or 0) for item in turns)
-    p95 = float(performance.get("p95_latency_ms") or (latencies[min(len(latencies) - 1, max(0, int(len(latencies) * .95) - 1))] if latencies else 0))
-    return {
-        "turn_count": int(performance.get("turn_count") or len(turns)),
-        "total_latency_ms": float(performance.get("total_latency_ms") or sum(latencies)),
-        "p95_latency_ms": p95,
-        "http_error_count": len(http_errors),
-        "validation_failure_count": len(failed_assertions) + int(result.get("failed_assertions") or 0 if isinstance(result.get("failed_assertions"), int) else 0),
-        "security_finding_count": len(security),
-        "memory_failure_count": len([item for item in memory_checks if item.get("passed") is False or item.get("status") == "FAILED"]),
-        "tool_failure_count": len([item for item in tool_results if item.get("status") == "FAILED"]),
-        "tool_not_observable_count": len([item for item in tool_results if item.get("status") == "NOT_OBSERVABLE"]),
-        "tool_blocked_count": len([item for item in tool_results if item.get("status") == "BLOCKED"]),
-        "semantic": result.get("judge") if isinstance(result.get("judge"), dict) else {},
-        "status": result.get("status"),
-    }
-
-
 def _api_result_metrics(result: Any) -> dict[str, Any]:
     """Aggregate deterministic metrics from one persisted API execution."""
     result = result if isinstance(result, dict) else {}
     steps = [item for item in (result.get("steps") or []) if isinstance(item, dict)]
-    latencies = sorted(
-        float((item.get("response") or {}).get("timings", {}).get("total_ms") or 0)
-        for item in steps
-    )
+    latencies = api_latency_samples(result)
     statuses = [
         int((item.get("response") or {}).get("status"))
         for item in steps
@@ -84,7 +55,8 @@ def _api_result_metrics(result: Any) -> dict[str, Any]:
     return {
         "requests": len(steps),
         "total_latency_ms": float(result.get("duration_ms") or sum(latencies)),
-        "p95_latency_ms": latencies[min(len(latencies) - 1, max(0, int(len(latencies) * .95) - 1))] if latencies else 0,
+        "p95_latency_ms": nearest_rank_p95(latencies),
+        "latency_sample_count": len(latencies),
         "http_errors": len(http_errors),
         "validation_failures": len(failed_assertions) + len(additional_errors),
         "status_2xx": len([status for status in statuses if 200 <= status < 300]),
@@ -112,7 +84,8 @@ def _empty_control_center_payload() -> Dict[str, Any]:
     return {
         "build_context": {},
         "calculation_rules": {
-            "coverage": "ejecutados / total asignados",
+            "coverage": "casos con ultimo intento terminado / total asignados",
+            "latency_p95": "rango mas proximo sobre muestras observadas; API: todos los intentos terminados, Chatbot: ultimo intento por caso, si esta terminado",
             "success_executed": "pasados / ejecutados",
             "success_total": "pasados / total asignados",
             "pending": "total asignados - ejecutados",
@@ -247,14 +220,15 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         }
 
     result_case_versions = await db.execute(
-        select(models.CasoPrueba.id, models.CasoPrueba.master_id).filter(
+        select(models.CasoPrueba).filter(
             models.CasoPrueba.master_id.in_(assigned_master_ids),
-            *_visible_case_filter(),
+            models.CasoPrueba.proyecto_id == proyecto_id,
         )
     )
+    executed_case_versions = {case.id: case for case in result_case_versions.scalars().all()}
     master_by_version_id = {
-        case_id: master_id
-        for case_id, master_id in result_case_versions.all()
+        case.id: case.master_id
+        for case in executed_case_versions.values()
     }
     version_case_ids = list(master_by_version_id.keys())
 
@@ -282,7 +256,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             models.TestRun.build_id == build.id,
             models.EjecucionCaso.caso_id.in_(version_case_ids),
             models.EjecucionCaso.estado_resultado != models.EstadoResultado.SIN_CORRER,
-        )
+        ).order_by(models.EjecucionCaso.fecha_ejecucion.desc(), models.EjecucionCaso.id.desc())
     )
     ejecucion_rows = result_ejecuciones.all()
     ejecuciones = [ejecucion for ejecucion, _run in ejecucion_rows]
@@ -304,6 +278,8 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
     caso_ultimo_estado = {}
     casos_detalle_por_master = {}
     ai_metrics = _empty_ai_metrics()
+    api_latencies = []
+    chatbot_latencies = []
 
     for caso in casos_info.values():
         prioridad = caso.prioridad.value if hasattr(caso.prioridad, 'value') else caso.prioridad
@@ -317,7 +293,9 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
     # Otherwise the last mode (for example EXTERNA) hides MANUAL, AUTOMATIZADA
     # and IA from the report.
     for ejecucion, run in ejecucion_rows:
-        caso_ejecutado = casos_info.get(ejecucion.caso_id)
+        if not is_terminal_result(ejecucion.estado_resultado):
+            continue
+        caso_ejecutado = executed_case_versions.get(ejecucion.caso_id)
         if not caso_ejecutado:
             continue
         formato_ejecutado = str(
@@ -342,11 +320,12 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         elif estado_ejecutado == "BLOQUEADO":
             matrix_metrics["blocked"] += 1
         if formato_ejecutado == "API":
+            api_latencies.extend(api_latency_samples(ejecucion.api_resultado))
             api_detail = _api_result_metrics(ejecucion.api_resultado if isinstance(ejecucion.api_resultado, dict) else {})
             api_specific = metricas_por_formato["API"]["specific"]
             for key in api_specific:
                 if key == "p95_latency_ms":
-                    api_specific[key] = max(api_specific[key], api_detail[key])
+                    continue
                 else:
                     api_specific[key] += api_detail[key]
 
@@ -364,7 +343,6 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         if not master_id:
             continue
 
-        ejecutados_masters.add(master_id)
         estado = ejec.estado_resultado.value if hasattr(ejec.estado_resultado, 'value') else ejec.estado_resultado
         ejecutor = usuarios_info.get(str(ejec.ejecutado_por))
 
@@ -379,6 +357,9 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
     for master_id, caso in assigned_by_master.items():
         info = caso_ultimo_estado.get(master_id)
         estado = info['estado'] if info else "SIN_CORRER"
+        completed = is_terminal_result(estado)
+        if completed:
+            ejecutados_masters.add(master_id)
         ejecucion = info['ejecucion'] if info else None
         ejecutor = info['ejecutor'] if info else None
 
@@ -420,7 +401,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         format_metrics = metricas_por_formato[formato]
         format_metrics["total"] += 1
         format_metrics["pending"] += 1
-        if ejecucion:
+        if completed:
             format_metrics["executed"] += 1
             format_metrics["duration_seconds"] += int(ejecucion.duracion_segundos or 0)
             format_metrics["pending"] = max(int(format_metrics["pending"] or 0) - 1, 0)
@@ -455,9 +436,11 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
                 "metrics": ai_report.get("metrics") if isinstance(ai_report.get("metrics"), dict) else {},
                 "workflow_trace_count": len(ai_report.get("workflow_traces") or ai_report.get("timeline") or []),
             }
-            _accumulate_ai_metrics(ai_metrics, ejecucion, estado)
+            if completed:
+                _accumulate_ai_metrics(ai_metrics, ejecucion, estado)
         if formato == "CONVERSACIONAL":
-            chatbot_result = (ejecucion.chatbot_resultado if ejecucion and isinstance(ejecucion.chatbot_resultado, dict) else {})
+            chatbot_result = (ejecucion.chatbot_resultado if completed and isinstance(ejecucion.chatbot_resultado, dict) else {})
+            chatbot_latencies.extend(chatbot_latency_samples(chatbot_result))
             chatbot_config = (ejecucion.chatbot_config_snapshot if ejecucion and isinstance(ejecucion.chatbot_config_snapshot, dict) else (caso.configuracion_chatbot if isinstance(caso.configuracion_chatbot, dict) else {}))
             chatbot_detail = _chatbot_result_metrics(chatbot_result)
             chatbot_conversation = chatbot_config.get("conversation") if isinstance(chatbot_config.get("conversation"), dict) else {}
@@ -477,7 +460,6 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             chatbot_metrics["total"] += 1
             chatbot_metrics["turns"] += chatbot_detail["turn_count"]
             chatbot_metrics["total_latency_ms"] += chatbot_detail["total_latency_ms"]
-            chatbot_metrics["p95_latency_ms"] = max(chatbot_metrics["p95_latency_ms"], chatbot_detail["p95_latency_ms"])
             chatbot_metrics["http_errors"] += chatbot_detail["http_error_count"]
             chatbot_metrics["validation_failures"] += chatbot_detail["validation_failure_count"]
             chatbot_metrics["security_findings"] += chatbot_detail["security_finding_count"]
@@ -488,7 +470,6 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             conversational_specific = metricas_por_formato["CONVERSACIONAL"]["specific"]
             conversational_specific["turns"] += chatbot_detail["turn_count"]
             conversational_specific["total_latency_ms"] += chatbot_detail["total_latency_ms"]
-            conversational_specific["p95_latency_ms"] = max(conversational_specific["p95_latency_ms"], chatbot_detail["p95_latency_ms"])
             conversational_specific["http_errors"] += chatbot_detail["http_error_count"]
             conversational_specific["validation_failures"] += chatbot_detail["validation_failure_count"]
             conversational_specific["security_findings"] += chatbot_detail["security_finding_count"]
@@ -563,7 +544,7 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
             por_suite[suite_id]["pendientes"] += 1
 
     for master_id, caso in assigned_by_master.items():
-        if master_id in caso_ultimo_estado:
+        if master_id in ejecutados_masters:
             continue
         formato_sin_ejecucion = str(
             caso.formato_prueba.value if hasattr(caso.formato_prueba, "value") else caso.formato_prueba or "CLASICA"
@@ -572,6 +553,12 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         metricas_por_formato_y_modo[formato_sin_ejecucion]["SIN_EJECUTAR"]["total"] += 1
         metricas_por_formato_y_modo[formato_sin_ejecucion]["SIN_EJECUTAR"]["pending"] += 1
 
+    metricas_por_formato["API"]["specific"]["latency_sample_count"] = len(api_latencies)
+    metricas_por_formato["API"]["specific"]["p95_latency_ms"] = nearest_rank_p95(api_latencies)
+    chatbot_metrics["latency_sample_count"] = len(chatbot_latencies)
+    chatbot_metrics["p95_latency_ms"] = nearest_rank_p95(chatbot_latencies)
+    metricas_por_formato["CONVERSACIONAL"]["specific"]["latency_sample_count"] = len(chatbot_latencies)
+    metricas_por_formato["CONVERSACIONAL"]["specific"]["p95_latency_ms"] = nearest_rank_p95(chatbot_latencies)
     total_ejecutados = len(ejecutados_masters)
     cobertura = round((total_ejecutados / total_asignados) * 100, 2) if total_asignados > 0 else 0.0
     metricas_por_formato = _finalize_format_metrics(metricas_por_formato)
@@ -655,7 +642,8 @@ async def get_project_metrics(db: AsyncSession, proyecto_id: UUID, build_id: Opt
         "bug_metrics": bug_metrics,
         "build_context": build_context,
         "calculation_rules": {
-            "coverage": "ejecutados / total asignados",
+            "coverage": "casos con ultimo intento terminado / total asignados",
+            "latency_p95": "rango mas proximo sobre muestras observadas; API: todos los intentos terminados, Chatbot: ultimo intento por caso, si esta terminado",
             "success_executed": "pasados / ejecutados",
             "success_total": "pasados / total asignados",
             "pending": "total asignados - ejecutados",

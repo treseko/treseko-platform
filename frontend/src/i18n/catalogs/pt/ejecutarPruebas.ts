@@ -1,4 +1,12 @@
 export default {
+  historyLoadError: "Não foi possível atualizar o histórico. Os últimos dados disponíveis foram mantidos.",
+  saveProgress: "Salvar progresso",
+  progressSaved: "Progresso salvo",
+  progressSavedDescription: "Você pode retomar esta execução sem finalizar o caso.",
+  progressSaveError: "Não foi possível salvar o progresso",
+  completeTurnsBeforePass: "Envie todos os turnos antes de aprovar. Para finalizar antes com falha ou bloqueio, informe o motivo.",
+  progressConnectionError: "Não foi possível atualizar o progresso. Exibindo o último estado conhecido.",
+
   manualCaseCompleted: 'Caso concluído', manualCaseCompletedMessage: 'Este caso terminó, pero ainda há casos do lote sem executar. Selecione outro caso de a lista para continuar.',
   bugsViewPermission: 'Necesitas permissão para ver bugs antes de consultar o reportar uno.', bugsCreatePermission: 'Necesitas permissão para criar bugs. Solicítalo a um administrador.',
   manualBatchCompleted: 'Lote concluído', manualBatchCompletedMessage: 'Se han executado todos os casos selecionados.', internalBugReportPending: 'Reporte pendente', internalBugReportPendingMessage: 'El falha quedó salvo. Puedes criar el bug interno mais adelante de el caso o su histórico.', executionCompleted: 'Execução concluída', executionCompletedWithBugDecision: 'Resultado final: {status}. El reporte de bug interno já tem uma decisión registrada para esta execução.', executionCompletedMessage: 'Resultado final: {status}.', verdictRequired: 'Veredicto requerido', verdictRequiredMessage: 'Selecione um resultado general para executar este caso sem etapas.', documentationRequired: 'Documentación requerida', documentationRequiredMessage: 'Agrega um comentario o adjunta evidência antes de salvar este falha o bloqueo.', completionFailed: 'Não foi possível completar', saveExecutionError: 'Erro ao salvar a execução.', incompleteExecution: 'Execução incompleta', completePreviousSteps: 'Completa os etapas anteriores antes de salvar el resultado final.', completeAllSteps: 'Marca todos os etapas como PASO o registra um FALLO/BLOQUEO para fechar a execução.',

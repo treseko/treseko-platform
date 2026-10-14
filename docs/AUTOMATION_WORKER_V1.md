@@ -84,3 +84,9 @@ visible y no se incorporan a informes.
 Community permite un worker local básico. La administración distribuida de
 varios workers y el scheduler avanzado requieren las capacidades Premium
 correspondientes.
+
+## Capturas, vídeo y archivos internos
+
+Playwright worker function intenta capturar la página al finalizar, además de la captura ante un fallo. Si no puede obtenerla, registra `final_screenshot_status=UNAVAILABLE` sin cambiar el resultado del caso. Playwright worker function y Playwright Test graban vídeo salvo `record_video=false`; comprobá su disponibilidad en los artefactos devueltos.
+
+El HOME del proceso Linux aislado se ubica en `.treseko-runtime`. El recolector omite esa carpeta y el `package.json` generado en la raíz por el worker. Los archivos de prueba con los mismos nombres en subcarpetas permanecen intactos.

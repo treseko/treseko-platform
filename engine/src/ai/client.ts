@@ -7,6 +7,7 @@ import type { AgentDriver } from './agent-driver.ts';
 import { parseAIJson } from './responseParsing.ts';
 import { sendWithRetry } from './requestRetry.ts';
 import { checkLoadingState, planStepAction } from './agentStepPlanning.ts';
+import { buildWorkflowAgentPrompt, type WorkflowAgentPromptArgs } from './workflow-agent-prompt.ts';
 dotenv.config({ override: false });
 export interface AIAction {
   action: 'click' | 'double_click' | 'right_click' | 'hover' | 'type' | 'navigate' | 'wait' | 'finish' | 'error' | 'press_enter' | 'upload' | 'scroll' | 'drag_and_drop' | 'select' | 'press' | 'assert_visible' | 'assert_text' | 'fail' | 'blocked';
@@ -26,6 +27,10 @@ export interface AIAction {
 export interface AIResult<T> {
   data: T;
   metrics: {
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    fallbackUsed?: boolean;
     latencyMs: number;
     promptTokens: number;
     completionTokens: number;
@@ -65,6 +70,7 @@ export class AIClient {
   private readonly promptTokenCostPer1K: number;
   private readonly completionTokenCostPer1K: number;
   private readonly requestTimeoutMs: number;
+  private readonly abortSignal?: AbortSignal;
   private readonly maxCompletionTokens: number;
   private readonly disableThinking: boolean;
   public readonly supportsVision: boolean;
@@ -72,7 +78,8 @@ export class AIClient {
   private messageHistory: any[] = [];
   private readonly agentDriver?: AgentDriver;
   private readonly agentRunId?: string;
-  constructor(config: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxCompletionTokens?: number; disableThinking?: boolean; maxRetries?: number; fallbacks?: Array<{ provider?: string; llm_endpoint?: string; endpoint?: string; model?: string; provider_api_key?: string; apiKey?: string; max_retries?: number }>; agentDriver?: AgentDriver; agentRunId?: string } = {}) {
+  constructor(config: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; agentWorkflow?: any[]; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxCompletionTokens?: number; disableThinking?: boolean; maxRetries?: number; requestTimeoutMs?: number; abortSignal?: AbortSignal; fallbacks?: Array<{ provider?: string; llm_endpoint?: string; endpoint?: string; model?: string; provider_api_key?: string; apiKey?: string; max_retries?: number }>; agentDriver?: AgentDriver; agentRunId?: string } = {}) {
+    this.abortSignal = config.abortSignal;
     this.provider = normalizeProvider(config.provider || process.env.AI_PROVIDER || 'openai-compatible');
     this.endpoint = config.endpoint || process.env.AI_API_ENDPOINT || 'http://172.16.10.4:1234/v1';
     this.model = config.model || process.env.AI_MODEL || 'google/gemma-4-e4b';
@@ -93,7 +100,10 @@ export class AIClient {
     this.tokenCostPer1K = Number.isFinite(config.tokenCostPer1K) ? Number(config.tokenCostPer1K) : parseFloat(process.env.AI_TOKEN_COST_PER_1K || '0.01');
     this.promptTokenCostPer1K = Number.isFinite(config.promptTokenCostPer1K) ? Number(config.promptTokenCostPer1K) : parseFloat(process.env.AI_PROMPT_TOKEN_COST_PER_1K || '0');
     this.completionTokenCostPer1K = Number.isFinite(config.completionTokenCostPer1K) ? Number(config.completionTokenCostPer1K) : parseFloat(process.env.AI_COMPLETION_TOKEN_COST_PER_1K || '0');
-    this.requestTimeoutMs = Math.max(5_000, Math.min(600_000, parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '600000')));
+    const configuredRequestTimeout = Number.isFinite(config.requestTimeoutMs)
+      ? Number(config.requestTimeoutMs)
+      : Number(process.env.AI_REQUEST_TIMEOUT_MS ?? 600_000);
+    this.requestTimeoutMs = Math.max(5_000, Math.min(900_000, Number.isFinite(configuredRequestTimeout) ? configuredRequestTimeout : 600_000));
     // Actions and audit decisions are compact JSON. A bounded completion keeps
     // one malformed or verbose model response from stalling an entire run.
     const configuredMaxCompletionTokens = Number.isFinite(config.maxCompletionTokens)
@@ -103,7 +113,9 @@ export class AIClient {
     // acceptance criteria. Keep room for a complete JSON contract instead of
     // silently accepting a response cut in the middle of a proposal.
     this.maxCompletionTokens = Math.max(32, Math.min(20000, configuredMaxCompletionTokens));
-    this.disableThinking = config.disableThinking === true;
+    // Explicit instance policy also applies to compatible local runtimes.
+    // Leave provider defaults intact unless suppression was requested.
+    this.disableThinking = config.disableThinking === true || process.env.AI_DISABLE_THINKING === 'true';
     // Do not infer vision from a model name: providers differ and an image request can fail or add cost.
     this.supportsVision = config.visionEnabled === true;
     this.agentWorkflow = Array.isArray(config.agentWorkflow) ? config.agentWorkflow : [];
@@ -244,42 +256,8 @@ Responde JSON:
     }
     return { approved: true, reason: 'Acción autorizada.' };
   }
-  async runWorkflowAgent(args: {
-    nodeName: string;
-    promptTemplate: string;
-    input: Record<string, any>;
-    outputSchema?: Record<string, any>;
-    temperature?: number;
-    maxCompletionTokens?: number;
-    responseFormat?: 'json_schema' | 'json_object' | 'text';
-  }): Promise<AIResult<any>> {
-    const prompt = `${args.promptTemplate || 'Analiza el input del workflow y responde AgentOutput JSON.'}
-### NODO
-${args.nodeName}
-### INPUT JSON
-${JSON.stringify(args.input, null, 2).slice(0, 12000)}
-### OUTPUT_SCHEMA
-${JSON.stringify(args.outputSchema || { required: ['status', 'reason'] }, null, 2)}
-### CONTRATO DE CONTEXTO COMPARTIDO
-Si el input incluye resolved_context, úsalo como fuente de verdad para los
-datos del paso. No vuelvas a convertir clave=valor ni reemplaces un valor
-normalizado por ejemplos propios. Respeta source, confidence y
-ambiguities; si hay un candidato respaldado, úsalo y deja constancia de la
-interpretación. Si no existe ningún valor respaldado, informa el dato faltante
-en reason y no inventes una URL, credencial, selector ni resultado.
-Para cada decisión relevante, incluye en sharedMemoryPatch los campos
-resolved_context, input_mapping o failure_diagnosis sin incluir secretos
-en claro en mensajes, eventos o reportes. Los valores secretos deben aparecer
-enmascarados como ********.
-Responde SOLO JSON con esta forma minima:
-{
-  "status": "SUCCESS|FAILED|BLOCKED|SKIPPED",
-  "reason": "motivo breve",
-  "confidence": 90,
-  "decision": {},
-  "events": [],
-  "sharedMemoryPatch": {}
-}`;
+  async runWorkflowAgent(args: WorkflowAgentPromptArgs): Promise<AIResult<any>> {
+    const prompt = buildWorkflowAgentPrompt(args);
     return await this.sendWithRetry<any>(
       [{ role: 'user', content: prompt }],
       args.temperature ?? this.temperature,
@@ -340,6 +318,7 @@ Responde SOLO JSON con esta forma minima:
             temperature: 0,
             maxTokens: 8,
             disableThinking: true,
+            responseFormat: 'text',
           },
         );
         const answer = String(response.content || '').trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÑ]/g, '');
@@ -363,16 +342,18 @@ Responde SOLO JSON con esta forma minima:
     }
     return { status: 'verified', verified: true, attempts, reason: 'El proveedor identificó correctamente dos imágenes de colores distintos.' };
   }
-  async checkHealthDetailed(): Promise<{ ok: boolean; category?: string; status?: number }> {
+  async checkHealthDetailed(): Promise<{ ok: boolean; structuredJson?: boolean; category?: string; status?: number }> {
     try {
       const response = await generateWithProvider({ provider: this.provider, endpoint: this.endpoint, apiKey: this.apiKey, timeoutMs: Math.min(this.requestTimeoutMs, 30_000) }, { model: this.model, messages: [{ role: 'user', content: 'Responde JSON: {"ok":true}' }], temperature: 0, maxTokens: 16, disableThinking: this.disableThinking });
-      // Health only verifies transport/provider availability. Models may
-      // legitimately include reasoning text in a minimal probe; structured
-      // JSON is validated by the execution request that needs it.
+      // Availability and structured output are separate observations. A
+      // nonempty reply proves availability; only the requested JSON value
+      // proves this minimal structured-output probe.
       if (!String(response.content || '').trim()) {
         throw new ProviderRequestError('Respuesta IA vacía', 'invalid_response');
       }
-      return { ok: true };
+      let structuredJson = false;
+      try { structuredJson = JSON.parse(response.content).ok === true; } catch { /* Non-JSON is still an available provider. */ }
+      return { ok: true, structuredJson };
     } catch (error: any) {
       traceEntry('error', {
         event_detail: 'ai_health_failed',

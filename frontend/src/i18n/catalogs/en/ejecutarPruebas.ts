@@ -1,4 +1,12 @@
 export default {
+  historyLoadError: "History could not be refreshed. The last available data is preserved.",
+  saveProgress: "Save progress",
+  progressSaved: "Progress saved",
+  progressSavedDescription: "You can resume this execution without finishing the case.",
+  progressSaveError: "Progress could not be saved",
+  completeTurnsBeforePass: "Send all turns before passing. To finish early as failed or blocked, provide a reason.",
+  progressConnectionError: "Progress could not be refreshed. Showing the last known state.",
+
   manualCaseCompleted: 'Case completed', manualCaseCompletedMessage: 'This case is finished, but other cases in the batch are still pending. Select another case from the list to continue.',
   bugsViewPermission: 'You need permission to view bugs before consulting or reporting one.', bugsCreatePermission: 'You need permission to create bugs. Ask an administrator.',
   manualBatchCompleted: 'Batch completed', manualBatchCompletedMessage: 'All selected cases have been executed.', internalBugReportPending: 'Report pending', internalBugReportPendingMessage: 'The failure was saved. You can create the internal bug later from the case or its history.', executionCompleted: 'Execution completed', executionCompletedWithBugDecision: 'Final result: {status}. The internal bug report already has a decision recorded for this execution.', executionCompletedMessage: 'Final result: {status}.', verdictRequired: 'Verdict required', verdictRequiredMessage: 'Select an overall result to execute this case without steps.', documentationRequired: 'Documentation required', documentationRequiredMessage: 'Add a comment or attach evidence before saving this failure or block.', completionFailed: 'Could not complete', saveExecutionError: 'Error saving the execution.', incompleteExecution: 'Incomplete execution', completePreviousSteps: 'Complete the previous steps before saving the final result.', completeAllSteps: 'Mark all steps as PASS or record a FAIL/BLOCK to close the execution.',

@@ -6,36 +6,55 @@ import test from "node:test";
 import { performance } from "node:perf_hooks";
 import { createApiRuntime } from "./api-runtime.mjs";
 
-test("worker espera la configuracion de solucion antes de pedir pairing", async () => {
-  let fetchCalls = 0;
-  const runtime = createApiRuntime({
-    API_BASE: "https://treseko.example.test/api",
-    REQUEST_TIMEOUT_MS: 1000,
-    RUNNER_NAME: "Worker QA",
-    ORGANIZACION_ID: "",
-    tokenPath: "/tmp/worker-token",
-    pairingStatePath: "/tmp/worker-pairing",
-    workerInstanceId: "qa-worker-instance",
-    state: { runnerToken: "", runnerId: "", activeCorrelationId: "" },
-    capabilities: () => ({}),
-    isInvalidRunnerTokenError: () => false,
-    clearRunnerCredentials() {},
-    saveTokenFile() {},
-    traceEntry() {},
-    traceRequestId: () => "qa-request-id",
-    errorFromResponse: () => new Error("unexpected HTTP error"),
-    safeJsonParse: () => null,
-    sleep: async () => {},
-    performance,
-  });
+function registrationRuntime(t, fetchImpl) {
   const previousFetch = globalThis.fetch;
-  globalThis.fetch = async () => { fetchCalls += 1; throw new Error("unexpected fetch"); };
-  try {
-    await runtime.registerIfNeeded();
-    assert.equal(fetchCalls, 0);
-  } finally {
+  const previousToken = process.env.QA_REGISTRATION_TOKEN;
+  globalThis.fetch = fetchImpl;
+  process.env.QA_REGISTRATION_TOKEN = "controlled-registration-token";
+  t.after(() => {
     globalThis.fetch = previousFetch;
-  }
+    if (previousToken === undefined) delete process.env.QA_REGISTRATION_TOKEN;
+    else process.env.QA_REGISTRATION_TOKEN = previousToken;
+  });
+  const state = { runnerToken: "", runnerId: "", activeCorrelationId: "registration-correlation" };
+  const saved = [];
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api", REQUEST_TIMEOUT_MS: 20,
+    RUNNER_NAME: "Worker QA", state, tokenPath: "controlled-token-path",
+    capabilities: () => ({ frameworks: ["treseko-api"] }),
+    traceEntry() {}, traceRequestId: () => "registration-request",
+    performance, saveTokenFile: (value) => saved.push(value),
+    safeJsonParse: (value) => { try { return JSON.parse(value); } catch { return null; } },
+    errorFromResponse: (_data, _text, status) => Object.assign(new Error("HTTP failure"), { status }),
+  });
+  return { runtime, state, saved };
+}
+
+test("registration aborts a stalled server and can retry successfully", async (t) => {
+  let calls = 0;
+  const { runtime, state, saved } = registrationRuntime(t, async (_url, options) => {
+    assert.equal(options.headers["X-Correlation-ID"], "registration-correlation");
+    assert.ok(options.signal);
+    if (++calls === 1) {
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+    }
+    return Response.json({ id: "controlled-runner", runner_token: "controlled-runner-token", nombre: "Worker QA" }, { status: 201 });
+  });
+  await assert.rejects(runtime.registerIfNeeded(), { error_code: "UPSTREAM_TIMEOUT", retryable: true });
+  assert.equal(state.runnerToken, "");
+  assert.deepEqual(saved, []);
+  await runtime.registerIfNeeded();
+  assert.equal(state.runnerId, "controlled-runner");
+  assert.deepEqual(saved, ["controlled-runner-token"]);
+});
+
+test("registration rejects malformed responses without saving credentials", async (t) => {
+  const { runtime, state, saved } = registrationRuntime(t, async () => new Response("<html>Unavailable</html>", { status: 502 }));
+  await assert.rejects(runtime.registerIfNeeded(), { error_code: "UPSTREAM_INVALID_RESPONSE", retryable: true });
+  assert.equal(state.runnerToken, "");
+  assert.deepEqual(saved, []);
 });
 
 test("persiste el pairing pendiente antes de esperar la aprobacion", async (t) => {

@@ -1,15 +1,16 @@
-import { Card, Table, Badge, Button } from 'react-bootstrap'
+import { Alert, Card, Table, Badge, Button } from 'react-bootstrap'
 import { RefreshCw, Share2, Copy } from 'lucide-react'
 
 export function SharedReportHistory(options: any) {
   const {
-    canViewSharedReports, t, sharedReportHistory, setShowFullSharedHistory,
+    sharedHistoryError, canViewSharedReports, t, sharedReportHistory, setShowFullSharedHistory,
     showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
     visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
     openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,
   } = options
   const content = !canViewSharedReports ? (
     <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
+
       <h6 className="fw-bold mb-1 text-secondary d-flex align-items-center gap-2">
         <Share2 size={18} /> {t('reportes.sharedHistoryTab')}
       </h6>
@@ -17,6 +18,7 @@ export function SharedReportHistory(options: any) {
     </Card>
   ) : (
   <Card className="border-0 shadow-sm p-4 rounded-3 bg-white mb-4">
+    {sharedHistoryError && <Alert variant="warning" role="alert">{t('reportes.sharedHistoryLoadError')}{sharedReportHistory.length > 0 && <div>{t('reportes.metricsStaleNotice')}</div>}<Button size="sm" variant="outline-primary" disabled={loadingSharedHistory} onClick={() => void loadSharedReportHistory()}>{t('common.retry')}</Button></Alert>}
     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
       <div>
         <h6 className="fw-bold mb-1 text-secondary d-flex align-items-center gap-2">

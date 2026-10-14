@@ -1,21 +1,35 @@
 {
   "name": "treseko-automation-worker",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD) { console.log('Skipping Playwright browser install'); process.exit(0) } process.exit(1)\" || playwright install chromium",
     "test": "node --test src/*.test.mjs",
+    "test:security": "node --test src/postman-security-matrix.test.mjs src/postman-sandbox-security-matrix.test.mjs src/postman-asap-security-matrix.test.mjs src/postman-dynamic-variable-security-matrix.test.mjs src/postman-oauth-security-matrix.test.mjs src/postman-qs-security-matrix.test.mjs src/puppeteer-download-gate-security-matrix.test.mjs src/basic-ftp-listing-redos-security-matrix.test.mjs src/uuid-v4-security-matrix.test.mjs src/node-forge-digest-algorithm-security-matrix.test.mjs src/extract-zip-security-matrix.test.mjs src/faker-helper-rce-security-matrix.test.mjs",
     "start": "node src/worker.mjs",
     "once": "node src/worker.mjs --once",
     "install:browsers": "playwright install chromium && cypress install"
   },
   "dependencies": {
     "cypress": "^15.19.0",
+    "esbuild": "^0.28.1",
     "playwright": "^1.60.0",
     "postman-collection": "^5.1.0",
     "postman-runtime": "^7.56.1",
     "puppeteer": "^23.11.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "yauzl": "^2.10.0",
+    "extract-zip": "file:vendor/extract-zip",
+    "node-forge": "file:vendor/node-forge",
+    "@faker-js/faker": "file:vendor/faker"
+  },
+  "overrides": {
+    "extract-zip": "$extract-zip",
+    "qs": "6.16.0",
+    "basic-ftp": "6.2.1",
+    "uuid": "11.1.1",
+    "node-forge": "$node-forge",
+    "@faker-js/faker": "$@faker-js/faker"
   }
 }

@@ -101,6 +101,14 @@ def _runner_supports_job(runner: models.AutomationRunner, job: models.Automation
         return False
     if frameworks and framework not in {str(item).lower() for item in frameworks}:
         return False
+    if framework == 'playwright' and capabilities.get('browsers') is not None:
+        from ..services.automation_payloads import worker_payload
+        payload = worker_payload(job)
+        variables = payload.get('variables') or {}
+        browser = str(payload.get('browser') or payload.get('browser_name') or variables.get('browser') or variables.get('BROWSER') or 'chromium').lower()
+        browser = {'chrome':'chromium','google-chrome':'chromium','safari':'webkit'}.get(browser,browser)
+        if browser not in capabilities['browsers']:
+            return False
     required_language = _job_required_language(job)
     supported_languages = _capability_languages_for_framework(capabilities, framework)
     if supported_languages and required_language not in supported_languages:
@@ -109,7 +117,7 @@ def _runner_supports_job(runner: models.AutomationRunner, job: models.Automation
     if required_runtime:
         versions = capabilities.get("versions") or {}
         current = str(versions.get(framework, "") or capabilities.get(f"{framework}_version", "")).strip().lower()
-        if current and required_runtime not in {"latest", "latest compatible"} and current != required_runtime:
+        if required_runtime not in {"latest", "latest compatible"} and current != required_runtime:
             return False
     return True
 
@@ -164,6 +172,7 @@ async def _find_compatible_runner_for_job(db: AsyncSession, job: models.Automati
         select(models.AutomationRunner).filter(
             models.AutomationRunner.activo == True,
             models.AutomationRunner.estado.in_(["ONLINE", "BUSY"]),
+            models.AutomationRunner.ultimo_heartbeat >= utc_now() - timedelta(seconds=60),
             # A runner is permanently paired to one solution.  Jobs without a
             # resolved scope are deliberately fail-closed and cannot be
             # assigned by this path.

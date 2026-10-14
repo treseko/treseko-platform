@@ -1,3 +1,4 @@
+import {runIsolatedCommand} from './process-runtime.mjs';
 export function createScriptRuntime(deps) {
   const { capabilities, require, path, spawn, process } = deps;
 
@@ -28,18 +29,18 @@ function normalizeDataset(dataset) {
 }
 
 function compileScript(script) {
-  const source = String(script || "").trim();
-  if (!source) throw new Error("El job no incluye script automatizado");
+  const source = String(script || '').trim();
+  if (!source) throw new Error('El job no incluye script automatizado');
+  const compiler = require('esbuild');
   try {
-    const candidate = new Function(`return (${source});`)();
-    if (typeof candidate === "function") return candidate;
-  } catch {
-    // Si no es una funcion, se ejecuta como cuerpo async.
+    const code = compiler.transformSync(`(${source})`, {loader:'ts',target:'es2022'}).code.trim().replace(/;$/, '');
+    const candidate = new Function(`return ${code};`)();
+    if (typeof candidate === 'function') return candidate;
+  } catch (error) {
+    // Statement scripts are compiled as a TypeScript async function as well.
   }
-  return async (context) => {
-    const runner = new Function("context", `with (context) { return (async () => {\n${source}\n})(); }`);
-    return runner(context);
-  };
+  const code = compiler.transformSync(`async function __job(context) { const {page,browser,variables,dataset,job,assert,log} = context; ${source} }`, {loader:'ts',target:'es2022'}).code;
+  return new Function(`${code}; return __job;`)();
 }
 
 function detectScriptFormat(script) {
@@ -86,6 +87,10 @@ function localWorkerSupports(framework, language) {
   return Array.isArray(matrix[framework]) && matrix[framework].includes(language);
 }
 
+function getPuppeteerExecutablePath(){
+  return process.env.PUPPETEER_EXECUTABLE_PATH || require("puppeteer").executablePath();
+}
+
 function getPlaywrightCliPath() {
   const packagePath = require.resolve("playwright/package.json");
   return path.join(path.dirname(packagePath), "cli.js");
@@ -127,52 +132,12 @@ function preparePlaywrightTestSource(script, variables) {
 }
 
 function runCommand(command, args, options = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      env: sanitizeChildEnv(options.env || process.env),
-      windowsHide: true,
-      detached: process.platform !== "win32",
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      terminateProcessTree(child, process);
-    }, options.timeoutMs || 300000);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ code: 1, stdout, stderr: `${stderr}\n${error.stack || error.message}`, timedOut });
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 1, stdout, stderr, timedOut });
-    });
-  });
+  return runIsolatedCommand({spawn, process, sanitizeChildEnv}, command, args, options);
 }
 
 function sanitizeChildEnv(source = {}) {
   const secretName = /(TOKEN|SECRET|PASSWORD|API[_-]?KEY|CREDENTIAL|PRIVATE[_-]?KEY|AUTHORIZATION)/i;
   return Object.fromEntries(Object.entries(source).filter(([key]) => !secretName.test(key)));
-}
-
-function terminateProcessTree(child, runtimeProcess) {
-  if (runtimeProcess.platform === "win32") {
-    try { child.kill("SIGTERM"); } catch { /* already exited */ }
-    return;
-  }
-  try { runtimeProcess.kill(-child.pid, "SIGTERM"); } catch { try { child.kill("SIGTERM"); } catch { /* already exited */ } }
-  setTimeout(() => {
-    try { runtimeProcess.kill(-child.pid, "SIGKILL"); } catch { /* already exited */ }
-  }, 1000).unref?.();
 }
 
 function executableScriptFile(script) {
@@ -194,10 +159,11 @@ function serializeJsonForSource(value) {
 }
 
 function prepareNodeScriptSource(script, variables, job, framework) {
+  const {lease_token, ...businessJob} = job || {};
   return [
     `globalThis.variables = ${serializeJsonForSource(variables)};`,
     "globalThis.dataset = globalThis.variables;",
-    `globalThis.job = ${serializeJsonForSource(job)};`,
+    `globalThis.job = ${serializeJsonForSource(businessJob)};`,
     `globalThis.QA_FRAMEWORK = ${JSON.stringify(framework)};`,
     "globalThis.QA_ARTIFACTS_DIR = process.env.QA_ARTIFACTS_DIR;",
     "globalThis.captureScreenshot = async (page, name = 'screenshot.png') => {",
@@ -211,12 +177,13 @@ function prepareNodeScriptSource(script, variables, job, framework) {
 }
 
 function prepareSeleniumPythonSource(script, variables, job) {
+  const {lease_token, ...businessJob} = job || {};
   return [
     "import json",
     "import os",
     `variables = json.loads(${JSON.stringify(JSON.stringify(variables || {}))})`,
     "dataset = variables",
-    `job = json.loads(${JSON.stringify(JSON.stringify(job || {}))})`,
+    `job = json.loads(${JSON.stringify(JSON.stringify(businessJob))})`,
     "QA_ARTIFACTS_DIR = os.environ.get('QA_ARTIFACTS_DIR')",
     "QA_HEADLESS = os.environ.get('QA_HEADLESS') == 'true'",
     "def capture_screenshot(driver, name='screenshot.png'):",
@@ -234,7 +201,7 @@ function prepareSeleniumPythonSource(script, variables, job) {
   return {
     getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
     playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
-    getPlaywrightCliPath, getPackageBinPath, getPlaywrightTestRequirePath,
+    getPlaywrightCliPath, getPuppeteerExecutablePath, getPackageBinPath, getPlaywrightTestRequirePath,
     preparePlaywrightTestSource, runCommand, sanitizeChildEnv, executableScriptFile, scriptFileForJob,
     serializeJsonForSource, prepareNodeScriptSource, prepareSeleniumPythonSource,
   };

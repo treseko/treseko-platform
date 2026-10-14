@@ -68,6 +68,11 @@ export function ProjectPortfolioGrid({ context }: { context: any }) {
                   message={t('proyectos.selectSolution')}
                   detail={t('proyectos.selectSolutionDetail')}
                 />
+              ) : !projectsLoading && !projectsList.some(p => p.orgId === currentOrgId) ? (
+                <WorkspaceContextEmptyState
+                  message={t('proyectos.noProjectsInSolution')}
+                  detail={t(canEditProjectPortfolio ? 'proyectos.createFirstProjectHint' : 'proyectos.askForFirstProjectHint')}
+                />
               ) : <Row className="g-4 text-start overflow-auto pb-4 flex-grow-1">
                 {projectsList.filter(p => p.orgId === currentOrgId).map(p => {
                   const orgName = organizations.find(o => o.id === p.orgId)?.name || t('proyectos.defaultOrganization');

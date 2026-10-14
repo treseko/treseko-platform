@@ -16,6 +16,18 @@ custom metadata.
 
 ## Create or update an asset
 
+Categories are stored on the server per project and shared with authorized
+users. Names cannot be repeated within the same project. Editing an asset saves
+its fields and endpoints together; validation failures keep the form open.
+
+Use **View asset** to inspect all fields without editing. Readers can also use
+this action. Parent relationships reject cycles and assets from other projects.
+
+Older assets may retain a category whose name existed only in the browser
+session. These display a previous category with no available name. Editing
+preserves its identifier unless you choose a new category. Lost historical
+names are not reconstructed automatically.
+
 1. Open **Inventory** with the correct project.
 2. Choose a category.
 3. Select **New asset** or open an existing one.

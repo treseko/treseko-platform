@@ -350,7 +350,7 @@ async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
     row.capabilities_json = {
         **(row.capabilities_json or {}),
         "text": True,
-        "structured_json": True,
+        "structured_json": provider_capabilities.get("structured_json") is True if isinstance(provider_capabilities, dict) else False,
         "vision": bool(provider_capabilities.get("vision")) if isinstance(provider_capabilities, dict) else False,
         "vision_status": vision_status if vision_status in {"verified", "unsupported", "unknown"} else "unknown",
         "verified_at": utc_now().isoformat(),
@@ -363,15 +363,16 @@ async def test_ai_provider_profile(db: AsyncSession, profile_id: UUID) -> dict:
 
 async def workflow_provider_payload(db: AsyncSession, workflow: models.AiWorkflow, legacy_config: dict) -> dict:
     """Resolve one workflow provider plus its explicit technical fallbacks."""
-    if not workflow.provider_profile_id:
+    profile_id = workflow.provider_profile_id or legacy_config.get("active_provider_profile_id")
+    if not profile_id:
         return {
             "provider": legacy_config.get("provider"), "llm_endpoint": legacy_config.get("llm_endpoint"),
             "model": legacy_config.get("model"),
             "provider_api_key": get_configured_ai_provider_api_key(legacy_config, legacy_config.get("provider")),
             "provider_fallbacks": [],
         }
-    primary = await resolved_ai_provider_profile(db, workflow.provider_profile_id)
-    fallbacks, seen = [], {str(workflow.provider_profile_id)}
+    primary = await resolved_ai_provider_profile(db, UUID(str(profile_id)))
+    fallbacks, seen = [], {str(profile_id)}
     for raw_id in workflow.fallback_profile_ids or []:
         if str(raw_id) in seen:
             continue
@@ -387,6 +388,7 @@ async def workflow_provider_payload(db: AsyncSession, workflow: models.AiWorkflo
         "llm_endpoint": primary["endpoint"], "model": primary["model"],
         "provider_api_key": primary["api_key"], "provider_fallbacks": fallbacks,
         "provider_max_retries": primary["max_retries"],
+        "provider_request_timeout_seconds": primary["request_timeout_seconds"],
     }
 
 

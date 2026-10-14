@@ -381,7 +381,7 @@ export function CaseApiCard({ context }: { context: any }) {
         </section>
 
         <section className="api-response-section" aria-labelledby="api-response-title">
-          <div className="d-flex align-items-start gap-2 mb-3">
+          <div className="api-section-heading d-flex align-items-start gap-2 mb-3">
             <div>
               <div id="api-response-title" className="fw-semibold">{t('casos.apiExpectedResponse')}</div>
               <div className="small text-muted">{t('casos.apiExpectedResponseHelp')}</div>

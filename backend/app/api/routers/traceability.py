@@ -7,6 +7,8 @@ from ...services.edition.entitlement_service import require_feature
 
 
 router = APIRouter(tags=["Trazabilidad"])
+from .generation_reviews import router as generation_reviews_router
+router.include_router(generation_reviews_router)
 
 
 async def _require_requirement(db, user, requisito_id, level="read"):
@@ -25,24 +27,35 @@ async def _require_story(db, user, historia_id, level="read"):
     return item
 
 
-async def _audit(db, user, action, resource, resource_id, project_id, details=None):
+async def _audit(db, user, action, resource, resource_id, project_id, details=None, *, commit=True):
     await crud.create_audit_log(
         db=db, usuario_id=user.id, accion=action, recurso=resource, recurso_id=resource_id,
-        detalles={"proyecto_id": str(project_id), **(details or {})}, ip_address="api",
+        detalles={"proyecto_id": str(project_id), **(details or {})}, ip_address="api", commit=commit,
     )
+
+
+async def _commit_authoring(db, *args, **kwargs):
+    try:
+        if not db.info.get("generation_replayed", False):
+            await _audit(db, *args, **kwargs, commit=False)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Authoring transaction failed")
+        raise HTTPException(status_code=503, detail="No se pudo guardar; no se aplicaron cambios. Reintenta.") from exc
+
+
+async def _publish_authoring(project_id, event, **kwargs):
+    try:
+        await realtime_event_bus.publish(project_id, event, **kwargs)
+    except Exception:
+        logger.exception("Authoring notification failed after commit")
 
 
 async def _publish_traceability_change(item, current_user, resource, action, payload=None):
-    """Notify project clients after the transaction and audit record are persisted."""
-    await realtime_event_bus.publish(
-        item.proyecto_id,
-        f"traceability.{resource}.{action}",
+    await _publish_authoring(item.proyecto_id, f"traceability.{resource}.{action}",
         actor_id=current_user.id,
-        payload={
-            resource: {"id": str(item.id), "codigo": getattr(item, "codigo", None)},
-            **(payload or {}),
-        },
-    )
+        payload={resource: {"id": str(item.id), "codigo": getattr(item, "codigo", None)}, **(payload or {})})
 
 
 @router.get("/proyectos/{proyecto_id}/requisitos/")
@@ -62,10 +75,11 @@ async def create_requisito(
 ):
     await access_control.require_project_access(db, current_user, payload.proyecto_id, "edit")
     try:
-        item = await crud.create_requisito(db, payload, current_user.id)
+        item = await crud.create_requisito(db, payload, current_user.id, commit=False)
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "CREATE", "requisito", item.id, item.proyecto_id, {"codigo": item.codigo})
+    await _commit_authoring(db, current_user, "CREATE", "requisito", item.id, item.proyecto_id, {"codigo": item.codigo})
     await _publish_traceability_change(item, current_user, "requirement", "created")
     return crud._requirement_payload(item)
 
@@ -86,10 +100,11 @@ async def update_requisito(
 ):
     item = await _require_requirement(db, current_user, requisito_id, "edit")
     try:
-        updated = await crud.update_requisito(db, item, payload, current_user.id)
+        updated = await crud.update_requisito(db, item, payload, current_user.id, commit=False)
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "UPDATE", "requisito", requisito_id, updated.proyecto_id)
+    await _commit_authoring(db, current_user, "UPDATE", "requisito", requisito_id, updated.proyecto_id)
     await _publish_traceability_change(updated, current_user, "requirement", "updated")
     return crud._requirement_payload(updated)
 
@@ -149,10 +164,11 @@ async def create_historia(
 ):
     await access_control.require_project_access(db, current_user, payload.proyecto_id, "edit")
     try:
-        item = await crud.create_historia(db, payload, current_user.id)
+        item = await crud.create_historia(db, payload, current_user.id, commit=False)
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "CREATE", "historia", item.id, item.proyecto_id, {"codigo": item.codigo})
+    await _commit_authoring(db, current_user, "CREATE", "historia", item.id, item.proyecto_id, {"codigo": item.codigo})
     await _publish_traceability_change(item, current_user, "story", "created")
     return {**crud._story_payload(item), "criterios_estructurados_count": len(payload.acceptance_criteria)}
 
@@ -173,10 +189,11 @@ async def update_historia(
 ):
     item = await _require_story(db, current_user, historia_id, "edit")
     try:
-        updated = await crud.update_historia(db, item, payload, current_user.id)
+        updated = await crud.update_historia(db, item, payload, current_user.id, commit=False)
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "UPDATE", "historia", historia_id, updated.proyecto_id)
+    await _commit_authoring(db, current_user, "UPDATE", "historia", historia_id, updated.proyecto_id)
     await _publish_traceability_change(updated, current_user, "story", "updated")
     return crud._story_payload(updated)
 
@@ -377,16 +394,16 @@ async def apply_generated_stories(
     if not generation:
         raise HTTPException(status_code=404, detail="Generación no encontrada")
     await access_control.require_project_access(db, current_user, generation.proyecto_id, "edit")
-    if generation.estado != "LISTA_PARA_REVISION":
+    if generation.estado not in {"LISTA_PARA_REVISION", "APLICADA"}:
         raise HTTPException(status_code=400, detail="La generación no tiene propuestas disponibles para aplicar")
     try:
-        created = await crud.apply_story_generation(db, generation, payload.historias, current_user.id)
+        created = await crud.apply_story_generation(db, generation, payload.historias, current_user.id, commit=False)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "APPLY", "historia_generacion", generation.id, generation.proyecto_id, {"historias": [item["codigo"] for item in created]})
-    for item in created:
-        await realtime_event_bus.publish(generation.proyecto_id, "traceability.story.created", actor_id=current_user.id, payload={"resource": {"id": str(item["id"]), "codigo": item["codigo"]}, "source": "ai_generation"})
+    await _commit_authoring(db, current_user, "APPLY", "historia_generacion", generation.id, generation.proyecto_id, {"historias": [item["codigo"] for item in created]})
+    for item in ([] if db.info.get("generation_replayed") else created):
+        await _publish_authoring(generation.proyecto_id, "traceability.story.created", actor_id=current_user.id, payload={"resource": {"id": str(item["id"]), "codigo": item["codigo"]}, "source": "ai_generation"})
     return {"historias": created}
 
 
@@ -474,10 +491,10 @@ async def apply_generated_cases(
     if not auth.has_capability_permission(current_user, "crear_pruebas.casos", "edit") or not auth.has_capability_permission(current_user, "crear_pruebas.trazabilidad", "edit"):
         raise HTTPException(status_code=403, detail="Necesitas permisos para crear y trazar casos de prueba")
     try:
-        created = await crud.apply_case_generation(db, item, payload, current_user.id)
+        created = await crud.apply_case_generation(db, item, payload, current_user.id, commit=False)
     except ValueError as exc:
         await db.rollback(); raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await _audit(db, current_user, "APPLY", "caso_generacion", item.id, item.proyecto_id, {"casos": [case["codigo"] for case in created]})
-    for case in created:
-        await realtime_event_bus.publish(item.proyecto_id, "traceability.case.created", actor_id=current_user.id, payload={"resource": {"id": str(case["id"]), "codigo": case["codigo"]}, "source": "ai_case_generation"})
+    await _commit_authoring(db, current_user, "APPLY", "caso_generacion", item.id, item.proyecto_id, {"casos": [case["codigo"] for case in created]})
+    for case in ([] if db.info.get("generation_replayed") else created):
+        await _publish_authoring(item.proyecto_id, "traceability.case.created", actor_id=current_user.id, payload={"resource": {"id": str(case["id"]), "codigo": case["codigo"]}, "source": "ai_case_generation"})
     return {"casos": created}

@@ -27,68 +27,18 @@ from ...services.api_dynamic_variables import (
     dynamic_catalog,
 )
 from ...services import case_portability
+from ...api.api_test_progress import _api_progress_item, _api_progress_status
 
 
 router = APIRouter(tags=["API Tests"])
 
 
-def _api_progress_status(execution: models.EjecucionCaso) -> str:
-    """Map the persisted execution/result state to the API monitor contract."""
-    result_status = str((execution.api_resultado or {}).get("status") or "").upper()
-    if result_status == "RUNNING":
-        return "RUNNING"
-    if result_status == "ERROR":
-        return "ERROR"
-    execution_status = execution.estado_resultado.value if hasattr(execution.estado_resultado, "value") else str(execution.estado_resultado or "")
-    return {
-        models.EstadoResultado.PASO.value: "PASSED",
-        models.EstadoResultado.FALLO.value: "FAILED",
-        models.EstadoResultado.BLOQUEADO.value: "BLOCKED",
-        models.EstadoResultado.EJECUTANDO_AI.value: "RUNNING",
-    }.get(execution_status, "PENDING")
-
-
-def _api_progress_item(execution: models.EjecucionCaso, case: models.CasoPrueba) -> dict[str, Any]:
-    result = execution.api_resultado or {}
-    steps = result.get("steps") or []
-    definition = getattr(execution, "api_config_snapshot", None) or getattr(case, "configuracion_api", None) or {}
-    schema_version = str(definition.get("schema_version") or "treseko.api-test/v1")
-    framework_version = schema_version.rsplit("/v", 1)[-1] if "/v" in schema_version else "1"
-    assertions = [
-        assertion
-        for step in steps
-        if isinstance(step, dict)
-        for assertion in (step.get("assertions") or [])
-        if isinstance(assertion, dict)
-    ]
-    errors = result.get("errors") or []
-    error_message = errors[0].get("error") if errors and isinstance(errors[0], dict) else (str(errors[0]) if errors else None)
-    assertion_passed = sum(1 for item in assertions if str(item.get("status")).upper() == "PASSED")
-    assertion_failed = sum(1 for item in assertions if str(item.get("status")).upper() == "FAILED")
-    return {
-        "case_id": str(case.id),
-        "case_code": case.codigo,
-        "case_title": case.titulo,
-        "status": _api_progress_status(execution),
-        "framework": f"HTTP/REST · v{framework_version}",
-        "executor": "API runner",
-        "http_status": next(
-            (step.get("response", {}).get("status") for step in steps if isinstance(step, dict) and isinstance(step.get("response"), dict)),
-            None,
-        ),
-        "duration_ms": result.get("duration_ms") or max(0, int(execution.duracion_segundos or 0) * 1000),
-        "assertions_passed": assertion_passed,
-        "assertions_failed": assertion_failed,
-        "message": execution.observaciones or error_message,
-    }
-
-
-async def _execute_api_suite_background(run_id: UUID, user_id: UUID, case_ids: list[UUID], dynamic_seed: str | None = None) -> None:
+async def _execute_api_suite_background(run_id: UUID, user_id: UUID, case_ids: list[UUID], dynamic_seed: str | None = None, *, frozen_definitions: dict[str, Any] | None = None) -> None:
     """Execute an API batch outside the request and commit progress per case."""
     async with AsyncSessionLocal() as db:
         run = await db.get(models.TestRun, run_id)
         user = await db.get(models.Usuario, user_id)
-        if not run or not user:
+        if not run or not user or run.estado_run == models.EstadoRun.CERRADO:
             return
         environment = await db.get(models.Entorno, run.entorno_id)
         if not environment:
@@ -119,6 +69,11 @@ async def _execute_api_suite_background(run_id: UUID, user_id: UUID, case_ids: l
         await db.commit()
 
         for case_id in case_ids:
+            # Expire the identity-map copy: cancellation can come from another
+            # backend worker while the previous HTTP request is in flight.
+            await db.refresh(run)
+            if run.estado_run == models.EstadoRun.CERRADO:
+                return
             case = cases_by_id.get(case_id)
             execution = executions_by_case.get(case_id)
             if not case or not execution:
@@ -141,6 +96,7 @@ async def _execute_api_suite_background(run_id: UUID, user_id: UUID, case_ids: l
                     user,
                     shared_variables=shared_variables,
                     dynamic_seed=dynamic_seed,
+                    definition_snapshot=frozen_definitions.get(str(case_id)) if frozen_definitions is not None else None,
                 )
             except Exception as exc:  # keep the batch moving and expose a case-level error
                 await db.rollback()
@@ -160,9 +116,11 @@ async def _execute_api_suite_background(run_id: UUID, user_id: UUID, case_ids: l
                 case.ultima_ejecucion_fecha = execution.fecha_ejecucion
             await db.commit()
 
-        run.estado_run = models.EstadoRun.CERRADO
-        run.fecha_cierre = utc_now()
-        await db.commit()
+        await db.refresh(run)
+        if run.estado_run != models.EstadoRun.CERRADO:
+            run.estado_run = models.EstadoRun.CERRADO
+            run.fecha_cierre = utc_now()
+            await db.commit()
 
 
 def _require_api_execution_capability(current_user: models.Usuario, origin: str) -> None:
@@ -361,8 +319,9 @@ async def _execute_api_case(
     current_user: models.Usuario,
     shared_variables: dict[str, Any] | None = None,
     dynamic_seed: str | None = None,
+    definition_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    definition = copy.deepcopy(case.configuracion_api or {})
+    definition = copy.deepcopy(definition_snapshot if definition_snapshot is not None else case.configuracion_api or {})
     case_dynamic_seed = derive_case_dynamic_seed(
         getattr(run, "dynamic_seed", None) or dynamic_seed,
         str(case.id),

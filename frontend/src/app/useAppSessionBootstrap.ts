@@ -50,6 +50,8 @@ export function useAppSessionBootstrap(options: any) {
     const currentProject = projectsList.find((project: any) => project.id === currentProjectId)
     if (currentProject) return
     const orgProject = projectsList.find((project: any) => project.orgId === currentOrgId)
+    // A deliberately selected empty organization must remain selected.
+    if (currentOrgId && !orgProject) return
     const fallbackProject = orgProject || projectsList[0]
     if (!fallbackProject) return
     setCurrentProjectId(fallbackProject.id)

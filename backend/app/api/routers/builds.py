@@ -183,7 +183,10 @@ async def delete_build(
     db_build = await access_control.require_build_access(db, current_user, build_id, "edit")
     if not access_control.is_build_active(db_build):
         raise HTTPException(status_code=409, detail="La build está inactiva. Las builds históricas no se pueden eliminar.")
-    deleted = await crud.delete_build(db=db, build_id=build_id)
+    try:
+        deleted = await crud.delete_build(db=db, build_id=build_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Build no encontrada")
     await realtime_event_bus.publish(

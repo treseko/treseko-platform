@@ -33,7 +33,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
     handleRunSavedAutomatedCaseFromEditor, handleSaveTest, handleSelectTestForExecution, handleSetOrganizationActive, handleSnapshotAttachmentUpload, handleSnapshotNoteBlur, handleSnapshotNoteChange, handleSnapshotStatusChange,
     handleStepInputChange, handleUpdateOrganization, hasSystemFeature, hasUnsavedCaseChanges, historialInitialFilters, iaExecutionStreams, iaLogs, iaStatus,
     inventoryCategories, isOutdatedExecutionCase, linkExecutionToExistingBug, loadCasosFromBackend, loadOrganizationsFromBackend, loadProjectMetrics, loadProjectRunHistory, loadRelatedBugsForSelectedCase,
-    loadTestRunDetail, loggedUser, managingProjectId, markHistorialAiReviewed, metricsLoading, moveStepInput, newTestComponent, newTestCriticality,
+    loadTestRunDetail, loggedUser, managingProjectId, markHistorialAiReviewed, metricsError, metricsLoading, moveStepInput, newTestComponent, newTestCriticality,
     newTestData, newTestDescription, newTestFramework, newTestLanguage, newTestPost, newTestPre, newTestPriority, newTestScript,
     newTestStatus, newTestSteps, newTestSuite, newTestSuiteSub, newTestTags, newTestTitle, newTestType, openBugsByCase,
     openBugsLoading, openBuildCasesModal, openCreateSuiteModal, openExecutionRunDetail, openExecutionSelector, openHistorialRuns, openIaSchedulerFromWorkflowBuilder, openInternalBugReportFromPrompt,
@@ -114,7 +114,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       <ReportesRoute
         {...{
           activeTab,
-          metricsLoading,
+          metricsError, metricsLoading,
           projectMetrics,
           expandedMetricSuites,
           setExpandedMetricSuites,
@@ -148,6 +148,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       {/* BUG TRACKER */}
       {activeTab === "bugs" && (
         <BugTrackerPage
+          hasSystemFeature={hasSystemFeature}
           currentProjectId={currentProjectId}
           currentUserId={loggedUser?.id}
           currentBuildId={currentBuildId}
@@ -174,6 +175,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       {/* CENTRO DE INCIDENCIAS */}
       {activeTab === "incidencias" && (
         <IncidentCenterPage
+          hasSystemFeature={hasSystemFeature}
           deepLinkBugId={deepLinkBugId}
           onDeepLinkConsumed={consumeDeepLinkBug}
           projects={projectsList}
@@ -190,6 +192,8 @@ export function AppRouteModuleContent({ options }: { options: any }) {
       )}
       {executionBugDetailId && (
         <BugTrackerPage
+          hasSystemFeature={hasSystemFeature}
+          currentUserId={loggedUser?.id}
           currentProjectId={currentProjectId}
           currentBuildId={currentBuildId}
           currentCompId={currentCompId}
@@ -254,6 +258,7 @@ export function AppRouteModuleContent({ options }: { options: any }) {
 
       {/* HISTORIAL RUNS */}
       <HistorialRoute
+        historyState={options.historyState}
         {...{
           activeTab,
           currentProjectId,

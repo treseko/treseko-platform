@@ -306,3 +306,60 @@ test('el conteo de tarjetas no incluye elementos internos con el mismo prefijo',
   assert.equal(evaluation.ok, true);
   assert.equal(evaluation.results[0]?.reason, 'element_count cumplida (observado: 1)');
 });
+
+
+test('claims require semantic evidence even when all words occur in a negated sentence', async () => {
+  const { deterministicRecoveryAction } = await import('./step-runner-recovery.ts');
+  const step = { number: 1, data: 'expected_false_claim=el pago fue aprobado', expected: 'El pago fue aprobado' };
+  const observation: any = { url: 'https://example.test', title: '', readyState: 'complete', loadingSignals: [],
+    dialogs: [], visibleText: ['El pago no fue aprobado'], bodyText: 'El pago no fue aprobado', elements: [], forms: [] };
+  const action = deterministicRecoveryAction(step, observation);
+  assert.equal(action?.action, 'finish');
+  assert.match(action?.reason || '', /pendiente de auditoria/);
+  const contract = buildStepContract(step);
+  assert.equal(contract.requires_semantic_audit, true);
+  assert.equal(evaluateStepContract(contract, observation, observation).conclusive, false);
+});
+
+test('an empty or loading cart snapshot cannot prove an empty cart', () => {
+  const step = { number: 1, expected: 'No se muestran productos en el carrito.' };
+  const observation: any = { url: 'https://example.test/cart', title: '', readyState: 'loading', loadingSignals: ['spinner'],
+    dialogs: [], visibleText: [], bodyText: '', elements: [], forms: [] };
+  const contract = buildStepContract(step);
+  assert.equal(contract.coverage, 'none');
+  assert.match(contract.unresolved_fragments.join(' '), /evidencia positiva/);
+  assert.equal(evaluateStepContract(contract, observation, observation).conclusive, false);
+});
+
+test('coordinate recovery uses the unique fresh target and rejects disappearance, ambiguity and loading', async () => {
+  const { refreshCoordinateTarget } = await import('./coordinate-click-safety.ts');
+  const old: any = { ref: 'old', tag: 'button', name: 'Save', visible: true, disabled: false, bbox: { x: 0, y: 0, width: 10, height: 10 } };
+  const fresh = { ...old, ref: 'new', bbox: { x: 100, y: 200, width: 20, height: 40 } };
+  const before: any = { url: 'https://example.test', readyState: 'complete', loadingSignals: [], elements: [old] };
+  const after = { ...before, elements: [fresh] };
+  const action: any = { action: 'click', target_ref: 'old', x: 5, y: 5, confidence: 95, reason: 'Save', step_number: 1 };
+  assert.deepEqual([refreshCoordinateTarget(action, before, after)?.x, refreshCoordinateTarget(action, before, after)?.y], [110, 220]);
+  assert.equal(refreshCoordinateTarget(action, before, { ...after, elements: [] }), null);
+  assert.equal(refreshCoordinateTarget(action, before, { ...after, elements: [fresh, { ...fresh, ref: 'another' }] }), null);
+  assert.equal(refreshCoordinateTarget(action, before, { ...after, loadingSignals: ['spinner'] }), null);
+  assert.equal(refreshCoordinateTarget({ ...action, target_ref: 'missing' }, before, after), null);
+});
+
+test('internal scores retain the terminal source rather than averaging guesses', async () => {
+  const { confidenceFromHistory } = await import('./step-runner-helpers.ts');
+  assert.equal(confidenceFromHistory([{ action: { confidence: 99 } }, { action: { confidence: 20 } }] as any), 20);
+  assert.equal(confidenceFromHistory([{ action: { confidence: 99 } }, { action: { confidence: 0 } }] as any), 0);
+});
+
+test('calibration requires independent reviewed evidence and keeps sources separate', async () => {
+  const { calibrateInternalScores } = await import('../calibrate-internal-scores.ts');
+  const sample: any = { execution_id: 'run-1', source: 'model', model: 'local-model', workflow_version: 'v1',
+    score: 95, predicted_status: 'PASO', reviewed_status: 'FALLO', reviewed_by: 'reviewer', evidence_refs: ['step-1'] };
+  const report = calibrateInternalScores([sample, { ...sample, execution_id: 'run-2', source: 'rules', reviewed_status: 'PASO' }]);
+  assert.equal(report.runtime_applied, false);
+  assert.equal(report.bins.length, 2);
+  assert.equal(report.bins[0]?.observed_agreement, 0);
+  assert.equal(report.bins[1]?.observed_agreement, 1);
+  assert.throws(() => calibrateInternalScores([sample, sample]), /Duplicate/);
+  assert.throws(() => calibrateInternalScores([{ ...sample, reviewed_by: '' }]), /unreviewed/);
+});

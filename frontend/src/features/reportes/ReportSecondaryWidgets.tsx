@@ -24,13 +24,13 @@ export function ReportSecondaryWidgets(options: any) {
   }
   return [
 renderReportesWidget('buildComparison', (() => {
-  const buildHistory = filterAvailableBuildHistoryRows(normalizeBuildHistoryRows(Array.isArray(projectMetrics.historico_versions) ? projectMetrics.historico_versions : []), projectMetrics.build_id)
+  const buildHistory = normalizeBuildHistoryRows(Array.isArray(projectMetrics.historico_versions) ? projectMetrics.historico_versions : [])
   const currentIndex = buildHistory.findIndex((item: any) => item.build_id === projectMetrics.build_id)
   const current = currentIndex >= 0 ? buildHistory[currentIndex] : undefined
   const previousBuildId = comparison?.previous_build_id
   const previous = previousBuildId
     ? buildHistory.find((item: any) => item.build_id === previousBuildId)
-    : currentIndex >= 0 ? buildHistory[currentIndex + 1] : undefined
+    : undefined
   if (!current || !previous) {
     return (
       <Row className="g-4 mb-4">
@@ -244,7 +244,7 @@ renderReportesWidget('suites', suiteTree.length > 0 ? (
 
 
 (() => {
-  const buildHistory = filterAvailableBuildHistoryRows(normalizeBuildHistoryRows(Array.isArray(projectMetrics.historico_versions) ? projectMetrics.historico_versions : []), projectMetrics.build_id)
+  const buildHistory = normalizeBuildHistoryRows(Array.isArray(projectMetrics.historico_versions) ? projectMetrics.historico_versions : [])
   const trendData = sortBuildHistoryRows(buildHistory)
   const hasTrendSeries = trendData.some((item) => item.pasados > 0 || item.fallados > 0 || item.bloqueados > 0 || item.bugs_resueltos > 0 || item.bugs_reabiertos > 0)
   const hasBugTrend = trendData.some((item) => item.bugs_resueltos > 0 || item.bugs_reabiertos > 0)

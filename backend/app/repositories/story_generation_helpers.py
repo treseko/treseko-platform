@@ -17,6 +17,7 @@ from .ai_workflows import get_ai_workflow
 from .ai_provider_profiles import workflow_provider_payload
 from .traceability_records import _next_code, _story_payload
 from .story_authoring_rules import find_title_similarities, validate_proposal
+from .generation_semantic_review import effective_audit_runtime
 
 
 def _generation_payload(item):
@@ -83,12 +84,13 @@ async def _build_context(db, requirement, wiki_page_ids, component_ids):
         ))).scalars().all()
         if len(rows) != len(set(wiki_page_ids)):
             raise ValueError("Las páginas Wiki seleccionadas deben pertenecer al proyecto.")
-        wiki_pages = [{"id": str(item.id), "titulo": item.titulo, "contenido": (item.contenido or "")[:12000]} for item in rows]
+        wiki_pages = [{"id": str(item.id), "titulo": item.titulo, "contenido": item.contenido or ""} for item in rows]
     return {
+        "context_version": 2,
         "requisito": {
             "id": str(requirement.id), "codigo": requirement.codigo, "titulo": requirement.titulo,
             "descripcion_markdown": requirement.descripcion_markdown or "", "prioridad": requirement.prioridad,
-            "estado": requirement.estado, "referencia_externa": {
+            "estado": requirement.estado, "revision": requirement.ultima_actualizacion.isoformat(), "referencia_externa": {
                 "provider": requirement.external_provider, "reference": requirement.external_reference,
                 "url": requirement.external_url,
             },
@@ -109,7 +111,7 @@ async def _call_engine(
     total_stories=None,
 ):
     config = await get_ai_engine_config(db)
-    timeout_seconds = max(30, min(int(config.get("timeout_seconds") or 300), 900))
+    timeout_seconds = max(30, min(int(config.get("timeout_seconds") or 300), 7200))
     context_window_tokens = max(1024, int(config.get("context_window_tokens") or 8192))
     # Keep room for the governed prompts and source data. The Engine enforces
     # its own absolute output cap as a second line of defence.
@@ -145,6 +147,10 @@ async def _call_engine(
             error_code = ""
         if error_code == "STORY_ANALYSIS_CONTRACT_INVALID":
             raise ValueError("El análisis de IA quedó incompleto después de un reintento. Vuelve a analizar el requisito.")
+        if error_code == "GENERATION_CONTEXT_LIMIT_EXCEEDED":
+            raise ValueError("El contexto completo excede el presupuesto del modelo. Selecciona menos fuentes o un modelo con mayor ventana; no se omitieron fuentes en silencio.")
+        if error_code == "GENERATION_SOURCE_EXTRACTION_INCOMPLETE":
+            raise ValueError("La extracción de reglas quedó incompleta o sin citas verificables. Reintenta o selecciona menos fuentes antes de continuar.")
         if error_code == "STORY_GENERATION_CONTRACT_INVALID":
             issues = [str(item).strip() for item in (error_payload.get("contract_issues") or []) if str(item).strip()]
             detail = f" Detalle: {' '.join(issues[:3])}" if issues else ""
@@ -166,14 +172,16 @@ def _json_safe(value):
 
 
 def _safe_error(exc):
-    return str(exc).replace("\n", " ")[:500]
+    if isinstance(exc, httpx.TimeoutException):
+        return "El Motor IA no respondió dentro del tiempo de espera configurado."
+    message = str(exc).replace("\n", " ").strip()
+    return message[:500] if message else "La generación no se pudo completar. Revisa el Motor IA y vuelve a intentarlo."
 
 
 def _persist_engine_audit(run, workflow, result, config):
     metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
-    run.provider = config.get("provider")
-    run.model = config.get("model")
-    run.temperature = config.get("temperature")
+    runtime = effective_audit_runtime(result)
+    run.provider, run.model, run.temperature = runtime["provider"], runtime["model"], runtime["temperature"]
     run.workflow_snapshot = _workflow_definition(workflow)
     run.context_hash = _hash(run.fuente_snapshot or {})
     run.prompt_hash = result.get("prompt_hash") or _hash(run.workflow_snapshot)
@@ -226,7 +234,7 @@ def _analysis_readiness(analysis):
     assumptions = [item for item in (analysis or {}).get("proposed_assumptions", []) if isinstance(item, dict) and str(item.get("id") or "").strip()]
     if readiness == "BLOCKED" and not questions and not assumptions:
         raise ValueError("El análisis quedó bloqueado sin una decisión accionable. Vuelve a analizar el requisito.")
-    if questions and readiness == "READY":
+    if (questions or (analysis or {}).get("proposed_assumptions")) and readiness == "READY":
         # The model may emit contradictory fields. The interactive workflow
         # must never skip a user decision merely because the label is wrong.
         readiness = "NEEDS_CLARIFICATION"
@@ -241,7 +249,12 @@ def _auto_accept_low_risk_assumptions(run, readiness):
     analysis = run.analysis_json or {}
     questions = [str(item).strip() for item in analysis.get("questions", []) if str(item).strip()]
     assumptions = [item for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict) and item.get("id")]
-    if questions or any(str(item.get("risk") or "").upper() in {"HIGH", "CRITICAL"} for item in assumptions):
+    if questions or not assumptions or len(assumptions) != len(analysis.get("proposed_assumptions", [])) or len({str(item["id"]) for item in assumptions}) != len(assumptions) or any(
+        not isinstance(item.get("id"), str) or not item["id"].strip()
+        or not isinstance(item.get("text"), str) or not item["text"].strip()
+        or str(item.get("risk") or "").strip().upper() != "LOW"
+        for item in assumptions
+    ):
         return readiness
     run.accepted_assumption_ids = sorted({str(item["id"]) for item in assumptions})
     analysis["readiness"] = "READY"
@@ -251,15 +264,7 @@ def _auto_accept_low_risk_assumptions(run, readiness):
 
 
 def _repair_traceability_refs(candidates, requirement_code):
-    """Repair only deterministic provenance omissions; never invent behavior."""
-    for candidate in candidates:
-        source_refs = [str(item).strip() for item in candidate.get("source_refs", []) if str(item).strip()]
-        if not source_refs and requirement_code:
-            source_refs = [requirement_code]
-            candidate["source_refs"] = source_refs
-        for criterion in candidate.get("acceptance_criteria") or []:
-            if not criterion.get("source_refs") and not criterion.get("assumption_ids"):
-                criterion["source_refs"] = source_refs or ([requirement_code] if requirement_code else [])
+    """Preserve provenance omissions for explicit review; never fabricate citations."""
     return candidates
 
 

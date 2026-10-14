@@ -34,7 +34,7 @@ export function generateHtml(context: any, duration: string, suiteData: any[]): 
               <div class="flex gap-4">
                 <div class="text-[10px] text-slate-500">Latency: <span class="text-slate-300">${s.metrics?.latencyMs || 0}ms</span></div>
                 <div class="text-[10px] text-slate-500">Tokens: <span class="text-slate-300">${s.metrics?.tokens || 0}</span></div>
-                <div class="text-[10px] text-slate-500">Conf: <span style="color: ${s.confidence > 80 ? '#10b981' : '#f59e0b'}">${s.confidence}%</span></div>
+                <div class="text-[10px] text-slate-500">Internal score (uncalibrated): <span style="color: ${s.confidence > 80 ? '#10b981' : '#f59e0b'}">${s.confidence}/100</span></div>
               </div>
             </div>
           </div>
@@ -87,8 +87,8 @@ export function generateHtml(context: any, duration: string, suiteData: any[]): 
             <div class="pt-4 border-t border-slate-700/50 flex items-center justify-between">
               <div class="flex items-center gap-4">
                 <div class="flex flex-col">
-                  <span class="text-[9px] text-slate-500 font-bold uppercase">Confianza</span>
-                  <span class="text-xs font-bold text-emerald-500">${s.confidence}%</span>
+                  <span class="text-[9px] text-slate-500 font-bold uppercase">Puntuación interna sin calibrar</span>
+                  <span class="text-xs font-bold text-emerald-500">${s.confidence}/100</span>
                 </div>
                 <div class="flex flex-col">
                   <span class="text-[9px] text-slate-500 font-bold uppercase">Latencia</span>
@@ -197,8 +197,8 @@ export function generateHtml(context: any, duration: string, suiteData: any[]): 
                             <div class="text-xs font-mono text-sky-400">${context.modelUsed}</div>
                         </div>
                         <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                            <div class="text-[10px] text-slate-500 mb-1">Audit Confidence</div>
-                            <div class="text-xl font-bold" style="color: ${confidenceColor}">${context.finalConfidence}%</div>
+                            <div class="text-[10px] text-slate-500 mb-1">Audit internal score (uncalibrated)</div>
+                            <div class="text-xl font-bold" style="color: ${confidenceColor}">${context.finalConfidence}/100</div>
                         </div>
                         <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                             <div class="text-[10px] text-slate-500 mb-1">Total Consumption</div>
@@ -277,8 +277,8 @@ export function generateHtml(context: any, duration: string, suiteData: any[]): 
                             </div>
                             <div class="w-px h-10 bg-slate-700"></div>
                             <div class="flex flex-col">
-                                <span class="text-[10px] text-slate-500 font-bold uppercase mb-1">Confianza de IA</span>
-                                <span class="text-2xl font-black text-white tracking-tighter">${context.finalConfidence}%</span>
+                                <span class="text-[10px] text-slate-500 font-bold uppercase mb-1">Puntuación interna sin calibrar</span>
+                                <span class="text-2xl font-black text-white tracking-tighter">${context.finalConfidence}/100</span>
                             </div>
                         </div>
                     </div>

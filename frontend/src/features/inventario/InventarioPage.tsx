@@ -1,22 +1,16 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Card, Col, Form, InputGroup, Modal, Row, Spinner } from 'react-bootstrap'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Card, Spinner } from 'react-bootstrap'
 import {
   Boxes,
   Cpu,
   Database,
-  Edit,
   Globe,
   HardDrive,
-  Info,
   Laptop,
   Network,
-  Plus,
   Router,
-  Search,
   Server,
   Smartphone,
-  Trash2,
-  Wrench
 } from 'lucide-react'
 import { API_BASE } from '../../app/constants'
 import { useI18n } from '../../i18n'
@@ -64,7 +58,7 @@ type InventoryAsset = {
 
 type InventoryModalState = {
   show: boolean
-  mode: 'add' | 'edit'
+  mode: 'add' | 'edit' | 'view'
   preset?: Partial<InventoryAsset>
   asset?: InventoryAsset
 }
@@ -91,30 +85,6 @@ type InventarioPageProps = {
   canAccessCapability?: (capabilityId: any, level?: any) => boolean
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
 }
-
-const ASSET_TYPES = [
-  'Servidor',
-  'Computadora',
-  'Laptop',
-  'Dispositivo movil',
-  'Tablet',
-  'Router/Switch',
-  'Impresora',
-  'Dispositivo IoT',
-  'Nodo de ejecucion',
-  'Maquina virtual',
-  'Contenedor',
-  'Herramienta digital',
-  'Servicio',
-  'API',
-  'Base de datos',
-  'Otro'
-]
-
-const NATURES = ['fisico', 'virtual', 'digital']
-const STATUSES = ['Activo', 'Online', 'Offline', 'Mantenimiento', 'En Pausa', 'Retirado', 'Desconocido']
-const CRITICALITIES = ['Baja', 'Media', 'Alta', 'Critica']
-const ENDPOINT_TYPES = ['ip', 'url', 'hostname', 'dns', 'puerto', 'otro']
 
 const defaultAsset = (projectId: string, preset: Partial<InventoryAsset> = {}): InventoryAsset => ({
   id: '',
@@ -188,16 +158,17 @@ const endpointLabel = (endpoint: InventoryEndpoint) => {
 
 export function InventarioPage({
   currentProjectId,
-  inventoryCategories,
-  setInventoryCategories,
   confirmAction,
-  currentProjectInventoryCategories,
   canAccessCapability,
   fetchWithAuth
 }: InventarioPageProps) {
   const { t } = useI18n()
   const canUseCapability = canAccessCapability || (() => true)
   const canEditInventory = canUseCapability('inventario.categorias', 'edit')
+  const projectRef = useRef(currentProjectId)
+  projectRef.current = currentProjectId
+  const loadVersion = useRef(0)
+  const [categories, setCategories] = useState<any[]>([])
   const [assets, setAssets] = useState<InventoryAsset[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -210,33 +181,67 @@ export function InventarioPage({
 
   const loadAssets = async () => {
     if (!currentProjectId) return
+    const projectId = currentProjectId
+    const version = ++loadVersion.current
+    const isCurrent = () => version === loadVersion.current && projectRef.current === projectId
     setLoading(true)
     setError('')
     try {
+      const categoryResponse = await fetchWithAuth(`${API_BASE}/infraestructura/categorias/?proyecto_id=${encodeURIComponent(projectId)}`)
+      if (!categoryResponse.ok) throw new Error(t('inventario.errorLoading'))
+      const loadedCategories = await categoryResponse.json()
+      if (!Array.isArray(loadedCategories)) throw new Error(t('inventario.errorLoading'))
       const allAssets: InventoryAsset[] = []
       let skip = 0
       while (true) {
-        const response = await fetchWithAuth(`${API_BASE}/infraestructura/activos/?proyecto_id=${encodeURIComponent(currentProjectId)}&skip=${skip}&limit=200`)
+        const response = await fetchWithAuth(`${API_BASE}/infraestructura/activos/?proyecto_id=${encodeURIComponent(projectId)}&skip=${skip}&limit=200`)
         if (!response.ok) {
           const body = await response.json().catch(() => null)
           throw new Error(body?.detail || t('inventario.errorLoading'))
         }
         const page = await response.json()
+        if (!Array.isArray(page)) throw new Error(t('inventario.errorLoading'))
+        if (!isCurrent()) return
         allAssets.push(...page)
-        if (!Array.isArray(page) || page.length < 200) break
+        if (page.length < 200) break
         skip += 200
       }
+      if (!isCurrent()) return
       setAssets(allAssets)
+      setCategories(loadedCategories.map(category => ({ id: category.id, projectId: category.proyecto_id, name: category.nombre, type: 'custom' })))
     } catch (err: any) {
-      setError(err?.message || t('inventario.errorLoading'))
+      if (isCurrent()) setError(err?.message || t('inventario.errorLoading'))
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }
 
   useEffect(() => {
+    setAssets([])
+    setCategories([])
+    hideModal()
+    setError('')
+    setLoading(false)
     loadAssets()
+    return () => { loadVersion.current += 1 }
   }, [currentProjectId])
+
+  const createCategory = async () => {
+    const name = newCategoryName.trim()
+    const projectId = currentProjectId
+    if (!name || !projectId || !canEditInventory || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/infraestructura/categorias/?proyecto_id=${encodeURIComponent(projectId)}`, { method: 'POST', body: JSON.stringify({ nombre: name }) })
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || t('inventario.errorSaving'))
+      if (projectRef.current !== projectId) return
+      setNewCategoryName('')
+      await loadAssets()
+    } catch (err: any) {
+      if (projectRef.current === projectId) setError(err?.message || t('inventario.errorSaving'))
+    } finally { setSaving(false) }
+  }
 
   const parentOptions = useMemo(() => assets.filter(asset => asset.naturaleza !== 'digital'), [assets])
 
@@ -274,6 +279,7 @@ export function InventarioPage({
   }, [assets])
 
   const openAddModal = (preset: Partial<InventoryAsset>) => {
+    setError('')
     if (!currentProjectId) return
     const nextAsset = defaultAsset(currentProjectId, preset)
     setFormAsset(nextAsset)
@@ -281,7 +287,8 @@ export function InventarioPage({
     setModalState({ show: true, mode: 'add', preset })
   }
 
-  const openEditModal = (asset: InventoryAsset) => {
+  const openEditModal = (asset: InventoryAsset, mode: 'edit' | 'view' = 'edit') => {
+    setError('')
     const normalizedEndpoints: InventoryEndpoint[] = asset.endpoints.length
       ? asset.endpoints.map(endpoint => ({ ...endpoint, puerto: typeof endpoint.puerto === 'number' ? endpoint.puerto : '' }))
       : []
@@ -292,7 +299,7 @@ export function InventarioPage({
     }
     setFormAsset(nextAsset)
     setMetadataText(metadataToText(nextAsset.metadata))
-    setModalState({ show: true, mode: 'edit', asset })
+    setModalState({ show: true, mode, asset })
   }
 
   const hideModal = () => {
@@ -331,7 +338,8 @@ export function InventarioPage({
 
   const submitAsset = async (event: FormEvent) => {
     event.preventDefault()
-    if (!currentProjectId || !formAsset) return
+    if (!currentProjectId || !formAsset || !canEditInventory || modalState.mode === 'view') return
+    const projectId = currentProjectId
     setSaving(true)
     setError('')
     try {
@@ -373,37 +381,15 @@ export function InventarioPage({
       } else if (modalState.asset) {
         const response = await fetchWithAuth(`${API_BASE}/infraestructura/activos/${modalState.asset.id}`, {
           method: 'PATCH',
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ...payload, endpoints: cleanEndpoints })
         })
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || t('inventario.errorSaving'))
-
-        const originalEndpointIds = new Set((modalState.asset.endpoints || []).map(endpoint => endpoint.id).filter(Boolean))
-        const currentEndpointIds = new Set(cleanEndpoints.map(endpoint => endpoint.id).filter(Boolean))
-        for (const endpoint of cleanEndpoints) {
-          if (endpoint.id) {
-            const endpointResponse = await fetchWithAuth(`${API_BASE}/infraestructura/endpoints/${endpoint.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify(endpoint)
-            })
-            if (!endpointResponse.ok) throw new Error((await endpointResponse.json().catch(() => null))?.detail || t('inventario.errorSaving'))
-          } else {
-            const endpointResponse = await fetchWithAuth(`${API_BASE}/infraestructura/activos/${modalState.asset.id}/endpoints/`, {
-              method: 'POST',
-              body: JSON.stringify(endpoint)
-            })
-            if (!endpointResponse.ok) throw new Error((await endpointResponse.json().catch(() => null))?.detail || t('inventario.errorSaving'))
-          }
-        }
-        for (const endpointId of originalEndpointIds) {
-          if (!currentEndpointIds.has(endpointId)) {
-            await fetchWithAuth(`${API_BASE}/infraestructura/endpoints/${endpointId}`, { method: 'DELETE' })
-          }
-        }
       }
+      if (projectRef.current !== projectId) return
       hideModal()
       await loadAssets()
     } catch (err: any) {
-      setError(err?.message || t('inventario.errorSaving'))
+      if (projectRef.current === projectId) setError(err?.message || t('inventario.errorSaving'))
     } finally {
       setSaving(false)
     }
@@ -419,14 +405,14 @@ export function InventarioPage({
       variant: 'danger',
       confirmLabel: t('inventario.delete')
     })
-    if (!confirmed) return
-    const response = await fetchWithAuth(`${API_BASE}/infraestructura/activos/${asset.id}`, { method: 'DELETE' })
-    if (!response.ok) {
-      const body = await response.json().catch(() => null)
-      setError(body?.detail || t('inventario.errorDeleting'))
-      return
+    if (!confirmed || projectRef.current !== asset.proyecto_id) return
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/infraestructura/activos/${asset.id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || t('inventario.errorDeleting'))
+      if (projectRef.current === asset.proyecto_id) await loadAssets()
+    } catch (err: any) {
+      if (projectRef.current === asset.proyecto_id) setError(err?.message || t('inventario.errorDeleting'))
     }
-    await loadAssets()
   }
 
   if (!currentProjectId) {
@@ -445,9 +431,8 @@ export function InventarioPage({
         canEditInventory,
         newCategoryName,
         setNewCategoryName,
-        inventoryCategories,
-        currentProjectId,
-        setInventoryCategories,
+        createCategory,
+        saving,
         openAddModal,
         error,
         filters,
@@ -480,11 +465,12 @@ export function InventarioPage({
           canEditInventory,
           openAddModal,
           openEditModal,
+          openViewModal: (asset: InventoryAsset) => openEditModal(asset, 'view'),
           deleteAsset,
         }} />
       )}
 
-      <InventoryAssetModal options={{ t, modalState, formAsset, hideModal, submitAsset, currentProjectInventoryCategories, parentOptions, updateFormAsset, addEndpoint, updateEndpoint, removeEndpoint, metadataText, setMetadataText, saving }} />
+      <InventoryAssetModal options={{ t, error, modalState, formAsset, hideModal, submitAsset, currentProjectInventoryCategories: categories, parentOptions, updateFormAsset, addEndpoint, updateEndpoint, removeEndpoint, metadataText, setMetadataText, saving }} />
     </div>
   )
 }

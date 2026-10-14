@@ -239,7 +239,15 @@ export function resolveAuditConsensus(bundle: AuditEvidenceBundle, audit: AuditD
     };
   }
 
-  if (visualStatus === 'PASO' && visualDecisionHasEvidence) {
+  const semanticStepsHaveEvidence = bundle.steps.every((step) => {
+    const last = step.attempts.at(-1);
+    if (!last || !last.unresolved_expectations?.length) return true;
+    return citedEvidenceRefs.includes(last.evidence_ref)
+      || Boolean(last.screenshot_ref && citedEvidenceRefs.includes(last.screenshot_ref));
+  });
+  if (visualStatus === 'PASO' && visualDecisionHasEvidence && semanticStepsHaveEvidence
+    && audit.missing_evidence.length === 0 && audit.contradictions.length === 0
+    && audit.failed_expectations.length === 0) {
     return {
       final_status: 'PASO',
       reason: audit.reason || 'La evidencia tecnica y la auditoria final coinciden.',

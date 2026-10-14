@@ -171,6 +171,11 @@ class ProyectoBase(BaseModel):
     activo: bool = True
     organizacion_id: Optional[UUID] = None
 
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def normalize_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
 class ProyectoCreate(ProyectoBase):
     pass
 
@@ -181,6 +186,20 @@ class ProyectoUpdate(BaseModel):
     imagen_url: Optional[str] = Field(default=None, max_length=500)
     activo: Optional[bool] = None
     organizacion_id: Optional[UUID] = None
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def normalize_name(cls, value):
+        if value is None:
+            raise ValueError("El nombre del proyecto es obligatorio")
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("organizacion_id")
+    @classmethod
+    def require_organization(cls, value):
+        if value is None:
+            raise ValueError("Debe indicar una organización válida")
+        return value
 
 class Proyecto(ProyectoBase):
     id: UUID

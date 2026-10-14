@@ -1,8 +1,35 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useExecutionPreparation } from "../features/ejecutar-pruebas/hooks/useExecutionPreparation";
 import { createEjecucionActionBundle } from "../features/ejecucion/ejecucionActionBundle";
 export function useAppExecutionActions({ options }: { options: any }) {
   const { canAccessCapability } = options;
+  const executionGuardRef = useRef({ details: 0, selection: 0, context: '' });
+  const executionDraftRef = useRef({ dirty: false, version: 0 });
+  const contextKey = `${options.currentProjectId}:${options.currentBuildId}:${options.currentCompId}:${options.activeTab}`;
+  if (executionGuardRef.current.context !== contextKey) {
+    executionGuardRef.current.context = contextKey;
+    executionGuardRef.current.details++;
+    executionGuardRef.current.selection++;
+  }
+  const generalDraft = useRef({ id: '', status: '', note: '' });
+  useEffect(() => {
+    const next = { id: String(options.currentExecutionCase?.id || ''), status: options.generalExecutionStatus, note: options.generalExecutionNote };
+    if (next.id === generalDraft.current.id && (next.status !== generalDraft.current.status || next.note !== generalDraft.current.note)) {
+      executionDraftRef.current.dirty = true;
+      executionDraftRef.current.version++;
+    }
+    if (next.id !== generalDraft.current.id || ['PASO', 'FALLO', 'BLOQUEADO'].includes(options.currentExecutionCase?.estado_resultado)) executionDraftRef.current.dirty = false;
+    generalDraft.current = next;
+  }, [options.currentExecutionCase?.id, options.currentExecutionCase?.estado_resultado, options.generalExecutionStatus, options.generalExecutionNote]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!executionDraftRef.current.dirty) return;
+      event.preventDefault(); event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
+
   // Keep the original batch local to the selector. The parent selection state
   // contains only cases that are currently enabled, so it cannot be used to
   // rebuild a format after the user temporarily deselects it.
@@ -59,6 +86,7 @@ export function useAppExecutionActions({ options }: { options: any }) {
 
   const { activeBuildCaseIds, activeExecutionTests, executionModalTests, executionModalCandidateTests, executionModalDiscardedCount, isOutdatedExecutionCase, getExecutionCaseLabel } = executionPreparation;
   const executionActions = createEjecucionActionBundle({
+    executionGuardRef, executionDraftRef, confirmAction: options.confirmAction,
     t,
     managingProjectId,
     currentProjectId,

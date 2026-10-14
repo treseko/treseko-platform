@@ -6,7 +6,6 @@ import { executionStatusLabel } from './executionPresentation'
 
 export function ManualConsoleSidebar({ context }: { context: any }) {
   const { t,
-    leftSectionStyle,
     selectedTest,
     collapsedLeftSections,
     toggleLeftSection,
@@ -43,7 +42,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
   const bugStatusLabel = createBugLocalizedLabels(t).status
   return (
             <Col xl={3} lg={4} className="manual-console-details-column d-flex flex-column gap-3">
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden">
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><Info size={18} className="text-primary"/> {t('ejecutarPruebas.caseDetails')}</h6>
@@ -81,7 +80,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                 )}
               </Card>
 
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden">
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
@@ -216,7 +215,7 @@ export function ManualConsoleSidebar({ context }: { context: any }) {
                 )}
               </Card>
 
-              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden" style={leftSectionStyle()}>
+              <Card className="border-0 shadow-sm rounded-4 bg-white d-flex flex-column overflow-hidden">
                 <Card.Header className="bg-white border-bottom py-3 d-flex justify-content-between align-items-center gap-2">
                   <div className="min-w-0">
                     <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2"><History size={18} className="text-secondary"/> {t('ejecutarPruebas.detailedHistory')}</h6>

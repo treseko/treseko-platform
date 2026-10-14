@@ -161,16 +161,16 @@ test('plans a pair of visible entities without requiring semantic audit', () => 
   ]);
 });
 
-test('plans an empty cart as absence of item controls', () => {
+test('requires positive evidence and semantic audit for an empty cart', () => {
   const plan = planStep({
     number: 7,
     action: 'Hacer clic en Remove.',
     expected: 'No se muestran productos en el carrito.',
   });
-  assert.equal(plan.mode, 'dom');
-  assert.deepEqual(plan.assertions.map((item) => [item.type, item.target, item.expected]), [
-    ['element_count', 'remove', 0],
-  ]);
+  assert.equal(plan.mode, 'visual_semantic');
+  assert.deepEqual(plan.assertions, []);
+  assert.match(plan.reason, /contador cero/);
+  assert.match(plan.reason, /termino de cargar/);
 });
 
 test('plans the three checkout field values from conventional data', () => {

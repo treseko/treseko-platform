@@ -177,6 +177,7 @@ class AiEngineDryRunRequest(BaseModel):
     datos_caso: Optional[str] = Field(default=None, max_length=20_000)
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
+    record_video: bool = True
     debug_mode: bool = False
     pasos: List[Dict[str, Any]] = Field(default_factory=list, max_length=MAX_AI_DRY_RUN_STEPS)
 

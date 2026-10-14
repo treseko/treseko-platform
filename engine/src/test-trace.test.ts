@@ -1,9 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { sanitizeTracePayload, traceEnabled } from './test-trace.ts';
+import { sanitizeTracePayload, traceDirectory, traceEnabled } from './test-trace.ts';
 
 test('trazas del Engine permanecen deshabilitadas por defecto', () => {
   assert.equal(traceEnabled(), false);
+});
+
+test('las trazas de QA se pueden guardar en un directorio aislado fuera del checkout', () => {
+  const previous = process.env.QA_TEST_TRACE_DIR;
+  try {
+    process.env.QA_TEST_TRACE_DIR = '/tmp/treseko-private-qa-traces';
+    assert.equal(traceDirectory(), '/tmp/treseko-private-qa-traces');
+  } finally {
+    if (previous === undefined) delete process.env.QA_TEST_TRACE_DIR;
+    else process.env.QA_TEST_TRACE_DIR = previous;
+  }
 });
 
 test('la implementación de trazas contiene redacción de secretos', async () => {

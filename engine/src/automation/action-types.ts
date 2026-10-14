@@ -136,6 +136,9 @@ export interface BrowserObservation {
 }
 
 export interface StrictAIAction {
+  confidence_source?: 'rules' | 'model';
+  confidence_calibration?: 'uncalibrated';
+  coordinate_fallback?: boolean;
   action: StrictActionName;
   target_ref?: string;
   x?: number;

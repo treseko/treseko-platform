@@ -4,6 +4,9 @@ import { useI18n } from '../../../i18n'
 import type { HistorialFilters as HistorialFiltersState } from '../types/historial'
 
 type Props = {
+  advanced: boolean
+  activeAdvancedCount: number
+  onToggleAdvanced: () => void
   filters: HistorialFiltersState
   buildsList: any[]
   componentsList: any[]
@@ -15,6 +18,7 @@ type Props = {
 }
 
 export function HistorialFilters({
+  advanced, activeAdvancedCount, onToggleAdvanced,
   filters,
   buildsList,
   componentsList,
@@ -28,13 +32,13 @@ export function HistorialFilters({
   return (
     <Card className="border-0 shadow-sm rounded-3 bg-white p-3 mb-3">
       <div className="d-flex align-items-center gap-2 fw-bold text-muted small mb-3">
-        <Filter size={16} /> {t('historial.advancedFilters')}
+        <Filter size={16} /> {t('historial.filters')}
       </div>
       <Row className="g-2">
         <Col md={3}>
           <Form.Control name="a11y-historialfilterstsx-35" aria-label={t('historial.searchCase')} size="sm" placeholder={t('historial.searchCase')} value={filters.case_query} onChange={event => onUpdateFilter('case_query', event.target.value)} />
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Control name="a11y-historialfilterstsx-38" aria-label={t('historial.exactCode')} size="sm" placeholder={t('historial.exactCode')} value={filters.case_code} onChange={event => onUpdateFilter('case_code', event.target.value)} />
         </Col>
         <Col md={3}>
@@ -43,51 +47,63 @@ export function HistorialFilters({
             {buildsList.map((build: any) => <option key={build.id} value={build.id}>{build.name || build.nombre}</option>)}
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-47" aria-label={t('historial.components')} size="sm" value={filters.component_id} onChange={event => onUpdateFilter('component_id', event.target.value)}>
             <option value="">{t('historial.components')}</option>
             {componentsList.map((component: any) => <option key={component.id} value={component.id}>{component.name || component.nombre}</option>)}
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Form.Select name="a11y-historialfilterstsx-53" aria-label={t('historial.statuses')} size="sm" value={filters.status} onChange={event => onUpdateFilter('status', event.target.value)}>
-            <option value="">{t('historial.statuses')}</option>
+          <Form.Select name="a11y-historialfilterstsx-53" aria-label={t('historial.caseStatus')} size="sm" value={filters.status} onChange={event => onUpdateFilter('status', event.target.value)}>
+            <option value="">{t('historial.caseStatus')}</option>
             <option value="PASO">{t('historial.pass')}</option>
             <option value="FALLO">{t('historial.fail')}</option>
             <option value="BLOQUEADO">{t('historial.blocked')}</option>
             <option value="SIN_CORRER">{t('historial.notRun')}</option>
+            <option value="EJECUTANDO_AI">{t('historial.aiInProgress')}</option>
           </Form.Select>
         </Col>
         <Col md={2}>
+          <Form.Select name="history-run-result" aria-label={t('historial.runResult')} size="sm" value={filters.run_result} onChange={event => onUpdateFilter('run_result', event.target.value)}>
+            <option value="">{t('historial.runResult')}</option>
+            <option value="PASO">{t('historial.pass')}</option>
+            <option value="FALLO">{t('historial.fail')}</option>
+            <option value="BLOQUEADO">{t('historial.blocked')}</option>
+            <option value="SIN_CORRER">{t('historial.notRun')}</option>
+            <option value="EN_PROGRESO">{t('historial.inProgress')}</option>
+          </Form.Select>
+        </Col>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-62" aria-label={t('historial.runOrigin')} size="sm" value={filters.origin} onChange={event => onUpdateFilter('origin', event.target.value)}>
             <option value="">{t('historial.runOrigin')}</option>
             <option value="MANUAL">{t('historial.manual')}</option>
             <option value="AUTOMATIZADA">{t('historial.automated')}</option>
             <option value="IA">{t('historial.ia')}</option>
+            <option value="EXTERNA">{t('historial.externalLabel')}</option>
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-70" aria-label={t('historial.executor')} size="sm" value={filters.runner_id} onChange={event => onUpdateFilter('runner_id', event.target.value)}>
             <option value="">{t('historial.executor')}</option>
             {appUsers.map((user: any) => <option key={user.id} value={user.id}>{user.name || user.nombre_completo || user.email}</option>)}
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-76" aria-label={t('historial.environmentFilter')} size="sm" value={filters.environment_id} onChange={event => onUpdateFilter('environment_id', event.target.value)}>
             <option value="">{t('historial.environmentFilter')}</option>
             {environments.map((env: any) => <option key={env.id} value={env.id}>{env.name || env.nombre}</option>)}
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-82" aria-label={t('historial.datasetFilter')} size="sm" value={filters.dataset_id} onChange={event => onUpdateFilter('dataset_id', event.target.value)}>
             <option value="">{t('historial.datasetFilter')}</option>
             {datasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.name || dataset.nombre} ({dataset.environmentName})</option>)}
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Control name="a11y-historialfilterstsx-88" aria-label={t('historial.executedVersion')} size="sm" type="number" min={1} placeholder={t('historial.executedVersion')} value={filters.version_executed} onChange={event => onUpdateFilter('version_executed', event.target.value)} />
         </Col>
-        <Col md={3}>
+        <Col md={3} className={advanced ? '' : 'history-advanced-field'}>
           <fieldset className="history-date-range border-0 p-0 m-0">
             <div className="row g-1">
               <Col>
@@ -101,14 +117,14 @@ export function HistorialFilters({
             </div>
           </fieldset>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-105" aria-label={t('historial.evidence')} size="sm" value={filters.has_evidence} onChange={event => onUpdateFilter('has_evidence', event.target.value)}>
             <option value="">{t('historial.evidence')}</option>
             <option value="true">{t('historial.withEvidence')}</option>
             <option value="false">{t('historial.withoutEvidence')}</option>
           </Form.Select>
         </Col>
-        <Col md={2}>
+        <Col md={2} className={advanced ? '' : 'history-advanced-field'}>
           <Form.Select name="a11y-historialfilterstsx-112" aria-label={t('historial.iaReview')} size="sm" value={filters.ai_review_status} onChange={event => onUpdateFilter('ai_review_status', event.target.value)}>
             <option value="">{t('historial.iaReview')}</option>
             <option value="REQUIERE_REVISION">{t('historial.pendingReview')}</option>
@@ -117,10 +133,11 @@ export function HistorialFilters({
           </Form.Select>
         </Col>
         <Col md={2}>
-          <Button variant="outline-secondary" size="sm" className="w-100 d-flex align-items-center justify-content-center gap-2" onClick={onResetFilters}>
+          <Button type="button" variant="outline-secondary" size="sm" className="w-100 d-flex align-items-center justify-content-center gap-2" onClick={onResetFilters}>
             <RotateCcw size={14} /> {t('historial.clearFilters')}
           </Button>
         </Col>
+        <Col md={2}><Button type="button" variant="outline-primary" size="sm" className="w-100" aria-expanded={advanced} onClick={onToggleAdvanced}>{advanced ? t('historial.fewerFilters') : t('historial.moreFilters')}{activeAdvancedCount > 0 && ` (${activeAdvancedCount})`}</Button></Col>
       </Row>
     </Card>
   )

@@ -81,8 +81,8 @@ export function updateGlobalIndex(context: any): void {
                             <div class="text-lg font-bold text-white">${stats.total}</div>
                         </div>
                         <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-800">
-                            <div class="text-[10px] text-slate-500 mb-1 uppercase">AI Conf.</div>
-                            <div class="text-lg font-bold text-sky-400">${stats.avgConf}%</div>
+                            <div class="text-[10px] text-slate-500 mb-1 uppercase">Internal score (uncalibrated)</div>
+                            <div class="text-lg font-bold text-sky-400">${stats.avgConf}/100</div>
                         </div>
                     </div>
                 </div>
@@ -176,11 +176,11 @@ export function updateGlobalIndex(context: any): void {
 
             <div class="bg-slate-800/50 p-8 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden group">
                 <div class="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Avg Agent Confidence</div>
-                <div class="text-6xl font-black text-amber-500 leading-none">${avgConfidence}%</div>
+                <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Average internal score (uncalibrated)</div>
+                <div class="text-6xl font-black text-amber-500 leading-none">${avgConfidence}/100</div>
                 <div class="mt-6 flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                    <span class="text-xs text-slate-500">System Stability: High</span>
+                    <span class="text-xs text-slate-500">Not a measured probability of success</span>
                 </div>
             </div>
         </div>

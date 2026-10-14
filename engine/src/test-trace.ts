@@ -4,7 +4,12 @@ import { fileURLToPath } from 'url';
 
 const ENGINE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_ROOT = path.resolve(ENGINE_ROOT, '..');
-const TRACE_DIR = path.join(REPO_ROOT, 'logs', 'test-trace');
+const DEFAULT_TRACE_DIR = path.join(REPO_ROOT, 'logs', 'test-trace');
+
+export function traceDirectory() {
+  // Isolated QA runs may keep redacted prompts/responses outside the checkout.
+  return path.resolve(process.env.QA_TEST_TRACE_DIR || DEFAULT_TRACE_DIR);
+}
 
 const SECRET_KEY = /(authorization|api[_-]?key|cookie|password|passwd|refresh[_-]?token|secret|token|credential|private[_-]?key)/i;
 const SECRET_TEXT = /(authorization|api[_-]?key|cookie|password|passwd|refresh[_-]?token|secret|token|credential|private[_-]?key)(\s*[:=]\s*)(bearer\s+)?[^\s&,'"}]+/gi;
@@ -34,7 +39,8 @@ export function sanitizeTracePayload(value: any): any {
 
 export function traceEntry(event: string, payload: Record<string, any> = {}) {
   if (!traceEnabled()) return;
-  fs.mkdirSync(TRACE_DIR, { recursive: true });
+  const traceDir = traceDirectory();
+  fs.mkdirSync(traceDir, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
   const entry = {
     ts: new Date().toISOString(),
@@ -42,5 +48,5 @@ export function traceEntry(event: string, payload: Record<string, any> = {}) {
     event,
     ...payload,
   };
-  fs.appendFileSync(path.join(TRACE_DIR, `engine-${day}.jsonl`), `${JSON.stringify(jsonSafe(entry))}\n`, 'utf8');
+  fs.appendFileSync(path.join(traceDir, `engine-${day}.jsonl`), `${JSON.stringify(jsonSafe(entry))}\n`, 'utf8');
 }

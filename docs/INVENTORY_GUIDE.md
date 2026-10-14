@@ -14,6 +14,20 @@ endpoints y metadatos personalizados.
 
 ## Crear o actualizar un activo
 
+Las categorías se guardan por proyecto en el servidor y se comparten con otros
+usuarios autorizados. Sus nombres no pueden repetirse dentro del mismo proyecto.
+Al editar un activo, sus datos y endpoints se guardan juntos; si la validación
+falla, el formulario permanece abierto para corregirlo.
+
+Usá **Ver activo** para consultar todos sus datos sin editar. Esta acción también
+está disponible con permiso de lectura. Las relaciones padre-hijo no admiten
+ciclos ni activos de otro proyecto.
+
+Los activos antiguos pueden conservar una categoría cuyo nombre solo existió
+en la sesión del navegador. En ese caso se muestra una categoría anterior sin
+nombre disponible; el identificador se conserva al editar y podés elegir una
+categoría nueva. Los nombres históricos perdidos no se reconstruyen automáticamente.
+
 1. Abrí **Inventario** con el proyecto correcto.
 2. Elegí una categoría.
 3. Seleccioná **Nuevo activo** o abrí uno existente.

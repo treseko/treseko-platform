@@ -20,14 +20,18 @@ def build_derived_metrics(context):
             executions_by_day[key] = executions_by_day.get(key, 0) + 1
     latest_bug_update = max([bug.updated_at for bug in related_bugs if bug.updated_at], default=None)
     last_activity = max([value for value in [last_execution, latest_bug_update, build.fecha_creacion] if value], default=None)
-    avg_seconds_per_case = round(total_execution_seconds / total_ejecutados) if total_ejecutados else 0
+    completed_attempts = [item for item in ejecuciones if str(getattr(item.estado_resultado, 'value', item.estado_resultado)) in {'PASO', 'FALLO', 'BLOQUEADO'}]
+    attempt_seconds = sum(int(item.duracion_segundos or 0) for item in completed_attempts)
+    avg_seconds_per_case = round(attempt_seconds / len(completed_attempts)) if completed_attempts else 0
     temporal_metrics = {
         "build_to_first_execution_hours": _hours_between(build.fecha_creacion, first_execution),
         "first_to_last_execution_hours": _hours_between(first_execution, last_execution),
         "qa_cycle_hours": _hours_between(build.fecha_creacion, last_execution or now),
         "total_execution_seconds": total_execution_seconds,
         "total_execution_hours": _seconds_to_hours(total_execution_seconds),
-        "average_seconds_per_executed_case": avg_seconds_per_case,
+        "completed_attempts": len(completed_attempts),
+        "average_seconds_per_attempt": avg_seconds_per_case,
+        "average_seconds_per_executed_case": round(attempt_seconds / total_ejecutados) if total_ejecutados else 0,
         "executions_by_day": [{"date": day, "executions": count} for day, count in sorted(executions_by_day.items())],
         "last_activity_at": _safe_iso(last_activity),
         "days_without_activity": round(((now - last_activity).total_seconds() / 86400), 2) if last_activity else None,

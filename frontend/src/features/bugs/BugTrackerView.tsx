@@ -1,5 +1,5 @@
 import { Badge, Button, Card, Col, Form, Modal, Nav, OverlayTrigger, Row, Spinner, Table, Tooltip } from 'react-bootstrap'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bug, Clipboard, ExternalLink, FileText, Info, Link as LinkIcon, MessageSquare, PlayCircle, Plus, RefreshCw, Save, X } from 'lucide-react'
 import { EvidenceUpload, type AttachmentMeta } from '../../EvidenceUpload'
 import { EvidenceViewerModal } from '../../shared/components/EvidenceViewerModal'
@@ -14,9 +14,17 @@ import {
 import { qaDatasetEntriesFromBug } from '../../app/qaDataset'
 import { BugConversationalEvidence } from './BugConversationalEvidence'
 import { BugApiEvidence } from './BugApiEvidence'
+import { BugHistory } from './BugHistory'
+import { BugDuplicateModal } from './BugDuplicateModal'
+import { BugTrackerListView } from './BugTrackerListView'
 import { bugPriorityStyle, createBugLocalizedLabels } from './bugPresentation'
 
 type BugTrackerViewContext = {
+  list: any,
+  isDetailDirty: boolean,
+  resetDetailDraft: () => void,
+  fetchWithAuth: any,
+  canMarkDuplicate: boolean,
   t: any,
   canUse: any,
   canCreate: any,
@@ -26,7 +34,7 @@ type BugTrackerViewContext = {
   canTake: any,
   canResolve: any,
   canClose: any,
-  canTransitionTo: (status: string) => boolean,
+  canTransitionTo: (status: string, bug?: any) => boolean,
   canComment: any,
   canAttachBugEvidence: any,
   canLinkExternal: any,
@@ -85,20 +93,6 @@ type BugTrackerViewContext = {
   transitionBug: any,
   transitionBugInline: any,
   modalOnly: any,
-  linkingBug: any,
-  setLinkingBug: any,
-  linkComment: any,
-  setLinkComment: any,
-  linkingBugId: any,
-  onViewRelatedBug: any,
-  canLinkCurrentExecution: any,
-  onLinkExecutionToBug: any,
-  creatingInternalBugContextId: any,
-  relatedCaseBugs: any,
-  relatedCaseBugsLoading: any,
-  onCreateInternalBugFromExecution: any,
-  getBugDisplayBuild: any,
-  getBugDisplayComponent: any,
   setViewerEvidence: any,
   setExternalForm: any,
   setFilters: any,
@@ -107,27 +101,39 @@ type BugTrackerViewContext = {
   onOpenRelatedExecution?: (bug: any) => void,
 }
 export function BugTrackerView({ context }: { context: BugTrackerViewContext }) {
-  const { t, canUse, canCreate, canEdit, canTriage, canAssign, canTake, canResolve, canClose, canTransitionTo, canComment, canAttachBugEvidence, canLinkExternal, canExport, currentBuildLabel, currentComponentLabel, buildsList, appUsers, bugs, summary, loading, selectedBug, conversationalContext, conversationalContextLoading, apiContext, apiContextLoading, detailOpen, filters, comment, commentAttachments, externalForm, markdown, detailForm, additionalContextRows, viewerEvidence, savingDetail, showStatusHelp, loadBugs, onOpenManualBugDrawer, openDetail, transitionTarget, transitionForm, compatibleBuilds, quickTransitioningBugId, isCorrected, setTransitionForm, setTransitionTarget, confirmTransition, setShowStatusHelp, setDetailOpen, onDetailClosed, updateDetailField, openEvidenceViewer, setComment, setCommentAttachments, addComment, createExternalLink, generatePreview, copyMarkdown, bugGeneralAttachments, addBugEvidence, removeBugEvidence, saveSelectedBugDetails, setAdditionalContextRows, updateAdditionalContextRow, transitionBug, transitionBugInline, takeBug, modalOnly, linkingBug, setLinkingBug, linkComment, setLinkComment, linkingBugId, onViewRelatedBug, canLinkCurrentExecution, onLinkExecutionToBug, creatingInternalBugContextId, relatedCaseBugs, relatedCaseBugsLoading, onCreateInternalBugFromExecution, getBugDisplayBuild, getBugDisplayComponent, setViewerEvidence, setExternalForm, setFilters, onOpenRelatedCase, onOpenRelatedExecution } = context
+  const { t, canUse, canCreate, canEdit, canTriage, canAssign, canTake, canResolve, canClose, canTransitionTo, canComment, canAttachBugEvidence, canLinkExternal, canExport, currentBuildLabel, currentComponentLabel, buildsList, appUsers, bugs, summary, loading, selectedBug, conversationalContext, conversationalContextLoading, apiContext, apiContextLoading, detailOpen, filters, comment, commentAttachments, externalForm, markdown, detailForm, additionalContextRows, viewerEvidence, savingDetail, showStatusHelp, loadBugs, onOpenManualBugDrawer, openDetail, transitionTarget, transitionForm, compatibleBuilds, quickTransitioningBugId, isCorrected, setTransitionForm, setTransitionTarget, confirmTransition, setShowStatusHelp, setDetailOpen, onDetailClosed, updateDetailField, openEvidenceViewer, setComment, setCommentAttachments, addComment, createExternalLink, generatePreview, copyMarkdown, bugGeneralAttachments, addBugEvidence, removeBugEvidence, saveSelectedBugDetails, setAdditionalContextRows, updateAdditionalContextRow, transitionBug, transitionBugInline, takeBug, modalOnly, setViewerEvidence, setExternalForm, setFilters, onOpenRelatedCase, onOpenRelatedExecution } = context
   const { status: statusLabel, severity: severityLabel, priority: priorityLabel } = createBugLocalizedLabels(t)
   const selectedBugType = bugDisplayType(selectedBug, Boolean(apiContext))
   const isConversationalBug = selectedBugType === 'CONVERSACIONAL'
   const isApiBug = selectedBugType === 'API'
   const qaDatasetEntries = qaDatasetEntriesFromBug(selectedBug)
-  const [detailTab, setDetailTab] = useState<'summary' | 'context' | 'conversation' | 'api'>('summary')
+  const [detailTab, setDetailTab] = useState<'summary' | 'context' | 'conversation' | 'api' | 'history'>('summary')
   const [detailEditing, setDetailEditing] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const [duplicateBug, setDuplicateBug] = useState<any>(null)
+  const detailBodyRef = useRef<HTMLDivElement>(null)
+  const detailScroll = useRef(0)
+  const detailVisible = detailOpen && !pendingAction && !duplicateBug && !transitionTarget && !viewerEvidence
+  useEffect(() => {
+    if (detailVisible && detailBodyRef.current) detailBodyRef.current.scrollTop = detailScroll.current
+  }, [detailVisible])
+  const guardAction = (action: () => void, includeComment = true) => {
+    if (context.isDetailDirty || (includeComment && (comment.trim() || commentAttachments.length))) setPendingAction(() => action)
+    else action()
+  }
+  useEffect(() => { setDetailEditing(false); setDetailTab('summary'); detailScroll.current = 0 }, [selectedBug?.id])
   useEffect(() => {
     if (detailOpen && isConversationalBug && conversationalContext) setDetailTab('conversation')
     if (detailOpen && isApiBug && apiContext) setDetailTab('api')
   }, [detailOpen, isConversationalBug, conversationalContext, isApiBug, apiContext])
   const closeDetail = () => {
-    setDetailEditing(false)
-    setDetailTab('summary')
-    setDetailOpen(false)
-    onDetailClosed?.()
+    if (savingDetail) return
+    guardAction(() => {
+      setDetailEditing(false); setDetailTab('summary'); setDetailOpen(false); onDetailClosed?.()
+    })
   }
   const cancelDetailEditing = () => {
-    setDetailEditing(false)
-    if (selectedBug) context.openDetail(selectedBug)
+    guardAction(() => { setDetailEditing(false); context.resetDetailDraft() }, false)
   }
   const saveDetail = async () => {
     const saved = await saveSelectedBugDetails()
@@ -139,115 +145,7 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
   }
   return (
     <>
-    <div className="p-4 bug-tracker-page" style={modalOnly ? { display: 'none' } : undefined}>
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-        <div>
-          <h2 className="h4 fw-bold text-dark mb-1">{t('bugs.pageTitle')}</h2>
-          <div className="small text-muted">{t('bugs.pageDescription')}</div>
-        </div>
-        <div className="d-flex flex-wrap gap-2">
-          <Button variant="outline-secondary" size="sm" onClick={() => setShowStatusHelp(true)}>
-            <Info size={15} className="me-1" /> {t('bugs.statusHelp')}
-          </Button>
-          {canCreate && onOpenManualBugDrawer && (
-            <Button variant="danger" size="sm" onClick={onOpenManualBugDrawer}>
-              <Bug size={15} className="me-1" /> {t('bugs.addBug')}
-            </Button>
-          )}
-          <Button variant="outline-primary" size="sm" onClick={() => loadBugs()} disabled={loading}><RefreshCw size={15} className="me-1" />{t('bugs.refresh')}</Button>
-        </div>
-      </div>
-
-      <Row className="g-3 mb-3">
-        {[
-          [t('bugs.open'), summary.abiertos ?? 0],
-          [t('bugs.critical'), summary.criticos ?? 0],
-          [t('bugs.unassigned'), summary.sin_asignado ?? 0],
-          [t('bugs.readyRetest'), summary.listos_retest ?? 0],
-          [t('bugs.noEvidence'), summary.sin_evidencia ?? 0],
-          [t('bugs.linked'), summary.vinculados_externos ?? 0],
-        ].map(([label, value]) => (
-          <Col md={2} sm={4} xs={6} key={String(label)}>
-            <Card className="border-0 shadow-sm h-100"><Card.Body className="py-3"><div className="small text-muted">{label}</div><div className="h4 fw-bold mb-0">{String(value)}</div></Card.Body></Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Row className="g-3">
-        <Col xl={12}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white border-bottom">
-              <Row className="g-2 bug-filter-row">
-                <Col md={5}><Form.Control id="bugs-search" name="bugsSearch" aria-label={t('bugs.searchPlaceholder')} size="sm" placeholder={t('bugs.searchPlaceholder')} value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} /></Col>
-                <Col md={3}><Form.Select id="bugs-scope-filter" name="bugsScope" aria-label={t('bugs.scopeFilter')} size="sm" value={filters.scope || 'all'} onChange={(e) => setFilters({ ...filters, scope: e.target.value })}><option value="all">{t('bugs.allIncidents')}</option><option value="mine">{t('bugs.myIncidents')}</option><option value="unassigned">{t('bugs.unassignedIncidents')}</option></Form.Select></Col>
-                <Col md={2}><Form.Select id="bugs-status-filter" name="bugsStatus" aria-label={t('bugs.statusFilter')} size="sm" value={filters.estado} onChange={(e) => setFilters({ ...filters, estado: e.target.value })}><option value="">{t('bugs.statusFilter')}</option>{statusOptions.map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}</Form.Select></Col>
-                <Col md={2}><Form.Select id="bugs-severity-filter" name="bugsSeverity" aria-label={t('bugs.severityFilter')} size="sm" value={filters.severidad} onChange={(e) => setFilters({ ...filters, severidad: e.target.value })}><option value="">{t('bugs.severityFilter')}</option>{severityOptions.map(item => <option key={item} value={item}>{severityLabel(item)}</option>)}</Form.Select></Col>
-                <Col md={2}><Form.Select id="bugs-priority-filter" name="bugsPriority" aria-label={t('bugs.priorityFilter')} size="sm" value={filters.prioridad} onChange={(e) => setFilters({ ...filters, prioridad: e.target.value })}><option value="">{t('bugs.priorityFilter')}</option>{priorityOptions.map(item => <option key={item} value={item}>{item} · {priorityLabel(item)}</option>)}</Form.Select></Col>
-                <Col md={2}><Form.Select id="bugs-context-filter" name="bugsContextType" aria-label={t('bugs.contextTypeFilter')} size="sm" value={filters.tipo_contexto || ''} onChange={(e) => setFilters({ ...filters, tipo_contexto: e.target.value })}><option value="">{t('bugs.contextTypeFilter')}</option><option value="CLASICO">{t('bugs.classicType')}</option><option value="API">API</option><option value="CONVERSACIONAL">{t('bugs.conversationalType')}</option></Form.Select></Col>
-                <Col md={3}><Form.Select id="bugs-build-filter" name="bugsBuild" aria-label={t('bugs.buildFilter')} size="sm" value={filters.build_id || ''} onChange={(e) => setFilters({ ...filters, build_id: e.target.value })}><option value="">{t('bugs.allBuilds')}</option>{buildsList.map((build: any) => <option key={build.id} value={build.id}>{build.name || build.nombre}</option>)}</Form.Select></Col>
-                <Col md={3}><Form.Select id="bugs-build-scope-filter" name="bugsBuildScope" aria-label={t('bugs.buildScopeFilter')} size="sm" value={filters.build_scope || 'reported'} onChange={(e) => setFilters({ ...filters, build_scope: e.target.value })} disabled={!filters.build_id}><option value="reported">{t('bugs.reportedInBuild')}</option><option value="historical">{t('bugs.historicalInBuild')}</option></Form.Select></Col>
-                <Col md={1}><Button size="sm" variant="dark" className="w-100" onClick={() => loadBugs()}>{t('bugs.filter')}</Button></Col>
-              </Row>
-            </Card.Header>
-            <Card.Body className="p-0">
-              {loading ? <div className="p-4 text-center"><Spinner size="sm" /> {t('bugs.loading')}</div> : (
-                <div className="table-responsive bug-tracker-table-wrap">
-                  <Table hover className="mb-0 align-middle bug-tracker-table">
-                    <thead className="table-light"><tr><th>{t('bugs.bugCol')}</th><th>{t('bugs.statusCol')}</th><th>{t('bugs.sevCol')}</th><th>{t('bugs.priCol')}</th><th>{t('bugs.contextCol')}</th><th>{t('bugs.assignedCol')}</th><th className="text-end">{t('bugs.actionsCol')}</th></tr></thead>
-                    <tbody>
-                      {bugs.map((bug) => {
-                        const priority = bug.prioridad ? { value: String(bug.prioridad).toUpperCase(), ...bugPriorityStyle(String(bug.prioridad).toUpperCase()) } : null
-                        const displayType = bugDisplayType(bug)
-                        return (
-                        <tr key={bug.id}>
-                          <td><strong>{bug.codigo}</strong><div className="small text-muted">{bug.titulo}</div><div className="d-flex flex-wrap gap-1 mt-1">{displayType === 'CONVERSACIONAL' ? <Badge bg="info" text="dark">{t('bugs.conversationalType')}</Badge> : displayType === 'API' ? <Badge bg="success">API</Badge> : <Badge bg="light" text="dark" className="border">{t('bugs.classicType')}</Badge>}{externalIssueLabel(bug) && <Badge bg="light" text="primary" className="border"><ExternalLink size={11} className="me-1" />{externalIssueLabel(bug)}</Badge>}</div></td>
-                          <td><Badge bg={closedStates.has(bug.estado) ? 'secondary' : 'success'}>{statusLabel(bug.estado)}</Badge></td>
-                          <td><Badge bg={severityVariant[bug.severidad] || 'secondary'} text={bug.severidad === 'COSMETICA' ? 'dark' : undefined}>{severityLabel(bug.severidad)}</Badge></td>
-                          <td>
-                            {priority ? (
-                              <Badge bg={priority.bg} text={priority.text} title={`${priority.value} · ${priorityLabel(priority.value)}`} className={priority.bg === 'light' ? 'border' : ''}>
-                                {priorityLabel(priority.value)}
-                              </Badge>
-                            ) : t('bugs.noDataset')}
-                          </td>
-                          <td className="small">
-                            <div className="fw-semibold text-dark">{bug.case_title || bug.metadata_json?.case_title || bug.case_code || t('bugs.noCase')}</div>
-                            <div className="text-muted">{bug.build_name || bug.metadata_json?.build_name || bug.build_code || bug.build_id || t('bugs.noBuild')}</div>
-                            {(bug.case_code || bug.build_code) && <div className="x-small text-muted">{[bug.case_code, bug.build_code].filter(Boolean).join(' · ')}</div>}
-                          </td>
-                          <td className="small">{bug.asignado_a ? appUsers.find((u: any) => u.id === bug.asignado_a)?.name || t('bugs.assigned') : t('bugs.unassignedLabel')}</td>
-                          <td>
-                            <div className="d-flex justify-content-end align-items-center gap-2">
-                              {canTriage && (
-                                <Form.Select
-                                  id={`bug-status-${bug.id}`}
-                                  name={`bugStatus-${bug.id}`}
-                                  size="sm"
-                                  className="bug-inline-status-select"
-                                  aria-label={t('bugs.currentStatusChangeAria', { bug: bug.codigo })}
-                                  value={bug.estado || 'ABIERTO'}
-                                  disabled={quickTransitioningBugId === bug.id}
-                                  onChange={(event) => transitionBugInline(bug, event.target.value)}
-                                >
-                                  {statusOptions.filter(item => canTransitionTo(item)).map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
-                                </Form.Select>
-                              )}
-                              <Button size="sm" variant="outline-primary" onClick={() => openDetail(bug)}>{t('bugs.view')}</Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )})}
-                      {bugs.length === 0 && <tr><td colSpan={7} className="text-center text-muted py-4">{t('bugs.noBugsForFilters')}</td></tr>}
-                    </tbody>
-                  </Table>
-                </div>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-
-      </Row>
-    </div>
+    <BugTrackerListView context={context} />
 
       <BugTransitionModal target={transitionTarget} form={transitionForm}
         builds={transitionTarget ? compatibleBuilds(transitionTarget.bug) : []}
@@ -300,9 +198,9 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
         </Modal.Footer>
       </Modal>
 
-      <Modal show={detailOpen} onHide={closeDetail} size="xl" centered dialogClassName="bug-detail-modal" scrollable>
+      <Modal animation={false} show={detailVisible} onHide={closeDetail} size="xl" centered dialogClassName="bug-detail-modal" scrollable>
         <Modal.Header closeButton>
-          <Modal.Title className="w-100 pe-3">
+          <Modal.Title className="w-100 pe-3 text-break">
             <div className="small text-muted">{selectedBug?.codigo}</div>
             {detailEditing ? (
               <Form.Control
@@ -310,16 +208,18 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 className="fw-bold fs-5 border-0 px-0 shadow-none"
                 id="bug-detail-title"
                 name="bugTitle"
+                aria-label={t('bugs.titleLabel')}
+                disabled={savingDetail}
                 value={detailForm.titulo || ''}
                 onChange={(e) => updateDetailField('titulo', e.target.value)}
               />
             ) : (
-              <span>{selectedBug?.codigo} - {selectedBug?.titulo}</span>
+              <span>{selectedBug?.titulo}</span>
             )}
           </Modal.Title>
         </Modal.Header>
         {selectedBug && (
-          <Modal.Body className="bug-detail-body">
+          <Modal.Body ref={detailBodyRef} onScroll={event => { detailScroll.current = event.currentTarget.scrollTop }} className="bug-detail-body"><fieldset disabled={savingDetail} className="border-0 p-0 m-0 w-100">
             <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
               <div className="d-flex flex-wrap gap-2">
                 <Badge bg={closedStates.has(selectedBug.estado) ? 'secondary' : 'success'}>{statusLabel(selectedBug.estado)}</Badge>
@@ -341,23 +241,25 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
               </div>
               <div className="d-flex flex-wrap justify-content-end gap-2">
                 {selectedBug.caso_id && onOpenRelatedCase && (
-                  <Button size="sm" variant="outline-secondary" onClick={() => onOpenRelatedCase(selectedBug)}>
+                  <Button size="sm" variant="outline-secondary" onClick={() => guardAction(() => onOpenRelatedCase(selectedBug))}>
                     <FileText size={14} className="me-1" aria-hidden="true" />{t('bugs.viewCase')}
                   </Button>
                 )}
                 {(selectedBug.ejecucion_id || selectedBug.test_run_id) && onOpenRelatedExecution && (
-                  <Button size="sm" variant="outline-primary" onClick={() => onOpenRelatedExecution(selectedBug)}>
+                  <Button size="sm" variant="outline-primary" onClick={() => guardAction(() => onOpenRelatedExecution(selectedBug))}>
                     <PlayCircle size={14} className="me-1" aria-hidden="true" />{t('bugs.viewExecution')}
                   </Button>
                 )}
+                {context.canMarkDuplicate && selectedBug.estado !== 'DUPLICADO' && <Button size="sm" variant="outline-secondary" onClick={() => guardAction(() => setDuplicateBug(selectedBug))}>{t('bugs.markDuplicate')}</Button>}
                 {canEdit && !detailEditing && <Button size="sm" variant="outline-primary" onClick={() => setDetailEditing(true)}>{t('bugs.editBug')}</Button>}
               </div>
             </div>
-            <Nav variant="tabs" activeKey={detailTab} onSelect={(key) => key && setDetailTab(key as typeof detailTab)} className="bug-detail-tabs mb-3">
+            <Nav role="tablist" variant="tabs" activeKey={detailTab} onSelect={(key) => key && setDetailTab(key as typeof detailTab)} className="bug-detail-tabs mb-3">
               <Nav.Item><Nav.Link eventKey="summary">{t('bugs.summaryTab')}</Nav.Link></Nav.Item>
               <Nav.Item><Nav.Link eventKey="context">{t('bugs.contextTab')}</Nav.Link></Nav.Item>
               {isConversationalBug && <Nav.Item><Nav.Link eventKey="conversation">{t('bugs.conversationContextTab')}</Nav.Link></Nav.Item>}
               {isApiBug && <Nav.Item><Nav.Link eventKey="api">{t('bugs.apiEvidence')}</Nav.Link></Nav.Item>}
+            <Nav.Item><Nav.Link eventKey="history">{t('bugs.historyTab')}</Nav.Link></Nav.Item>
             </Nav>
 
             {detailTab === 'summary' && <>
@@ -367,7 +269,7 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 <Form.Control
                   as="textarea"
                   id="bug-detail-description"
-                  name="bugDescription"
+                  name="bugDescription" aria-label={t('bugs.summaryDiagnostic')}
                   rows={4}
                   className="small mb-2"
                   value={detailForm.descripcion || ''}
@@ -377,20 +279,20 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 <Row className="g-2 mb-2">
                   <Col md={6}>
                     <h6>{t('bugs.expectedResult')}</h6>
-                    <Form.Control id="bug-detail-expected" name="bugExpectedResult" as="textarea" rows={3} className="small" value={detailForm.resultado_esperado || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('resultado_esperado', e.target.value)} />
+                    <Form.Control id="bug-detail-expected" name="bugExpectedResult" aria-label={t('bugs.expectedResult')} as="textarea" rows={3} className="small" value={detailForm.resultado_esperado || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('resultado_esperado', e.target.value)} />
                   </Col>
                   <Col md={6}>
                     <h6>{t('bugs.actualResult')}</h6>
-                    <Form.Control id="bug-detail-actual" name="bugActualResult" as="textarea" rows={3} className="small" value={detailForm.resultado_obtenido || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('resultado_obtenido', e.target.value)} />
+                    <Form.Control id="bug-detail-actual" name="bugActualResult" aria-label={t('bugs.actualResult')} as="textarea" rows={3} className="small" value={detailForm.resultado_obtenido || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('resultado_obtenido', e.target.value)} />
                   </Col>
                 </Row>
                 <h6>{t('bugs.reproductionSteps')}</h6>
-                <Form.Control id="bug-detail-reproduction" name="bugReproductionSteps" as="textarea" rows={6} className="small font-monospace mb-2" value={detailForm.pasos_reproduccion || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('pasos_reproduccion', e.target.value)} />
+                <Form.Control id="bug-detail-reproduction" name="bugReproductionSteps" aria-label={t('bugs.reproductionSteps')} as="textarea" rows={6} className="small font-monospace mb-2" value={detailForm.pasos_reproduccion || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('pasos_reproduccion', e.target.value)} />
                 <h6>{t('bugs.preconditions')}</h6>
-                <Form.Control id="bug-detail-preconditions" name="bugPreconditions" as="textarea" rows={3} className="small mb-2" value={detailForm.precondiciones || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('precondiciones', e.target.value)} />
+                <Form.Control id="bug-detail-preconditions" name="bugPreconditions" aria-label={t('bugs.preconditions')} as="textarea" rows={3} className="small mb-2" value={detailForm.precondiciones || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => updateDetailField('precondiciones', e.target.value)} />
                 <Row className="g-2 mb-2">
-                  <Col md={6}><h6>{t('bugs.qaNotes')}</h6><Form.Control id="bug-detail-qa-notes" name="bugQaNotes" as="textarea" rows={3} className="small" value={detailForm.notas_qa || ''} readOnly={!detailEditing} onChange={(e) => updateDetailField('notas_qa', e.target.value)} /></Col>
-                  <Col md={6}><h6>{t('bugs.logsError')}</h6><Form.Control id="bug-detail-logs" name="bugLogs" as="textarea" rows={3} className="small font-monospace" value={detailForm.logs_relevantes || detailForm.error_tecnico || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => { updateDetailField('logs_relevantes', e.target.value); updateDetailField('error_tecnico', e.target.value) }} /></Col>
+                  <Col md={6}><h6>{t('bugs.qaNotes')}</h6><Form.Control id="bug-detail-qa-notes" name="bugQaNotes" aria-label={t('bugs.qaNotes')} as="textarea" rows={3} className="small" value={detailForm.notas_qa || ''} readOnly={!detailEditing} onChange={(e) => updateDetailField('notas_qa', e.target.value)} /></Col>
+                  <Col md={6}><h6>{t('bugs.logsError')}</h6><Form.Control id="bug-detail-logs" name="bugLogs" aria-label={t('bugs.logsError')} as="textarea" rows={3} className="small font-monospace" value={detailForm.logs_relevantes || detailForm.error_tecnico || ''} readOnly={isConversationalBug || !detailEditing} onChange={(e) => { updateDetailField('logs_relevantes', e.target.value); updateDetailField('error_tecnico', e.target.value) }} /></Col>
                 </Row>
               </Col>
               <Col lg={4}>
@@ -398,9 +300,9 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 <Row className="g-2 mb-2">
                   <Col md={4}>
                     <Form.Label htmlFor="bug-detail-status" className="x-small text-muted fw-bold">{t('bugs.statusCol')}</Form.Label>
-                    {canTriage || canResolve || canClose ? (
-                      <Form.Select id="bug-detail-status" name="bugStatus" size="sm" value={selectedBug.estado} onChange={(e) => transitionBug(e.target.value)}>
-                        {statusOptions.filter(item => canTransitionTo(item)).map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
+                    {statusOptions.some(item => item !== selectedBug.estado && canTransitionTo(item, selectedBug)) ? (
+                      <Form.Select id="bug-detail-status" name="bugStatus" size="sm" disabled={Boolean(quickTransitioningBugId)} value={selectedBug.estado} onChange={(e) => transitionBug(e.target.value)}>
+                        {statusOptions.filter(item => item === selectedBug.estado || canTransitionTo(item, selectedBug)).map(item => <option key={item} value={item}>{statusLabel(item)}</option>)}
                       </Form.Select>
                     ) : (
                       <Form.Control id="bug-detail-status" name="bugStatus" size="sm" value={selectedBug.estado ? statusLabel(selectedBug.estado) : t('common.notAvailable')} readOnly />
@@ -528,20 +430,28 @@ export function BugTrackerView({ context }: { context: BugTrackerViewContext }) 
                 ].map(([k, v]) => <tr key={String(k)}><td className="fw-semibold small">{k}</td><td className="small text-break">{contextValue(v)}</td></tr>)}</tbody></Table>
               </details>
               {detailEditing && <Row className="g-2 mt-3">{[
-                ['url_afectada', 'affectedUrl', 12], ['navegador', 'browser', 6], ['sistema_operativo', 'os', 6], ['dispositivo', 'device', 6], ['resolucion', 'qaResolution', 6], ['reproducibilidad', 'reproducibility', 6], ['frecuencia', 'frequency', 6],
-              ].map(([field, label, md]) => <Col md={md as any} key={field as string}><Form.Control name="a11y-bugtrackerviewtsx-461" aria-label={t('common.formField')} size="sm" placeholder={t(`bugs.${label}`)} value={detailForm[field as string] || ''} onChange={(e) => updateDetailField(field as string, e.target.value)} /></Col>)}<Col md={12}><Form.Control as="textarea" rows={2} size="sm" placeholder={t('bugs.businessImpact')} value={detailForm.impacto_negocio || ''} onChange={(e) => updateDetailField('impacto_negocio', e.target.value)} /></Col></Row>}
+                ['url_afectada', 'affectedUrl', 12], ['navegador', 'browser', 6], ['sistema_operativo', 'os', 6], ['dispositivo', 'device', 6], ['resolucion_pantalla', 'qaResolution', 6], ['reproducibilidad', 'reproducibility', 6], ['frecuencia', 'frequency', 6],
+              ].map(([field, label, md]) => <Col md={md as any} key={field as string}><Form.Control name={`bugDetail-${field}`} aria-label={t(`bugs.${label}`)} size="sm" placeholder={t(`bugs.${label}`)} value={detailForm[field as string] || ''} onChange={(e) => updateDetailField(field as string, e.target.value)} /></Col>)}<Col md={12}><Form.Control aria-label={t('bugs.businessImpact')} as="textarea" rows={2} size="sm" placeholder={t('bugs.businessImpact')} value={detailForm.impacto_negocio || ''} onChange={(e) => updateDetailField('impacto_negocio', e.target.value)} /></Col></Row>}
             </div>}
 
+            {detailTab === 'history' && <BugHistory bug={selectedBug} users={appUsers} fetchWithAuth={context.fetchWithAuth} t={t} />}
+            {selectedBug.duplicate_of_id && <Button size="sm" variant="link" onClick={() => guardAction(() => openDetail({ id: selectedBug.duplicate_of_id }))}>{t('bugs.viewOriginal')}</Button>}
             {detailTab === 'conversation' && <BugConversationalEvidence t={t} context={conversationalContext} selectedBug={selectedBug} loading={conversationalContextLoading} />}
             {detailTab === 'api' && <BugApiEvidence context={apiContext} loading={apiContextLoading} />}
 
-          </Modal.Body>
+          </fieldset></Modal.Body>
         )}
         <Modal.Footer className="d-flex justify-content-between">
           <Button variant="secondary" onClick={closeDetail}>{t('bugs.close')}</Button>
           {detailEditing && selectedBug && <div className="d-flex gap-2"><Button variant="outline-secondary" onClick={cancelDetailEditing} disabled={savingDetail}>{t('bugs.cancel')}</Button><Button variant="success" className="fw-bold" onClick={saveDetail} disabled={savingDetail}><Save size={14} className="me-1" /> {savingDetail ? t('bugs.saving') : t('bugs.saveChanges')}</Button></div>}
         </Modal.Footer>
       </Modal>
+      <Modal animation={false} show={Boolean(pendingAction)} onHide={() => setPendingAction(null)} centered>
+        <Modal.Header closeButton><Modal.Title>{t('bugs.unsavedTitle')}</Modal.Title></Modal.Header>
+        <Modal.Body>{t('bugs.unsavedMessage')}</Modal.Body>
+        <Modal.Footer><Button variant="secondary" onClick={() => setPendingAction(null)}>{t('bugs.keepEditing')}</Button><Button variant="danger" onClick={() => { const action = pendingAction; setPendingAction(null); context.resetDetailDraft(); setComment(''); setCommentAttachments([]); action?.() }}>{t('bugs.discardChanges')}</Button></Modal.Footer>
+      </Modal>
+      <BugDuplicateModal bug={duplicateBug} fetchWithAuth={context.fetchWithAuth} onClose={() => setDuplicateBug(null)} onSaved={async (updated: any) => { setDuplicateBug(null); setDetailEditing(false); await openDetail(updated); await context.list.loadBugs({ silent: true }) }} />
       <EvidenceViewerModal evidence={viewerEvidence} onHide={() => setViewerEvidence(null)} />
     </>
   )

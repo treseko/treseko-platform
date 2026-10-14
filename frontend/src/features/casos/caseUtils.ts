@@ -146,10 +146,19 @@ export const hasDuplicateCaseTitle = (cases: any[] = [], suiteId: any, title: an
   })
 }
 
-export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], fallbackProjectId = '') => {
+export const mapBackendCasoToTest = (
+  caso: any,
+  componentsSnapshot: any[] = [],
+  fallbackProjectId = '',
+  fallbackComponentId = '',
+  fallbackComponentName = '',
+) => {
   const componentId = caso.componente_id || ''
   const component = componentsSnapshot.find(c => String(c.id) === String(componentId))
   const componentName = component?.name || component?.nombre || caso.componente_nombre || caso.component_name || caso.modulo_funcional
+  const selectedComponentName = componentId && String(componentId) === String(fallbackComponentId)
+    ? String(fallbackComponentName || '').trim()
+    : ''
   const hasStepsCount = caso.steps_count !== undefined && caso.steps_count !== null
   return {
     id: caso.id,
@@ -168,7 +177,7 @@ export const mapBackendCasoToTest = (caso: any, componentsSnapshot: any[] = [], 
     configuracion_chatbot: caso.configuracion_chatbot || {},
     configuracion_api: caso.configuracion_api || {},
     apiConfig: caso.configuracion_api || {},
-    component: componentName || (componentId ? 'Componente no encontrado' : 'Sin componente asignado'),
+    component: componentName || selectedComponentName || (componentId ? 'Componente no encontrado' : 'Sin componente asignado'),
     componentId,
     description: caso.descripcion || '',
     pre: caso.precondiciones || '',

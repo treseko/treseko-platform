@@ -25,7 +25,6 @@ import type {
   IaQueueItem,
   IaRunStatus,
 } from './motorIaTypes'
-
 const FINAL_IA_STATUSES = ['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT', 'SKIPPED', 'CANCELLED', 'REQUIERE_REVISION', 'STREAM_CERRADO']
 
 export function useMotorIaMonitorState({ options }: { options: any }) {
@@ -210,6 +209,7 @@ export function useMotorIaMonitorState({ options }: { options: any }) {
               step,
               attempt: data.attempt,
               confidence: data.confidence,
+              confidence_source: data.confidence_source || data.action?.confidence_source,
               reason: data.reason,
               metrics: data.metrics || data.metadata,
             }

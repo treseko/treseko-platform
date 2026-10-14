@@ -58,7 +58,7 @@ export function updateSuiteIndex(context: any, duration: string): any[] {
         </td>
         <td class="py-4 px-6 text-xs font-mono text-slate-500">${r.duration}</td>
         <td class="py-4 px-6 text-right">
-            <div class="text-sky-400 font-bold">${r.confidence}%</div>
+            <div class="text-sky-400 font-bold">${r.confidence}/100</div>
         </td>
       </tr>
     `).join('');
@@ -148,7 +148,7 @@ export function updateSuiteIndex(context: any, duration: string): any[] {
                         <th class="py-4 px-6">Status</th>
                         <th class="py-4 px-6">Resources</th>
                         <th class="py-4 px-6">Duration</th>
-                        <th class="py-4 px-6 text-right">Confidence</th>
+                        <th class="py-4 px-6 text-right">Internal score (uncalibrated)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800">

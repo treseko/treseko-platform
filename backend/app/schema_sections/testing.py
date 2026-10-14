@@ -23,10 +23,10 @@ from ..models import (
     FormatoPrueba,
 )
 
-MAX_SUITE_NAME_LENGTH = 160
+MAX_SUITE_NAME_LENGTH = 150
 MAX_SUITE_DESCRIPTION_LENGTH = 4000
 MAX_SUITE_REORDER_ITEMS = 1000
-MAX_TEST_CASE_CODE_LENGTH = 80
+MAX_TEST_CASE_CODE_LENGTH = 20  # CasoPrueba.codigo is VARCHAR(20).
 MAX_TEST_CASE_TITLE_LENGTH = 300
 MAX_TEST_CASE_TEXT_LENGTH = 12000
 MAX_TEST_CASE_TAGS = 80
@@ -82,18 +82,37 @@ class SuiteBase(BaseModel):
     descripcion: Optional[str] = Field(default=None, max_length=MAX_SUITE_DESCRIPTION_LENGTH)
     parent_id: Optional[UUID] = None
     componente_id: Optional[UUID] = None
-    color: Optional[str] = Field(default="#F1F5F9", max_length=32)
+    color: Optional[str] = Field(default="#F1F5F9", max_length=20)
     icono: Optional[str] = Field(default="folder", max_length=40)
+
+    @field_validator('nombre', mode='before')
+    @classmethod
+    def nonblank_name(cls, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError('El nombre de la suite es obligatorio.')
+        return value.strip()
+
+    @field_validator('color')
+    @classmethod
+    def valid_color(cls, value):
+        import re
+        if value is not None and not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+            raise ValueError('El color debe tener formato hexadecimal #RRGGBB.')
+        return value
 
 class SuiteCreate(SuiteBase):
     proyecto_id: UUID
+    request_id: Optional[UUID] = None
 
 class SuiteUpdate(BaseModel):
     nombre: Optional[str] = Field(default=None, min_length=1, max_length=MAX_SUITE_NAME_LENGTH)
     descripcion: Optional[str] = Field(default=None, max_length=MAX_SUITE_DESCRIPTION_LENGTH)
     componente_id: Optional[UUID] = None
-    color: Optional[str] = Field(default=None, max_length=32)
+    color: Optional[str] = Field(default=None, max_length=20)
     icono: Optional[str] = Field(default=None, max_length=40)
+
+    nonblank_name = field_validator('nombre', mode='before')(SuiteBase.nonblank_name.__func__)
+    valid_color = field_validator('color')(SuiteBase.valid_color.__func__)
 
 class SuiteArchiveRequest(BaseModel):
     archivado: bool
@@ -102,9 +121,15 @@ class SuiteMoveRequest(BaseModel):
     parent_id: Optional[UUID] = None
 
 class SuiteCloneRequest(BaseModel):
+    request_id: Optional[UUID] = None
     nuevo_nombre: Optional[str] = Field(default=None, min_length=1, max_length=MAX_SUITE_NAME_LENGTH)
     parent_id: Optional[UUID] = None
     include_cases: bool = True
+
+    @field_validator('nuevo_nombre', mode='before')
+    @classmethod
+    def valid_clone_name(cls, value):
+        return SuiteBase.nonblank_name(value) if value is not None else None
 
 class SuiteReorderRequest(BaseModel):
     orden: List[UUID] = Field(..., min_length=1, max_length=MAX_SUITE_REORDER_ITEMS)
@@ -227,6 +252,7 @@ class CasoPruebaBase(BaseModel):
         return normalized
 
 class CasoPruebaCreate(CasoPruebaBase):
+    request_id: Optional[UUID] = None
     proyecto_id: UUID
     pasos: List[PasoCreate] = Field(default_factory=list, max_length=MAX_TEST_CASE_STEPS)
     creado_por: Optional[UUID] = None

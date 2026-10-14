@@ -1,7 +1,8 @@
 # Instalar Treseko Community
 
-Usá los instaladores incluidos. Generan compose.production.env y secretos
-locales. El paquete también incluye ejemplos `.env.production.example`; no
+Usá los scripts Bash o PowerShell incluidos. Generan `compose.production.env` y
+secretos locales. Los instaladores gráficos están temporalmente fuera de esta
+versión. El paquete también incluye ejemplos `.env.production.example`; no
 contienen secretos reales.
 
 ## Requisitos
@@ -12,52 +13,11 @@ contienen secretos reales.
 - Almacenamiento para PostgreSQL, evidencias y backups.
 - Host Linux para instalación remota por SSH.
 
-## Instalador local
+## Instalación local por script
 
-También se incluye un instalador gráfico multiplataforma. Abre una ventana,
-comprueba Docker y Compose, valida el puerto, ejecuta la instalación mostrando
-el progreso y permite abrir Treseko al finalizar:
-
-```bash
-python3 installer/treseko_installer.py
-```
-
-En Windows PowerShell:
-
-```powershell
-py installer\treseko_installer.py
-```
-
-Al iniciar, consulta la versión del Frontend y la salud/versión del Backend en
-el puerto elegido. Distingue una instalación activa de una carpeta con archivos
-locales. Si detecta otro servicio, versiones distintas entre componentes, una
-raíz que no coincide con la instalación o una actualización pendiente, bloquea
-la acción para evitar instalar encima o iniciar otra actualización. También
-bloquea instalar la misma versión o una anterior. Si Docker está detenido,
-muestra la última versión registrada y verifica la raíz antes de actualizar.
-`Paquete` elige la versión destino; `Instalación existente` permite seleccionar
-la raíz que contiene la configuración y los datos persistentes.
-
-El instalador gráfico requiere Python 3 y Tkinter; en Ubuntu minimal instalá
-`python3-tk` antes de abrirlo.
-
-Si se abre desde `Descargas` sin el paquete completo, consulta el último
-release estable de `treseko/treseko-platform` en GitHub, descarga el núcleo por
-HTTPS, valida sus archivos principales y continúa con la instalación. No
-descarga código desde URLs configurables por el usuario.
-
-Si se ejecuta el launcher Python y el release incluye una GUI más nueva, el
-bootstrap puede reiniciarla con el paquete descargado y conservar separada la
-raíz de datos existente. Un ejecutable standalone ya compilado no puede cargar
-código Python descargado dentro de sí mismo; para actualizar desde una GUI
-standalone anterior, descargá y ejecutá el instalador gráfico de la versión
-destino. Los servicios nuevos deben estar declarados en Compose o en los
-scripts del release para que formen parte de la instalación.
-
-La interfaz usa el instalador Bash en Ubuntu/macOS y el instalador PowerShell
-en Windows. En Apple Silicon se requiere Docker Desktop para Apple Silicon.
-La modalidad gráfica actual instala el entorno Docker; no instala servicios
-nativos de Windows o macOS.
+En Linux y macOS ejecutá el script Bash. En Windows usá el script PowerShell.
+Ambos instalan el entorno Docker Compose; no instalan servicios nativos del
+sistema operativo. Los requisitos de Docker y Compose se indican arriba.
 
 La aplicación principal consta de Frontend y Backend/API. PostgreSQL y Redis
 son los servicios base de datos y coordinación. Los complementos Engine de IA y
@@ -140,9 +100,7 @@ scripts/install_local_treseko.sh --update
 La actualización falla si no existe `compose.production.env`. No combines
 `--update` con `--with-demo`.
 
-El instalador gráfico delega en el mismo flujo local según el sistema operativo:
-Bash en macOS/Linux y PowerShell en Windows. La GUI no aplica componentes por
-su cuenta. La opción Configuración → Actualizaciones es una ruta distinta y
+La opción Configuración → Actualizaciones es una ruta distinta y
 solo admite instalaciones con binding válido del coordinador de host; si falta,
 la API rechaza la solicitud antes de crear una tarea y la interfaz indica usar
 el instalador local del equipo host. No hay fallback de aplicación legacy
@@ -205,11 +163,10 @@ scripts/install_remote_treseko.sh usuario@servidor --http-port 9095
 El destino debe ser Linux con SSH. Se generan secretos, se ejecutan migraciones
 y se muestra URL, usuario inicial y contraseña temporal. Guardala y cambiala en
 el primer login. El destino remoto predeterminado es `/opt/treseko-platform`; se
-puede cambiar con `--remote-dir RUTA`. La ventana gráfica permite elegir esa
-carpeta y un puerto distinto. El instalador remoto es solo para instalaciones
-nuevas: si la carpeta elegida no está vacía, se detiene sin sobrescribir ni
-mezclar archivos. Para un host con `sudo` interactivo, configurá acceso sudo no
-interactivo para el usuario SSH antes de iniciar el flujo gráfico.
+puede cambiar con `--remote-dir RUTA`. El instalador remoto es solo para
+instalaciones nuevas: si la carpeta elegida no está vacía, se detiene sin
+sobrescribir ni mezclar archivos. Para un host con `sudo` interactivo, configurá
+acceso sudo no interactivo para el usuario SSH antes de ejecutar el script.
 
 ## Instalación manual
 

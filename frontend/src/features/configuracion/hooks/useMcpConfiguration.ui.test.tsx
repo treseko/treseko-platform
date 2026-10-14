@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useMcpConfiguration } from './useMcpConfiguration'
@@ -73,4 +74,20 @@ describe('useMcpConfiguration credential lifecycle', () => {
     await act(async () => { await Promise.resolve() })
     expect(result.current.rawCredential).toBeNull()
   })
+})
+
+
+it('supports StrictMode and keeps the one-time key out of credential metadata', async () => {
+  vi.mocked(api.fetchMcpConfiguration).mockResolvedValue(configuration(true))
+  vi.mocked(api.listMcpCredentials).mockResolvedValue([])
+  vi.mocked(api.createMcpCredential).mockResolvedValue(created)
+  const params = { isAuthenticated: true, fetchWithAuth: vi.fn(), canRead: true, canEdit: true, confirmAction: vi.fn(), showFeedback: vi.fn(), t: (key: string) => key }
+  const { result, rerender } = renderHook(({ authenticated }) => useMcpConfiguration({ ...params, isAuthenticated: authenticated }), { initialProps: { authenticated: true }, wrapper: StrictMode })
+  await waitFor(() => expect(result.current.enabled).toBe(true))
+  await act(async () => { expect(await result.current.create('CI', ['mcp.projects.read'])).toBe(true) })
+  expect(result.current.rawCredential).toBe(created.api_key)
+  expect(result.current.credentials[0]).not.toHaveProperty('api_key')
+  rerender({ authenticated: false })
+  await waitFor(() => expect(result.current.rawCredential).toBeNull())
+  expect(result.current.credentials).toEqual([])
 })

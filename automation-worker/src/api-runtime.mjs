@@ -6,7 +6,6 @@ export function createApiRuntime(deps) {
     capabilities, isInvalidRunnerTokenError, clearRunnerCredentials, saveTokenFile,
     traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
   } = deps;
-let missingOrganizationScopeReported = false;
 
 async function fetchJson(url, options = {}) {
   const requestId = options.requestId || traceRequestId();
@@ -105,13 +104,6 @@ async function registerIfNeeded() {
 
   const registrationToken = process.env.QA_REGISTRATION_TOKEN || "";
   if (!registrationToken || registrationToken.includes("paste_registration_token_here")) {
-    if (!ORGANIZACION_ID) {
-      if (!missingOrganizationScopeReported) {
-        console.info("Worker instalado y en espera. Configura QA_ORGANIZACION_ID con el ID de una solución y reinicia el servicio para iniciar el pairing.");
-        missingOrganizationScopeReported = true;
-      }
-      return;
-    }
     await pairWithPlatform();
     return;
   }
@@ -124,33 +116,12 @@ async function registerIfNeeded() {
     capabilities: capabilities(),
   };
   const registerRequestId = traceRequestId();
-  const registerStarted = performance.now();
-  traceEntry("http_request", {
-    request_id: registerRequestId,
+  const created = await fetchJson(registerUrl, {
     method: "POST",
-    url: registerUrl,
-    headers: { "Content-Type": "application/json", "X-Correlation-ID": state.activeCorrelationId || registerRequestId },
-    body: registerBody,
-  });
-  const created = await fetch(registerUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Correlation-ID": state.activeCorrelationId || registerRequestId },
+    requestId: registerRequestId,
+    correlationId: state.activeCorrelationId || registerRequestId,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(registerBody),
-  }).then(async (response) => {
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
-    traceEntry("http_response", {
-      request_id: registerRequestId,
-      method: "POST",
-      url: registerUrl,
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: registerBody,
-      response_body: data ?? text,
-      duration_ms: Math.round((performance.now() - registerStarted) * 100) / 100,
-    });
-    if (!response.ok) throw errorFromResponse(data, text, response.status, response.headers.get("x-correlation-id") || state.activeCorrelationId || registerRequestId);
-    return data;
   });
 
   state.runnerToken = created.runner_token;

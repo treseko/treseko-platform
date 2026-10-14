@@ -10,8 +10,8 @@ type CreateContextActionsParams = {
   currentBuildId: string
   projectsList: any[]
   componentsList: any[]
-  loadComponentsForProject: (projectId: string, preferredComponentId?: string) => Promise<any[] | undefined>
-  loadBuildsForProject: (projectId: string, componentsSnapshot?: any[], preferredComponentId?: string, preferredBuildId?: string) => Promise<any>
+  loadComponentsForProject: (projectId: string, preferredComponentId?: string, isCurrent?: () => boolean) => Promise<any[] | undefined>
+  loadBuildsForProject: (projectId: string, componentsSnapshot?: any[], preferredComponentId?: string, preferredBuildId?: string, isCurrent?: () => boolean) => Promise<any>
   loadSuitesFromBackend: (projectId: string, componentId?: string, options?: { silent?: boolean }) => Promise<any>
   loadCasosFromBackend: (projectId?: string, componentsSnapshot?: any[], options?: any) => Promise<any>
   loadBuildCases: (buildId: string, options?: { silent?: boolean }) => Promise<string[]>
@@ -27,6 +27,12 @@ type CreateContextActionsParams = {
   setCurrentBuildId: (id: string) => void
   setViewMode: (mode: 'list' | 'manual_exec' | 'chatbot_manual') => void
   setNewTestComponent: (componentId: string) => void
+  setSuitesTree?: (items: any[]) => void
+  setCasosList?: (items: any[]) => void
+  setCasosSearchResults?: (items: any[] | null) => void
+  setCasosTotal?: (total: number) => void
+  setSuitesLoading?: (loading: boolean) => void
+  setCasosLoading?: (loading: boolean) => void
 }
 
 export function createContextActions({
@@ -55,9 +61,19 @@ export function createContextActions({
   setCurrentCompId,
   setCurrentBuildId,
   setViewMode,
-  setNewTestComponent
+  setNewTestComponent,
+  setSuitesTree, setCasosList, setSuitesLoading, setCasosLoading, setCasosSearchResults, setCasosTotal
 }: CreateContextActionsParams) {
   const sameId = (left: unknown, right: unknown) => String(left ?? '') === String(right ?? '')
+
+  const clearLoadedContext = () => {
+    setSuitesTree?.([])
+    setCasosList?.([])
+    setCasosSearchResults?.(null)
+    setCasosTotal?.(0)
+    setSuitesLoading?.(false)
+    setCasosLoading?.(false)
+  }
 
   const resetExecutionSelection = () => {
     setSelectedTest(null)
@@ -87,7 +103,7 @@ export function createContextActions({
       return { componentId, activeBuildId: '' }
     }
 
-    const loadedComponents = await loadComponentsForProject(projectId, preferredComponentId)
+    const loadedComponents = await loadComponentsForProject(projectId, preferredComponentId, isCurrentHydration)
     if (!isCurrentHydration()) return null
     const projectComponents = loadedComponents?.length
       ? loadedComponents
@@ -101,13 +117,15 @@ export function createContextActions({
       setNewTestComponent('')
       setCurrentBuildId('')
       await loadSuitesFromBackend(projectId, '', options)
+      if (!isCurrentHydration()) return null
       await loadCasosFromBackend(projectId, projectComponents, { preserveExecutionState: activeTab === 'ejecutar', buildId: '', silent: options?.silent })
+      if (!isCurrentHydration()) return null
       return { componentId: '', activeBuildId: '' }
     }
 
     setCurrentCompId(componentId)
     setNewTestComponent(componentId)
-    const buildContext = await loadBuildsForProject(projectId, projectComponents, componentId, currentBuildId)
+    const buildContext = await loadBuildsForProject(projectId, projectComponents, componentId, currentBuildId, isCurrentHydration)
     if (!isCurrentHydration()) return null
     const contextComponentId = buildContext?.componentId || componentId
     const activeBuildId = buildContext?.activeBuildId || ''
@@ -124,6 +142,7 @@ export function createContextActions({
   }
 
   const handleProjectChange = (projId: string) => {
+    clearLoadedContext()
     resetExecutionSelection()
     setProjectMetrics(null)
     // A component/build belongs to the previous project until the new context
@@ -141,6 +160,8 @@ export function createContextActions({
   }
 
   const handleOrgChange = (orgId: string) => {
+    contextHydrationVersionRef.current += 1
+    clearLoadedContext()
     setCurrentOrgId(orgId)
     setManagingProjectId(null)
     resetExecutionSelection()
@@ -156,6 +177,7 @@ export function createContextActions({
   }
 
   const handleComponentChange = async (componentId: string) => {
+    clearLoadedContext()
     // Builds are scoped to a component. Do not let automation/reporting issue
     // a request with the previous component's build during the async refresh.
     setCurrentCompId(componentId)

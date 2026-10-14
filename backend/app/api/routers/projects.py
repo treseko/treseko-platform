@@ -1,11 +1,9 @@
 import hashlib
 import os
 from fastapi import APIRouter, File, UploadFile
-from sqlalchemy import func
 from typing import Annotated
 
 from ...main_context import *
-from ...services.edition.entitlement_service import enforce_limit
 from ...content_type_validation import content_matches_declared_type
 
 
@@ -30,20 +28,6 @@ async def create_proyecto(
         await access_control.require_organization_access(db, current_user, proyecto.organizacion_id, "edit")
     elif not access_control.is_global_admin(current_user):
         raise HTTPException(status_code=400, detail="Debe indicar una organizacion valida")
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(models.Proyecto)
-        .filter(
-            models.Proyecto.organizacion_id == proyecto.organizacion_id,
-            models.Proyecto.activo.is_(True),
-        )
-    )
-    await enforce_limit(
-        db,
-        "max_projects",
-        int(count_result.scalar() or 0),
-        tenant_id=str(proyecto.organizacion_id),
-    )
     try:
         created = await crud.create_proyecto(db=db, proyecto=proyecto)
         if current_user.rol != models.Rol.ADMIN:
@@ -80,6 +64,7 @@ async def read_proyectos(
                 models.ProyectoMiembro.usuario_id == current_user.id,
                 models.Organizacion.activo.is_(True),
             )
+            .order_by(models.Proyecto.id)
             .offset(skip)
             .limit(limit)
         )
@@ -106,7 +91,6 @@ async def update_proyecto(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.portfolio", "edit"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "edit")
-    previous_project = await crud.get_proyecto(db, proyecto_id=proyecto_id)
     if proyecto.organizacion_id:
         await access_control.require_organization_access(db, current_user, proyecto.organizacion_id, "edit")
     try:
@@ -115,6 +99,7 @@ async def update_proyecto(
         raise HTTPException(status_code=400, detail=str(exc))
     if db_proyecto is None:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    previous_active = db.info["project_previous_active"][proyecto_id]
     await realtime_event_bus.publish(
         db_proyecto.id,
         "project.updated",
@@ -124,38 +109,36 @@ async def update_proyecto(
             "updated_fields": proyecto.model_dump(exclude_unset=True),
         },
     )
-    if proyecto.activo is False:
-        if previous_project and previous_project.activo:
-            await notification_event_service.emit_event(
-                db=db,
-                event_type="project.closed",
-                actor_user_id=current_user.id,
-                proyecto_id=db_proyecto.id,
-                entity_type="project",
-                entity_id=db_proyecto.id,
-                severity="info",
-                payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto cerrado: {db_proyecto.nombre}"},
-                dedupe_key=f"project.closed:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
-            )
+    if previous_active is True and db_proyecto.activo is False:
+        await notification_event_service.emit_event(
+            db=db,
+            event_type="project.closed",
+            actor_user_id=current_user.id,
+            proyecto_id=db_proyecto.id,
+            entity_type="project",
+            entity_id=db_proyecto.id,
+            severity="info",
+            payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto cerrado: {db_proyecto.nombre}"},
+            dedupe_key=f"project.closed:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
+        )
         await realtime_event_bus.publish(
             db_proyecto.id,
             "project.deleted",
             actor_id=current_user.id,
             payload={"project": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "source": "soft_delete"},
         )
-    elif proyecto.activo is True:
-        if previous_project and not previous_project.activo:
-            await notification_event_service.emit_event(
-                db=db,
-                event_type="project.reopened",
-                actor_user_id=current_user.id,
-                proyecto_id=db_proyecto.id,
-                entity_type="project",
-                entity_id=db_proyecto.id,
-                severity="info",
-                payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto reabierto: {db_proyecto.nombre}"},
-                dedupe_key=f"project.reopened:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
-            )
+    elif previous_active is False and db_proyecto.activo is True:
+        await notification_event_service.emit_event(
+            db=db,
+            event_type="project.reopened",
+            actor_user_id=current_user.id,
+            proyecto_id=db_proyecto.id,
+            entity_type="project",
+            entity_id=db_proyecto.id,
+            severity="info",
+            payload={"proyecto": {"id": str(db_proyecto.id), "nombre": db_proyecto.nombre}, "actor": {"email": current_user.email}, "message": f"Proyecto reabierto: {db_proyecto.nombre}"},
+            dedupe_key=f"project.reopened:{db_proyecto.id}:{utc_now().strftime('%Y%m%d%H%M')}",
+        )
         await realtime_event_bus.publish(
             db_proyecto.id,
             "project.restored",

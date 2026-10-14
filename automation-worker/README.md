@@ -4,7 +4,7 @@ Worker dedicado para ejecutar pruebas automatizadas. La plataforma principal con
 
 ## Requisitos
 
-- Node.js 18 o superior (el ejecutor API usa el `fetch` nativo del runtime).
+- Node.js 22 o superior (la imagen oficial usa Node.js 22).
 - Python 3.10 o superior solo si vas a ejecutar Selenium Python.
 - Backend Treseko iniciado, normalmente en `http://localhost:8000`.
 - Acceso a la UI con permiso `automatizacion:edit` para aprobar el worker.
@@ -61,14 +61,6 @@ No pegues tokens manualmente salvo que uses el flujo legacy. El flujo normal cre
 ### Alcance Del Worker
 
 En esta version el worker se vincula a una solucion/organizacion concreta. Para eso debe tener configurado `QA_ORGANIZACION_ID` antes de iniciar el flujo de vinculacion. Ese valor es el UUID de la solucion que se ve en Treseko.
-
-La instalacion Community inicia el servicio Worker en el mismo equipo que
-Treseko. Si aun no existe una solucion, permanece en espera sin crear solicitudes
-de pairing. Una vez creada, configura `QA_ORGANIZACION_ID` en
-`compose.production.env`, reinicia `automation-worker` y aprueba la solicitud en
-**Automatizacion → Workers**. Para ubicar el Worker en otro servidor, sigue esta
-guia e instala/vincula el componente por separado; el asistente grafico todavia
-no aprovisiona un host remoto.
 
 Mientras el worker este vinculado a esa solucion, solo debe tomar jobs pertenecientes a proyectos, componentes, builds y casos de esa misma solucion. Esto evita que una instancia con varias soluciones mezcle ejecuciones o evidencias entre clientes/equipos.
 
@@ -426,8 +418,8 @@ Cuando un job falla, el worker intenta generar evidencia automatica:
 
 | Framework | Evidencia V1 |
 | --- | --- |
-| Playwright worker function | Screenshot automatico de la pagina al fallar |
-| Playwright Test | Screenshot on failure del runner |
+| Playwright worker function | Captura al fallar y captura final en ejecuciones aprobadas; vídeo salvo `record_video=false` |
+| Playwright Test | Screenshot on failure del runner; vídeo salvo `record_video=false` |
 | Cypress | Screenshot on failure |
 | Puppeteer | Adjunta capturas guardadas en `QA_ARTIFACTS_DIR` |
 | Selenium Python | Adjunta capturas guardadas en `QA_ARTIFACTS_DIR` |
@@ -448,7 +440,25 @@ await captureScreenshot(page, 'fallo-login')
 capture_screenshot(driver, "fallo-login")
 ```
 
-Videos y traces completos quedan fuera de V1. Para eso conviene una etapa posterior con Playwright Trace Viewer, videos de Cypress/Playwright o streaming remoto.
+Playwright worker function y Playwright Test graban vídeo cuando `record_video` no es `false`. Una captura final que no pueda obtenerse se comunica como `final_screenshot_status=UNAVAILABLE`; no cambia el veredicto. No se garantiza vídeo para otros frameworks ni se ofrece un visor de traces o streaming remoto.
+
+En el Worker Docker, el HOME del proceso aislado vive en `.treseko-runtime` dentro del workspace. Esa carpeta y el `package.json` de la raíz pertenecen al runtime y no se adjuntan como evidencia. Los archivos de prueba en otras rutas, aunque tengan esos mismos nombres, se conservan.
+
+## Ejecución API declarativa
+
+El mismo worker soporta casos `API` sin instalar un worker adicional. Anuncia la
+capacidad `treseko-api: ["declarative"]` y reclama jobs `API_EXECUTION` con
+contrato `treseko.api-worker-job/v1`.
+
+- Ejecuta la definición congelada del caso en el orden recibido.
+- Usa la conexión y la allowlist del ambiente, no URLs arbitrarias del payload.
+- Comparte sólo variables `api.*` extraídas dentro de la ejecución.
+- Redacta evidencia sensible antes de devolverla y limita respuesta/job.
+- Devuelve `treseko.api-result/v1` dentro de `api_results`.
+
+Este flujo es distinto de la API externa: un runner externo reporta resultados
+ya ejecutados mediante `POST /external/executions/report`. La API externa no
+reclama jobs, no recibe snapshots y no crea un segundo worker.
 
 ## Troubleshooting
 
@@ -503,5 +513,29 @@ El backend envia `timeout_seconds`. Si el script tarda mas, el worker reporta `T
 - El worker no accede a la base de datos.
 - Usa un token propio, revocable desde la plataforma.
 - El codigo corto de vinculacion expira y no es el token definitivo.
-- Los logs redactan patrones simples como `password=...` y `token=...`.
-- V1 no ejecuta shell arbitrario; ejecuta scripts de automatizacion desde la plataforma en procesos temporales controlados por timeout.
+- Los logs y evidencias conservan los datos originales y requieren acceso autenticado; las credenciales internas del coordinador quedan fuera del contexto del script.
+- Los scripts pueden ejecutar código y procesos hijos; el Worker Docker aplica usuarios sin privilegios y límites de tiempo. El modo nativo requiere confianza explícita.
+
+
+## Aislamiento, capacidad y datos completos
+
+La imagen Docker oficial ejecuta los scripts bajo usuarios Linux sin privilegios,
+separados del coordinador. Aplica timeout y cancelación del árbol de procesos;
+los scripts no reciben el token de lease ni las credenciales internas en su entorno.
+En Windows y macOS, el modo nativo solo anuncia el ejecutor API declarativo por
+defecto. Para scripts propios y confiables existe la opción explícita
+`QA_ALLOW_TRUSTED_NATIVE_SCRIPTS=1`; ese modo separa procesos y entorno, pero no
+ofrece aislamiento de archivos frente al usuario del sistema. Usar el Worker
+Docker para ejecutar scripts sin esa confianza.
+
+El worker tiene una sola ejecución activa. Anuncia únicamente runtimes y
+navegadores instalados; `QA_MAX_PARALLEL_JOBS` no aumenta su capacidad. Los trabajos
+esperan en la cola backend cuando no hay un worker compatible.
+
+Los resultados y evidencias conservan datos originales. La salida completa de
+los procesos se guarda en archivos y la vista inmediata tiene un buffer limitado.
+Los resultados grandes se entregan por fragmentos con checksum y reanudación.
+El spool y los directorios de ejecución permanecen bajo `/worker/.state` en el
+contenedor hasta recibir confirmación del backend; las actualizaciones los
+preservan. Los tokens internos no forman parte del contexto del script ni de la
+descarga de evidencia completa.

@@ -18,3 +18,14 @@ import { compareTestsBySuiteOrder } from '../../testOrdering'
   assert.equal(mapped.position, 7)
   assert.equal(compareTestsBySuiteOrder(mapped, { ...mapped, id: 'case-2', orden: 8 }) < 0, true)
 })
+
+test('el mapper usa el componente activo cuando la lista de componentes aún no está hidratada', () => {
+  const mapped = mapBackendCasoToTest({
+    id: 'case-2',
+    proyecto_id: 'project-1',
+    componente_id: 'component-1',
+    titulo: 'Case',
+  }, [], 'project-1', 'component-1', 'Web SauceDemo')
+
+  assert.equal(mapped.component, 'Web SauceDemo')
+})

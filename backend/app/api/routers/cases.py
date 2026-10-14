@@ -47,34 +47,7 @@ async def _require_case_master_access(
     return db_case
 
 
-async def validate_caso_component(db: AsyncSession, caso: schemas.CasoPruebaCreate):
-    componentes_result = await db.execute(
-        select(models.Componente.id).filter(models.Componente.proyecto_id == caso.proyecto_id).limit(1)
-    )
-    project_has_components = componentes_result.scalar_one_or_none() is not None
-    if project_has_components and not caso.componente_id:
-        raise HTTPException(status_code=400, detail="El caso de prueba debe pertenecer a un componente del proyecto")
-    if caso.componente_id:
-        component_result = await db.execute(
-            select(models.Componente).filter(
-                models.Componente.id == caso.componente_id,
-                models.Componente.proyecto_id == caso.proyecto_id,
-            )
-        )
-        if not component_result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="El componente no pertenece al proyecto del caso")
-    if caso.suite_id:
-        suite_result = await db.execute(
-            select(models.Suite).filter(
-                models.Suite.id == caso.suite_id,
-                models.Suite.proyecto_id == caso.proyecto_id,
-            )
-        )
-        db_suite = suite_result.scalar_one_or_none()
-        if not db_suite:
-            raise HTTPException(status_code=400, detail="La suite no pertenece al proyecto del caso")
-        if db_suite.componente_id and caso.componente_id and db_suite.componente_id != caso.componente_id:
-            raise HTTPException(status_code=400, detail="La suite no pertenece al componente del caso")
+from ...services.case_component_validation import validate_caso_component
 
 
 async def _publish_case_change(
@@ -137,6 +110,15 @@ async def _publish_case_change_nonfatal(
     except Exception:
         logger.warning("Realtime publication failed after committed case mutation", exc_info=True)
 
+async def _commit_case_with_audit(db: AsyncSession, **audit) -> None:
+    try:
+        await crud.create_audit_log(db=db, **audit, commit=False)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=503, detail="No se pudo guardar la prueba; no se aplicaron cambios") from exc
+
+
 @router.post("/casos/", response_model=schemas.CasoPrueba)
 async def create_caso_prueba(
     request: Request,
@@ -148,7 +130,7 @@ async def create_caso_prueba(
     caso.creado_por = current_user.id
     await validate_caso_component(db, caso)
     try:
-        new_caso = await crud.create_caso_prueba(db=db, caso=caso)
+        new_caso = await crud.create_caso_prueba(db=db, caso=caso, commit=False)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -160,7 +142,7 @@ async def create_caso_prueba(
         raise HTTPException(status_code=400, detail=f"No se pudo crear el caso por un error de base de datos: {exc.__class__.__name__}") from exc
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_case_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="CREATE",
@@ -169,7 +151,7 @@ async def create_caso_prueba(
         detalles={"titulo": caso.titulo, "proyecto_id": str(caso.proyecto_id)},
         ip_address=client_ip
     )
-    await _publish_case_change("case.created", new_caso, current_user)
+    await _publish_case_change_nonfatal("case.created", new_caso, current_user)
 
     return new_caso
 
@@ -188,7 +170,7 @@ async def update_caso_prueba(
     await access_control.require_project_access(db, current_user, caso.proyecto_id, "edit")
     await validate_caso_component(db, caso)
     try:
-        updated = await crud.update_caso_prueba(db=db, master_id=master_id, caso_update=caso)
+        updated = await crud.update_caso_prueba(db=db, master_id=master_id, caso_update=caso, commit=False)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -202,7 +184,7 @@ async def update_caso_prueba(
         raise HTTPException(status_code=404, detail="Caso de prueba no encontrado")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_case_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="UPDATE",
@@ -211,7 +193,7 @@ async def update_caso_prueba(
         detalles={"master_id": str(master_id), "version": updated.version},
         ip_address=client_ip
     )
-    await _publish_case_change("case.version.created", updated, current_user, {"master_id": str(master_id)})
+    await _publish_case_change_nonfatal("case.version.created", updated, current_user, {"master_id": str(master_id)})
 
     return updated
 
@@ -380,15 +362,15 @@ async def update_caso_metadata(
 ):
     await _require_case_access(db, current_user, caso_id, "edit")
     try:
-        updated = await crud.update_caso_metadata(db=db, caso_id=caso_id, update=update)
-    except CaseArchiveConflict as exc:
+        updated = await crud.update_caso_metadata(db=db, caso_id=caso_id, update=update, commit=False)
+    except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_case_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="UPDATE_METADATA",
@@ -398,7 +380,7 @@ async def update_caso_metadata(
         ip_address=client_ip
     )
     event_type = "case.archived" if update.estado_caso == models.EstadoCaso.ARCHIVADO else "case.updated"
-    await _publish_case_change(event_type, updated, current_user, {"updated_fields": update.model_dump(exclude_unset=True)})
+    await _publish_case_change_nonfatal(event_type, updated, current_user, {"updated_fields": update.model_dump(exclude_unset=True)})
 
     return updated
 
@@ -499,7 +481,7 @@ async def delete_caso(
         ip_address=client_ip
     )
     if case_context:
-        await _publish_case_change("case.archived", case_context, current_user, {"source": "delete"})
+        await _publish_case_change_nonfatal("case.archived", case_context, current_user, {"source": "delete"})
 
     return {"detail": mensaje}
 
@@ -513,14 +495,15 @@ async def clone_caso(
 ):
     await _require_case_access(db, current_user, caso_id, "edit")
     try:
-        cloned = await crud.clone_caso(db=db, caso_id=caso_id, suite_id=suite_id)
+        cloned = await crud.clone_caso(db=db, caso_id=caso_id, suite_id=suite_id, commit=False)
     except ValueError as exc:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cloned:
         raise HTTPException(status_code=404, detail="Caso no encontrado")
 
     client_ip = request.client.host if request.client else "unknown"
-    await crud.create_audit_log(
+    await _commit_case_with_audit(
         db=db,
         usuario_id=current_user.id,
         accion="CLONE",
@@ -529,7 +512,7 @@ async def clone_caso(
         detalles={"original_id": str(caso_id), "suite_id": str(suite_id) if suite_id else None},
         ip_address=client_ip
     )
-    await _publish_case_change("case.created", cloned, current_user, {"source": "clone", "original_id": str(caso_id)})
+    await _publish_case_change_nonfatal("case.created", cloned, current_user, {"source": "clone", "original_id": str(caso_id)})
 
     return cloned
 

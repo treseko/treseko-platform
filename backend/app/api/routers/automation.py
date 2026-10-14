@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 from sqlalchemy import func
+from ...services.automation_payloads import worker_payload
+from ...services.automation_result_ingress import apply_worker_result_metadata, ensure_job_runner_access, persist_worker_result_evidence, prepare_worker_result_evidence
 
 from ...main_context import *
 from ...services.edition.entitlement_service import enforce_limit
@@ -358,11 +360,7 @@ async def claim_automation_job(
             "required_language": claimed.required_language,
             "required_runtime": claimed.required_runtime,
             "timeout_seconds": claimed.timeout_seconds,
-            "payload_congelado": (
-                crud.decrypt_api_worker_payload(claimed)
-                if claimed.job_type == "API_EXECUTION"
-                else (claimed.payload_congelado or {})
-            ),
+            "payload_congelado": worker_payload(claimed),
             "logs": claimed.logs,
             "error_message": claimed.error_message,
             "metadata_resultado": claimed.metadata_resultado or {},
@@ -392,14 +390,11 @@ async def report_automation_job_result(
     job = await crud.get_automation_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
-    if not job.runner_id:
-        raise HTTPException(status_code=409, detail="El job debe ser reclamado antes de reportar resultados")
-    if job.runner_id != runner.id:
-        raise HTTPException(status_code=403, detail="Este job fue tomado por otro runner")
-    if job.organizacion_id != runner.organizacion_id:
-        raise HTTPException(status_code=403, detail="El runner no tiene acceso a la solucion de este job")
+    ensure_job_runner_access(job, runner)
+    evidence_url = await prepare_worker_result_evidence(job_id, job, payload)
     try:
         updated = await crud.complete_automation_job(db, job, payload, runner=runner)
+        await persist_worker_result_evidence(db, updated, evidence_url)
         event_map = {
             models.AutomationJobStatus.PASSED: "automation.job.completed",
             models.AutomationJobStatus.FAILED: "automation.job.failed",
@@ -441,6 +436,7 @@ async def report_automation_job_result(
         detail = str(exc)
         if "build" in detail.lower() and "inactiva" in detail.lower():
             job.estado = models.AutomationJobStatus.ERROR
+            apply_worker_result_metadata(job, payload, evidence_url)
             job.error_message = detail
             job.fecha_fin = utc_now()
             job.lease_token = None

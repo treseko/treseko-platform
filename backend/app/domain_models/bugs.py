@@ -48,7 +48,7 @@ class BugIssue(Base):
     url_afectada = Column(Text)
     navegador = Column(String(120), nullable=True)
     dispositivo = Column(String(120), nullable=True)
-    resolucion = Column(String(80), nullable=True)
+    resolucion_pantalla = Column(String(120), nullable=True)
     sistema_operativo = Column(String(120), nullable=True)
     ambiente_nombre = Column(String(150), nullable=True)
     ambiente_url = Column(Text)

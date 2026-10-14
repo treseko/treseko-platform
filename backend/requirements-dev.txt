@@ -1,3 +1,8 @@
 -r requirements.txt
 pytest
 pytest-asyncio
+# Los flujos HTTP levantan PostgreSQL aislado mediante la API de psycopg v3.
+psycopg[binary]
+
+# Official client interoperability regression (v1 protocol API).
+mcp>=1.30,<2

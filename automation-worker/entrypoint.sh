@@ -65,7 +65,7 @@ if [ -d /opt/treseko/worker-source ]; then
       printf '%s\n' "$runtime_digest" > /worker/.treseko-content-digest
     else
       runtime_code_file="$(find /worker -type f \
-        ! -path '/worker/node_modules/*' ! -path '/worker/logs/*' \
+        ! -path '/worker/.state/*' ! -path '/worker/node_modules/*' ! -path '/worker/logs/*' \
         ! -name '.runner-token' ! -name '.runner-token.pairing' ! -name '.worker-instance-id' \
         ! -name '.treseko-content-digest' ! -name '.treseko-update-*' \
         ! -name '.env' ! -name '.env.*' -print -quit)"
@@ -77,7 +77,7 @@ if [ -d /opt/treseko/worker-source ]; then
       rsync -a --delete \
         --exclude='/node_modules/' --exclude='/logs/' \
         --exclude='/.runner-token' --exclude='/.runner-token.pairing' --exclude='/.worker-instance-id' \
-        --exclude='/.cache/' --exclude='/.env' --exclude='/.env.*' \
+        --exclude='/.state/' --exclude='/.cache/' --exclude='/.env' --exclude='/.env.*' \
         --exclude='/.treseko-content-digest' --exclude='/.treseko-update-*' \
         /opt/treseko/worker-source/ /worker/
       printf '%s\n' "$image_digest" > /worker/.treseko-content-digest

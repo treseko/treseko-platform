@@ -4,6 +4,7 @@ export function createLeaseHeartbeat({
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
   log = () => {},
+  onLeaseLost = () => {},
 } = {}) {
   if (typeof heartbeat !== "function") throw new Error("Se requiere una función de heartbeat.");
   let timer = null;
@@ -21,6 +22,7 @@ export function createLeaseHeartbeat({
       if (status >= 400 && status < 500 && !temporaryHttpFailure) {
         log("lease_lost", "El lease del job fue rechazado; el resultado será validado por el backend.");
         stopped = true;
+        await onLeaseLost(error);
       } else {
         log("heartbeat_retry", "No se pudo renovar el lease; se reintentará en el próximo heartbeat.");
       }

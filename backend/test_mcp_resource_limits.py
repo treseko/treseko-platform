@@ -43,7 +43,7 @@ async def test_build_listing_limits_rows_and_fields_before_materialization():
     db = _BuildDB(rows)
     result = await mcp_tools.list_project_builds(db, None, project)
     assert len(result["items"]) == mcp_tools.MCP_MAX_BUILD_ITEMS
-    assert all(len(item["name"]) <= mcp_tools.MCP_BUILD_NAME_MAX_CHARS for item in result["items"])
+    assert all(len(item["name"]) == 1000 for item in result["items"])
     assert result["truncated"] is True
     assert db.statement._limit_clause is not None
 
@@ -100,8 +100,9 @@ def test_tool_result_is_bounded_before_rpc_envelope(monkeypatch):
     tool = mcp_governance.resolve_tool("treseko.project.get")
     assert tool is not None
     bounded = mcp_governance.bound_tool_result(tool, {"name": "x" * 100_000})
-    assert len(bounded["name"]) < 100_000
-    assert bounded["truncated"] is True
+    assert bounded["name"] == "x" * 100_000
+    with pytest.raises(mcp_governance.McpResultTooLarge):
+        mcp_governance.bound_tool_result(tool, {"name": "x" * 300_000})
 
 
 def test_tool_result_rejects_unserializable_values_before_envelope(monkeypatch):

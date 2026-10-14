@@ -1,23 +1,13 @@
-# MCP operations
-
 <!-- Language: en -->
 
-`POST /mcp` is a JSON-RPC 2.0 endpoint. `GET /mcp/tools` is the discovery
-endpoint. MCP errors remain inside JSON-RPC envelopes; internal details,
-credentials, and handler/database exceptions never reach clients. Notifications
-receive HTTP 204 with no JSON-RPC response.
+# MCP operations
 
-The discovery response is the source of truth for the enabled catalog. Read
-operations and governed mutations use the same JSON-RPC transport; mutations
-require the schema's explicit confirmation and a durable `idempotency_key`.
-Import tools expose `preview`, `commit` and `rollback` as separate operations.
+Enable MCP through Settings → MCP and the persisted `mcp.enabled` setting. Every request checks it again; database failures deny access until recovery. `TRESEKO_MCP_ENABLED` does not replace persisted activation. Declare `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` for one process; replicas/workers require `shared_redis` and healthy shared Redis. Ambiguous configurations fail closed.
 
-The process-local limiter is bounded and lock-protected. It is allowed only
-when `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` is explicit. A shared
-Redis limiter is required for workers or replicas. Redis admission health uses a
-short timeout and safe cache; an unavailable limiter disables every MCP route,
-including initialize, discovery, and authentication.
+Apply Alembic migrations through `20261010_0075` before starting the new version. It adds durable dispatch and workspace receipts without deleting data. The dispatcher starts with backend, retains pending work and marks interrupted runs without replaying HTTP. Back up real installations before migration.
 
-Handlers have a bounded result contract: JSON-safe strings, lists, depth, and
-bytes are limited per tool before the response envelope is built. Oversized or
-unsafe results are rejected instead of materializing an unbounded envelope.
+In Docker the internal resolver uses `http://backend:8000/mcp/internal/runtime-credential`. Engine permits this private network only when the administrator explicitly declares `MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS=http://backend:8000`; external MCP endpoints still reject private networks. Keep resolver secrets out of code/documents. DNS pinning preserves Host and TLS SNI and bounds response size.
+
+Inspect the effective endpoint, tools and scopes in Settings. Credentials can be paused, resumed and revoked even when MCP is disabled. Paused is not revoked. Session/permission changes clear the one-time key from the interface. Never copy browser credentials into prompts.
+
+Distinguish authentication/permission errors, invalid schemas, revision conflicts, response limits, interrupted runs and internal failures. Inspect audit logs and run status. Mutation retries retain arguments and key; never assume a timeout means rollback. See [MCP_GUIDE.md](MCP_GUIDE.md) for contracts.

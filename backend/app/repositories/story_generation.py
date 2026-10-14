@@ -39,6 +39,11 @@ from .story_generation_helpers import (
     )
 
 
+from .story_generation_rendering import _story_markdown, _criteria_markdown
+from .generation_semantic_review import stamp_semantic_review, reviews_for_application
+from .generation_guards import lock_generation, require_current_sources, checked_answers, require_story_provenance, _record_question_answers, check_assumptions
+
+
 async def _call_engine(*args, **kwargs):
     """Facade wrapper preserving the historical patch point for AI tests."""
     return await _story_generation_helpers._call_engine(*args, **kwargs)
@@ -74,31 +79,12 @@ async def estimate_story_generation(db, requirement, payload, user_id):
     return _generation_payload(run)
 
 
-def _record_question_answers(run, question_answers):
-    if not question_answers:
-        return
-    known_questions = {
-        str(question).strip()
-        for question in (run.analysis_json or {}).get("questions", [])
-        if str(question).strip()
-    }
-    answers = []
-    for item in question_answers:
-        question = item.question.strip()
-        answer = item.answer.strip()
-        if question not in known_questions:
-            raise ValueError("Solo se pueden responder preguntas devueltas por el análisis.")
-        if answer:
-            answers.append({"question": question, "answer": answer})
-    context = dict(run.fuente_snapshot or {})
-    context["respuestas_usuario"] = answers
-    run.fuente_snapshot = context
-
-
 async def generate_story_candidates(db, run, payload):
+    workflow = await _story_generation_workflow(db)
+    run = await lock_generation(db, run)
+    await require_current_sources(db, run)
     if run.estado not in {"ANALIZADA", "LISTA_PARA_GENERAR"}:
         raise ValueError("Primero analiza el requisito y confirma los supuestos requeridos.")
-    workflow = await _story_generation_workflow(db)
     if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
         raise ValueError("El workflow de generación cambió; solicita una nueva estimación.")
     _record_question_answers(run, payload.question_answers)
@@ -219,12 +205,20 @@ async def generate_story_candidates(db, run, payload):
                 # across the persisted generation rather than letting later
                 # proposals overwrite the first one in review/audit records.
                 candidate["local_id"] = f"PROP-{proposal_index:03d}"
+                criterion_id_map = {}
                 for criterion_index, criterion in enumerate(
                     candidate.get("acceptance_criteria") or [], start=1,
                 ):
+                    previous_criterion_id = criterion["local_id"]
                     criterion["local_id"] = (
                         f"AC-PROP-{proposal_index:03d}-{criterion_index:02d}"
                     )
+                    criterion_id_map[previous_criterion_id] = criterion["local_id"]
+                semantic = candidate.get("quality", {}).get("semantic_review", {})
+                for section in ("grounding", "coverage", "findings"):
+                    for finding in semantic.get(section, []):
+                        if finding.get("criterion_id") in criterion_id_map:
+                            finding["criterion_id"] = criterion_id_map[finding["criterion_id"]]
                 # Compare with persisted stories and proposals already processed,
                 # never with the candidate currently being evaluated.
                 validate_proposal(
@@ -233,6 +227,7 @@ async def generate_story_candidates(db, run, payload):
                     existing_data + candidates,
                     require_v2_fields=int(workflow.version or 1) >= 2,
                 )
+                stamp_semantic_review(candidate)
                 # This is intentionally an advisory check. A similar title may
                 # still represent a different scope, so QA makes the decision.
                 candidate["similar_stories"] = find_title_similarities(
@@ -323,14 +318,13 @@ async def confirm_generation_assumptions(
     question_answers=None,
     continuation_mode="MANUAL",
 ):
+    run = await lock_generation(db, run)
+    await require_current_sources(db, run)
+    if run.estado != "ESPERANDO_SUPUESTOS":
+        raise ValueError("La generación no espera confirmación de supuestos.")
+    checked_answers(run.analysis_json or {}, question_answers or [])
     analysis = run.analysis_json or {}
-    proposed = {str(item.get("id")) for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict)}
-    accepted = set(assumption_ids)
-    if not accepted.issubset(proposed):
-        raise ValueError("Solo se pueden aceptar supuestos devueltos por el análisis.")
-    critical = {str(item.get("id")) for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict) and str(item.get("risk", "")).upper() == "CRITICAL"}
-    if critical - accepted:
-        raise ValueError("Los supuestos críticos deben resolverse o aceptarse explícitamente antes de generar.")
+    accepted = set(check_assumptions(analysis, assumption_ids, continuation_mode))
     _record_question_answers(run, question_answers or [])
     run.accepted_assumption_ids = sorted(accepted)
     decisions = dict(run.decisiones_json or {})
@@ -340,6 +334,8 @@ async def confirm_generation_assumptions(
         "answered_questions": len(question_answers or []),
     }
     run.decisiones_json = decisions
+    if analysis.get("questions"):
+        return await reanalyze_story_generation(db, run, question_answers or [])
     run.estado = "LISTA_PARA_GENERAR"
     await db.commit()
     await db.refresh(run)
@@ -347,9 +343,11 @@ async def confirm_generation_assumptions(
 
 
 async def reanalyze_story_generation(db, run, question_answers):
+    workflow = await _story_generation_workflow(db)
+    run = await lock_generation(db, run)
+    await require_current_sources(db, run)
     if run.estado not in {"ANALIZADA", "ESPERANDO_SUPUESTOS", "LISTA_PARA_GENERAR"}:
         raise ValueError("La generación ya avanzó y no puede volver a analizarse.")
-    workflow = await _story_generation_workflow(db)
     if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
         raise ValueError("El workflow de generación cambió; solicita un nuevo análisis.")
     _record_question_answers(run, question_answers)
@@ -382,12 +380,15 @@ async def reanalyze_story_generation(db, run, question_answers):
     return _generation_payload(run)
 
 
-async def apply_story_generation(db, run, stories, user_id):
+async def apply_story_generation(db, run, stories, user_id, *, commit=True):
+    run = await lock_generation(db, run, applying=True)
+    db.info["generation_replayed"] = run.estado == "APLICADA"
     if run.estado == "APLICADA":
         decisions = run.decisiones_json or {}
         return decisions.get("created_stories", [])
     if run.estado != "LISTA_PARA_REVISION":
         raise ValueError("La generación debe estar lista para revisión antes de crear borradores.")
+    await require_current_sources(db, run)
     selected = [story for story in stories if story.selected]
     if not selected:
         raise ValueError("Selecciona al menos una propuesta para crear borradores.")
@@ -403,11 +404,23 @@ async def apply_story_generation(db, run, stories, user_id):
         for item in (run.propuestas_originales_json or [])
         if isinstance(item, dict) and item.get("local_id")
     }
+    if len({candidate.local_id for candidate in selected}) != len(selected):
+        raise ValueError("No se puede aplicar una propuesta repetida.")
+    workflow = await _story_generation_workflow(db)
+    if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
+        raise ValueError("El workflow cambió. Inicia un nuevo análisis.")
+    semantic_reports = await reviews_for_application(db, run, workflow, selected, _call_engine, kind="story")
+    validations = {}
     for candidate in selected:
         if str(candidate.local_id) not in original_by_id:
             raise ValueError("La propuesta no pertenece a esta generación.")
+        if not candidate.acceptance_criteria:
+            raise ValueError("La historia necesita criterios de aceptación para generar casos de prueba.")
+        require_story_provenance(candidate, run)
         # Never trust the editable preview's quality field. Re-run the
         # deterministic guards against exactly what will be persisted.
+        if len({criterion.local_id for criterion in candidate.acceptance_criteria}) != len(candidate.acceptance_criteria):
+            raise ValueError("Los criterios de una historia deben tener identificadores distintos.")
         candidate_for_validation = candidate.model_dump()
         validate_proposal(
             candidate_for_validation,
@@ -415,6 +428,9 @@ async def apply_story_generation(db, run, stories, user_id):
             [],
             require_v2_fields=int(run.workflow_version or 1) >= 2,
         )
+        candidate_for_validation["quality"]["semantic_review"] = semantic_reports[candidate.local_id]
+        if semantic_reports[candidate.local_id].get("verdict") == "FAIL":
+            candidate_for_validation["quality"]["testability"] = "FAIL"
         if (
             candidate_for_validation["quality"]["testability"] == "FAIL"
             and not candidate.quality_override_accepted
@@ -422,6 +438,7 @@ async def apply_story_generation(db, run, stories, user_id):
             raise ValueError(
                 "Confirma las observaciones críticas de cada propuesta antes de crearla."
             )
+        validations[candidate.local_id] = candidate_for_validation
         normalized = candidate.title.strip().lower()
         if normalized in titles or normalized in incoming:
             raise ValueError("No se puede aplicar una historia duplicada.")
@@ -431,6 +448,7 @@ async def apply_story_generation(db, run, stories, user_id):
     original_by_id = {item.get("local_id"): item for item in (run.propuestas_originales_json or []) if isinstance(item, dict)}
     decisions = []
     for candidate in selected:
+        candidate_for_validation = validations[candidate.local_id]
         if next_number is None:
             code = await _next_code(db, models.HistoriaUsuario, run.proyecto_id, "US")
             next_number = int(code.rsplit("-", 1)[1])
@@ -456,7 +474,7 @@ async def apply_story_generation(db, run, stories, user_id):
             criterios_aceptacion_markdown=story.criterios_aceptacion_markdown, estado=story.estado,
             prioridad=story.prioridad, editado_por=user_id, comentario_cambio="Creada desde generación IA",
         ))
-        await db.refresh(story, attribute_names=["requisito", "casos"])
+        await db.refresh(story, attribute_names=["requisito", "casos", "criterios_aceptacion"])
         created.append(_story_payload(story))
         decisions.append({
             "local_id": candidate.local_id,
@@ -466,6 +484,7 @@ async def apply_story_generation(db, run, stories, user_id):
             "original": original_by_id.get(candidate.local_id),
             "edited": candidate.model_dump(),
             "quality_decision": {
+                "semantic_review": semantic_reports[candidate.local_id],
                 "testability": candidate_for_validation["quality"]["testability"],
                 "rule_findings": candidate_for_validation.get("rule_findings", []),
                 "override_accepted": candidate.quality_override_accepted,
@@ -475,31 +494,7 @@ async def apply_story_generation(db, run, stories, user_id):
             },
         })
     run.estado = "APLICADA"
-    run.propuestas_finales_json = [item.model_dump(mode="json") for item in stories]
-    run.decisiones_json = _json_safe({"created_stories": created, "decisions": decisions})
-    await db.commit()
+    run.propuestas_finales_json = [{**item.model_dump(mode="json"), "quality": validations.get(item.local_id, {}).get("quality", (original_by_id.get(item.local_id) or {}).get("quality", {}))} for item in stories]
+    run.decisiones_json = _json_safe({**(run.decisiones_json or {}), "created_stories": created, "decisions": decisions})
+    await db.commit() if commit else await db.flush()
     return created
-
-
-def _story_markdown(candidate):
-    sections = [
-        f"**Como:** {candidate.actor}" if candidate.actor else "",
-        f"**Quiero:** {candidate.goal}" if candidate.goal else "",
-        f"**Para:** {candidate.benefit}" if candidate.benefit else "",
-    ]
-    if candidate.scope:
-        sections.append("**Alcance:**\n" + "\n".join(f"- {item}" for item in candidate.scope))
-    if candidate.out_of_scope:
-        sections.append("**Fuera de alcance:**\n" + "\n".join(f"- {item}" for item in candidate.out_of_scope))
-    if candidate.dependencies:
-        sections.append("**Dependencias:**\n" + "\n".join(f"- {item}" for item in candidate.dependencies))
-    if candidate.risks:
-        sections.append("**Riesgos:**\n" + "\n".join(f"- {item}" for item in candidate.risks))
-    return "\n\n".join(filter(None, sections))
-
-
-def _criteria_markdown(criteria):
-    return "\n\n".join(
-        f"### {item.title}\n**Dado:** {item.given}\n**Cuando:** {item.when}\n**Entonces:** " + "; ".join(item.then)
-        for item in criteria
-    )

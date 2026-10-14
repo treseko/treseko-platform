@@ -22,6 +22,8 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rawCredential, setRawCredential] = useState<string | null>(null)
+  const loadSequenceRef = useRef(0)
+  const creatingRef = useRef(false)
   const mountedRef = useRef(true)
   const lifecycleRef = useRef(0)
   const enabledRef = useRef(enabled)
@@ -29,7 +31,24 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
   enabledRef.current = enabled
   statusRef.current = status
 
-  useEffect(() => () => { mountedRef.current = false; lifecycleRef.current += 1 }, [])
+  const contextRef = useRef({ isAuthenticated, canRead, canEdit, fetchWithAuth })
+  const previous = contextRef.current
+  if (previous.isAuthenticated !== isAuthenticated || previous.canRead !== canRead || previous.canEdit !== canEdit || previous.fetchWithAuth !== fetchWithAuth) lifecycleRef.current += 1
+  contextRef.current = { isAuthenticated, canRead, canEdit, fetchWithAuth }
+  const current = (epoch: number) => mountedRef.current && lifecycleRef.current === epoch && contextRef.current.isAuthenticated && contextRef.current.canRead
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false; lifecycleRef.current += 1 }
+  }, [])
+  useEffect(() => {
+    setRawCredential(null)
+    setCredentials([])
+    setTools([])
+    setScopeCatalog([])
+    setEffectiveCapabilities({})
+    setLoading(false)
+    if (!isAuthenticated || !canRead) { setEnabled(false); setStatus('disabled') }
+  }, [isAuthenticated, canRead, canEdit, fetchWithAuth])
 
   useEffect(() => {
     if (!enabled || status === 'disabled') {
@@ -40,10 +59,13 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
 
   const load = useCallback(async () => {
     if (!isAuthenticated || !canRead) return
+    const epoch = lifecycleRef.current
+    const sequence = ++loadSequenceRef.current
     setLoading(true)
     setError(null)
     try {
       const [configuration, credentialResponse] = await Promise.all([fetchMcpConfiguration(fetchWithAuth), listMcpCredentials(fetchWithAuth)])
+      if (!current(epoch) || sequence !== loadSequenceRef.current) return
       setEnabled(configuration.enabled)
       setStatus(configuration.status)
       setEndpoint(configuration.endpoint)
@@ -52,82 +74,97 @@ export function useMcpConfiguration({ isAuthenticated, fetchWithAuth, canRead, c
       setEffectiveCapabilities(configuration.effective_capabilities || {})
       setCredentials(credentialResponse)
     } catch (cause: any) {
+      if (!current(epoch) || sequence !== loadSequenceRef.current) return
       setError(cause?.message || t('configuracion.mcpLoadError'))
     } finally {
-      setLoading(false)
+      if (current(epoch) && sequence === loadSequenceRef.current) setLoading(false)
     }
   }, [canRead, fetchWithAuth, isAuthenticated, t])
 
   useEffect(() => { void load() }, [load])
 
   const create = useCallback(async (nombre: string, scopes: string[], expiresAt?: string) => {
-    if (!canEdit || !enabled || status === 'disabled') return
+    if (!isAuthenticated || !canRead || !canEdit || !enabled || status === 'disabled' || creatingRef.current) return false
+    creatingRef.current = true
     const lifecycle = lifecycleRef.current
     setLoading(true)
     setRawCredential(null)
     try {
       const created = await createMcpCredential(fetchWithAuth, { nombre, scopes, ...(expiresAt ? { expires_at: expiresAt } : {}) })
       if (!mountedRef.current || lifecycle !== lifecycleRef.current || !enabledRef.current || statusRef.current === 'disabled') return
-      setCredentials(current => [created, ...current])
-      setRawCredential(created.api_key)
+      const { api_key, ...metadata } = created
+      setCredentials(current => [metadata, ...current])
+      setRawCredential(api_key)
       showFeedback(t('configuracion.mcpTitle'), t('configuracion.mcpCreated'), 'success')
+      return true
     } catch (cause: any) {
       if (!mountedRef.current || lifecycle !== lifecycleRef.current) return
       showFeedback(t('configuracion.mcpTitle'), cause?.message || t('configuracion.mcpCreateError'), 'danger')
+      return false
     } finally {
-      if (mountedRef.current) setLoading(false)
+      creatingRef.current = false
+      if (current(lifecycle)) setLoading(false)
     }
-  }, [canEdit, enabled, fetchWithAuth, showFeedback, status, t])
+  }, [isAuthenticated, canRead, canEdit, enabled, fetchWithAuth, showFeedback, status, t])
 
   const revoke = useCallback(async (credential: McpCredential) => {
-    if (!canEdit || !enabled || status === 'disabled' || !credential.activo) return
+    if (!isAuthenticated || !canRead || !canEdit || credential.estado === 'REVOKED' || (!credential.estado && !credential.activo)) return
+    const epoch = lifecycleRef.current
     const confirmed = await confirmAction({ title: t('configuracion.mcpRevokeTitle'), message: t('configuracion.mcpRevokeMessage'), variant: 'danger', confirmLabel: t('configuracion.revoke') })
-    if (!confirmed) return
+    if (!confirmed || !current(epoch) || !contextRef.current.canEdit) return
     setLoading(true)
     try {
       const revoked = await revokeMcpCredential(fetchWithAuth, credential.id)
+      if (!current(epoch)) return
       setCredentials(current => current.map(item => item.id === revoked.id ? revoked : item))
       showFeedback(t('configuracion.mcpTitle'), t('configuracion.mcpRevoked'), 'success')
     } catch (cause: any) {
+      if (!current(epoch)) return
       showFeedback(t('configuracion.mcpTitle'), cause?.message || t('configuracion.mcpRevokeError'), 'danger')
     } finally {
-      setLoading(false)
+      if (current(epoch)) setLoading(false)
     }
-  }, [canEdit, confirmAction, enabled, fetchWithAuth, showFeedback, status, t])
+  }, [isAuthenticated, canRead, canEdit, confirmAction, fetchWithAuth, showFeedback, t])
 
   const setCredentialState = useCallback(async (credential: McpCredential, estado: 'ACTIVE' | 'PAUSED') => {
-    if (!canEdit || !enabled || status === 'disabled' || credential.estado === 'REVOKED') return
+    if (!isAuthenticated || !canRead || !canEdit || credential.estado === 'REVOKED') return
+    const epoch = lifecycleRef.current
     setLoading(true)
     try {
       const updated = await setMcpCredentialState(fetchWithAuth, credential.id, estado)
+      if (!current(epoch)) return
       setCredentials(current => current.map(item => item.id === updated.id ? updated : item))
       showFeedback(t('configuracion.mcpTitle'), estado === 'ACTIVE' ? t('configuracion.mcpCredentialResumed') : t('configuracion.mcpCredentialPaused'), 'success')
     } catch (cause: any) {
+      if (!current(epoch)) return
       showFeedback(t('configuracion.mcpTitle'), cause?.message || t('configuracion.mcpCredentialStateError'), 'danger')
     } finally {
-      setLoading(false)
+      if (current(epoch)) setLoading(false)
     }
-  }, [canEdit, enabled, fetchWithAuth, showFeedback, status, t])
+  }, [isAuthenticated, canRead, canEdit, enabled, fetchWithAuth, showFeedback, status, t])
 
   const toggle = useCallback(async (nextEnabled: boolean) => {
-    if (!canEdit || loading) return
+    if (!isAuthenticated || !canRead || !canEdit || loading) return
+    const epoch = lifecycleRef.current
     const previousEnabled = enabled
     setEnabled(nextEnabled)
     setStatus(nextEnabled ? 'available' : 'disabled')
     setLoading(true)
     try {
       const updated = await updateMcpConfiguration(fetchWithAuth, nextEnabled)
+      if (!current(epoch)) return
       setEnabled(updated.enabled)
       setStatus(updated.status)
       showFeedback(t('configuracion.mcpTitle'), nextEnabled ? t('configuracion.mcpActivated') : t('configuracion.mcpDeactivated'), 'success')
     } catch (cause: any) {
+      if (!current(epoch)) return
       setEnabled(previousEnabled)
       setStatus(previousEnabled ? 'available' : 'disabled')
       showFeedback(t('configuracion.mcpTitle'), cause?.message || t('configuracion.mcpToggleError'), 'danger')
     } finally {
-      setLoading(false)
+      if (current(epoch)) setLoading(false)
     }
-  }, [canEdit, enabled, fetchWithAuth, loading, showFeedback, t])
+  }, [isAuthenticated, canRead, canEdit, enabled, fetchWithAuth, loading, showFeedback, t])
 
   return { tools, credentials, scopeCatalog, effectiveCapabilities, enabled, status, endpoint, loading, error, rawCredential, load, create, revoke, setCredentialState, toggle, clearRawCredential: () => setRawCredential(null) }
 }

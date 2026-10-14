@@ -7,9 +7,12 @@ import { getSuiteParentMap } from '../../testRepositoryUtils'
 import { backendTestTypeToEditor, composeFrameworkLanguage, editorTestTypeToBackend, formatDatasetForInput, normalizeCaseTags, parseDatasetInput, splitFrameworkLanguage } from './caseUtils'
 import { createCaseStepEditorActions } from './caseStepEditorActions'
 import { defaultApiTestConfig } from './apiTestConfig'; import { migrateOpeningMessageToTurn } from './chatbotConfig'
+import { emptyCaseEditorSaveState, type CaseEditorSaveState } from './caseEditorSaveState'
+import { linkSavedStepAttachments } from './caseReferenceSync'
 import type { I18nContextValue } from '../../i18n'
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 type CreateCaseEditorActionsParams = {
+  caseEditorSaveRef: { current: CaseEditorSaveState }
   t: I18nContextValue['t']
   newTestSteps: any[]; newTestTitle: string; newTestSuite: string; newTestSuiteSub: string; newTestComponent: string
   newTestDescription: string; newTestPre: string; newTestPost: string; newTestData: string; newTestTags: string[]; tagDraft?: string
@@ -67,6 +70,7 @@ type CreateCaseEditorActionsParams = {
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
 }
 export function createCaseEditorActions({
+  caseEditorSaveRef,
   t,
   newTestSteps,
   newTestTitle,
@@ -141,6 +145,8 @@ export function createCaseEditorActions({
 }: CreateCaseEditorActionsParams) {
   const stepActions = createCaseStepEditorActions(newTestSteps, setNewTestSteps)
   const openCreateCaseInSuite = (suiteId: string, format: CaseFormat = 'CLASICA') => {
+    if (caseEditorSaveRef.current.busy) return
+    caseEditorSaveRef.current = emptyCaseEditorSaveState()
     const projectComponents = componentsList.filter(c => c.projectId === currentProjectId)
     const componentId = isValidUUID(currentCompId)
       ? currentCompId
@@ -193,6 +199,8 @@ export function createCaseEditorActions({
     setProjectSyncMessage(t('casos.newCaseReady'))
   }
   const openEditCase = async (test: any) => {
+    if (caseEditorSaveRef.current.busy) return
+    caseEditorSaveRef.current = emptyCaseEditorSaveState()
     try {
       let fullCase: any = null
       if (projectsSource === 'backend' && isValidUUID(test.id)) {
@@ -313,58 +321,16 @@ export function createCaseEditorActions({
       setProjectSyncMessage(`${t('casos.loadCaseForEditError')}: ${error.message}`)
     }
   }
-  const linkSavedStepAttachments = async (savedCase: any) => {
-    if (!savedCase?.id) return
-    const response = await fetchWithAuth(`${API_BASE}/casos/${savedCase.id}`)
-    if (!response.ok) return
-    const caseWithSteps = await response.json()
-    const stepsByNumber = new Map((caseWithSteps.pasos || []).map((step: any) => [step.numero_paso, step]))
-    for (const [index, formStep] of newTestSteps.entries()) {
-      const savedStep: any = stepsByNumber.get(index + 1)
-      if (!savedStep?.id) continue
-      const linksByKey = new Map([
-        ...(formStep.actionAttachments || []).map(attachment => ({ attachment, tipo: 'ACTION_REFERENCE' })),
-        ...(formStep.expectedAttachments || []).map(attachment => ({ attachment, tipo: 'EXPECTED_REFERENCE' }))
-      ].filter(link => link.attachment?.id).map(link => [`${link.attachment.id}:${link.tipo}`, link]))
-      const links = Array.from(linksByKey.values())
-      const existingLinksResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/`)
-      if (!existingLinksResponse.ok) {
-        throw new Error(`No se pudieron sincronizar los adjuntos del paso ${index + 1}`)
-      }
-      const existingLinks = await existingLinksResponse.json().catch(() => [])
-      const existingAttachmentIds = new Set<string>()
-      for (const existingLink of existingLinks) {
-        const attachmentId = existingLink.attachment_id || existingLink.attachment?.id
-        if (!attachmentId || existingAttachmentIds.has(attachmentId)) continue
-        existingAttachmentIds.add(attachmentId)
-        const deleteResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/${attachmentId}/`, {
-          method: 'DELETE'
-        })
-        if (!deleteResponse.ok) {
-          throw new Error(`No se pudo eliminar un adjunto anterior del paso ${index + 1}`)
-        }
-      }
-      for (const link of links) {
-        const linkResponse = await fetchWithAuth(`${API_BASE}/pasos/${savedStep.id}/attachments/`, {
-          method: 'POST',
-          body: JSON.stringify({ attachment_id: link.attachment.id, tipo: link.tipo })
-        })
-        if (!linkResponse.ok) {
-          const error = await linkResponse.json().catch(() => null)
-          throw new Error(error?.detail || `No se pudo vincular la evidencia "${link.attachment.filename_original || link.attachment.id}" al paso ${index + 1}. Backend respondió ${linkResponse.status}`)
-        }
-      }
-    }
-  }
   const handleSaveTest = async (e: FormEvent) => {
     e.preventDefault()
-    if (!newTestTitle || caseEditorSaving) return
+    if (!newTestTitle || caseEditorSaving || caseEditorSaveRef.current.busy) return
     const selectedSuiteId = newTestSuiteSub || newTestSuite
 
     const form = e.currentTarget as HTMLFormElement
     const currentTagDraft = (form.elements.namedItem('a11y-casemetadatacardtsx-52') as HTMLInputElement | null)?.value || ''
     const effectiveTags = normalizeCaseTags([...newTestTags, ...currentTagDraft.split(/[,;\n]/)])
     const resetTestForm = () => {
+      caseEditorSaveRef.current = emptyCaseEditorSaveState()
       setNewTestTitle('')
       setNewTestDescription('')
       setNewTestPre('')
@@ -428,6 +394,10 @@ export function createCaseEditorActions({
             expectedImg: step.expectedImg || null
           }
         }))
+      caseEditorSaveRef.current.busy = true
+      if (caseEditorSaveRef.current.projectId !== currentProjectId) {
+        caseEditorSaveRef.current = { ...emptyCaseEditorSaveState(), busy: true, projectId: currentProjectId }
+      }
       try {
         setCaseEditorSaving(true)
         const previousVersion = selectedTest?.version || 0
@@ -451,12 +421,22 @@ export function createCaseEditorActions({
           framework: newTestType === 'Automatizada' ? composeFrameworkLanguage(newTestFramework, newTestLanguage) : null,
           pasos: pasosValidos
         }
-        const saved = editingCasoMasterId
-          ? await handleUpdateCaso(editingCasoMasterId, { ...casoPayload, proyecto_id: currentProjectId })
-          : await handleCreateCaso(casoPayload)
+        const definition = JSON.stringify(casoPayload)
+        const pending = caseEditorSaveRef.current
+        const masterId = pending.saved?.master_id || pending.saved?.masterId || editingCasoMasterId
+        if (!pending.requestId) pending.requestId = crypto.randomUUID()
+        const saved = pending.saved && pending.definition === definition
+          ? pending.saved
+          : masterId
+            ? await handleUpdateCaso(masterId, { ...casoPayload, proyecto_id: currentProjectId })
+            : await handleCreateCaso({ ...casoPayload, request_id: pending.requestId })
         if (saved) {
+          pending.created = pending.created || !masterId
+          pending.saved = saved
+          pending.definition = definition
+          setEditingCasoMasterId(saved.master_id || saved.masterId)
           const linkedStoryCount = pendingTraceabilityStoryIds.length
-          const createdFromStory = !editingCasoMasterId && linkedStoryCount > 0
+          const createdFromStory = pending.created && linkedStoryCount > 0
           if ((editingCasoMasterId || pendingTraceabilityStoryIds.length > 0) && (saved.master_id || saved.masterId)) {
             const traceabilityResponse = await fetchWithAuth(`${API_BASE}/casos/${saved.master_id || saved.masterId}/historias/`, {
               method: 'PUT',
@@ -466,17 +446,19 @@ export function createCaseEditorActions({
               const error = await traceabilityResponse.json().catch(() => null)
               throw new Error(error?.detail || t('casos.caseSavedStoryLinkFailed'))
             }
-            if (!editingCasoMasterId) setPendingTraceabilityStoryIds([])
+
           }
-          await linkSavedStepAttachments(saved)
+          await linkSavedStepAttachments(saved, newTestSteps, fetchWithAuth, t)
           setCaseEditorBaseline(currentCaseEditorSnapshot)
           if (targetSuiteId) {
             selectSuiteTarget(targetSuiteId)
           }
           setCurrentCompId(targetComponentId)
-          if (!editingCasoMasterId) {
+          if (pending.created) {
+            setPendingTraceabilityStoryIds([])
             resetTestForm()
           } else {
+            caseEditorSaveRef.current = emptyCaseEditorSaveState()
             setAddTestSuccess(true)
             setTimeout(() => setAddTestSuccess(false), 3000)
           }
@@ -494,6 +476,7 @@ export function createCaseEditorActions({
         showFeedback(t('casos.saveCaseError'), error.message || t('casos.saveCaseFallback'), 'danger')
         return
       } finally {
+        caseEditorSaveRef.current.busy = false
         setCaseEditorSaving(false)
       }
     }

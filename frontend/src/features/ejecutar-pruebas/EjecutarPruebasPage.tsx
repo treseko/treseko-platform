@@ -51,6 +51,7 @@ type EjecutarPruebasPageProps = {
   currentBuildId: string;
   readOnlyBuild?: boolean;
   currentCompId: string;
+  currentComponentName?: string;
   suitesTree: any[];
   selectedSuiteId: string;
   testSearchQuery: string;
@@ -127,6 +128,7 @@ export function EjecutarPruebasPage({
   currentBuildId,
   readOnlyBuild = false,
   currentCompId,
+  currentComponentName = '',
   suitesTree,
   selectedSuiteId,
   testSearchQuery,
@@ -341,6 +343,7 @@ export function EjecutarPruebasPage({
               renderInternalBugButton,
               executionInitialLoading,
               bugCaseFilter,
+              currentComponentName,
             }} />
 
             <ExecutionTestsTable options={{ visibleTests, t, allVisibleExecutionTestsSelected, toggleVisibleExecutionSelection, selectedTest, handleSelectTestForExecution, activeBuildResultsLoading, activeBuildResultsLoaded, selectedExecutionTestIds, toggleExecutionSelection, isOutdatedExecutionCase, renderOpenBugBadge, canStartAnyExecution, renderInternalBugButton, openSingleCaseExecutionSelector, executionInitialLoading, bugCaseFilter }} />

@@ -24,7 +24,7 @@ def _policy_from(value: Any) -> dict[str, Any]:
         return policy
     # ``EjecucionCaso.evidence_policy`` stores the policy object itself,
     # while metadata/configuration stores it below the named key.
-    return value if PUBLIC_TEST_DATA_KEY in value else {}
+    return value if PUBLIC_TEST_DATA_KEY in value or "complete_data" in value else {}
 
 
 def _object_policies(value: Any) -> list[dict[str, Any]]:
@@ -71,6 +71,8 @@ def public_test_data_evidence_enabled(
     sources = (execution, result, metadata, config, case, environment)
     for source in sources:
         for policy in _object_policies(source):
+            if policy.get("complete_data") is True:
+                return True
             if PUBLIC_TEST_DATA_KEY in policy:
                 return policy.get(PUBLIC_TEST_DATA_KEY) is True
     return False

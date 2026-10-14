@@ -14,6 +14,7 @@ export type IaLogEntry = {
   step?: string | number
   attempt?: string | number
   confidence?: number
+  confidence_source?: string
   reason?: string
   metrics?: Record<string, any>
 }

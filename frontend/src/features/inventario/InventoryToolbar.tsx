@@ -8,7 +8,7 @@ const STATUSES = ['Activo', 'Online', 'Offline', 'Mantenimiento', 'En Pausa', 'R
 const CRITICALITIES = ['Baja', 'Media', 'Alta', 'Critica']
 
 export function InventoryToolbar({ options }: { options: any }) {
-  const { t, canEditInventory, newCategoryName, setNewCategoryName, inventoryCategories, currentProjectId, setInventoryCategories, openAddModal, error, filters, setFilters, parentOptions, filteredAssets } = options
+  const { t, canEditInventory, newCategoryName, setNewCategoryName, createCategory, saving, openAddModal, error, filters, setFilters, parentOptions, filteredAssets } = options
   return (
     <>
 <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
@@ -29,10 +29,7 @@ export function InventoryToolbar({ options }: { options: any }) {
           className="d-flex align-items-center bg-white rounded-pill shadow-sm border border-light-subtle overflow-hidden"
           onSubmit={(event) => {
             event.preventDefault()
-            const name = newCategoryName.trim()
-            if (!name) return
-            setInventoryCategories([...inventoryCategories, { id: `cat_${Date.now()}`, projectId: currentProjectId, name, type: 'custom' }])
-            setNewCategoryName('')
+            void createCategory()
           }}
         >
           <Form.Control name="a11y-inventorytoolbartsx-37" aria-label={inventoryAria(t, t('inventario.newCategory'))}
@@ -43,7 +40,7 @@ export function InventoryToolbar({ options }: { options: any }) {
             className="border-0 shadow-none bg-transparent px-3"
             style={{ width: 170 }}
           />
-          <Button type="submit" size="sm" variant="primary" className="fw-bold rounded-pill px-3 m-1">
+          <Button type="submit" disabled={saving || !newCategoryName.trim()} size="sm" variant="primary" className="fw-bold rounded-pill px-3 m-1">
             {t('inventario.createCategory')}
           </Button>
         </Form>

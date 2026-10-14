@@ -31,7 +31,7 @@ export function useAppRealtime(options: any) {
     if (eventType.startsWith('execution.') || eventType.startsWith('ia.') || eventType.startsWith('automation.') || eventType.startsWith('worker.')) {
       if (activeTab === 'ejecutar' && affectsCurrentBuild) void refreshExecutionLiveData()
       if (activeTab === 'historial' && canAccessCapability('historial.ver', 'read')) {
-        void loadProjectRunHistory(historialInitialFilters)
+        void loadProjectRunHistory()
       }
       if (activeTab === 'reportes') void refreshReportesLiveData()
       return
@@ -61,7 +61,7 @@ export function useAppRealtime(options: any) {
       if (canAccessCapability('proyectos.ambientes', 'read') && currentProjectId && isValidUUID(currentProjectId)) void environmentActions.loadEnvironmentsForProject(currentProjectId)
       if (activeTab === 'ejecutar' && affectsCurrentBuild) void refreshExecutionLiveData()
       if (activeTab === 'historial' && canAccessCapability('historial.ver', 'read')) {
-        void loadProjectRunHistory(historialInitialFilters)
+        void loadProjectRunHistory()
       }
       if (activeTab === 'reportes') void refreshReportesLiveData()
       return
@@ -77,7 +77,7 @@ export function useAppRealtime(options: any) {
   useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'ejecutar', intervalMs: 12000, refreshOnFocus: true, onRefresh: refreshExecutionLiveData })
   useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'bugs', intervalMs: 30000, refreshOnFocus: true, onRefresh: () => setBugTrackerRefreshToken((value: number) => value + 1) })
   useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'reportes', intervalMs: 0, refreshOnFocus: false, onRefresh: refreshReportesLiveData })
-  useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'historial' && canAccessCapability('historial.ver', 'read'), intervalMs: hasActiveRunHistory ? 15000 : 0, refreshOnFocus: true, onRefresh: () => loadProjectRunHistory(historialInitialFilters) })
+  useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'historial' && canAccessCapability('historial.ver', 'read'), intervalMs: hasActiveRunHistory ? 15000 : 0, refreshOnFocus: true, onRefresh: () => loadProjectRunHistory() })
   useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'proyectos' && projectInnerTab === 'components', intervalMs: 30000, refreshOnFocus: true, onRefresh: refreshProjectBuildLiveData })
   useLiveRefresh({ enabled: isAuthenticated && livePollingFallbackActive && activeTab === 'proyectos' && projectInnerTab === 'traceability', intervalMs: 15000, refreshOnFocus: true, onRefresh: () => setTraceabilityRefreshToken((value: number) => value + 1) })
 

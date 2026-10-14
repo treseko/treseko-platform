@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import es from '../../i18n/catalogs/es/proyectos.ts'
 import en from '../../i18n/catalogs/en/proyectos.ts'
+import { canAutoConfirmStoryAnalysis } from './useTraceabilityGenerationState.ts'
 import {
   priorityLabel,
   requirementStateLabel,
@@ -9,6 +10,19 @@ import {
 } from './traceabilityPresentation.ts'
 
 type Catalog = Record<string, string>
+
+test('automatic continuation requires complete LOW assumptions and no questions', () => {
+  const low = { id: 'A-1', text: 'Confirmed working default', risk: 'LOW' }
+  assert.equal(canAutoConfirmStoryAnalysis({ questions: [], proposed_assumptions: [low] }), true)
+  for (const risk of ['MEDIUM', 'HIGH', 'CRITICAL', 'UNKNOWN', undefined]) {
+    assert.equal(canAutoConfirmStoryAnalysis({ questions: [], proposed_assumptions: [{ ...low, risk }] }), false)
+  }
+  for (const assumptions of [[], [{ ...low, text: '' }], [{ ...low, id: '' }], [{ ...low, id: 42 }], [{ ...low, text: { invalid: 'value' } }], [low, low], [null], [low, { ...low, id: 'A-2', risk: 'HIGH' }]]) {
+    assert.equal(canAutoConfirmStoryAnalysis({ questions: [], proposed_assumptions: assumptions }), false)
+  }
+  assert.equal(canAutoConfirmStoryAnalysis({ questions: ['Confirm expected behavior'], proposed_assumptions: [low] }), false)
+  assert.equal(canAutoConfirmStoryAnalysis({ proposed_assumptions: [low] }), false)
+})
 
 function translator(catalog: Catalog) {
   return (key: string) => {

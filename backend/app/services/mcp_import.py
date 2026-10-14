@@ -28,7 +28,15 @@ _FORBIDDEN_CONFIG_FIELD = re.compile(
     r"(?:credential|password|passwd|secret|token|api[_-]?key|authorization|script|parallel)", re.I
 )
 _SCRIPT_SECRET = re.compile(
-    r"(?:\b(?:password|passwd|secret|token|bearer|credential|authorization)\b|api[_-]?key)", re.I
+    # Names and selectors are legitimate; reject nonempty credential literals.
+    # This is an import guard, not a complete analysis of executable JavaScript.
+    r"(?:[\w$]*(?:password|passwd|secret|token|credential|authorization|api[_-]?key)[\w$]*"
+    r"[\"']?\s*[:=]\s*[\"'][^\"']+[\"']|"
+    r"[\"']Bearer\s+[^\"']+[\"']|"
+    r"(?:locator|getByLabel|getByPlaceholder)\([^\n;]*?(?:password|passwd)"
+    r"[^\n;]*?\)\s*\.fill\(\s*[\"'][^\"']+[\"']|"
+    r"\.fill\(\s*[\"'][^\"']*(?:password|passwd)[^\"']*[\"']\s*,"
+    r"\s*[\"'][^\"']+[\"'])", re.I
 )
 _SCRIPT_SHELL = re.compile(
     r"(?:\brm\s+-[A-Za-z]*r[A-Za-z]*f\b|\b(?:curl|wget|nc|netcat)\b|"
@@ -168,21 +176,8 @@ def _validate_ai_package(package: dict[str, Any]) -> None:
 
 
 def _redact_case_config(value: Any, *, api_key_context: bool = False) -> Any:
-    """Defence-in-depth redaction for configuration crossing the MCP boundary."""
-    secret_name = re.compile(r"(?:credential|password|passwd|secret|token|api[_-]?key|authorization)", re.I)
-    if isinstance(value, dict):
-        result = {}
-        for key, child in value.items():
-            name = str(key)
-            is_api_key = api_key_context or (name.lower() == "type" and str(child).lower() == "api_key")
-            if secret_name.search(name) or (api_key_context and name.lower() in {"value", "header", "query"}):
-                result[name] = "[redacted]"
-            else:
-                result[name] = _redact_case_config(child, api_key_context=is_api_key)
-        return result
-    if isinstance(value, list):
-        return [_redact_case_config(child, api_key_context=api_key_context) for child in value]
-    return value
+    from .mcp_redaction import redact
+    return redact(value)
 
 
 def _validate_ai_package_data(profile_id: str, data: bytes) -> None:
@@ -196,15 +191,15 @@ def _validate_ai_package_data(profile_id: str, data: bytes) -> None:
 
 def _safe_case_item(item: dict[str, Any]) -> dict[str, Any]:
     """Expose governed definition metadata without secrets or executable text."""
-    safe: dict[str, Any] = {"external_id": str(item.get("external_id", ""))[:256],
-                              "outcome": str(item.get("outcome", ""))[:64]}
+    safe: dict[str, Any] = {"external_id": str(item.get("external_id", "")),
+                              "outcome": str(item.get("outcome", ""))}
     if "formato_prueba" not in item and "tipo_prueba" not in item:
         return safe
-    safe.update({"tipo_prueba": str(item.get("tipo_prueba", "MANUAL"))[:32],
-                 "formato_prueba": str(item.get("formato_prueba", "CLASICA"))[:32]})
+    safe.update({"tipo_prueba": str(item.get("tipo_prueba", "MANUAL")),
+                 "formato_prueba": str(item.get("formato_prueba", "CLASICA"))})
     if safe["formato_prueba"] == "CLASICA":
         safe["pasos"] = [{key: step.get(key) for key in ("numero_paso", "accion", "datos", "resultado_esperado")}
-                         for step in (item.get("pasos") or []) if isinstance(step, dict)][:200]
+                         for step in (item.get("pasos") or []) if isinstance(step, dict)]
     elif safe["formato_prueba"] == "API":
         safe["configuracion_api"] = _redact_case_config(item.get("configuracion_api") if isinstance(item.get("configuracion_api"), dict) else {})
     elif safe["formato_prueba"] == "CONVERSACIONAL":
@@ -215,19 +210,19 @@ def _safe_case_item(item: dict[str, Any]) -> dict[str, Any]:
 def _safe_result(result: dict[str, Any]) -> dict[str, Any]:
     """Return metadata only; package/content never crosses the MCP boundary."""
     items = []
-    for item in (result.get("items") or [])[:MAX_PREVIEW_ITEMS]:
+    for item in (result.get("items") or []):
         if isinstance(item, dict):
             items.append(_safe_case_item(item))
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
     diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
     return {
-        "source_tool": str(result.get("source_tool", ""))[:128],
-        "source_version": str(result.get("source_version", ""))[:64],
-        "file_sha256": str(result.get("file_sha256", ""))[:64],
-        "summary": {str(k)[:64]: value for k, value in list(summary.items())[:32] if isinstance(value, (str, int, float, bool)) or value is None},
-        "diagnostics": {str(k)[:64]: value for k, value in list(diagnostics.items())[:32] if isinstance(value, (str, int, float, bool)) or value is None},
+        "source_tool": str(result.get("source_tool", "")),
+        "source_version": str(result.get("source_version", "")),
+        "file_sha256": str(result.get("file_sha256", "")),
+        "summary": {str(k): value for k, value in list(summary.items()) if isinstance(value, (str, int, float, bool)) or value is None},
+        "diagnostics": {str(k): value for k, value in list(diagnostics.items()) if isinstance(value, (str, int, float, bool)) or value is None},
         "items": items,
-        "truncated": len(result.get("items") or []) > MAX_PREVIEW_ITEMS,
+        "truncated": False,
     }
 
 
@@ -254,6 +249,7 @@ async def preview_import(db, user, project, arguments: dict[str, Any]) -> dict[s
     result = await case_portability.preview_import(db, project.id, profile_id, data)
     safe = _safe_result(result)
     safe["preview_token"] = make_preview_token(project.id, arguments)
+    safe["package_sha256"] = package_sha256(arguments["content_base64"])
     return safe
 
 
@@ -294,7 +290,7 @@ async def commit_import(db, user, project, arguments: dict[str, Any]) -> dict[st
             raise ValueError("La build destino no pertenece al componente seleccionado")
         if not access_control.is_build_active(build):
             raise ValueError("La build destino está inactiva")
-    key = str(arguments["idempotency_key"])[:128]
+    key = str(arguments["idempotency_key"])
     fingerprint = import_fingerprint(project.id, arguments, actual_hash, user.id)
     reservation = None
     cached = None
@@ -366,7 +362,7 @@ async def rollback_import(db, user, project, arguments: dict[str, Any]) -> dict[
         build = await access_control.require_build_access(db, user, _uuid(build_id, "build_id"), "edit")
         if str(build.proyecto_id) != str(project.id) or str(build.componente_id) != str(component_id):
             raise ValueError("build fuera del componente")
-    key = str(arguments["idempotency_key"])[:128]
+    key = str(arguments["idempotency_key"])
     fingerprint = hashlib.sha256(f"rollback|{project.id}|{batch.id}|{receipt}".encode()).hexdigest()
     reservation, cached = await _reserve_idempotency(db, project.id, key, fingerprint)
     if cached is not None:

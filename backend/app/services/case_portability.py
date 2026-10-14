@@ -118,11 +118,15 @@ async def preview_import(db: AsyncSession, project_id: UUID, profile_id: str, da
 
 
 async def _suite_for_path(db: AsyncSession, project_id: UUID, path: str, created: list[str], descriptions: dict[str, str | None] | None = None, component_id: UUID | None = None) -> UUID | None:
+    from ..repositories.suite_policy import lock_suite_project
+    await lock_suite_project(db, project_id)
     parent_id = None
     names = [part.strip() for part in path.replace("\\", "/").split("/") if part.strip()][:8]
     for index, name in enumerate(names):
         existing = (await db.execute(select(models.Suite).where(models.Suite.proyecto_id == project_id, models.Suite.parent_id == parent_id, models.Suite.nombre == name, models.Suite.componente_id == component_id))).scalar_one_or_none()
         if existing:
+            if existing.archivado:
+                raise ValueError('La ruta de importación contiene una suite archivada. Restáurala o selecciona otra ubicación.')
             # Re-importing a previously deleted case should make its authoring
             # path visible again, unless the suite was explicitly archived.
             if not existing.archivado:

@@ -59,6 +59,8 @@ type CreateExecutionActionsParams = {
   aiMaxParallelRuns?: number
   setProjectSyncMessage: (message: string) => void
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
+  executionGuardRef?: { current: { details: number; selection: number; context: string } }
+  executionDraftRef?: { current: { dirty: boolean; version: number } }
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
 export function createExecutionActions({
@@ -110,7 +112,9 @@ export function createExecutionActions({
   aiMaxParallelRuns = 1,
   setProjectSyncMessage,
   showFeedback,
-  t
+  t,
+  executionGuardRef = { current: { details: 0, selection: 0, context: '' } },
+  executionDraftRef,
 }: CreateExecutionActionsParams) {
   const getLatestCaseForExecution = (test: any) =>
     currentProjectCases.find(item => item.id === test?.latestCaseId) || null
@@ -157,7 +161,7 @@ export function createExecutionActions({
     })
     return { tests: executableTests, assignedIds: latestAssignedIds }
   }
-  const createExecutionRun = async (mode: ExecutionMode, tests: any[], assignedIdsOverride?: string[]) => {
+  const createExecutionRun = async (mode: ExecutionMode, tests: any[], assignedIdsOverride?: string[], executionOptions: any = {}) => {
     const projectId = resolveExecutionProjectId({ buildsList, currentBuildId, currentProjectId, managingProjectId })
     if (!projectId || !isValidUUID(projectId)) throw new Error(t('ejecutarPruebas.executionProjectInvalid'))
     if (tests.length === 0) throw new Error(t('ejecutarPruebas.executionNoCasesSelected'))
@@ -182,7 +186,7 @@ export function createExecutionActions({
     if (tests.some(test => !assignedIds.includes(test.id))) {
       throw new Error(t('ejecutarPruebas.executionCaseNotAssigned'))
     }
-    const response = await fetchWithAuth(`${API_BASE}/test-runs/`, {
+    const response = await fetchWithAuth(`${API_BASE}${mode === 'manual' ? '/test-runs/' : '/execution-batches/'}`, {
       method: 'POST',
       body: JSON.stringify({
         proyecto_id: projectId,
@@ -192,7 +196,8 @@ export function createExecutionActions({
         entorno: 'QA',
         entorno_id: selectedExecutionEnvironmentId || null,
         dataset_id: selectedExecutionDatasetId || null,
-        caso_ids: tests.map(test => test.id).filter(isValidUUID)
+        caso_ids: tests.map(test => test.id).filter(isValidUUID),
+        ...(mode !== 'manual' ? { record_video: executionOptions.recordVideo !== false } : {})
       })
     })
     if (!response.ok) {
@@ -201,19 +206,14 @@ export function createExecutionActions({
     return response.json()
   }
 
-  const loadExecutionDetails = async (runId: string, caseId: string) => {
+  const loadExecutionDetails = async (runId: string, caseId: string, options: { isCurrent?: () => boolean; replaceDraft?: boolean } = {}) => {
+    if (!options.replaceDraft && executionDraftRef?.current.dirty) return null
+    const draftVersion = executionDraftRef?.current.version
+    const generation = ++executionGuardRef.current.details
+    const context = executionGuardRef.current.context
+    const isCurrent = () => generation === executionGuardRef.current.details && context === executionGuardRef.current.context && (!options.isCurrent || options.isCurrent())
     const runDetailResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/`)
     const runDetail = runDetailResponse.ok ? await runDetailResponse.json().catch(() => null) : null
-    if (runDetail) {
-      setCurrentExecutionRun((previous: any) => ({
-        ...(previous || {}),
-        dataset_nombre: runDetail.dataset?.nombre || previous?.dataset_nombre || null,
-        dataset_name: runDetail.dataset?.nombre || previous?.dataset_name || null,
-        entorno: runDetail.entorno?.nombre || previous?.entorno,
-        datasets_resueltos: runDetail.datasets_resueltos || previous?.datasets_resueltos || {},
-        variables_resueltas: runDetail.variables_resueltas || previous?.variables_resueltas || {},
-      }))
-    }
     const ejecucionesResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
     if (!ejecucionesResponse.ok) throw new Error(t('configuracion.backendResponded', { status: ejecucionesResponse.status }))
     let ejecuciones = await ejecucionesResponse.json()
@@ -225,8 +225,7 @@ export function createExecutionActions({
       lastExecutionPageSize = page.length
       ejecuciones = [...ejecuciones, ...page]
     }
-    setCurrentExecutionRun((previous: any) => ({ ...(previous || {}), execution_statuses_by_case_id: getExecutionStatusesByCaseId(ejecuciones) }))
-    const ejecucion = ejecuciones.find((item: any) => item.caso_id === caseId) || ejecuciones[0]
+    const ejecucion = ejecuciones.find((item: any) => String(item.caso_id) === String(caseId))
     if (!ejecucion) throw new Error(t('ejecutarPruebas.executionNoAssociatedCases'))
     const snapshotsResponse = await fetchWithAuth(`${API_BASE}/ejecuciones/${ejecucion.id}/snapshots/`)
     if (!snapshotsResponse.ok) throw new Error(t('configuracion.backendResponded', { status: snapshotsResponse.status }))
@@ -239,7 +238,18 @@ export function createExecutionActions({
     const attachmentsBySnapshot = Object.fromEntries(
       snapshots.map((snap: any) => [snap.id, (attachmentLinksBySnapshot[String(snap.id)] || []).map((link: any) => link.attachment)])
     )
-    const isFreshExecution = !ejecucion.estado_resultado || ejecucion.estado_resultado === 'SIN_CORRER'
+    if (!isCurrent() || (!options.replaceDraft && executionDraftRef && executionDraftRef.current.version !== draftVersion)) return null
+    if (runDetail) {
+      setCurrentExecutionRun((previous: any) => ({
+        ...(previous || {}),
+        dataset_nombre: runDetail.dataset?.nombre || previous?.dataset_nombre || null,
+        dataset_name: runDetail.dataset?.nombre || previous?.dataset_name || null,
+        entorno: runDetail.entorno?.nombre || previous?.entorno,
+        datasets_resueltos: runDetail.datasets_resueltos || previous?.datasets_resueltos || {},
+        variables_resueltas: runDetail.variables_resueltas || previous?.variables_resueltas || {},
+      }))
+    }
+    setCurrentExecutionRun((previous: any) => ({ ...(previous || {}), execution_statuses_by_case_id: getExecutionStatusesByCaseId(ejecuciones) }))
     const isAutoBlockNote = (value?: string) =>
       String(value || '').trim().toLowerCase().startsWith('bloqueado autom')
     setCurrentExecutionCase(ejecucion)
@@ -247,42 +257,15 @@ export function createExecutionActions({
     setGeneralExecutionSnapshot(generalSnapshot)
     setSnapshotAttachments(attachmentsBySnapshot)
     setGeneralExecutionAttachments(generalSnapshot ? (attachmentsBySnapshot[generalSnapshot.id] || []) : [])
-    setStepResults(Object.fromEntries(stepSnapshots.map((snap: any) => [snap.numero_paso, isFreshExecution ? 'SIN_CORRER' : snap.estado_paso])))
+    setStepResults(Object.fromEntries(stepSnapshots.map((snap: any) => [snap.numero_paso, snap.estado_paso || 'SIN_CORRER'])))
     setSnapshotNotes(Object.fromEntries(stepSnapshots.map((snap: any) => [
       snap.numero_paso,
-      isFreshExecution || isAutoBlockNote(snap.comentarios) ? '' : (snap.comentarios || '')
+      isAutoBlockNote(snap.comentarios) ? '' : (snap.comentarios || '')
     ])))
-    setGeneralExecutionStatus(ejecucion.estado_resultado && ejecucion.estado_resultado !== 'SIN_CORRER' ? ejecucion.estado_resultado : 'SIN_CORRER')
-    setGeneralExecutionNote(ejecucion.observaciones || '')
+    setGeneralExecutionStatus(ejecucion.estado_resultado && ejecucion.estado_resultado !== 'SIN_CORRER' ? ejecucion.estado_resultado : (generalSnapshot?.estado_paso || 'SIN_CORRER'))
+    setGeneralExecutionNote(generalSnapshot?.comentarios || ejecucion.observaciones || '')
     return { ejecucion, snapshots: stepSnapshots, ejecuciones, generalSnapshot }
   }
-  const waitForIaExecutionToFinish = async (runId: string, executionId: string, timeoutMs = 20 * 60 * 1000) => {
-    const startedAt = Date.now()
-    let delayMs = 2000
-    const finalStatuses = new Set(['PASO', 'FALLO', 'BLOQUEADO', 'ERROR', 'TIMEOUT'])
-    while (Date.now() - startedAt < timeoutMs) {
-      const jitterMs = Math.floor(Math.random() * 500)
-      await new Promise(resolve => window.setTimeout(resolve, delayMs + jitterMs))
-      const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?limit=200`)
-      delayMs = Math.min(Math.round(delayMs * (response.ok ? 1.25 : 1.6)), 15000)
-      if (!response.ok) continue
-      let ejecuciones = await response.json()
-      let lastExecutionPageSize = ejecuciones.length
-      for (let skip = lastExecutionPageSize; lastExecutionPageSize === 200; skip += 200) {
-        const pageResponse = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/ejecuciones/?skip=${skip}&limit=200`)
-        if (!pageResponse.ok) break
-        const page = await pageResponse.json()
-        lastExecutionPageSize = page.length
-        ejecuciones = [...ejecuciones, ...page]
-      }
-      const current = ejecuciones.find((item: any) => item.id === executionId)
-      if (!current || finalStatuses.has(String(current.estado_resultado || '').toUpperCase())) {
-        return current
-      }
-    }
-    return null
-  }
-
   const handleStartExecution = async (mode: ExecutionMode, executionOptions: any = {}) => {
     const requestedTests = Array.isArray(executionOptions?.tests) ? executionOptions.tests.filter(Boolean) : []
     const tests = requestedTests.length > 0 ? requestedTests : (executionModalTests.length > 0 ? executionModalTests : (selectedTest ? [selectedTest] : []))
@@ -307,11 +290,13 @@ export function createExecutionActions({
     try {
       const { tests: executableTests, assignedIds } = await promoteOutdatedCasesForExecution(tests)
       const executionCaseIds = executableTests.map(test => test.id)
-      const run = await createExecutionRun(mode, executableTests, assignedIds)
+      const run = await createExecutionRun(mode, executableTests, assignedIds, executionOptions)
       setCurrentExecutionRun(run)
       setExecutionMode(mode)
       setSelectedTest(prev => prev?.id === executableTests[0].id ? prev : executableTests[0])
-      const { snapshots, ejecuciones } = await loadExecutionDetails(run.id, executableTests[0].id)
+      const loaded = await loadExecutionDetails(run.id, executableTests[0].id, { replaceDraft: true })
+      if (!loaded) return
+      const { snapshots, ejecuciones } = loaded
       setActiveExecutionCaseIds(mode === 'manual' ? executionCaseIds : [])
       setExecutionModalCaseIds(null)
       setShowExecSelector(false)
@@ -351,133 +336,19 @@ export function createExecutionActions({
           ...pendingStreams.map(item => iaLog('queue', t('ejecutarPruebas.iaWaitingTurn', { case: item.caseTitle }), { caseCode: item.caseCode, executionId: item.executionId }))
         ])
 
-        const iaResults: any[] = []
-        let queueIndex = 0
-        const runNextIaExecution = async () => {
-          while (queueIndex < ejecuciones.length) {
-            const item = ejecuciones[queueIndex++]
-          const test = executableTests.find(candidate => candidate.id === item.caso_id)
-          setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-            ? { ...stream, status: 'EN_EJECUCION', startedAt: new Date().toISOString(), lastMessage: chatbotAutomated ? t('ejecutarPruebas.iaChatbotExecuting') : t('ejecutarPruebas.iaExecuting') }
-            : stream
-          ))
-          setIaLogs(prev => [...prev, iaLog('run', t('ejecutarPruebas.iaStartMessage', { case: test?.code || test?.codigo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')), kind: chatbotAutomated ? t('ejecutarPruebas.chatbotAutomatedStarted') : t('ejecutarPruebas.iaCase') }), { caseCode: test?.code || test?.codigo, executionId: item.id })])
-          try {
-            const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, { method: 'POST' })
-            const payload = await response.json().catch(async () => ({ detail: await response.text().catch(() => '') }))
-            const result = {
-              ok: response.ok,
-              executionId: item.id,
-              caseId: item.caso_id,
-              caseCode: test?.code || test?.codigo,
-              caseTitle: test?.title || test?.titulo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')),
-              message: payload?.detail || payload?.message || t('configuracion.backendResponded', { status: response.status })
-            }
-            iaResults.push(result)
-            if (response.ok) {
-              const finished = await waitForIaExecutionToFinish(run.id, item.id)
-              if (finished?.estado_resultado) {
-                setIaExecutionStreams(prev => prev.map(stream => stream.executionId === item.id
-                  ? {
-                      ...stream,
-                      status: finished.estado_resultado === 'PASO' ? 'PASO' : finished.estado_resultado,
-                      endedAt: new Date().toISOString(),
-                      lastMessage: finished.observaciones || t('ejecutarPruebas.aiFinishedStatus', { status: finished.estado_resultado }),
-                    }
-                  : stream
-                ))
-              }
-            }
-          } catch (error: any) {
-            iaResults.push({
-              ok: false,
-              executionId: item.id,
-              caseId: item.caso_id,
-              caseCode: test?.code || test?.codigo,
-              caseTitle: test?.title || test?.titulo || (chatbotAutomated ? t('ejecutarPruebas.iaChatbotCase') : t('ejecutarPruebas.iaCase')),
-              message: error?.message || t('ejecutarPruebas.aiStartFailed')
-            })
-          }
-        }
-        }
-        await Promise.all(Array.from({ length: Math.min(maxParallelIa, ejecuciones.length) }, () => runNextIaExecution()))
-        const failedIa = iaResults.filter(result => !result.ok)
-        const startedIa = iaResults.filter(result => result.ok)
-        if (failedIa.length > 0) {
-          const firstError = failedIa[0]
-          const message = failedIa.length === iaResults.length
-            ? firstError.message
-            : t('ejecutarPruebas.iaPartialFailure', { count: failedIa.length, total: iaResults.length, detail: `${firstError.caseCode ? `${firstError.caseCode}: ` : ''}${firstError.message}` })
-          showFeedback(startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially'), message, startedIa.length === 0 ? 'danger' : 'warning')
-          setProjectSyncMessage(t('ejecutarPruebas.executionStartMessage', { error: message }))
-          setIaLogs(prev => [
-            ...prev,
-            iaLog('error', `${startedIa.length === 0 ? t('ejecutarPruebas.aiStartFailed') : t('ejecutarPruebas.aiStartedPartially')}: ${message}`),
-            ...failedIa.map(result => iaLog('error', `${result.caseTitle}: ${result.message}`, { caseCode: result.caseCode, executionId: result.executionId }))
-          ])
-          setActiveTab('motor_ia')
-          await loadExecutionDetails(run.id, executableTests[0].id).catch(() => null)
-          if (startedIa.length === 0) return
-        }
-        if (startedIa.length > 0) {
-          setIaLogs(prev => [
-            ...prev,
-            iaLog('run', t('ejecutarPruebas.iaSequenceComplete', { run: run.nombre, count: startedIa.length }))
-          ])
-        }
-        if (failedIa.length > 0) {
-          setIaLogs(prev => [
-            ...prev,
-            ...failedIa.map(result => iaLog('error', `${result.caseTitle}: ${result.message}`, { caseCode: result.caseCode, executionId: result.executionId }))
-          ])
-        }
-        if (failedIa.length === 0) {
         showFeedback(
-            mode === 'ia' ? t('ejecutarPruebas.aiExecutionStarted') : t('ejecutarPruebas.chatbotAutomatedStarted'),
-          mode === 'ia'
-            ? t('ejecutarPruebas.iaRunCreatedMessage', { run: run.nombre, count: tests.length })
-            : t('ejecutarPruebas.chatbotRunCreatedMessage', { run: run.nombre }),
+          mode === 'ia' ? t('ejecutarPruebas.aiExecutionStarted') : t('ejecutarPruebas.chatbotAutomatedStarted'),
+          mode === 'ia' ? t('ejecutarPruebas.iaRunCreatedMessage', { run: run.nombre, count: tests.length }) : t('ejecutarPruebas.chatbotRunCreatedMessage', { run: run.nombre }),
           'success'
         )
-        }
         setActiveTab('motor_ia')
       } else {
-        const jobs = await Promise.all(ejecuciones.map(async (item: any) => {
-          const test = executableTests.find(candidate => candidate.id === item.caso_id)
-          const baseJob = {
-            executionId: item.id,
-            caseId: item.caso_id,
-            caseCode: test?.code,
-            caseTitle: test?.title
-          }
-          try {
-            const response = await fetchWithAuth(`${API_BASE}/ejecuciones/${item.id}/automatizar/`, {
-              method: 'POST',
-              body: JSON.stringify({ debug_mode: false })
-            })
-            const payload = await response.json().catch(() => null)
-            if (!response.ok) {
-              return {
-                ...baseJob,
-                status: 'ERROR',
-                error: payload?.detail || t('configuracion.backendResponded', { status: response.status })
-              }
-            }
-            return {
-              ...baseJob,
-              jobId: payload?.job_id,
-              status: payload?.status || 'PENDING'
-            }
-          } catch (error: any) {
-            return {
-              ...baseJob,
-              status: 'ERROR',
-                error: error?.message || t('ejecutarPruebas.automatedJobFailed')
-            }
-          }
-        }))
+        const jobs = (run.jobs || []).map((job: any) => {
+          const test = executableTests.find(candidate => candidate.id === job.caseId)
+          return { ...job, caseCode: test?.code, caseTitle: test?.title }
+        })
         openAutomationMonitor({ run, jobs })
-        const failedJobs = jobs.filter((job: any) => job.status === 'ERROR')
+        const failedJobs = jobs.filter((job: any) => job.status === 'ERROR' || String(job.status).startsWith('BLOCKED'))
         if (failedJobs.length === jobs.length) {
           showFeedback(
             t('ejecutarPruebas.workerSubmitFailed'),

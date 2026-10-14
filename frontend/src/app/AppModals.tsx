@@ -336,6 +336,8 @@ export function AppModals(props: AppModalsProps) {
         currentBuildId={props.currentBuildId}
         iaProvider={props.iaProvider}
         onLaunch={props.handleLaunchIaMission}
+        projectId={props.currentProjectId}
+        fetchWithAuth={props.fetchWithAuth}
       />
 
       <ExecutionRedmineReporter

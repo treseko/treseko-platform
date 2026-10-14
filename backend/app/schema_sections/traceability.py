@@ -195,6 +195,9 @@ class HistoriaUpdate(ExternalReference):
     prioridad: Optional[str] = None
     comentario_cambio: Optional[str] = Field(default=None, max_length=MAX_CHANGE_COMMENT_LENGTH)
 
+    acceptance_criteria: Optional[List[HistoriaAcceptanceCriterionInput]] = Field(default=None, max_length=50)
+    expected_revision: Optional[datetime] = None
+
     @field_validator("estado")
     @classmethod
     def validate_state(cls, value):
@@ -237,6 +240,7 @@ class AcceptanceCriterionInput(BaseModel):
 
 
 class StoryQualityInput(BaseModel):
+    semantic_review: dict[str, Any] = Field(default_factory=dict)
     invest: dict[str, Any] = Field(default_factory=dict)
     testability: Literal["PASS", "WARN", "FAIL"] = "WARN"
     duplicate_risk: Literal["LOW", "MEDIUM", "HIGH"] = "LOW"
@@ -323,6 +327,7 @@ class CasoGeneracionAutomationInput(BaseModel):
 
 
 class CasoGeneracionQualityInput(BaseModel):
+    semantic_review: dict[str, Any] = Field(default_factory=dict)
     testability: Literal["PASS", "WARN", "FAIL"] = "WARN"
     warnings: List[str] = Field(default_factory=list, max_length=30)
 

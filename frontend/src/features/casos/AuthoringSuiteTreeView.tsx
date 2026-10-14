@@ -2,6 +2,10 @@ import { SuiteTree } from '../../SuiteTree'
 import type { CaseFormat } from './caseFormat'
 
 type AuthoringSuiteTreeViewProps = {
+  canEditSuites?: boolean
+  canEditCases?: boolean
+  canViewVersions?: boolean
+  reorderSuite?: (suiteId: string, direction: 'up' | 'down') => void
   suites: any[]
   expandedSuites: Record<string, boolean>
   selectedSuiteId: string
@@ -33,6 +37,7 @@ type AuthoringSuiteTreeViewProps = {
 }
 
 export function AuthoringSuiteTreeView({
+  canEditSuites, canEditCases, canViewVersions, reorderSuite,
   suites,
   expandedSuites,
   selectedSuiteId,
@@ -64,6 +69,8 @@ export function AuthoringSuiteTreeView({
 }: AuthoringSuiteTreeViewProps) {
   return (
     <SuiteTree
+      canEditSuites={canEditSuites} canEditCases={canEditCases} canViewVersions={canViewVersions}
+      onReorderSuite={reorderSuite}
       suites={suites}
       expandedSuites={expandedSuites}
       selectedSuiteId={selectedSuiteId}

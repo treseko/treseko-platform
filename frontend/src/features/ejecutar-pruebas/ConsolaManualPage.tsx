@@ -48,6 +48,7 @@ type ConsolaManualPageProps = {
   handleGeneralExecutionAttachmentUpload: (attachment: AttachmentMeta) => void
   handleRemoveGeneralExecutionAttachment: (attachment: AttachmentMeta) => void
   getExecutionCompletionPlan: () => any
+  showFeedback?: (title: string, message: string, variant?: any) => void; saveExecutionProgress?: () => Promise<boolean>
   handleCompleteCase: () => void
   relatedCaseBugs?: any[]
   relatedCaseBugsLoading?: boolean
@@ -92,6 +93,7 @@ export function ConsolaManualPage({
   handleRemoveGeneralExecutionAttachment,
   getExecutionCompletionPlan,
   handleCompleteCase,
+  saveExecutionProgress, showFeedback,
   relatedCaseBugs = [],
   relatedCaseBugsLoading = false,
   currentComponentName = '',
@@ -332,7 +334,6 @@ export function ConsolaManualPage({
   const latestRelatedBug = relatedCaseBugs[0]
   // Las secciones laterales no comparten altura con la secuencia de pasos. Cada
   // tarjeta conserva su alto natural; sólo su contenido interno hace scroll.
-  const leftSectionStyle = (): CSSProperties => ({})
   const expandedSectionBodyStyle: CSSProperties = {
     overflow: 'auto',
     minHeight: 0,
@@ -370,7 +371,6 @@ export function ConsolaManualPage({
           <Row className="g-4 flex-grow-1 manual-console-layout-row">
             <ManualConsoleSidebar context={{
                 t,
-                leftSectionStyle,
                 selectedTest,
                 collapsedLeftSections,
                 toggleLeftSection,
@@ -450,6 +450,7 @@ export function ConsolaManualPage({
                   handleRemoveGeneralExecutionAttachment,
                   evidenceBlockMessage,
                   finishDisabled: finishDisabled || isCompletingCase,
+                  progress: { saveExecutionProgress, showFeedback },
                   isCompletingCase,
                   handleCompleteCase: handleCompleteCaseOnce,
                 }} />

@@ -1,9 +1,9 @@
 import { Badge, Button, Card, Col, Row } from 'react-bootstrap'
-import { Edit, Plus, Server, Trash2 } from 'lucide-react'
+import { Eye, Edit, Plus, Server, Trash2 } from 'lucide-react'
 import { inventoryLabel } from './inventoryPresentation'
 
 export function InventoryAssetGrid({ options }: { options: any }) {
-  const { filteredAssets, assetsByParent, assets, getAssetIcon, statusVariant, criticalityVariant, endpointLabel, t, canEditInventory, openAddModal, openEditModal, deleteAsset } = options
+  const { filteredAssets, assetsByParent, assets, getAssetIcon, statusVariant, criticalityVariant, endpointLabel, t, canEditInventory, openAddModal, openEditModal, openViewModal, deleteAsset } = options
   return (
 <Row className="g-3">
   {filteredAssets.map(asset => {
@@ -62,6 +62,7 @@ export function InventoryAssetGrid({ options }: { options: any }) {
                 </Button>
               ) : <span />}
               <div className="d-flex gap-1">
+                <Button size="sm" variant="white" className="border text-secondary p-1" aria-label={t('inventario.viewAsset')} title={t('inventario.viewAsset')} onClick={() => openViewModal(asset)}><Eye size={15} /></Button>
                 {canEditInventory && <Button size="sm" variant="white" className="border text-secondary p-1" title={t('inventario.editAsset')} onClick={() => openEditModal(asset)}><Edit size={15} /></Button>}
                 {canEditInventory && <Button size="sm" variant="white" className="border text-danger p-1" title={t('inventario.delete')} onClick={() => deleteAsset(asset)}><Trash2 size={15} /></Button>}
               </div>

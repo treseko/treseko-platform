@@ -87,6 +87,12 @@ def validate_proposal(
 ) -> list[dict]:
     findings = []
     quality = proposal.setdefault("quality", {})
+    semantic = quality.get("semantic_review") or {}
+    if semantic.get("verdict") == "FAIL":
+        findings.extend({"code": "SEMANTIC_REVIEW_FAILED", "severity": "FAIL", "message": item.get("message", "La revisión semántica requiere corrección.")}
+                        for item in semantic.get("findings", []) if item.get("severity") == "FAIL")
+        if not findings:
+            findings.append({"code": "SEMANTIC_REVIEW_FAILED", "severity": "FAIL", "message": "La revisión semántica requiere corrección."})
     actor, goal, benefit = (str(proposal.get(key) or "").strip() for key in ("actor", "goal", "benefit"))
     if proposal.get("story_type") == "USER_STORY":
         if normalize(actor) in TECHNICAL_ACTORS:

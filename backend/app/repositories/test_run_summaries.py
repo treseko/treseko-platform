@@ -1,5 +1,9 @@
 from .repository_context import *
 from ..services.execution_output_sanitizer import sanitize_execution_snapshot_item
+from ..evidence_url_security import sanitize_evidence_url
+from .history_run_status import summarize_run_result
+from mimetypes import guess_type
+from urllib.parse import urlsplit
 
 
 async def get_test_runs_summary(
@@ -12,6 +16,7 @@ async def get_test_runs_summary(
     case_query: Optional[str] = None,
     case_code: Optional[str] = None,
     status: Optional[str] = None,
+    run_result: Optional[str] = None,
     origin: Optional[str] = None,
     runner_id: Optional[UUID] = None,
     environment_id: Optional[UUID] = None,
@@ -21,6 +26,7 @@ async def get_test_runs_summary(
     has_evidence: Optional[bool] = None,
     version_executed: Optional[int] = None,
     ai_review_status: Optional[str] = None,
+    paginated: bool = False,
 ):
     runs = await get_test_runs_proyecto(
         db,
@@ -32,6 +38,7 @@ async def get_test_runs_summary(
         case_query=case_query,
         case_code=case_code,
         status=status,
+        **({"run_result": run_result} if run_result else {}),
         origin=origin,
         runner_id=runner_id,
         environment_id=environment_id,
@@ -42,9 +49,17 @@ async def get_test_runs_summary(
         version_executed=version_executed,
         ai_review_status=ai_review_status,
     )
+    total = None
+    if paginated:
+        total = await count_test_runs_proyecto(db, proyecto_id=proyecto_id, build_id=build_id,
+            component_id=component_id, case_query=case_query, case_code=case_code, status=status,
+            **({"run_result": run_result} if run_result else {}),
+            origin=origin, runner_id=runner_id, environment_id=environment_id, dataset_id=dataset_id,
+            date_from=date_from, date_to=date_to, has_evidence=has_evidence,
+            version_executed=version_executed, ai_review_status=ai_review_status)
     run_ids = [run.id for run in runs]
     if not run_ids:
-        return []
+        return {"items": [], "total": total, "skip": skip, "limit": limit} if paginated else []
 
     result_ejecuciones = await db.execute(
         select(models.EjecucionCaso)
@@ -106,7 +121,8 @@ async def get_test_runs_summary(
                 elif review_status == models.AiReviewStatus.REVISADA.value:
                     ai_review_reviewed += 1
         mode_summary = _execution_modes_summary(execution_modes)
-        status = "failed" if failed else "blocked" if blocked else "passed" if passed else "pending"
+        status = summarize_run_result(run_ejecuciones)
+        running = sum(item.estado_resultado == models.EstadoResultado.EJECUTANDO_AI for item in run_ejecuciones)
         user = users.get(run.creado_por)
         build = builds.get(run.build_id)
         component = components.get(build.componente_id) if build and build.componente_id else None
@@ -139,10 +155,13 @@ async def get_test_runs_summary(
             "failed": failed,
             "blocked": blocked,
             "pending": pending,
+            "running": running,
             "status": status,
-            "evidencias": evidencias_by_run.get(run.id, []),
+            "evidencias": evidencias_by_run.get(run.id, [])[:3],
+            "evidence_count": len(evidencias_by_run.get(run.id, [])),
+            "estado_run": getattr(run.estado_run, "value", run.estado_run),
         })
-    return summaries
+    return {"items": summaries, "total": total, "skip": skip, "limit": limit} if paginated else summaries
 
 
 async def _load_snapshot_attachments_by_snapshot_ids(
@@ -184,7 +203,7 @@ async def _load_paso_attachments_by_paso_ids(
 async def _load_run_evidence_preview(
     db: AsyncSession,
     ejecuciones: List[models.EjecucionCaso],
-    max_per_run: int = 3,
+    max_per_run: int | None = None,
 ) -> Dict[UUID, List[Dict[str, Any]]]:
     execution_ids = [ejec.id for ejec in ejecuciones]
     if not execution_ids:
@@ -203,14 +222,23 @@ async def _load_run_evidence_preview(
         if not run_id:
             continue
         run_evidence = evidence_by_run.setdefault(run_id, {})
-        if len(run_evidence) >= max_per_run:
-            continue
+        if snapshot.evidencia_url:
+            url = sanitize_evidence_url(snapshot.evidencia_url)
+            if url:
+                run_evidence.setdefault(url, {"id": str(snapshot.id), "public_url": url,
+                    "filename_original": "Evidencia", "available": True})
         links = attachments_by_snapshot.get(snapshot.id, [])
         for link in links:
             item = _attachment_to_dict(link.attachment)
-            run_evidence.setdefault(item["id"], item)
-            if len(run_evidence) >= max_per_run:
-                break
+            run_evidence[item.get("public_url") or item["id"]] = item
+    for execution in ejecuciones:
+        for kind, value in (("API", getattr(execution, "api_resultado", None)), ("CONVERSACIONAL", getattr(execution, "chatbot_resultado", None))):
+            if value:
+                item_id = f"{execution.id}:{kind}"
+                evidence_by_run.setdefault(execution.test_run_id, {})[item_id] = {
+                    "id": item_id, "kind": kind, "structured": True, "available": True,
+                    "filename_original": kind, "public_url": None,
+                }
     return {run_id: list(items.values()) for run_id, items in evidence_by_run.items()}
 
 
@@ -308,5 +336,10 @@ async def _load_enriched_snapshots_by_execution(
             _attachment_to_dict(link.attachment)
             for link in snapshot_attachments_by_snapshot.get(snapshot.id, [])
         ]
+        url = sanitize_evidence_url(snapshot.evidencia_url) if snapshot.evidencia_url else None
+        item["evidencia_url"] = url
+        if url and not any(evidence.get("public_url") == url for evidence in item["evidencias"]):
+            item["evidencias"].append({"id": f"{snapshot.id}:url", "public_url": url,
+                "filename_original": "Evidencia", "content_type": guess_type(urlsplit(url).path)[0], "available": True})
         grouped.setdefault(snapshot.ejecucion_caso_id, []).append(_json_safe(sanitize_execution_snapshot_item(item)))
     return grouped

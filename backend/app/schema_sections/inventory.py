@@ -338,7 +338,30 @@ class InventoryAssetCreate(InventoryAssetBase):
     endpoints: List[InventoryEndpointCreate] = Field(default_factory=list)
 
 
+class InventoryCategoryCreate(BaseModel):
+    nombre: str = Field(min_length=1, max_length=100)
+
+    @field_validator("nombre")
+    @classmethod
+    def validate_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("El nombre de la categoría es obligatorio")
+        return value
+
+
+class InventoryCategory(InventoryCategoryCreate):
+    id: str
+    proyecto_id: UUID
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryEndpointWrite(InventoryEndpointCreate):
+    id: Optional[UUID] = None
+
+
 class InventoryAssetUpdate(BaseModel):
+    endpoints: Optional[List[InventoryEndpointWrite]] = None
     categoria_id: Optional[str] = Field(default=None, max_length=100)
     parent_id: Optional[UUID] = None
     nombre: Optional[str] = Field(default=None, min_length=1, max_length=MAX_ASSET_NAME_LENGTH)

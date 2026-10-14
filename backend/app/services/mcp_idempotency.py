@@ -36,7 +36,7 @@ async def reserve(db, project_id, key: str, fingerprint: str):
         if existing.status == "COMPLETED" and isinstance(existing.result_json, dict):
             return existing, dict(existing.result_json)
         # PENDING and FAILED are intentionally not silently retried. A caller
-        # must use a new key rather than risk executing an unknown mutation.
+        # must inspect the previous outcome before retrying with the same key rather than risk executing an unknown mutation.
         raise ValueError("idempotency_key está siendo procesada")
 
 
@@ -55,3 +55,19 @@ def fingerprint(tool_name: str, project_id, arguments: dict[str, Any], actor_id=
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+async def reserve_workspace(db, namespace: str, key: str, fingerprint: str):
+    reservation = models.McpWorkspaceReceipt(namespace=namespace, idempotency_key=key, fingerprint=fingerprint, status="PENDING")
+    try:
+        async with db.begin_nested():
+            db.add(reservation)
+            await db.flush()
+        return reservation, None
+    except IntegrityError:
+        existing = await db.get(models.McpWorkspaceReceipt, (namespace, key))
+        if existing is None or existing.fingerprint != fingerprint:
+            raise ValueError("idempotency_key reutilizada con otra operación")
+        if existing.status == "COMPLETED" and isinstance(existing.result_json, dict):
+            return existing, dict(existing.result_json)
+        raise ValueError("idempotency_key está siendo procesada")

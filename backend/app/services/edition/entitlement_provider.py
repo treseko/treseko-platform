@@ -38,6 +38,7 @@ class EntitlementProvider(ABC):
         *,
         increment: int = 1,
         tenant_id: str | None = None,
+        state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         limit_meta = LIMIT_CATALOG.get(limit_id) or {}
         limit_label = str(limit_meta.get("label") or limit_id)
@@ -53,7 +54,8 @@ class EntitlementProvider(ABC):
                 "source": self.source,
                 "reason": f"Limite comercial desconocido: {limit_id}",
             }
-        state = await self.get_state(db, tenant_id=tenant_id)
+        if state is None:
+            state = await self.get_state(db, tenant_id=tenant_id)
         limits = state.get("limits") or {}
         max_value = limits.get(limit_id)
         allowed = max_value is None or current_value + increment <= int(max_value)

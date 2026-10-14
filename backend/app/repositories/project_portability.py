@@ -158,9 +158,14 @@ async def export_proyecto(db: AsyncSession, proyecto_id: UUID):
     return package
 
 async def import_proyecto(db: AsyncSession, package: dict, imported_by: UUID):
+    from .project_write_policy import lock_project_writes, prepare_project_write, validate_project_capacity
+
     package = _normalize_import_package(package)
+    await lock_project_writes(db)
     proyecto_data = package["proyecto"]
     organizacion_id = await resolve_project_organizacion(db, proyecto_data.get("organizacion_id"))
+    await prepare_project_write(db, organizacion_id)
+    await validate_project_capacity(db, organizacion_id)
     db_proyecto = models.Proyecto(
         nombre=f"{proyecto_data['nombre']} (Importado {uuid.uuid4().hex[:4]})",
         descripcion=proyecto_data["descripcion"],

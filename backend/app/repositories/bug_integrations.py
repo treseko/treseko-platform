@@ -3,6 +3,7 @@ from sqlalchemy import exists
 from ..services.conversational_bug_context import build_conversational_context, conversational_context_row_values
 from ..services.chatbot_turns import find_executed_turn
 from .bug_issue_management import link_bug_to_execution
+from .bug_issue_listing import _summarize_bug_items
 from .bug_payload_validation import compute_conversational_bug_dedupe_hash, normalize_chatbot_finding_type
 from ..services.api_evidence_policy import (
     evidence_policy_marker,
@@ -457,7 +458,8 @@ def generate_bug_markdown(bug: models.BugIssue) -> str:
 - URL afectada: {value(bug.url_afectada)}
 - Browser: {value(bug.navegador)}
 - Dispositivo: {value(bug.dispositivo)}
-- Resolucion: {value(bug.resolucion)}
+- Resolucion de pantalla: {value(getattr(bug, "resolucion_pantalla", None))}
+- Solucion aplicada: {value(bug.resolucion)}
 - Sistema operativo: {value(bug.sistema_operativo)}
 - Stack trace: {value(bug.stack_trace)}
 - Error tecnico: {value(bug.error_tecnico)}
@@ -537,28 +539,7 @@ async def summarize_project_bugs(db: AsyncSession, proyecto_id: UUID, build_id: 
         else:
             query = query.filter(models.BugIssue.build_id == build_id)
     bugs = (await db.execute(query)).scalars().unique().all()
-    def count_by(field):
-        data: Dict[str, int] = {}
-        for bug in bugs:
-            key = str(getattr(bug, field, None) or "N/D")
-            data[key] = data.get(key, 0) + 1
-        return data
-    open_bugs = [bug for bug in bugs if bug.estado not in BUG_CLOSED_STATES]
-    return {
-        "total": len(bugs),
-        "abiertos": len(open_bugs),
-        "criticos": len([bug for bug in open_bugs if bug.severidad in {"CRITICA", "ALTA"}]),
-        "bloquean_release": len([bug for bug in open_bugs if bug.bloquea_release]),
-        "listos_retest": len([bug for bug in open_bugs if bug.estado == "LISTO_PARA_RETEST"]),
-        "cerrados": len([bug for bug in bugs if bug.estado in BUG_CLOSED_STATES]),
-        "vinculados_externos": len([bug for bug in bugs if bug.external_issue_id or bug.external_links]),
-        "sin_evidencia": len([bug for bug in bugs if not bug.attachments and not (bug.metadata_json or {}).get("legacy_evidence_url")]),
-        "sin_asignado": len([bug for bug in open_bugs if not bug.asignado_a]),
-        "by_estado": count_by("estado"),
-        "by_severidad": count_by("severidad"),
-        "by_prioridad": count_by("prioridad"),
-        "by_origen": count_by("origen"),
-    }
+    return _summarize_bug_items(bugs)
 async def bug_dedupe_suggestions(db: AsyncSession, proyecto_id: UUID, dedupe_hash: Optional[str] = None, q: Optional[str] = None, limit: int = 10):
     query = select(models.BugIssue).options(*_bug_options()).filter(models.BugIssue.proyecto_id == proyecto_id, models.BugIssue.estado.in_(BUG_OPEN_STATES))
     if dedupe_hash:
@@ -579,6 +560,10 @@ async def mark_bug_duplicate(db: AsyncSession, bug_id: UUID, duplicate_of_id: UU
         raise ValueError("Un bug no puede marcarse como duplicado de si mismo.")
     if bug.proyecto_id != duplicate.proyecto_id:
         raise ValueError("El bug duplicado debe pertenecer al mismo proyecto.")
+    if duplicate.duplicate_of_id or duplicate.estado == "DUPLICADO":
+        raise ValueError("Selecciona el bug principal, no otro duplicado.")
+    if bug.estado == "DUPLICADO" and bug.duplicate_of_id == duplicate_of_id:
+        return bug
     bug.duplicate_of_id = duplicate_of_id
     old_status = bug.estado
     bug.estado = "DUPLICADO"
@@ -586,6 +571,7 @@ async def mark_bug_duplicate(db: AsyncSession, bug_id: UUID, duplicate_of_id: UU
     bug.fecha_resolucion = bug.closed_at
     bug.resuelto_por = user_id
     bug.resolved_build_id = None
+    bug.resolved_build = None
     bug.motivo_cierre = comentario or f"Duplicado de {duplicate.codigo}"
     db.add(models.BugStatusHistory(
         bug_id=bug.id, project_id=bug.proyecto_id, from_status=old_status,

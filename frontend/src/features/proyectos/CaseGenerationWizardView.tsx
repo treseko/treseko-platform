@@ -1,18 +1,20 @@
 import { Alert, Badge, Button, Form, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Sparkles } from 'lucide-react'
 import { GenerationStepper } from './GenerationStepper'
+import { GenerationSemanticReview, GenerationContextNotice } from './GenerationSemanticReview'
 
 export function CaseGenerationWizardView({ options }: { options: any }) {
-  const { t, step, busy, busyMessage, elapsedSeconds, error, run, duplicateReviewOpen, onClose, story, structured, components, componentId, setSelectedComponent, availableSuites, suiteId, setSelectedSuite, suitePathById, selectedSuite, selectedComponent, instructions, setInstructions, answers, setAnswers, plannedScenarios, selectedScenarioIds, toggleScenario, toggle, duplicateSignals, setDuplicateDetail, duplicateReasons, setDuplicateReasons, requiresDuplicateDecision, failReasons, setFailReasons, estimate, confirm, generate, apply, duplicateDetail } = options
+  const { acceptedAssumptions, setAcceptedAssumptions, restart, t, step, busy, busyMessage, elapsedSeconds, error, run, duplicateReviewOpen, onClose, story, structured, components, componentId, setSelectedComponent, availableSuites, suiteId, setSelectedSuite, suitePathById, selectedSuite, selectedComponent, instructions, setInstructions, answers, setAnswers, plannedScenarios, selectedScenarioIds, toggleScenario, toggle, duplicateSignals, setDuplicateDetail, duplicateReasons, setDuplicateReasons, requiresDuplicateDecision, failReasons, setFailReasons, estimate, confirm, generate, apply, duplicateDetail } = options
   return (
-    <Modal show={!duplicateReviewOpen} onHide={onClose} size="xl" scrollable centered>
-      <Modal.Header closeButton className="border-0 pb-2">
+    <Modal show={!duplicateReviewOpen} onHide={() => { if (!busy) onClose() }} size="xl" scrollable centered>
+      <Modal.Header closeButton={!busy} className="border-0 pb-2">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <Sparkles size={18} className="text-primary" />
           {t('proyectos.caseGenerationTitle')}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
+        <GenerationContextNotice analysis={run?.analysis} />
         <GenerationStepper
           labels={[t('proyectos.stepContext'), t('proyectos.stepAnalysis'), t('proyectos.stepCoverage'), t('proyectos.stepCases'), t('proyectos.stepApply')]}
           currentStep={Math.max(0, step - 1)}
@@ -35,7 +37,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
           </div>
         )}
 
-        {error && <div className="alert alert-danger" role="alert">{error}</div>}
+        {error && <div className="alert alert-danger" role="alert">{error}{run && <Button className="ms-2" variant="outline-danger" size="sm" disabled={busy} onClick={restart}>{t("proyectos.generationRestart")}</Button>}</div>}
 
         {!run && (
           <>
@@ -126,7 +128,10 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
             ))}
             {(run.analysis?.proposed_assumptions || []).map((item: any) => (
               <div key={item.id} className="small border rounded p-2 mb-2">
-                <Badge bg="warning" text="dark">{item.risk}</Badge> {item.text}
+                <Form.Check type="checkbox" id={`case-assumption-${item.id}`} disabled={busy}
+                  label={<><Badge bg="warning" text="dark">{item.risk}</Badge> {t('proyectos.generationAcceptAssumption')}: {item.text}</>}
+                  checked={acceptedAssumptions.includes(item.id)}
+                  onChange={(event) => setAcceptedAssumptions((previous: string[]) => event.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} />
               </div>
             ))}
           </>
@@ -240,6 +245,7 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
                   </div>
                   <div className="text-uppercase text-muted fw-semibold small mb-1">{t('proyectos.caseGenerationTraceability')}</div>
                   <div>{t('proyectos.caseGenerationCriteriaCount', { count: item.criterion_refs?.length || 0 })}</div>
+                  <GenerationSemanticReview review={item.quality?.semantic_review} criteria={run.criterios} />
                   {item.selected && requiresDuplicateDecision(item) ? (
                     <Form.Group className="mt-3">
                       <Form.Label className="small">{t('proyectos.caseGenerationDuplicateJustification')}</Form.Label>
@@ -276,19 +282,21 @@ export function CaseGenerationWizardView({ options }: { options: any }) {
         )}
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+        <Button variant="secondary" disabled={busy} onClick={onClose}>{t('common.cancel')}</Button>
         {!run && (
           <Button onClick={estimate} disabled={busy || !structured || !suiteId || !componentId}>
             {busy ? t('proyectos.caseGenerationAnalyzingLabel') : t('proyectos.caseGenerationAnalyzeSuggest')}
           </Button>
         )}
         {run && step === 2 && (
-          <Button onClick={confirm} disabled={busy}>
+          <Button onClick={confirm} disabled={busy || !run.analysis
+            || (run.analysis.questions || []).some((question: string) => !answers[question]?.trim())
+            || (run.analysis.proposed_assumptions || []).some((item: any) => item.risk === "CRITICAL" && !acceptedAssumptions.includes(item.id))}>
             {busy ? t('proyectos.caseGenerationSavingLabel') : t('proyectos.caseGenerationConfirmDecisions')}
           </Button>
         )}
         {run && step === 3 && (
-          <Button onClick={generate} disabled={busy || !selectedScenarioIds.length}>
+          <Button onClick={generate} disabled={busy || options.recoveryPending || !selectedScenarioIds.length}>
             {busy ? t('proyectos.caseGenerationDraftingLabel') : t('proyectos.caseGenerationDraftCount', { count: selectedScenarioIds.length })}
           </Button>
         )}

@@ -59,6 +59,8 @@ export async function finalizeSuccessfulRun(context: any): Promise<any> {
     message: `Ejecucion finalizada: ${finalStatus}`, ai_report_summary: { confidence: aiReport.confidence,
       consensus: aiReport.consensus, failure_category: aiReport.failure_category, human_review_required: aiReport.human_review_required } });
   await flushAndCloseBackendWs();
+  aiReport.recording_ref = browser.getVideoReference?.() || null;
+  aiReport.recording_status = browser.getVideoStatus?.() || (aiReport.recording_ref ? 'AVAILABLE' : 'UNAVAILABLE');
   return { status: finalStatus, duration_seconds: durationSeconds, observations: consensusDecision.reason,
     logs: localEvidenceLog, metadata: { engine: ENGINE_NAME, version: ENGINE_VERSION,
       local_evidence_enabled: ENGINE_LOCAL_EVIDENCE_ENABLED, model: ai.model, confidence: consensusDecision.confidence,
@@ -101,6 +103,8 @@ export async function finalizeFailedRun(context: any): Promise<any> {
     message: 'Ejecucion finalizada con error', ai_report_summary: { confidence: errorReport.confidence,
       consensus: errorReport.consensus, failure_category: errorReport.failure_category, human_review_required: errorReport.human_review_required } });
   await flushAndCloseBackendWs();
+  errorReport.recording_ref = browser.getVideoReference?.() || null;
+  errorReport.recording_status = browser.getVideoStatus?.() || (errorReport.recording_ref ? 'AVAILABLE' : 'UNAVAILABLE');
   return { status: 'FALLO', duration_seconds: durationSeconds, observations: safeError, error_message: safeError, logs: '',
     metadata: { engine: ENGINE_NAME, version: ENGINE_VERSION, local_evidence_enabled: ENGINE_LOCAL_EVIDENCE_ENABLED,
       model: ai.model, report_complete: true, ai_report_summary: { confidence: errorReport.confidence,

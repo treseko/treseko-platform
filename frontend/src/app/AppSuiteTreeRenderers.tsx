@@ -21,6 +21,7 @@ type SuiteTreeRendererOptions = {
   openMoveSuiteModal: any
   updateSuiteArchiveStatus: any
   handleDeleteSuite: any
+  handleReorderSuite?: (suiteId: string, direction: 'up' | 'down') => void
   openEditCase: any
   updateCaseArchiveStatus: any
   loadCasoVersions: any
@@ -52,6 +53,9 @@ export const createSuiteTreeRenderers = (options: SuiteTreeRendererOptions) => {
     beforeOpenEditCase?: (test: any) => boolean | Promise<boolean>,
   ) => (
     <AuthoringSuiteTreeView
+      canEditSuites={canEditSuite} canEditCases={canEditCase}
+      canViewVersions={canAccessCapability('crear_pruebas.versiones', 'read')}
+      reorderSuite={canEditSuite ? options.handleReorderSuite : undefined}
       suites={suites} expandedSuites={expandedSuites} selectedSuiteId={selectedSuiteId}
       selectedSubSuiteId={selectedSubSuiteId} selectedTest={selectedTest}
       casosList={visibleAuthoringCases} organizationCases={currentProjectCases} currentCompId={currentCompId}

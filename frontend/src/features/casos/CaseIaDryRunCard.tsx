@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Button, Card, Form } from "react-bootstrap";
 import { Cpu, PlayCircle, RefreshCw } from "lucide-react";
 
 type Props = { context: any };
 
 export function CaseIaDryRunCard({ context }: Props) {
+  const [recordVideo, setRecordVideo] = useState(true);
   const {
     t, newTestType, canUseIaDryRun, aiDryRunRunning, newTestTitle, newTestSteps,
     projectEnvironments, selectedDryRunEnvironment, setDryRunEnvironmentId,
@@ -31,6 +33,7 @@ export function CaseIaDryRunCard({ context }: Props) {
               <option value="">{t('casos.noDataset')}</option>
               {dryRunDatasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>)}
             </Form.Select>
+            <Form.Check id="ia-dry-run-record-video" type="switch" label={t('motorIa.recordVideo')} checked={recordVideo} onChange={e => setRecordVideo(e.target.checked)} className="mb-2" />
             <Button
             variant="outline-primary"
             size="sm"
@@ -48,6 +51,7 @@ export function CaseIaDryRunCard({ context }: Props) {
               entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
               dataset_id: uuidOrNull(selectedDryRunDataset?.id),
               debug_mode: false,
+              record_video: recordVideo,
               pasos: newTestSteps.map((step: any, index: number) => ({
                 numero_paso: index + 1,
                 accion: step.action || '',

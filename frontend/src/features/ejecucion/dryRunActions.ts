@@ -32,6 +32,7 @@ export function createExecutionDryRunActions({
           entorno_id: draft.entorno_id || null,
           dataset_id: draft.dataset_id || null,
           debug_mode: Boolean(draft.debug_mode),
+          record_video: draft.record_video !== false,
           pasos: Array.isArray(draft.pasos) ? draft.pasos : []
         })
       })
@@ -78,6 +79,7 @@ export function createExecutionDryRunActions({
           entorno_id: draft.entorno_id || null,
           dataset_id: draft.dataset_id || null,
           debug_mode: Boolean(draft.debug_mode),
+          record_video: draft.record_video !== false,
           pasos: Array.isArray(draft.pasos) ? draft.pasos : []
         })
       })

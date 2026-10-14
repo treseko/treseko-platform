@@ -1,4 +1,15 @@
 export default {
+  effortPerCase: 'Effort per case',
+  avgPerAttempt: 'Average per attempt',
+  fullExportScope: 'Exports the full build report; detail filters do not apply.',
+
+  sharedHistoryLoadError: 'Report history could not be loaded.',
+  showMoreRecords: 'Show more',
+  shownRecords: '{shown} of {total} records',
+  noLinkedBug: 'No linked bug',
+  noLatencyMeasurement: 'No measurement',
+
+  metricsStaleNotice: 'Showing the last loaded data; the refresh failed.',
   metricsLoadError: 'Could not load metrics',
   pageTitle: 'Build QA Control Center',
   pageDescription: 'Analytic reports, traceability, bugs, evidence and QA decision for the build.',
@@ -88,7 +99,7 @@ export default {
   formatMetrics: 'Metrics by test format',
   formatMetricsDescription: 'Common indicators by format and format-specific metrics for each test type.',
   formatModeMatrix: 'Test format and execution mode matrix',
-  formatModeMatrixDescription: 'Cases assigned to this build, crossed by format and actual execution mode.',
+  formatModeMatrixDescription: 'Execution history by format and mode, including retries. Totals can exceed assigned cases.',
   aiExecutions: 'AI Executions',
   aiReview: 'AI Review',
   aiAvgConfidence: 'Avg Confidence',

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Treseko MCP"
+  short_description: "Operate Treseko through its governed MCP tools"
+  default_prompt: "Use $treseko-mcp to discover and operate the authorized Treseko workspace."

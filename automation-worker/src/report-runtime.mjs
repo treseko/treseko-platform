@@ -18,7 +18,7 @@ function classifyProcessFailure(output, timedOut) {
 
 function processResultPayload({ job, framework, started, result, successObservation, failureObservation, metadata = {}, artifacts = [] }) {
   const output = redact([result.stdout, result.stderr].filter(Boolean).join("\n"));
-  const status = result.code === 0 ? "PASSED" : classifyProcessFailure(output, result.timedOut);
+  const status = result.cancelled ? "BLOCKED" : result.timedOut ? "TIMEOUT" : result.code === 0 ? "PASSED" : classifyProcessFailure(output, result.timedOut);
   return {
     status,
     duration_seconds: Math.round((performance.now() - started) / 1000),
@@ -43,7 +43,7 @@ function processResultPayload({ job, framework, started, result, successObservat
 }
 
 function redact(text) {
-  return redactTraceText(text || "");
+  return String(text || "");
 }
 
 function withCorrelation(result) {

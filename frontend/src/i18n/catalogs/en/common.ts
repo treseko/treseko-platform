@@ -1,4 +1,5 @@
 export default {
+  downloadCompleteResult: 'Download complete result',
   formField: 'Form field',
   removeAttachment: 'Remove attachment',
   uploadModalTitle: 'Upload file', uploadModalHint: 'Select a file or paste a screenshot inside this window. Then confirm to upload it.', selectedFile: 'Selected file', fileName: 'File name', selectFile: 'Select file', file: 'File', removeSelectedFile: 'Remove selected file', confirmUpload: 'Upload file',

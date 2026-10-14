@@ -61,7 +61,10 @@ async def delete_componente(
     current_user: models.Usuario = Depends(auth.check_capability("proyectos.componentes", "edit"))
 ):
     db_component = await access_control.require_component_access(db, current_user, componente_id, "edit")
-    deleted = await crud.delete_componente(db=db, componente_id=componente_id)
+    try:
+        deleted = await crud.delete_componente(db=db, componente_id=componente_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Componente no encontrado")
     await realtime_event_bus.publish(

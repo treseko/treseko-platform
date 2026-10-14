@@ -1,4 +1,5 @@
 export default {
+  downloadCompleteResult: 'Descargar resultado completo',
   formField: 'Campo de formulario',
   removeAttachment: 'Eliminar adjunto',
   uploadModalTitle: 'Subir archivo', uploadModalHint: 'Selecciona un archivo o pega una captura dentro de esta ventana. Luego confirma para subirlo.', selectedFile: 'Archivo seleccionado', fileName: 'Nombre del archivo', selectFile: 'Seleccionar archivo', file: 'Archivo', removeSelectedFile: 'Quitar archivo seleccionado', confirmUpload: 'Subir archivo',

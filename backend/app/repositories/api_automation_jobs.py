@@ -24,8 +24,8 @@ def _api_worker_payload_envelope(payload: dict[str, Any]) -> dict[str, Any]:
         "case_count": len(payload.get("cases") or []),
         "case_ids": [item["case_id"] for item in payload.get("cases") or []],
         "case_codes": [item.get("code") for item in payload.get("cases") or []],
-        # ``payload_secret`` is deliberately recognized by the normal
-        # automation serializer as sensitive and is never returned to UI.
+        # Original data is encrypted at rest; authenticated job views and
+        # worker claims decode it without changing business values.
         API_WORKER_PAYLOAD_SECRET_KEY: encrypt_secret_value(encoded),
     }
 
@@ -180,32 +180,9 @@ async def create_api_automation_job_for_suite(
     await db.flush()
     compatible_runner = await _find_compatible_runner_for_job(db, job)
     if not compatible_runner:
-        now = utc_now()
-        message = "No hay un worker compatible para ejecutar la suite API (treseko-api / declarative)."
-        job.estado = models.AutomationJobStatus.BLOCKED
-        job.error_message = message
-        job.fecha_fin = now
-        for case_id in case_ids:
-            execution = executions_by_case[case_id]
-            execution.estado_resultado = models.EstadoResultado.BLOQUEADO
-            execution.execution_mode = models.ExecutionMode.AUTOMATIZADA
-            execution.api_resultado = {
-                "schema_version": "treseko.api-result/v1",
-                "status": "BLOCKED",
-                "duration_ms": 0,
-                "steps": [],
-                "errors": [{"error": message}],
-            }
-            execution.observaciones = message
-            execution.fecha_ejecucion = now
-            case = cases_by_id[case_id]
-            case.ultimo_resultado = models.EstadoResultado.BLOQUEADO.value
-            case.ultima_ejecucion_por = execution.ejecutado_por
-            case.ultima_ejecucion_fecha = now
-        run.estado_run = models.EstadoRun.CERRADO
-        run.fecha_cierre = now
-    else:
-        run.estado_run = models.EstadoRun.EN_PROGRESO
+        job.estado = models.AutomationJobStatus.PENDING
+        job.metadata_resultado = {'waiting_for_runner': True}
+    run.estado_run = models.EstadoRun.EN_PROGRESO
     await db.commit()
     await db.refresh(job)
     return job

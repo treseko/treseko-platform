@@ -3,6 +3,10 @@ from fastapi import APIRouter
 from .routers import (
     audit,
     ai_dry_run,
+    ai_scheduled_missions,
+    ai_video_recordings,
+    execution_batches,
+    worker_result_uploads,
     ai_engine,
     api_bug_context,
     api_tests,
@@ -51,6 +55,10 @@ api_router.include_router(ai_engine.router)
 api_router.include_router(api_bug_context.router)
 api_router.include_router(api_tests.router)
 api_router.include_router(ai_dry_run.router)
+api_router.include_router(ai_scheduled_missions.router)
+api_router.include_router(ai_video_recordings.router)
+api_router.include_router(execution_batches.router)
+api_router.include_router(worker_result_uploads.router)
 api_router.include_router(auth.router)
 api_router.include_router(auth_ad.router)
 api_router.include_router(attachments.router)
@@ -87,3 +95,6 @@ api_router.include_router(chatbot_connection.router)
 api_router.include_router(traceability.router)
 api_router.include_router(websocket_sync.router)
 api_router.include_router(wiki.router)
+
+from .routers import step_reference_replacement
+api_router.include_router(step_reference_replacement.router)

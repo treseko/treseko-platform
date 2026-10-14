@@ -38,6 +38,7 @@ async def check_limit(
     *,
     increment: int = 1,
     tenant_id: str | None = None,
+    state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return await get_entitlement_provider().check_limit(
         db,
@@ -45,6 +46,7 @@ async def check_limit(
         current_value,
         increment=increment,
         tenant_id=tenant_id,
+        **({"state": state} if state is not None else {}),
     )
 
 
@@ -55,8 +57,9 @@ async def enforce_limit(
     *,
     increment: int = 1,
     tenant_id: str | None = None,
+    state: dict[str, Any] | None = None,
 ) -> None:
-    result = await check_limit(db, limit_id, current_value, increment=increment, tenant_id=tenant_id)
+    result = await check_limit(db, limit_id, current_value, increment=increment, tenant_id=tenant_id, state=state)
     if not result["allowed"]:
         if result.get("reason"):
             detail = str(result["reason"])

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from ..attachment_storage import attachment_availability_dict
 from .auth import validate_preference_json_payload
+from .bug_summary import BugSummaryResponse, LegacyScreenResolutionNormalizer
 from .bug_conversational import CHATBOT_BUG_FINDING_TYPES, BugConversationalContextResponse, validate_chatbot_finding_type
 from ..models import (
     AiReviewStatus,
@@ -87,7 +88,7 @@ def validate_bug_external_url(value: Optional[str]) -> Optional[str]:
         raise ValueError("external issue URL cannot include sensitive query parameters")
     return text
 
-class BugIssueCreate(BaseModel):
+class BugIssueCreate(LegacyScreenResolutionNormalizer, BaseModel):
     proyecto_id: UUID
     componente_id: Optional[UUID] = None
     build_id: Optional[UUID] = None
@@ -117,7 +118,7 @@ class BugIssueCreate(BaseModel):
     url_afectada: Optional[str] = Field(default=None, max_length=MAX_BUG_URL_LENGTH)
     navegador: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     dispositivo: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
-    resolucion: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
+    resolucion_pantalla: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     sistema_operativo: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     ambiente_nombre: Optional[str] = Field(default=None, max_length=MAX_BUG_MODULE_LENGTH)
     ambiente_url: Optional[str] = Field(default=None, max_length=MAX_BUG_URL_LENGTH)
@@ -142,6 +143,7 @@ class BugIssueCreate(BaseModel):
     external_sync_status: str = Field(default="not_synced", max_length=MAX_BUG_STATUS_LENGTH)
     external_payload_snapshot: Dict[str, Any] = Field(default_factory=dict)
     dedupe_hash: Optional[str] = Field(default=None, max_length=MAX_BUG_DEDUPE_HASH_LENGTH)
+    resolucion: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
     duplicate_of_id: Optional[UUID] = None
     metadata_json: Dict[str, Any] = Field(default_factory=dict)
 
@@ -172,7 +174,7 @@ class BugIssueCreate(BaseModel):
         if normalized not in {"CLASICO", "CONVERSACIONAL", "API"}:
             raise ValueError("Tipo de contexto de bug inválido.")
         return normalized
-class BugIssueUpdate(BaseModel):
+class BugIssueUpdate(LegacyScreenResolutionNormalizer, BaseModel):
     comentario: Optional[str] = Field(default=None, max_length=MAX_BUG_COMMENT_LENGTH)
     componente_id: Optional[UUID] = None
     build_id: Optional[UUID] = None
@@ -202,7 +204,7 @@ class BugIssueUpdate(BaseModel):
     url_afectada: Optional[str] = Field(default=None, max_length=MAX_BUG_URL_LENGTH)
     navegador: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     dispositivo: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
-    resolucion: Optional[str] = Field(default=None, max_length=MAX_BUG_TEXT_LENGTH)
+    resolucion_pantalla: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     sistema_operativo: Optional[str] = Field(default=None, max_length=MAX_BUG_SHORT_FIELD_LENGTH)
     ambiente_nombre: Optional[str] = Field(default=None, max_length=MAX_BUG_MODULE_LENGTH)
     ambiente_url: Optional[str] = Field(default=None, max_length=MAX_BUG_URL_LENGTH)
@@ -310,21 +312,6 @@ class BugExternalPreviewResponse(BaseModel):
     markdown: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
-class BugSummaryResponse(BaseModel):
-    total: int = 0
-    abiertos: int = 0
-    criticos: int = 0
-    bloquean_release: int = 0
-    listos_retest: int = 0
-    cerrados: int = 0
-    vinculados_externos: int = 0
-    sin_evidencia: int = 0
-    sin_asignado: int = 0
-    by_estado: Dict[str, int] = Field(default_factory=dict)
-    by_severidad: Dict[str, int] = Field(default_factory=dict)
-    by_prioridad: Dict[str, int] = Field(default_factory=dict)
-    by_origen: Dict[str, int] = Field(default_factory=dict)
-
 class BugDedupeSuggestionResponse(BaseModel):
     bug: "BugIssueResponse"
     reason: str = "dedupe_hash"
@@ -351,6 +338,7 @@ class BugListResponse(BaseModel):
     total: int = 0
     skip: int = 0
     limit: int = 50
+    summary: Optional[BugSummaryResponse] = None
 
 class IncidentCenterResponse(BaseModel):
     """Operational bug view; it reuses the persisted BugIssue contract."""
@@ -449,7 +437,7 @@ class BugIssueResponse(BaseModel):
     url_afectada: Optional[str] = None
     navegador: Optional[str] = None
     dispositivo: Optional[str] = None
-    resolucion: Optional[str] = None
+    resolucion_pantalla: Optional[str] = None
     sistema_operativo: Optional[str] = None
     ambiente_nombre: Optional[str] = None
     ambiente_url: Optional[str] = None

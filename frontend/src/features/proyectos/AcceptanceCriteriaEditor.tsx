@@ -14,7 +14,7 @@ export function AcceptanceCriteriaEditor({ criteria, onChange, disabled = false 
     onChange?.(criteria.map((criterion, itemIndex) => itemIndex === index ? { ...criterion, ...patch } : criterion));
   };
 
-  const add = () => onChange?.([...criteria, { local_id: `AC-MANUAL-${criteria.length + 1}`, type: "FUNCTIONAL", title: "", given: "", when: "", then: [], observable_result: "", mandatory: true, source_refs: [], assumption_ids: [] }]);
+  const add = () => onChange?.([...criteria, { local_id: `AC-MANUAL-${crypto.randomUUID()}`, type: "FUNCTIONAL", title: "", given: "", when: "", then: [], observable_result: "", mandatory: true, source_refs: [], assumption_ids: [] }]);
   const remove = (index: number) => onChange?.(criteria.filter((_, itemIndex) => itemIndex !== index));
   return (
     <div className="d-flex flex-column gap-3">

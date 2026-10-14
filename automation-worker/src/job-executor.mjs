@@ -1,25 +1,18 @@
+import {readResultFile} from './result-file.mjs';
+import {createJobWorkspace} from './workspace-retention.mjs';
+import {fileURLToPath} from 'node:url';
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { executePostmanRuntimeJob } from "./postman-runtime.mjs";
 import { executeApiWorkerJob } from "./native-api-runtime.mjs";
-
-function cleanupWorkspace(workspace) {
-  try {
-    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  } catch (error) {
-    // La limpieza no debe reemplazar el resultado del job ni sacar al worker del loop.
-    console.warn(`No se pudo limpiar el workspace temporal ${workspace}: ${error?.message || error}`);
-  }
-}
 
 export function createJobExecutor(deps) {
   const {
     RUNNER_NAME, ROOT_DIR, state,
     playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource,
-    shouldRunHeadless, getPlaywrightCliPath, runCommand, parsePlaywrightJsonReport,
+    shouldRunHeadless, getPlaywrightCliPath, getPuppeteerExecutablePath, runCommand, parsePlaywrightJsonReport,
     summarizePlaywrightReport, compactPlaywrightMetadata, classifyPlaywrightFailure, withCorrelation,
     collectArtifacts, playwrightReportArtifact, getPlaywrightVersion, isDebugMode,
     processResultPayload, prepareNodeScriptSource, getPackageBinPath,
@@ -30,10 +23,10 @@ export function createJobExecutor(deps) {
     detectScriptFormat, setActiveCorrelationId, allowLoopbackForTests,
   } = deps;
 
-async function executePlaywrightTestJob(job, script, variables, started) {
+async function executePlaywrightTestJob(job, script, variables, started, signal) {
   const payload = job.payload_congelado || {};
   const browserName = playwrightBrowserForJob(job, variables);
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-"));
+  const workspace = createJobWorkspace(job.id,'qa-worker-');
   const specFile = scriptFileForJob(job, script).endsWith(".ts") ? "job.spec.ts" : "job.spec.js";
   const specPath = path.join(workspace, specFile);
   const configPath = path.join(workspace, "playwright.config.cjs");
@@ -46,7 +39,8 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       "  use: {",
       `    browserName: ${JSON.stringify(browserName)},`,
       `    headless: ${shouldRunHeadless(job) ? "true" : "false"},`,
-      "    screenshot: 'only-on-failure'",
+      "    screenshot: 'only-on-failure',",
+      `    video: ${payload.record_video === false ? "'off'" : "'on'"}`,
       "  }",
       "};",
     ].join("\n"), "utf8");
@@ -64,7 +58,7 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       ].filter(Boolean),
       {
         cwd: workspace,
-        timeoutMs,
+        timeoutMs, signal,
         env: {
           ...process.env,
           QA_WORKER_JOB_ID: job.id,
@@ -82,7 +76,7 @@ async function executePlaywrightTestJob(job, script, variables, started) {
     ].filter(Boolean).join("\n");
     const testStatuses = summary?.tests?.map((test) => test.status) || [];
     const hasFunctionalFailure = testStatuses.some((status) => ["failed", "timedOut", "interrupted"].includes(status));
-    const status = result.code === 0
+    const status = result.cancelled ? "BLOCKED" : result.timedOut ? "TIMEOUT" : result.code === 0
       ? "PASSED"
       : report && hasFunctionalFailure
         ? "FAILED"
@@ -110,18 +104,18 @@ async function executePlaywrightTestJob(job, script, variables, started) {
       },
       artifacts: [
         playwrightReportArtifact(report, job),
-        ...collectArtifacts(workspace),
+        ...collectArtifacts(workspace,{workerWorkspace:true}),
       ].filter(Boolean),
       steps: [],
     });
   } finally {
-    cleanupWorkspace(workspace);
+    // Keep original files until the backend acknowledges the complete result.
   }
 }
 
-async function executePuppeteerJob(job, script, variables, started) {
+async function executePuppeteerJob(job, script, variables, started, signal) {
   const payload = job.payload_congelado || {};
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-puppeteer-"));
+  const workspace = createJobWorkspace(job.id,'qa-worker-puppeteer-');
   const scriptFile = scriptFileForJob(job, script);
   const scriptPath = path.join(workspace, scriptFile);
   const timeoutMs = Math.max(1, Number(job.timeout_seconds || payload.timeout_seconds || 300)) * 1000;
@@ -130,10 +124,11 @@ async function executePuppeteerJob(job, script, variables, started) {
     const tsxCli = getPackageBinPath("tsx", "dist/cli.mjs");
     const result = await runCommand(process.execPath, [tsxCli, scriptPath], {
       cwd: workspace,
-      timeoutMs,
+      timeoutMs, signal,
       env: {
         ...process.env,
         NODE_PATH: path.join(ROOT_DIR, "node_modules"),
+        PUPPETEER_EXECUTABLE_PATH: getPuppeteerExecutablePath?.() || process.env.PUPPETEER_EXECUTABLE_PATH,
         QA_WORKER_JOB_ID: job.id,
         QA_WORKER_DRY_RUN: payload.dry_run ? "true" : "false",
         QA_HEADLESS: shouldRunHeadless(job) ? "true" : "false",
@@ -148,16 +143,16 @@ async function executePuppeteerJob(job, script, variables, started) {
       successObservation: "Puppeteer finalizo correctamente.",
       failureObservation: "Puppeteer finalizo con errores.",
       metadata: { script_format: "node_script" },
-      artifacts: collectArtifacts(workspace),
+      artifacts: collectArtifacts(workspace,{workerWorkspace:true}),
     });
   } finally {
-    cleanupWorkspace(workspace);
+    // Keep original files until the backend acknowledges the complete result.
   }
 }
 
-async function executeCypressJob(job, script, variables, started) {
+async function executeCypressJob(job, script, variables, started, signal) {
   const payload = job.payload_congelado || {};
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-cypress-"));
+  const workspace = createJobWorkspace(job.id,'qa-worker-cypress-');
   const specPath = path.join(workspace, scriptFileForJob(job, script).endsWith(".ts") ? "job.cy.ts" : "job.cy.js");
   const configPath = path.join(workspace, "cypress.config.cjs");
   const timeoutMs = Math.max(1, Number(job.timeout_seconds || payload.timeout_seconds || 300)) * 1000;
@@ -190,7 +185,7 @@ async function executeCypressJob(job, script, variables, started) {
       shouldRunHeadless(job) ? "--headless" : "--headed",
     ], {
       cwd: workspace,
-      timeoutMs,
+      timeoutMs, signal,
       env: {
         ...process.env,
         NODE_PATH: path.join(ROOT_DIR, "node_modules"),
@@ -207,23 +202,23 @@ async function executeCypressJob(job, script, variables, started) {
       successObservation: "Cypress finalizo correctamente.",
       failureObservation: "Cypress finalizo con errores.",
       metadata: { script_format: "cypress_spec" },
-      artifacts: collectArtifacts(workspace),
+      artifacts: collectArtifacts(workspace,{workerWorkspace:true}),
     });
   } finally {
-    cleanupWorkspace(workspace);
+    // Keep original files until the backend acknowledges the complete result.
   }
 }
 
-async function executeSeleniumPythonJob(job, script, variables, started) {
+async function executeSeleniumPythonJob(job, script, variables, started, signal) {
   const payload = job.payload_congelado || {};
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-selenium-"));
+  const workspace = createJobWorkspace(job.id,'qa-worker-selenium-');
   const scriptPath = path.join(workspace, "job.py");
   const timeoutMs = Math.max(1, Number(job.timeout_seconds || payload.timeout_seconds || 300)) * 1000;
   try {
     fs.writeFileSync(scriptPath, prepareSeleniumPythonSource(script, variables, job), "utf8");
     const result = await runCommand(getPythonCommand(), [scriptPath], {
       cwd: workspace,
-      timeoutMs,
+      timeoutMs, signal,
       env: {
         ...process.env,
         QA_WORKER_JOB_ID: job.id,
@@ -244,94 +239,58 @@ async function executeSeleniumPythonJob(job, script, variables, started) {
         language: "python",
         python_bin: getPythonCommand(),
       },
-      artifacts: collectArtifacts(workspace),
+      artifacts: collectArtifacts(workspace,{workerWorkspace:true}),
     });
   } finally {
-    cleanupWorkspace(workspace);
+    // Keep original files until the backend acknowledges the complete result.
   }
 }
 
-async function executePlaywrightWorkerFunctionJob(job, script, variables, started) {
-  const logs = [];
-  const payload = job.payload_congelado || {};
-  const browserName = playwrightBrowserForJob(job, variables);
-  let browser;
-  let page;
+async function executePlaywrightWorkerFunctionJob(job, script, variables, started, signal) {
+  const payload=job.payload_congelado || {};
+  const browserName=playwrightBrowserForJob(job,variables);
+  const workspace=createJobWorkspace(job.id,'qa-worker-function-');
+  const resultPath=path.join(workspace,'function-result.json');
+  const inputPath=path.join(workspace,'function-input.json');
   try {
-    const { chromium, firefox, webkit } = await import("playwright");
-    browser = await ({ chromium, firefox, webkit })[browserName].launch({ headless: shouldRunHeadless(job) });
-    page = await browser.newPage();
-    const fn = compileScript(script);
-    const context = {
-      page,
-      browser,
-      variables,
-      dataset: normalizeDataset(payload.dataset),
-      job,
-      assert,
-      log: (...args) => logs.push(args.map(formatLogArg).join(" ")),
-    };
-    const customResult = await fn(context);
-    const steps = Array.isArray(customResult?.steps)
-      ? customResult.steps.map(normalizeStepResult)
-      : [];
-    return {
-      status: normalizeJobStatus(customResult?.status),
-      duration_seconds: Math.round((performance.now() - started) / 1000),
-      observations: customResult?.observations || "Worker automatizado finalizo correctamente.",
-      logs: redact([logs.join("\n"), formatErrorDetail(customResult?.logs)].filter(Boolean).join("\n")),
-      metadata: {
-        worker: RUNNER_NAME,
-        framework: payload.framework || "playwright",
-        browser: browserName,
-        framework_version: getPlaywrightVersion(),
-        script_format: "worker_function",
-        headless: shouldRunHeadless(job),
-        debug_mode: isDebugMode(job),
-        os: os.type(),
-      },
-      artifacts: Array.isArray(customResult?.artifacts) ? customResult.artifacts : [],
-      steps,
-    };
-  } catch (error) {
-    const functionalFailure = isAssertionLike(error);
-    let screenshotArtifact = null;
-    if (page) {
-      try {
-        screenshotArtifact = artifactFromBuffer({
-          filename: `automation-${String(job.id).slice(0, 8)}-failure.png`,
-          buffer: await page.screenshot({ fullPage: true }),
-          type: "screenshot",
-        });
-      } catch {
-        screenshotArtifact = null;
-      }
-    }
-    return {
-      status: functionalFailure ? "FAILED" : "ERROR",
-      duration_seconds: Math.round((performance.now() - started) / 1000),
-      observations: error?.message || "La prueba automatizada fallo.",
-      logs: redact(logs.join("\n")),
-      error_message: redact(error?.stack || String(error)),
-      metadata: {
-        worker: RUNNER_NAME,
-        framework: payload.framework || "playwright",
-        browser: browserName,
-        framework_version: getPlaywrightVersion(),
-        script_format: "worker_function",
-        headless: shouldRunHeadless(job),
-        debug_mode: isDebugMode(job),
-        os: os.type(),
-      },
-      artifacts: screenshotArtifact ? [screenshotArtifact] : [],
-      steps: [],
-    };
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
+    const {lease_token, ...testJob}=job;
+    fs.writeFileSync(inputPath,JSON.stringify({job:testJob,script,variables,dataset:normalizeDataset(payload.dataset),browserName,headless:shouldRunHeadless(job),resultPath,workspace}),{mode:0o600});
+    const result=await runCommand(process.execPath,[fileURLToPath(new URL('./function-host.mjs',import.meta.url)),inputPath],{
+      cwd:workspace,timeoutMs:Math.max(1,Number(job.timeout_seconds || payload.timeout_seconds || 300))*1000,signal,
+      env:{...process.env,QA_ARTIFACTS_DIR:workspace},
+    });
+    const custom=readResultFile(resultPath);
+    const status=result.cancelled?'BLOCKED':result.timedOut?'TIMEOUT':result.code!==0?'ERROR':normalizeJobStatus(custom.status);
+    const artifacts=[...(Array.isArray(custom.artifacts)?custom.artifacts:[]),...collectArtifacts(workspace,{workerWorkspace:true}).filter(item=>!['function-input.json','function-result.json'].includes(item.filename))];
+    return { ...custom,status,duration_seconds:Math.round((performance.now()-started)/1000),
+      observations:result.cancelled?'El lease se perdió; se detuvo la ejecución.':result.timedOut?'La ejecución superó el timeout configurado.':custom.observations || 'Worker automatizado finalizó correctamente.',
+      logs:custom.logs || result.stdout || '',error_message:custom.error_message || result.error || (status==='ERROR'?result.stderr:null),
+      metadata:{...(custom.metadata || {}),worker:RUNNER_NAME,framework:'playwright',browser:browserName,script_format:'worker_function',isolated_process:true,
+        video_status:payload.record_video===false?'DISABLED':artifacts.some(item=>item.content_type==='video/webm')?'AVAILABLE':'UNAVAILABLE'},
+      steps:Array.isArray(custom.steps)?custom.steps.map(normalizeStepResult):[],artifacts};
+  }finally{/* Original files are retained until backend acknowledgement. */}
 }
 
-async function executeJob(job) {
+async function executeIsolatedPostmanJob(job, started, signal) {
+  const workspace=createJobWorkspace(job.id,'qa-worker-postman-');
+  const inputPath=path.join(workspace,'postman-input.json');
+  const resultPath=path.join(workspace,'postman-result.json');
+  try {
+    const {lease_token,...businessJob}=job;
+    fs.writeFileSync(inputPath,JSON.stringify({job:businessJob,runnerName:RUNNER_NAME,resultPath}),{mode:0o600});
+    const processResult=await runCommand(process.execPath,[fileURLToPath(new URL('./postman-host.mjs',import.meta.url)),inputPath],{
+      cwd:workspace,timeoutMs:Math.max(1,Number(job.timeout_seconds || 300))*1000,signal,env:process.env});
+    const custom=readResultFile(resultPath);
+    const status=processResult.cancelled?'BLOCKED':processResult.timedOut?'TIMEOUT':processResult.code!==0?'ERROR':custom.status || 'ERROR';
+    return {...custom,status,duration_seconds:Math.round((performance.now()-started)/1000),
+      logs:custom.logs || processResult.stdout,error_message:custom.error_message || processResult.error || (status==='ERROR'?processResult.stderr:null),
+      steps:Array.isArray(custom.steps)?custom.steps.map(normalizeStepResult):[],
+      metadata:{...(custom.metadata || {}),worker:RUNNER_NAME,framework:'postman',isolated_process:true},
+      artifacts:collectArtifacts(workspace,{workerWorkspace:true}).filter(item=>item.filename!=='postman-input.json')};
+  }finally{/* Original files are retained until backend acknowledgement. */}
+}
+
+async function executeJob(job, {signal} = {}) {
   const payload = job.payload_congelado || {};
   setActiveCorrelationId(String(payload.correlation_id || payload.correlationId || job.correlation_id || `worker-job-${job.id}`));
   const variables = {
@@ -348,6 +307,7 @@ async function executeJob(job) {
     try {
       return withCorrelation(await executeApiWorkerJob({
         job,
+        signal,
         allowLoopbackForTests: Boolean(allowLoopbackForTests),
       }));
     } catch (error) {
@@ -365,7 +325,7 @@ async function executeJob(job) {
   }
   if (framework === "postman") {
     try {
-      return withCorrelation(await executePostmanRuntimeJob({ job, runnerName: RUNNER_NAME }));
+      return withCorrelation(await executeIsolatedPostmanJob(job,started,signal));
     } catch (error) {
       return withCorrelation({
         status: "ERROR",
@@ -389,9 +349,9 @@ async function executeJob(job) {
       steps: [],
     });
   }
-  if (framework === "puppeteer") return withCorrelation(await executePuppeteerJob(job, script, variables, started));
-  if (framework === "cypress") return withCorrelation(await executeCypressJob(job, script, variables, started));
-  if (framework === "selenium") return withCorrelation(await executeSeleniumPythonJob(job, script, variables, started));
+  if (framework === "puppeteer") return withCorrelation(await executePuppeteerJob(job, script, variables, started, signal));
+  if (framework === "cypress") return withCorrelation(await executeCypressJob(job, script, variables, started, signal));
+  if (framework === "selenium") return withCorrelation(await executeSeleniumPythonJob(job, script, variables, started, signal));
   if (framework !== "playwright") {
     return withCorrelation({
       status: "ERROR",
@@ -409,9 +369,9 @@ async function executeJob(job) {
     ? "playwright_test"
     : "worker_function";
   if (scriptFormat === "playwright_test") {
-    return withCorrelation(await executePlaywrightTestJob(job, script, variables, started));
+    return withCorrelation(await executePlaywrightTestJob(job, script, variables, started, signal));
   }
-  return withCorrelation(await executePlaywrightWorkerFunctionJob(job, script, variables, started));
+  return withCorrelation(await executePlaywrightWorkerFunctionJob(job, script, variables, started, signal));
 }
 
   return executeJob;

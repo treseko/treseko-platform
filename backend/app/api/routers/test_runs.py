@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from ...main_context import *
 from ...services import config_service
+from ...time_utils import ensure_utc
 from ...services.ai_report_sanitizer import sanitize_ai_report_payload
 from ...services.api_evidence_policy import public_test_data_evidence_enabled
 
@@ -177,6 +178,32 @@ async def create_test_run(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+def _require_history_view(user, view, capability):
+    required = capability if view == "historial" else "ejecutar.ver" if view == "ejecutar" else None
+    if required and not auth.has_capability_permission(user, required, "read"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para consultar esta vista")
+
+
+def _can_read_history_evidence(user, view):
+    capabilities = ["historial.evidencias"] if view == "historial" else ["ejecutar.evidencias"] if view == "ejecutar" else ["historial.evidencias", "ejecutar.evidencias"]
+    return any(auth.has_capability_permission(user, capability, "read") for capability in capabilities)
+
+
+def _without_history_evidence(detail):
+    detail = dict(detail, variables_resueltas={}, datasets_resueltos={})
+    cases = []
+    for case in detail.get("casos", []):
+        case = dict(case)
+        for key in ("ai_report", "api_config_snapshot", "api_resultado", "chatbot_config_snapshot", "chatbot_resultado"):
+            case[key] = {}
+        for key in ("snapshots", "dataset_resuelto"):
+            case[key] = []
+        case["has_ai_report"] = False
+        cases.append(case)
+    detail["casos"] = cases
+    return detail
+
+
 @router.get("/proyectos/{proyecto_id}/test-runs/")
 async def read_test_runs(
     proyecto_id: UUID,
@@ -187,6 +214,7 @@ async def read_test_runs(
     case_query: Annotated[Optional[str], Query(max_length=200)] = None,
     case_code: Annotated[Optional[str], Query(max_length=80)] = None,
     status: Annotated[Optional[str], Query(max_length=50)] = None,
+    run_result: Annotated[Optional[str], Query(pattern="^(PASO|FALLO|BLOQUEADO|SIN_CORRER|EN_PROGRESO)$")] = None,
     origin: Annotated[Optional[str], Query(max_length=50)] = None,
     runner_id: Optional[UUID] = None,
     environment_id: Optional[UUID] = None,
@@ -194,11 +222,16 @@ async def read_test_runs(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
     has_evidence: Optional[bool] = None,
-    version_executed: Optional[int] = None,
+    version_executed: Annotated[Optional[int], Query(ge=1)] = None,
     ai_review_status: Annotated[Optional[str], Query(max_length=50)] = None,
+    view: Annotated[Optional[str], Query(pattern="^(historial|ejecutar)$")] = None,
+    paginated: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("historial.ver", "read"), ("ejecutar.ver", "read")))
 ):
+    _require_history_view(current_user, view, "historial.ver")
+    if date_from and date_to and ensure_utc(date_from) > ensure_utc(date_to):
+        raise HTTPException(status_code=422, detail="La fecha desde debe ser anterior o igual a la fecha hasta")
     await access_control.require_project_access(db, current_user, proyecto_id, "read")
     if build_id:
         db_build = await access_control.require_build_access(db, current_user, build_id, "read")
@@ -208,7 +241,7 @@ async def read_test_runs(
         db_component = await access_control.require_component_access(db, current_user, component_id, "read")
         if db_component.proyecto_id != proyecto_id:
             raise HTTPException(status_code=404, detail="Componente no encontrado para el proyecto")
-    return await crud.get_test_runs_summary(
+    result = await crud.get_test_runs_summary(
         db,
         proyecto_id=proyecto_id,
         skip=skip,
@@ -218,6 +251,7 @@ async def read_test_runs(
         case_query=case_query,
         case_code=case_code,
         status=status,
+        **({"run_result": run_result} if run_result else {}),
         origin=origin,
         runner_id=runner_id,
         environment_id=environment_id,
@@ -227,15 +261,23 @@ async def read_test_runs(
         has_evidence=has_evidence,
         version_executed=version_executed,
         ai_review_status=ai_review_status,
+        **({"paginated": True} if paginated else {}),
     )
+    if not _can_read_history_evidence(current_user, view):
+        for row in result["items"] if isinstance(result, dict) else result:
+            row["evidencias"] = []
+            row["evidence_count"] = 0
+    return result
 
 @router.get("/test-runs/{run_id}/detalle/")
 async def read_test_run_detail(
     run_id: UUID,
+    view: Annotated[Optional[str], Query(pattern="^(historial|ejecutar)$")] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("ejecutar.ver", "read"))
+    current_user: models.Usuario = Depends(auth.check_any_capability(("historial.detalle", "read"), ("ejecutar.ver", "read")))
 ):
-    await _require_test_run_access(db, current_user, run_id, "read")
+    _require_history_view(current_user, view, "historial.detalle")
+    db_run = await _require_test_run_access(db, current_user, run_id, "read")
     detail = await crud.get_test_run_detail(
         db,
         run_id=run_id,
@@ -243,6 +285,17 @@ async def read_test_run_detail(
     )
     if not detail:
         raise HTTPException(status_code=404, detail="Run no encontrado")
+    if not _can_read_history_evidence(current_user, view):
+        detail = _without_history_evidence(detail)
+    detail["can_create_bug"] = False
+    if db_run and all(auth.has_capability_permission(current_user, capability, level)
+                      for capability, level in (("bugs.ver", "read"), ("bugs.crear", "edit"))):
+        try:
+            await access_control.require_project_access(db, current_user, db_run.proyecto_id, "edit")
+            detail["can_create_bug"] = True
+        except HTTPException as error:
+            if error.status_code != 403:
+                raise
     return detail
 
 @router.get("/test-runs/{run_id}/ejecuciones/", response_model=List[schemas.EjecucionCaso])
@@ -394,7 +447,8 @@ async def read_ai_execution_report(
                 step_payload["evidences"] = step_payload.get("evidences") or evidencias
             enriched_steps.append(step_payload)
         ai_report["steps"] = enriched_steps
-    sanitize_output = False if is_chatbot else (await _should_sanitize_evidence_output(db) and not public_evidence)
+    complete_data = bool((execution.evidence_policy or {}).get("complete_data"))
+    sanitize_output = False if is_chatbot or complete_data else (await _should_sanitize_evidence_output(db) and not public_evidence)
     ai_report = sanitize_ai_report_payload(ai_report) if sanitize_output else ai_report
 
     return {

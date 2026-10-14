@@ -63,7 +63,7 @@ def _bug_issue_snapshot_dict(bug: models.BugIssue) -> Dict[str, Any]:
         "url_afectada": text(bug.url_afectada, 300),
         "navegador": text(bug.navegador, 180),
         "dispositivo": text(bug.dispositivo, 180),
-        "resolucion": text(getattr(bug, "resolucion", None), 120),
+        "resolucion": text(getattr(bug, "resolucion_pantalla", None), 120),
         "sistema_operativo": text(bug.sistema_operativo, 180),
         "ambiente_nombre": text(bug.ambiente_nombre, 220),
         "ambiente_url": text(getattr(bug, "ambiente_url", None), 500),

@@ -15,6 +15,11 @@ Verify that you are inside the correct **Solution**. The solution groups
 related projects. If you do not see the create or edit action, an administrator
 needs to review your role and permissions.
 
+Projects in different solutions may share the same name. Within a solution,
+choose different names; blank or whitespace-only names are not accepted.
+Creating or importing an active project, reactivating it or transferring it to
+another solution must respect the destination solution’s current project limit.
+
 ## 1. Create the project
 
 1. Open **Projects**.
@@ -45,6 +50,16 @@ role and capabilities.
 A historical build preserves its context for consultation and comparison. Do
 not treat it as active: its cases, configuration, traceability and executions
 must not be modified from that context.
+
+To preserve traceability, a component containing builds, cases or suites cannot
+be deleted, even when its cases or suites are archived. A build with recorded
+runs cannot be deleted either. Use **Hide** to remove a build from selectors
+without losing its history. Only empty components and eligible builds without
+runs can be deleted.
+
+When you select an organization without projects, Treseko keeps that selection
+and shows the empty state. If project creation fails, it keeps the name so you
+can retry; submission is blocked while saving.
 
 ## 4. Environments and datasets
 

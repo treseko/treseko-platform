@@ -139,10 +139,11 @@ export function ReportOverviewWidgets(options: any): ReactNode[] {
                     [t('reportes.buildToFirstExec'), formatHours(temporalMetrics.build_to_first_execution_hours)],
                     [t('reportes.firstToLastExec'), formatHours(temporalMetrics.first_to_last_execution_hours)],
                     [t('reportes.qaCycle'), formatHours(temporalMetrics.qa_cycle_hours)],
-                    [t('reportes.avgPerCase'), formatSeconds(temporalMetrics.average_seconds_per_executed_case)],
+                    [t('reportes.effortPerCase'), formatSeconds(temporalMetrics.average_seconds_per_executed_case)],
+                    [t('reportes.avgPerAttempt'), temporalMetrics.completed_attempts ? formatSeconds(temporalMetrics.average_seconds_per_attempt) : t('common.notAvailable')],
                     [t('reportes.lastActivity'), temporalMetrics.last_activity_at ? formatDateTime(temporalMetrics.last_activity_at) : t('common.notAvailable')],
                     [t('reportes.daysWithoutActivity'), temporalMetrics.days_without_activity === null || temporalMetrics.days_without_activity === undefined ? t('common.notAvailable') : Number(temporalMetrics.days_without_activity).toFixed(1)],
-                    [t('reportes.estimatedRemaining'), formatSeconds(temporalMetrics.estimated_remaining_seconds)],
+                    [t('reportes.estimatedRemaining'), temporalMetrics.estimated_remaining_seconds == null ? t('common.notAvailable') : formatSeconds(temporalMetrics.estimated_remaining_seconds)],
                   ].map(([label, value]) => (
                     <Col md={3} xl key={label}>
                       <div className="border rounded-3 p-3 h-100">

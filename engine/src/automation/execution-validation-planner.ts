@@ -1,5 +1,6 @@
 import type { QAEngineStep, RuntimeStepValidationPlan, StepAssertion } from './action-types.ts';
 import { buildStepContract, parseStepData } from './step-contract.ts';
+import { semanticEvidenceRequirement } from './semantic-expectations.ts';
 import { interpretStepData, valueForRole } from './context-data-interpreter.ts';
 
 function normalize(value: unknown): string {
@@ -25,6 +26,8 @@ export function planExecutionValidation(steps: QAEngineStep[]): QAEngineStep[] {
 }
 
 export function planStep(step: QAEngineStep): RuntimeStepValidationPlan {
+  const semanticRequirement = semanticEvidenceRequirement(step);
+  if (semanticRequirement) return { mode: 'visual_semantic', assertions: [], reason: semanticRequirement, confidence: 0, source: 'rules' };
   const expected = String(step.expected || '').trim();
   const text = normalize(`${step.action || ''} ${step.data || ''} ${expected}`);
   const expectedText = normalize(expected);
@@ -203,11 +206,6 @@ export function planStep(step: QAEngineStep): RuntimeStepValidationPlan {
     if (badgeDisappears) assertions.push({ ...assertion('element_count', expected, 'badge', 0), comparator: 'equals' });
   }
 
-  // An empty cart/list is observable from the absence of its per-item action.
-  // This avoids treating a simple empty-state outcome as a visual judgement.
-  if (assertions.length === 0 && /no\s+se\s+muestran\s+productos.*(?:carrito|lista)|(?:carrito|lista).*sin\s+productos/.test(expectedText)) {
-    assertions.push({ ...assertion('element_count', expected, 'remove', 0), comparator: 'equals' });
-  }
 
   // Prefer the existing deterministic parser whenever it already understands
   // the expected result. This avoids changing established API/assertion cases.

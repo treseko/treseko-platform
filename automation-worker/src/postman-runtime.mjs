@@ -4,7 +4,6 @@ import postmanCollection from "postman-collection";
 const { Collection, VariableScope } = postmanCollection;
 
 const MAX_ITEMS = 500;
-const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 function asValues(values) {
   if (Array.isArray(values)) return values;
@@ -43,11 +42,11 @@ function hostAllowed(urlValue, allowedHosts) {
 }
 
 function safeText(value) {
-  return String(value ?? "").replace(/(authorization|cookie|token|password|secret|api[-_]?key)(\s*[:=]\s*)([^\s,;]+)/gi, "$1$2[REDACTED]").slice(0, 4000);
+  return String(value ?? '');
 }
 
 function safeRequest(request) {
-  return { method: request?.method, url: safeText(rawUrl(request)) };
+  return { ...(request?.toJSON?.() || request || {}), method: request?.method, url: safeText(rawUrl(request)) };
 }
 
 function validateCollectionRequests(items, values, allowedHosts) {
@@ -113,7 +112,6 @@ export function runPostmanCollection({
     requester: {
       followRedirects: false,
       maxRedirects: 0,
-      maxResponseSize: MAX_RESPONSE_BYTES,
       strictSSL: true,
       disableCookies: false,
       timings: true,
@@ -162,6 +160,9 @@ export function runPostmanCollection({
           requests.push({
             request: safeRequest(request),
             status: response?.code ?? null,
+            response: response ? {headers: response.headers?.toJSON?.() || [],
+              body_base64: Buffer.from(response.stream || []).toString('base64'),
+              body: Buffer.from(response.stream || []).toString('utf8')} : null,
             response_time_ms: response?.responseTime ?? null,
             response_size_bytes: response?.responseSize ?? null,
           });

@@ -5,6 +5,30 @@ from ...main_context import *
 
 router = APIRouter(tags=["inventory"])
 
+
+@router.get("/infraestructura/categorias/", response_model=List[schemas.InventoryCategory])
+async def read_inventory_categories(
+    proyecto_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "read")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    return await crud.get_inventory_categories(db, proyecto_id)
+
+
+@router.post("/infraestructura/categorias/", response_model=schemas.InventoryCategory)
+async def create_inventory_category(
+    proyecto_id: UUID,
+    category: schemas.InventoryCategoryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "edit")
+    try:
+        return await crud.create_inventory_category(db, proyecto_id, category)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
 # --- ENDPOINTS INFRAESTRUCTURA ---
 
 @router.get("/infraestructura/dispositivos/", response_model=List[schemas.Dispositivo])
@@ -108,7 +132,10 @@ async def create_inventory_asset(
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
     await access_control.require_project_access(db, current_user, proyecto_id, "edit")
-    created = await crud.create_inventory_asset(db, proyecto_id=proyecto_id, asset=asset)
+    try:
+        created = await crud.create_inventory_asset(db, proyecto_id=proyecto_id, asset=asset)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if created is None:
         raise HTTPException(status_code=422, detail="parent_id invalido o pertenece a otro proyecto")
     return _asset_response(created)
@@ -132,9 +159,12 @@ async def update_inventory_asset(
     current_user: models.Usuario = Depends(auth.check_capability("inventario.categorias", "edit"))
 ):
     await _require_asset_project_access(db, current_user, asset_id, "edit")
-    updated = await crud.update_inventory_asset(db, asset_id=asset_id, asset_update=asset_update)
+    try:
+        updated = await crud.update_inventory_asset(db, asset_id=asset_id, asset_update=asset_update)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if updated is False:
-        raise HTTPException(status_code=422, detail="parent_id invalido o pertenece a otro proyecto")
+        raise HTTPException(status_code=422, detail="El activo padre es inválido, pertenece a otro proyecto o forma un ciclo")
     if not updated:
         raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
     return _asset_response(updated)

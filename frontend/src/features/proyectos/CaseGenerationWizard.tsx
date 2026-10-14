@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Form, Modal, ProgressBar, Spinner } from "react-bootstrap";
 import { Sparkles } from "lucide-react";
 import { API_BASE } from "../../app/constants";
@@ -30,13 +30,17 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   const [suiteId, setSuiteId] = useState("");
   const [componentId, setComponentId] = useState("");
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<string[]>([]);
+  const [acceptedAssumptions, setAcceptedAssumptions] = useState<string[]>([]);
+  const busyRef = useRef(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [failReasons, setFailReasons] = useState<Record<string, string>>({});
   const [duplicateReasons, setDuplicateReasons] = useState<Record<string, string>>({});
   const [duplicateDetail, setDuplicateDetail] = useState<any>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const setBusy = (value: boolean) => { busyRef.current = value; setBusyState(value); };
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState("");
+  const [recoveryPending, setRecoveryPending] = useState(false);
 
   const step =
     !run
@@ -167,6 +171,7 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   };
 
   const estimate = async () => {
+    if (busyRef.current) return;
     const suiteError = getSuiteError();
     if (suiteError) {
       setError(suiteError);
@@ -196,16 +201,21 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   };
 
   const confirm = async () => {
+    if (busyRef.current) return;
     setBusy(true);
     setError("");
     try {
-      setRun(await request(`/generaciones-casos/${run.id}/supuestos`, {
-        assumption_ids: (run.analysis?.proposed_assumptions || []).map((item: any) => item.id),
+      const next = await request(`/generaciones-casos/${run.id}/supuestos`, {
+        assumption_ids: acceptedAssumptions,
         question_answers: Object.entries(answers)
           .filter(([, value]) => value.trim())
           .map(([question, answer]) => ({ question, answer })),
         continuation_mode: "MANUAL",
-      }));
+      });
+      setRun(next);
+      setAnswers({});
+      setAcceptedAssumptions(next.accepted_assumption_ids || []);
+      setSelectedScenarioIds((next.estimacion?.scenarios || []).map((item: any) => item.local_id).filter(Boolean));
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -214,16 +224,29 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   };
 
   const generate = async () => {
+    if (busyRef.current || recoveryPending) return;
     setBusy(true);
     setError("");
     try {
-      setRun(await request(`/generaciones-casos/${run.id}/generar`, {
+      const next = await request(`/generaciones-casos/${run.id}/generar`, {
         max_casos: selectedScenarioIds.length,
         scenario_ids: selectedScenarioIds,
         question_answers: [],
-      }));
+      });
+      setRun({ ...next, propuestas: (next.propuestas || []).map((item: any) => ({ ...item, selected: item.quality?.testability !== "FAIL" && !(item.duplicate_candidates || []).some((signal: any) => signal.severity === "EXACT") })) });
     } catch (e: any) {
       setError(e.message);
+      // A failed POST may already have changed the persisted state. Do not
+      // offer another generation from a stale READY snapshot.
+      try {
+        const current = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-casos/${run.id}`), t('proyectos.caseGenerationErrorFetch'));
+        const recoverableStates = ['ESPERANDO_ACLARACIONES', 'BLOQUEADA', 'LISTA_PARA_GENERAR', 'LISTA_PARA_REVISION', 'APLICADA'];
+        if (current?.id !== run.id || !recoverableStates.includes(current?.estado)) throw new Error('Invalid generation state');
+        setRun(current);
+        setRecoveryPending(false);
+      } catch {
+        setRecoveryPending(true);
+      }
     } finally {
       setBusy(false);
     }
@@ -238,6 +261,7 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
   const duplicateReviewOpen = Boolean(duplicateDetail)
 
   const apply = async () => {
+    if (busyRef.current) return;
     setBusy(true);
     setError("");
     try {
@@ -248,8 +272,16 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
           ? { duplicate_override_accepted: true, duplicate_override_reason: duplicateReasons[item.local_id] || "" }
           : {}),
       }));
+      const reviewed = await request(`/generaciones-casos/${run.id}/revisar`, { propuestas: cases })
+      setRun(reviewed)
+      const reviewedById = new Map((reviewed.propuestas || []).map((item: any) => [item.local_id, item]))
+      const checked = cases.map((item: any) => ({ ...item, quality: (reviewedById.get(item.local_id) as any)?.quality || item.quality }))
+      if (checked.some((item: any) => item.quality?.testability === "FAIL" && !failReasons[item.local_id]?.trim())) {
+        setError(t('proyectos.generationSemanticDecisionRequired'))
+        return
+      }
       const result = await request(`/generaciones-casos/${run.id}/aplicar`, {
-        casos: cases,
+        casos: checked.map((item: any) => ({ ...item, ...(item.quality?.testability === 'FAIL' ? { quality_override_accepted: true, quality_override_reason: failReasons[item.local_id] } : {}) })),
         excluded_criteria_reasons: {},
       });
       onApplied(result.casos?.length || 0);
@@ -300,7 +332,8 @@ export function CaseGenerationWizard({ story, fetchWithAuth, onClose, onApplied 
         : t('proyectos.caseGenerationBusyCreating');
 
   return <CaseGenerationWizardView options={{
-    t, step, busy, busyMessage, elapsedSeconds, error, run, duplicateReviewOpen,
+    acceptedAssumptions, setAcceptedAssumptions, restart: () => { if (!busyRef.current) { setRun(null); setAnswers({}); setAcceptedAssumptions([]); setError(""); setRecoveryPending(false); } },
+    t, step, busy, busyMessage, elapsedSeconds, error, run, duplicateReviewOpen, recoveryPending,
     onClose, story, structured, components, componentId, setSelectedComponent,
     availableSuites, suiteId, setSelectedSuite, suitePathById, selectedSuite,
     selectedComponent, instructions, setInstructions, answers, setAnswers,

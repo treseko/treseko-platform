@@ -277,7 +277,7 @@ async function executeProviderHealth(req: express.Request, res: express.Response
     ...(health.status ? { provider_status: health.status } : {}),
     capabilities: {
       text: true,
-      structured_json: true,
+      structured_json: health.structuredJson === true,
       vision: vision.verified,
       vision_status: vision.status,
     },
@@ -298,7 +298,7 @@ app.use((req, res, next) => {
     path: req.path,
     url: req.originalUrl,
     headers: traceHeaders(req.headers),
-    body: traceBody(req.body),
+    body: req.path.startsWith("/internal/mcp/browser/") ? "[redacted: browser interaction]" : traceBody(req.body),
     client_ip: req.ip,
   });
   const logResponse = (responseBody: unknown) => {
@@ -311,8 +311,8 @@ app.use((req, res, next) => {
       url: req.originalUrl,
       status: res.statusCode,
       headers: traceHeaders(res.getHeaders()),
-      body: traceBody(req.body),
-      response_body: traceResponseBody(responseBody),
+      body: req.path.startsWith("/internal/mcp/browser/") ? "[redacted: browser interaction]" : traceBody(req.body),
+      response_body: req.path.startsWith("/internal/mcp/browser/") ? "[redacted: browser page content]" : traceResponseBody(responseBody),
       duration_ms: Date.now() - started,
     });
   };

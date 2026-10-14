@@ -137,6 +137,8 @@ def sanitize_ai_report_payload(value: Any) -> Any:
                 "case_steps",
                 "metrics",
                 "summary",
+                "recording_ref",
+                "recording_status",
             )
             if key in sanitized
         }

@@ -234,7 +234,13 @@ async def _dispatch(job_id: UUID):
     try:
         async with AsyncSessionLocal() as db:
             requested_mode = resolve_queued_execution_mode(job.payload_congelado)
-            await trigger_ai_execution(job.ejecucion_id, db, requested_mode)
+            if (job.payload_congelado or {}).get('server_mission') or (job.payload_congelado or {}).get('server_batch'):
+                from .ai_scheduled_missions import validate_mission
+                from sqlalchemy.orm import selectinload
+                user = (await db.execute(select(models.Usuario).options(selectinload(models.Usuario.rol_personalizado)).where(models.Usuario.id == job.creado_por))).scalar_one_or_none()
+                run = await db.get(models.TestRun, job.test_run_id)
+                await validate_mission(db, user, job.proyecto_id, run.build_id if run else None, [job.caso_id], require_scheduling=bool((job.payload_congelado or {}).get('server_scheduled')), require_ai=requested_mode == models.ExecutionMode.IA)
+            await trigger_ai_execution(job.ejecucion_id, db, requested_mode, record_video=(job.payload_congelado or {}).get("record_video", True))
             execution = await db.get(models.EjecucionCaso, job.ejecucion_id)
             if execution and execution.estado_resultado in (
                 models.EstadoResultado.BLOQUEADO,
@@ -252,6 +258,10 @@ async def _dispatch(job_id: UUID):
                 job.estado = models.AutomationJobStatus.BLOCKED
                 job.error_message = "El Motor IA no pudo aceptar la ejecucion encolada."
                 job.fecha_fin = utc_now()
+                execution = await db.get(models.EjecucionCaso, job.ejecucion_id)
+                if execution and execution.estado_resultado == models.EstadoResultado.SIN_CORRER:
+                    execution.estado_resultado = models.EstadoResultado.BLOQUEADO
+                    execution.observaciones = job.error_message
                 await db.commit()
                 await _publish(db, job, "ia.execution.blocked")
         logger.warning("Queued AI execution %s could not be dispatched: %s", job_id, type(exc).__name__)
@@ -357,14 +367,25 @@ async def mark_ai_execution_finished(db, execution_id: UUID, status: models.Esta
     await _publish(db, job, "ia.execution.finished")
 
 
-async def _loop():
-    while True:
+async def _scheduler_tick():
+    from .ai_scheduled_missions import drain_scheduled_missions
+    from .ai_video_recordings import cleanup_worker_video_storage
+    for name, operation in (
+        ("video cleanup", cleanup_worker_video_storage),
+        ("scheduled missions", drain_scheduled_missions),
+        ("execution queue", drain_ai_execution_queue),
+    ):
         try:
-            await drain_ai_execution_queue()
+            await operation()
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("AI execution queue scheduler failed")
+            logger.exception("AI scheduler operation failed: %s", name)
+
+
+async def _loop():
+    while True:
+        await _scheduler_tick()
         await asyncio.sleep(2)
 
 

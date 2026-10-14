@@ -68,7 +68,7 @@ export function assertionResult(assertion, response, secrets, index = 0, preserv
     else throw new ApiWorkerBlockedError(`Operador de aserción no soportado: ${operator}`, "UNSUPPORTED_ASSERTION");
   } catch (caught) { if (caught instanceof ApiWorkerBlockedError) throw caught; error = caught?.message || "Aserción inválida"; }
   if (!passed && !error) error = `La aserción ${operator} no se cumplió`;
-  return { id: assertion.id || stableId({ source, operator, selector: assertion.selector || null, index }, "assertion"), name: assertion.name || assertion.id || `Assertion ${index + 1}`, severity: assertion.severity || "must", status: passed ? "PASSED" : "FAILED", source, selector: assertion.selector || null, operator, expected: redactValue(expected, secrets, "", preserve), expected_type: assertion.expected_type || null, actual: redactValue(actual, secrets, "", preserve), error: error ? (preserve ? clampText(error) : redactError(error, secrets)) : null };
+  return { id: assertion.id || stableId({ source, operator, selector: assertion.selector || null, index }, "assertion"), name: assertion.name || assertion.id || `Assertion ${index + 1}`, severity: assertion.severity || "must", status: passed ? "PASSED" : "FAILED", source, selector: assertion.selector || null, operator, expected: redactValue(expected, secrets, "", preserve), expected_type: assertion.expected_type || null, actual: redactValue(actual, secrets, "", preserve), error: error ? (preserve ? String(error) : redactError(error, secrets)) : null };
 }
 
 function balancedCalls(source, name) {

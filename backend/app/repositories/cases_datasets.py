@@ -13,8 +13,8 @@ from .suites_cases import (
 )
 
 
-class CaseArchiveConflict(ValueError):
-    """Raised when a case is still part of the active evaluation scope."""
+from .case_mutation_policy import CaseArchiveConflict, require_archivable_masters, current_case_for_write
+from .suite_policy import lock_suite_project, require_editable_suite
 
 
 class CaseOrganizationConflict(ValueError):
@@ -34,28 +34,9 @@ def organization_revision(rows) -> str:
 def organization_lock_suite_ids(source_suite_id, destination_suite_id):
     return tuple(sorted({suite_id for suite_id in (source_suite_id, destination_suite_id) if suite_id is not None}, key=str))
 
-async def _active_builds_for_case_master(db: AsyncSession, master_id: UUID):
-    versions_result = await db.execute(
-        select(models.CasoPrueba.id).filter(models.CasoPrueba.master_id == master_id)
-    )
-    version_ids = versions_result.scalars().all()
-    if not version_ids:
-        return []
+from .case_mutation_policy import _active_builds_for_case_master
 
-    builds_result = await db.execute(
-        select(models.Build.id, models.Build.nombre)
-        .join(models.BuildCaso, models.BuildCaso.build_id == models.Build.id)
-        .filter(
-            models.BuildCaso.caso_id.in_(version_ids),
-            models.Build.estado == "ACTIVA",
-            models.Build.activo.is_(True),
-        )
-        .order_by(models.Build.nombre)
-    )
-    return builds_result.all()
-
-
-async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] = None):
+async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] = None, *, commit: bool = True):
     from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(models.CasoPrueba)
@@ -69,9 +50,11 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
     original = result.scalar_one_or_none()
     if not original:
         return None
+    await lock_suite_project(db, original.proyecto_id)
 
     target_suite_id = suite_id or original.suite_id
     if target_suite_id:
+        await require_editable_suite(db, original.proyecto_id, target_suite_id, original.componente_id, exact_component=True)
         suite_result = await db.execute(select(models.Suite).filter(models.Suite.id == target_suite_id, models.Suite.activo == True))
         target_suite = suite_result.scalar_one_or_none()
         if not target_suite:
@@ -144,7 +127,10 @@ async def clone_caso(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID] =
                 tipo=original_link.tipo,
             ))
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(cloned)
     return cloned
 
@@ -230,28 +216,28 @@ async def search_casos(
 
     return items, total
 
-async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.CasoPruebaUpdateMetadata):
+async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.CasoPruebaUpdateMetadata, *, commit: bool = True):
     db_caso = await get_caso(db, caso_id)
     if not db_caso:
         return None
+    await lock_suite_project(db, db_caso.proyecto_id)
+    if db_caso.suite_id and update.estado_caso is not None and update.estado_caso != models.EstadoCaso.ARCHIVADO:
+        await require_editable_suite(db, db_caso.proyecto_id, db_caso.suite_id, db_caso.componente_id)
     update_data = update.model_dump(exclude_unset=True)
     estado_caso = update_data.pop("estado_caso", None)
 
-    if estado_caso == models.EstadoCaso.ARCHIVADO and db_caso.estado_caso != models.EstadoCaso.ARCHIVADO:
-        active_builds = await _active_builds_for_case_master(db, db_caso.master_id)
-        if active_builds:
-            build_names = ", ".join(nombre for _build_id, nombre in active_builds)
-            raise CaseArchiveConflict(
-                "No se puede archivar la prueba porque está asignada a la build activa"
-                + (f" ({build_names}). Retírala de esa build antes de archivarla." if build_names else ".")
-            )
+    current = await current_case_for_write(db, db_caso.master_id)
+    if current.id != caso_id:
+        raise ValueError("La versión del caso cambió. Recarga la prueba antes de editarla.")
+    if estado_caso == models.EstadoCaso.ARCHIVADO:
+        await require_archivable_masters(db, [db_caso.master_id])
 
     updated = db_caso
     if update_data:
         updated = await update_caso_metadata_versioned(
             db=db,
             caso_id=caso_id,
-            update=schemas.CasoPruebaUpdateMetadata(**update_data),
+            update=schemas.CasoPruebaUpdateMetadata(**update_data), commit=False,
         )
 
     if estado_caso is not None:
@@ -267,7 +253,10 @@ async def update_caso_metadata(db: AsyncSession, caso_id: UUID, update: schemas.
                 version.estado_caso = estado_caso
         else:
             updated.estado_caso = estado_caso
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(updated)
     return updated
 
@@ -275,6 +264,8 @@ async def move_caso(db: AsyncSession, caso_id: UUID, suite_id: UUID):
     db_caso = await get_caso(db, caso_id)
     if not db_caso:
         return None
+    await lock_suite_project(db, db_caso.proyecto_id)
+    await require_editable_suite(db, db_caso.proyecto_id, suite_id, db_caso.componente_id, exact_component=True)
     if not db_caso.activo or db_caso.estado_caso == models.EstadoCaso.ARCHIVADO:
         raise ValueError("No se pueden mover casos archivados o inactivos")
     if db_caso.suite_id:
@@ -327,6 +318,7 @@ async def reorder_casos(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID
     case = await get_caso(db, caso_id)
     if not case:
         return None
+    await lock_suite_project(db, case.proyecto_id)
     if not case.activo or case.estado_caso == models.EstadoCaso.ARCHIVADO:
         raise ValueError("No se pueden organizar casos archivados o inactivos")
     if case.suite_id:
@@ -336,6 +328,7 @@ async def reorder_casos(db: AsyncSession, caso_id: UUID, suite_id: Optional[UUID
     destination_id = suite_id or case.suite_id
     if destination_id is None:
         raise ValueError("Los casos sin suite no se pueden organizar")
+    await require_editable_suite(db, case.proyecto_id, destination_id, case.componente_id, exact_component=True)
     target = (await db.execute(select(models.Suite).where(models.Suite.id == destination_id, models.Suite.activo == True, models.Suite.archivado == False))).scalar_one_or_none()
     if not target or target.proyecto_id != case.proyecto_id:
         raise ValueError("La suite destino no pertenece al proyecto del caso")

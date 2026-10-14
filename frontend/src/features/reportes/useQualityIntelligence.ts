@@ -1,3 +1,4 @@
+import { useReportContextGuard } from './useReportContextGuard'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
@@ -187,8 +188,15 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
   const [bugDraft, setBugDraft] = useState<QualityDiagnosisBugDraft | null>(null)
   const [error, setError] = useState('')
   const latestRequest = useRef(0)
+  const captureContext = useReportContextGuard(`${currentProjectId}:${currentBuildId}:${enabled}`)
+  useEffect(() => {
+    setHealth(null); setFingerprints(null); setObservations(null); setSummary(null); setDiagnoses([])
+    setReleaseRisk(null); setBugDraft(null); setError(''); setLoading(false); setRebuilding(false)
+    setDiagnosingExecutionId(''); setReviewingDiagnosisId(''); setEditingDiagnosisId('')
+  }, [currentProjectId, currentBuildId, enabled])
 
   const loadHealth = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    const isCurrent = captureContext()
     const requestId = ++latestRequest.current
     if (!enabled || !currentProjectId || !isValidUUID(currentProjectId)) {
       setHealth(null)
@@ -239,7 +247,7 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
           throw new Error(body?.detail || `Backend respondió ${riskResponse.status}`)
         }
       }
-      if (requestId === latestRequest.current) {
+      if (isCurrent() && requestId === latestRequest.current) {
         setHealth(payload)
         setFingerprints(fingerprintPayload)
         setObservations(observationPayload)
@@ -250,7 +258,7 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
       }
       return payload
     } catch (reason: any) {
-      if (requestId === latestRequest.current) {
+      if (isCurrent() && requestId === latestRequest.current) {
         setHealth(null)
         setFingerprints(null)
         setObservations(null)
@@ -261,11 +269,12 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
       }
       return null
     } finally {
-      if (requestId === latestRequest.current && !silent) setLoading(false)
+      if (isCurrent() && requestId === latestRequest.current && !silent) setLoading(false)
     }
-  }, [currentProjectId, currentBuildId, enabled, fetchWithAuth])
+  }, [currentProjectId, currentBuildId, enabled, fetchWithAuth, captureContext])
 
   const evaluateReleaseRisk = useCallback(async () => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId) || !isValidUUID(currentBuildId)) return
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/quality-intelligence/release-risk/evaluate`, {
@@ -275,14 +284,17 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
-      setReleaseRisk(await response.json() as ReleaseRiskEvaluation)
-      showFeedback(t('reportes.releaseRiskEvaluated'), t('reportes.releaseRiskEvaluatedDetail'), 'success')
+      const payload = await response.json() as ReleaseRiskEvaluation
+      if (!isCurrent()) return
+      setReleaseRisk(payload)
+      if (isCurrent()) showFeedback(t('reportes.releaseRiskEvaluated'), t('reportes.releaseRiskEvaluatedDetail'), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.releaseRiskError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.releaseRiskError'), reason?.message || String(reason), 'danger')
     }
-  }, [currentProjectId, currentBuildId, fetchWithAuth, showFeedback, t])
+  }, [currentProjectId, currentBuildId, fetchWithAuth, showFeedback, t, captureContext])
 
   const acceptReleaseRisk = useCallback(async (note: string) => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !releaseRisk || note.trim().length < 3) return
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/quality-intelligence/release-risk/${releaseRisk.id}/accept`, {
@@ -292,14 +304,17 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
-      setReleaseRisk(await response.json() as ReleaseRiskEvaluation)
-      showFeedback(t('reportes.releaseRiskAccepted'), t('reportes.releaseRiskAcceptedDetail'), 'success')
+      const payload = await response.json() as ReleaseRiskEvaluation
+      if (!isCurrent()) return
+      setReleaseRisk(payload)
+      if (isCurrent()) showFeedback(t('reportes.releaseRiskAccepted'), t('reportes.releaseRiskAcceptedDetail'), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.releaseRiskError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.releaseRiskError'), reason?.message || String(reason), 'danger')
     }
-  }, [currentProjectId, fetchWithAuth, releaseRisk, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, releaseRisk, showFeedback, t, captureContext])
 
   const createDiagnosis = useCallback(async (observation: QualityExecutionObservation) => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId) || !observation.ejecucion_caso_id) return
     setDiagnosingExecutionId(observation.ejecucion_caso_id)
     try {
@@ -311,16 +326,19 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
+      if (!isCurrent()) return
       await loadHealth({ silent: true })
-      showFeedback(t('reportes.qualityDiagnosisCreated'), t('reportes.qualityDiagnosisCreatedDetail'), 'success')
+      if (!isCurrent()) return
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisCreated'), t('reportes.qualityDiagnosisCreatedDetail'), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
     } finally {
-      setDiagnosingExecutionId('')
+      if (isCurrent()) setDiagnosingExecutionId('')
     }
-  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t, captureContext])
 
   const reviewDiagnosis = useCallback(async (diagnosisId: string, status: 'ACCEPTED' | 'REJECTED') => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId)) return
     setReviewingDiagnosisId(diagnosisId)
     try {
@@ -331,16 +349,19 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
+      if (!isCurrent()) return
       await loadHealth({ silent: true })
-      showFeedback(t('reportes.qualityDiagnosisReviewed'), t('reportes.qualityDiagnosisReviewedDetail'), 'success')
+      if (!isCurrent()) return
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisReviewed'), t('reportes.qualityDiagnosisReviewedDetail'), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
     } finally {
-      setReviewingDiagnosisId('')
+      if (isCurrent()) setReviewingDiagnosisId('')
     }
-  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t, captureContext])
 
   const editDiagnosis = useCallback(async (diagnosisId: string, payload: QualityDiagnosisEditPayload) => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId) || payload.note.trim().length < 3) return
     setEditingDiagnosisId(diagnosisId)
     try {
@@ -351,16 +372,19 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
+      if (!isCurrent()) return
       await loadHealth({ silent: true })
-      showFeedback(t('reportes.qualityDiagnosisEdited'), t('reportes.qualityDiagnosisEditedDetail'), 'success')
+      if (!isCurrent()) return
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisEdited'), t('reportes.qualityDiagnosisEditedDetail'), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
     } finally {
-      setEditingDiagnosisId('')
+      if (isCurrent()) setEditingDiagnosisId('')
     }
-  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t, captureContext])
 
   const prepareBugDraft = useCallback(async (diagnosisId: string) => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId)) return
     try {
       const response = await fetchWithAuth(`${API_BASE}/proyectos/${currentProjectId}/quality-intelligence/diagnoses/${diagnosisId}/bug-draft`)
@@ -368,13 +392,15 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         const body = await response.json().catch(() => null)
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
-      setBugDraft(await response.json() as QualityDiagnosisBugDraft)
+      const draft = await response.json() as QualityDiagnosisBugDraft
+      if (isCurrent()) setBugDraft(draft)
     } catch (reason: any) {
-      showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.qualityDiagnosisError'), reason?.message || String(reason), 'danger')
     }
-  }, [currentProjectId, fetchWithAuth, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, showFeedback, t, captureContext])
 
   const rebuild = useCallback(async () => {
+    const isCurrent = captureContext()
     if (!currentProjectId || !isValidUUID(currentProjectId)) return
     setRebuilding(true)
     try {
@@ -388,16 +414,18 @@ export function useQualityIntelligence({ currentProjectId, currentBuildId, enabl
         throw new Error(body?.detail || `Backend respondió ${response.status}`)
       }
       const result = await response.json()
+      if (!isCurrent()) return
       await loadHealth({ silent: true })
-      showFeedback(t('reportes.qualityAnalysisUpdated'), t('reportes.qualityAnalysisUpdatedDetail', {
+      if (!isCurrent()) return
+      if (isCurrent()) showFeedback(t('reportes.qualityAnalysisUpdated'), t('reportes.qualityAnalysisUpdatedDetail', {
         observations: Number(result?.observations || 0),
       }), 'success')
     } catch (reason: any) {
-      showFeedback(t('reportes.qualityAnalysisError'), reason?.message || String(reason), 'danger')
+      if (isCurrent()) showFeedback(t('reportes.qualityAnalysisError'), reason?.message || String(reason), 'danger')
     } finally {
-      setRebuilding(false)
+      if (isCurrent()) setRebuilding(false)
     }
-  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t])
+  }, [currentProjectId, fetchWithAuth, loadHealth, showFeedback, t, captureContext])
 
   useEffect(() => {
     void loadHealth()

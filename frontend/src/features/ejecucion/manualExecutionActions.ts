@@ -4,11 +4,13 @@ import { isValidUUID } from '../../app/validation'
 import type { AttachmentMeta } from '../../EvidenceUpload'
 import { formatDateTime } from '../../shared/utils/dateTime'
 import type { TranslationKey } from '../../i18n'
+import { hydrateExecutionHistory } from './executionHistoryState'
 import { resolveExecutionProjectId } from './executionProject'
 
 type FeedbackVariant = 'success' | 'danger' | 'warning' | 'info'
 
 type CreateManualExecutionActionsParams = {
+  executionDraftRef?: { current: { dirty: boolean; version: number } }
   activeExecutionTests: any[]
   selectedTest: any
   currentExecutionRun: any
@@ -62,6 +64,7 @@ type CreateManualExecutionActionsParams = {
 }
 
 export function createManualExecutionActions({
+  executionDraftRef,
   activeExecutionTests,
   selectedTest,
   currentExecutionRun,
@@ -162,7 +165,11 @@ export function createManualExecutionActions({
     // Chatbot manual finaliza por un endpoint especializado y no pasa por la
     // ruta clásica que ya recarga el historial. Refrescarlo aquí mantiene el
     // contador y las estadísticas sincronizados sin cambiar el flujo clásico.
-    const history = await loadCasoExecutionHistory(caseId, currentBuildId)
+    let history = await loadCasoExecutionHistory(caseId, currentBuildId)
+    if ((history as any).error) {
+      showFeedback(t('ejecutarPruebas.historyLoadError'), (history as any).error, 'warning')
+      return
+    }
     const latestHistory = history[0]
     const historyPatch = {
       history,
@@ -237,26 +244,15 @@ export function createManualExecutionActions({
 
     if (nextTest) {
       const historial = await loadCasoExecutionHistory(nextTest.id)
-      const latestHistory = historial[0]
-      const hydratedNextTest = latestHistory
-        ? {
-            ...nextTest,
-            lastResult: latestHistory.status,
-            lastExecutedAt: latestHistory.date,
-            lastExecutedBy: latestHistory.executedBy,
-            lastExecutedVersion: latestHistory.versionExecuted,
-            history: historial,
-            historyTotal: historial.total ?? historial.length,
-            historyStats: historial.stats || null,
-          }
-        : { ...nextTest, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history: historial, historyTotal: historial.total ?? historial.length, historyStats: historial.stats || null }
+      const hydratedNextTest = hydrateExecutionHistory(nextTest, historial)
 
       // No limpiar el caso visible antes de cargar el siguiente. Durante ese
       // intervalo la consola pintaba SIN_CORRER aunque el caso anterior ya
       // estuviera finalizado. loadExecutionDetails deja listo el estado real
       // del siguiente caso y recién después cambiamos la selección visual.
       if (currentExecutionRun?.id) {
-        await loadExecutionDetails(currentExecutionRun.id, nextTest.id)
+        const loaded = await loadExecutionDetails(currentExecutionRun.id, nextTest.id)
+        if (loaded === null) return
       } else {
         setStepResults({})
         setSnapshotNotes({})
@@ -291,7 +287,12 @@ export function createManualExecutionActions({
   }
 
   const finalizeExecutionResult = async (backendFinalStatus: string) => {
-    const refreshedHistory = await loadCasoExecutionHistory(selectedTest.id, currentBuildId)
+    if (executionDraftRef) executionDraftRef.current.dirty = false
+    let refreshedHistory = await loadCasoExecutionHistory(selectedTest.id, currentBuildId)
+    if ((refreshedHistory as any).error) {
+      showFeedback(t('ejecutarPruebas.historyLoadError'), (refreshedHistory as any).error, 'warning')
+      refreshedHistory = Object.assign([...(selectedTest.history || [])], { total: selectedTest.historyTotal, stats: selectedTest.historyStats })
+    }
     const latestHistory = refreshedHistory[0]
     const executedAt = latestHistory?.date || formatDateTime(new Date().toISOString())
     const executedBy = latestHistory?.executedBy || selectedTest.lastExecutedBy || ''

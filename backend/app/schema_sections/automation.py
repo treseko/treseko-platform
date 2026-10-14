@@ -263,8 +263,8 @@ class AutomationJob(BaseModel):
     required_runtime: Optional[str] = None
     timeout_seconds: int
     payload_congelado: Dict[str, Any] = Field(default_factory=dict)
-    logs: Optional[str] = Field(default=None, max_length=12000)
-    error_message: Optional[str] = Field(default=None, max_length=4000)
+    logs: Optional[str] = None
+    error_message: Optional[str] = None
     metadata_resultado: Dict[str, Any] = Field(default_factory=dict)
     fecha_creacion: Optional[datetime] = None
     fecha_claim: Optional[datetime] = None
@@ -273,13 +273,14 @@ class AutomationJob(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_serializer("payload_congelado", "metadata_resultado")
+    @field_serializer("payload_congelado")
     def serialize_job_json(self, value: Dict[str, Any]):
-        return redact_automation_sensitive_value(value)
+        from ..services.automation_payloads import decode_worker_payload
+        return decode_worker_payload(value)
 
     @field_serializer("logs", "error_message")
     def serialize_job_text(self, value: Optional[str]):
-        return redact_automation_sensitive_text(value) if value else value
+        return value
 
 
 class AutomationWorkerJobClaim(BaseModel):
@@ -304,8 +305,8 @@ class AutomationWorkerJobClaim(BaseModel):
     required_runtime: Optional[str] = None
     timeout_seconds: int
     payload_congelado: Dict[str, Any] = Field(default_factory=dict)
-    logs: Optional[str] = Field(default=None, max_length=12000)
-    error_message: Optional[str] = Field(default=None, max_length=4000)
+    logs: Optional[str] = None
+    error_message: Optional[str] = None
     metadata_resultado: Dict[str, Any] = Field(default_factory=dict)
     fecha_creacion: Optional[datetime] = None
     fecha_claim: Optional[datetime] = None
@@ -323,15 +324,15 @@ class AutomationWorkerJobClaim(BaseModel):
 class AutomationJobResultStep(BaseModel):
     number: int = Field(ge=1, le=1000)
     status: EstadoResultado
-    observations: Optional[str] = Field(default=None, max_length=4000)
+    observations: Optional[str] = None
     evidence_url: Optional[str] = Field(default=None, max_length=1000)
-    error_log: Optional[str] = Field(default=None, max_length=12000)
+    error_log: Optional[str] = None
 
 class AutomationJobResultArtifact(BaseModel):
     type: str = Field(default="screenshot", max_length=50)
     filename: str = Field(min_length=1, max_length=180)
     content_type: str = Field(default="image/png", max_length=120)
-    base64: str = Field(min_length=1, max_length=MAX_AUTOMATION_ARTIFACT_BASE64_LENGTH)
+    base64: str = Field(min_length=1)
     step_number: Optional[int] = Field(default=None, ge=1, le=1000)
 
 
@@ -361,35 +362,23 @@ class AutomationJobResult(BaseModel):
     result_event_id: str = Field(min_length=1, max_length=200)
     status: AutomationJobStatus
     duration_seconds: int = Field(default=0, ge=0, le=604800)
-    observations: Optional[str] = Field(default=None, max_length=4000)
-    logs: Optional[str] = Field(default=None, max_length=12000)
-    error_message: Optional[str] = Field(default=None, max_length=4000)
+    observations: Optional[str] = None
+    logs: Optional[str] = None
+    error_message: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     evidence_url: Optional[str] = Field(default=None, max_length=1000)
     steps: List[AutomationJobResultStep] = Field(default_factory=list, max_length=1000)
-    artifacts: List[AutomationJobResultArtifact] = Field(default_factory=list, max_length=20)
+    artifacts: List[AutomationJobResultArtifact] = Field(default_factory=list)
     api_results: List[AutomationApiJobResultItem] = Field(default_factory=list, max_length=1000)
 
     @field_validator("metadata")
     @classmethod
     def validate_metadata(cls, value: Dict[str, Any]) -> Dict[str, Any]:
-        return validate_automation_json_payload(value, max_bytes=MAX_AUTOMATION_RESULT_METADATA_BYTES) or {}
+        return value or {}
 
     @field_validator("api_results")
     @classmethod
     def validate_api_results(cls, value: List[AutomationApiJobResultItem]) -> List[AutomationApiJobResultItem]:
-        total = sum(
-            len(json.dumps(
-                {"result": item.result, "state_updates": item.state_updates},
-                ensure_ascii=False,
-                default=str,
-            ).encode("utf-8"))
-            for item in value
-        )
-        if total > MAX_AUTOMATION_API_RESULTS_BYTES:
-            raise ValueError(
-                f"Los resultados API superan el límite total de {MAX_AUTOMATION_API_RESULTS_BYTES} bytes"
-            )
         return value
 
 class AutomationDryRunRequest(BaseModel):
@@ -404,6 +393,7 @@ class AutomationDryRunRequest(BaseModel):
     entorno_id: Optional[UUID] = None
     dataset_id: Optional[UUID] = None
     timeout_seconds: int = Field(default=300, ge=10, le=1800)
+    record_video: bool = True
     debug_mode: bool = False
     pasos: List[Dict[str, Any]] = Field(default_factory=list, max_length=1000)
 
@@ -413,6 +403,7 @@ class AutomationDryRunRequest(BaseModel):
         return validate_automation_steps_payload(value) or []
 
 class AutomationExecutionRequest(BaseModel):
+    record_video: bool = True
     debug_mode: bool = False
 
 class FuncionAutomatizadaBase(BaseModel):

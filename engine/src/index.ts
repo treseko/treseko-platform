@@ -178,6 +178,8 @@ export async function runTask(
   step_map: Record<string, string> = {},
   options: {
     headless?: boolean;
+    dryRun?: boolean;
+    recordVideo?: boolean;
     viewport?: { width: number; height: number };
     io?: any;
     aiConfig?: { provider?: string; endpoint?: string; model?: string; apiKey?: string; temperature?: number; tokenCostPer1K?: number; promptTokenCostPer1K?: number; completionTokenCostPer1K?: number; visionEnabled?: boolean; maxRetries?: number; fallbacks?: Array<{ provider?: string; llm_endpoint?: string; endpoint?: string; model?: string; provider_api_key?: string; apiKey?: string; max_retries?: number }>; executionDriver?: 'treseko_engine' | 'opencode'; opencodeUrl?: string; opencodeUsername?: string; opencodePassword?: string; opencodeModel?: string; opencodeAgent?: string; opencodeTimeoutMs?: number };
@@ -315,7 +317,7 @@ export async function runTask(
       return chatbotResult;
     }
 
-    await browser.init(Boolean(options.headless), options.viewport);
+    await browser.init(Boolean(options.headless), options.viewport, options.dryRun === true, options.recordVideo !== false);
     report.setModel(ai.model);
     const page = browser.getPage();
     let activeBaseUrl = '';

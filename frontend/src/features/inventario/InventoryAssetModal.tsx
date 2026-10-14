@@ -1,4 +1,4 @@
-import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
+import { Alert, Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { Plus, Trash2, Wrench } from 'lucide-react'
 import { RequiredLabel } from '../../shared/ui/RequiredLabel'
 import { inventoryAria, inventoryLabel } from './inventoryPresentation'
@@ -10,7 +10,7 @@ const CRITICALITIES = ['Baja', 'Media', 'Alta', 'Critica']
 const ENDPOINT_TYPES = ['ip', 'url', 'hostname', 'dns', 'puerto', 'otro']
 
 export function InventoryAssetModal({ options }: { options: any }) {
-  const { t } = options
+  const { t, error } = options
   const { modalState, formAsset, hideModal, submitAsset, currentProjectInventoryCategories, parentOptions, updateFormAsset, addEndpoint, updateEndpoint, removeEndpoint, metadataText, setMetadataText, saving } = options
   return (
 <Modal show={modalState.show && !!formAsset} onHide={hideModal} size="lg" centered backdrop="static">
@@ -18,11 +18,13 @@ export function InventoryAssetModal({ options }: { options: any }) {
     <Modal.Header closeButton className="bg-light border-bottom">
       <Modal.Title className="fs-5 fw-bold d-flex align-items-center gap-2">
         <Wrench size={20} className="text-primary" />
-        {modalState.mode === 'add' ? t('inventario.registerAsset') : t('inventario.editAsset')}
+        {modalState.mode === 'view' ? t('inventario.viewAsset') : modalState.mode === 'add' ? t('inventario.registerAsset') : t('inventario.editAsset')}
       </Modal.Title>
     </Modal.Header>
     {formAsset && (
       <Modal.Body className="p-4">
+        {error && <Alert variant="warning">{error}</Alert>}
+        <fieldset disabled={saving || modalState.mode === 'view'}>
         <h6 className="fw-bold text-primary mb-3">{t('inventario.generalData')}</h6>
         <Row className="g-3">
           <Col md={6}>
@@ -57,6 +59,7 @@ export function InventoryAssetModal({ options }: { options: any }) {
             <Form.Label className="x-small fw-bold text-muted">{t('inventario.categoryName')}</Form.Label>
             <Form.Select name="a11y-inventoryassetmodaltsx-57" aria-label={inventoryAria(t, t('inventario.categoryName'))} value={formAsset.categoria_id || ''} onChange={event => updateFormAsset({ categoria_id: event.target.value })}>
               <option value="">{t('inventario.noCategory')}</option>
+              {formAsset.categoria_id && !currentProjectInventoryCategories.some(cat => cat.id === formAsset.categoria_id) && <option value={formAsset.categoria_id}>{t('inventario.legacyCategory')}</option>}
               {currentProjectInventoryCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Form.Select>
           </Col>
@@ -115,7 +118,7 @@ export function InventoryAssetModal({ options }: { options: any }) {
                 <Form.Check name="a11y-inventoryassetmodaltsx-114" aria-label={inventoryAria(t, t('inventario.principal'))} checked={Boolean(endpoint.principal)} onChange={event => updateEndpoint(index, { principal: event.target.checked })} label={t('inventario.principal')} className="x-small" />
               </Col>
               <Col md={1} className="pb-1">
-                <Button type="button" variant="white" className="border text-danger p-2" onClick={() => removeEndpoint(index)} title={t('inventario.remove')}>
+                <Button type="button" variant="white" className="border text-danger p-2" onClick={() => removeEndpoint(index)} aria-label={t('inventario.remove')} title={t('inventario.remove')}>
                   <Trash2 size={14} />
                 </Button>
               </Col>
@@ -132,13 +135,14 @@ export function InventoryAssetModal({ options }: { options: any }) {
           placeholder={'owner_team=QA\nrack=R1\ncontrato_soporte=Gold'}
           className="font-monospace small"
         />
+        </fieldset>
       </Modal.Body>
     )}
     <Modal.Footer className="bg-light border-top">
-      <Button variant="outline-secondary" onClick={hideModal} className="rounded-pill px-4">{t('inventario.cancel')}</Button>
-      <Button variant="primary" type="submit" disabled={saving || !formAsset?.nombre} className="rounded-pill px-4 fw-bold">
+      <Button variant="outline-secondary" onClick={hideModal} className="rounded-pill px-4">{modalState.mode === 'view' ? t('common.close') : t('inventario.cancel')}</Button>
+      {modalState.mode !== 'view' && <Button variant="primary" type="submit" disabled={saving || !formAsset?.nombre} className="rounded-pill px-4 fw-bold">
         {saving && <Spinner size="sm" className="me-2" />} {t('inventario.saveAsset')}
-      </Button>
+      </Button>}
     </Modal.Footer>
   </Form>
 </Modal>

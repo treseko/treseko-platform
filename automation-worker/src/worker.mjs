@@ -1,3 +1,6 @@
+import {confirmJobWorkspaces} from './workspace-retention.mjs';
+import {createResultTransport} from './result-transport.mjs';
+import {getPythonCommand,isInvalidRunnerTokenError,createRuntimeAvailabilityCache} from './runtime-settings.mjs';
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,7 +26,6 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { createWorkerCapabilities } from "./worker-capabilities.mjs";
-
 const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
@@ -31,9 +33,7 @@ const envPath = path.join(ROOT_DIR, ".env");
 const RUN_ONCE = process.argv.includes("--once");
 const startedAt = Date.now();
 const STARTED_AT_ISO = new Date(startedAt).toISOString();
-
 loadEnv(envPath, fs);
-
 // Keep credentials outside the code tree for systemd installs. The local
 // default remains compatible with Docker and developer checkouts.
 const tokenPath = process.env.QA_RUNNER_TOKEN_FILE || path.join(ROOT_DIR, ".runner-token");
@@ -49,7 +49,7 @@ const ARTIFACT_MAX_BYTES = 10 * 1024 * 1024;
 const ARTIFACT_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".json", ".csv", ".xml", ".pdf", ".zip", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".mp4", ".webm"]);
 const RUNNER_NAME = process.env.QA_RUNNER_NAME || os.hostname() || "Local Playwright Worker";
 const workerInstanceId = readOrCreateWorkerInstanceId();
-const MAX_PARALLEL_JOBS = Number(process.env.QA_MAX_PARALLEL_JOBS || 1);
+const MAX_PARALLEL_JOBS = 1; // This coordinator owns one durable lease at a time.
 const TAGS = String(process.env.QA_RUNNER_TAGS || "local,v1,playwright")
   .split(",")
   .map((item) => item.trim())
@@ -72,14 +72,13 @@ const updateAdmission = createUpdateAdmission({
   directory: process.env.QA_UPDATE_CONTROL_DIR || path.join(path.dirname(RESULT_SPOOL_DIR), "update-control"),
   version: WORKER_VERSION,
 });
-
 let runnerToken = process.env.QA_RUNNER_TOKEN || readTokenFile();
 let runnerId = "";
 let activeJobId = "";
 let activeJobLeaseToken = "";
 let activeJobs = 0;
 let activeCorrelationId = "";
-
+let activeAbortController = null;
 const { redactTraceText, safeTraceValue, traceEntry, formatLogArg } = createTraceRuntime({
   fs,
   path,
@@ -102,12 +101,6 @@ function clearTokenFile() {
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }
-}
-
-function isInvalidRunnerTokenError(error) {
-  const code = String(error?.error_code || "").toUpperCase();
-  const message = String(error?.message || "");
-  return code === "UNAUTHORIZED" || code === "HTTP_401" || /runner token invalido/i.test(message);
 }
 
 function clearRunnerCredentials() {
@@ -175,16 +168,14 @@ function getPackageVersion(packageName) {
   }
 }
 
-function getPythonCommand() {
-  return process.env.QA_PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
-}
-
+const getRuntimeAvailability = createRuntimeAvailabilityCache(require);
 const { capabilities, resources } = createWorkerCapabilities({
   os, fs, process, rootDir: ROOT_DIR, workerVersion: WORKER_VERSION,
   apiBase: API_BASE, runnerName: RUNNER_NAME, tags: TAGS,
   maxParallelJobs: MAX_PARALLEL_JOBS, startedAtIso: STARTED_AT_ISO, startedAt,
   localIps, getPlaywrightVersion, getPackageVersion, getPythonCommand,
   getSeleniumVersion: () => process.env.QA_SELENIUM_VERSION || "python",
+  getRuntimeAvailability,
   workerInstanceId,
   getActiveJobs: () => activeJobs, getActiveJobId: () => activeJobId,
 });
@@ -209,6 +200,7 @@ async function heartbeat(status = "ONLINE") {
 const leaseHeartbeat = createLeaseHeartbeat({
   intervalMs: HEARTBEAT_INTERVAL_MS,
   heartbeat: () => heartbeat("BUSY"),
+  onLeaseLost: () => activeAbortController?.abort(),
   log: (_event, message) => console.warn(message),
 });
 
@@ -217,7 +209,7 @@ const updateMarker = createUpdateMarker({ directory: ROOT_DIR, getActiveJobs: ()
 const {
   getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
   playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
-  getPlaywrightCliPath, getPackageBinPath, preparePlaywrightTestSource, runCommand,
+  getPlaywrightCliPath, getPuppeteerExecutablePath, getPackageBinPath, preparePlaywrightTestSource, runCommand,
   sanitizeChildEnv,
   scriptFileForJob, serializeJsonForSource, prepareNodeScriptSource,
   prepareSeleniumPythonSource,
@@ -248,7 +240,7 @@ const executeJob = createJobExecutor({
   RUNNER_NAME, ROOT_DIR, state: { get activeCorrelationId() { return activeCorrelationId; } },
   setActiveCorrelationId: (value) => { activeCorrelationId = value; },
   playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource, shouldRunHeadless,
-  getPlaywrightCliPath, runCommand, parsePlaywrightJsonReport, summarizePlaywrightReport,
+  getPlaywrightCliPath, getPuppeteerExecutablePath, runCommand, parsePlaywrightJsonReport, summarizePlaywrightReport,
   classifyPlaywrightFailure, withCorrelation, collectArtifacts, playwrightReportArtifact,
   getPlaywrightVersion, isDebugMode, processResultPayload, prepareNodeScriptSource,
   getPackageBinPath, serializeJsonForSource, prepareSeleniumPythonSource, getPythonCommand,
@@ -258,16 +250,16 @@ const executeJob = createJobExecutor({
   allowLoopbackForTests: process.env.NODE_ENV === "test" && process.env.QA_API_WORKER_ALLOW_LOOPBACK_TESTS === "true",
 });
 
+const transferResult = createResultTransport({api});
 const resultDelivery = createResultDelivery({
   spoolDir: RESULT_SPOOL_DIR,
   maxAttempts: RESULT_RETRY_ATTEMPTS,
   retryBaseMs: RESULT_RETRY_BASE_MS,
   retryMaxMs: RESULT_RETRY_MAX_MS,
   postResult: async (jobId, payload) => {
-    const result = await api(`/automation-jobs/${jobId}/result`, {
-      method: "POST", body: JSON.stringify(payload),
-    });
+    const result = await transferResult(jobId,payload);
     claimIntent.confirmed(jobId);
+    confirmJobWorkspaces(jobId);
     return result;
   },
   log: (_event, message) => console.info(message),
@@ -417,7 +409,8 @@ async function loop() {
       const jobLabel = claimed.payload_congelado?.case_code || claimed.caso_id || "DRY-RUN";
       console.log(`${isDryRun ? "Ejecutando prueba temporal del editor" : "Ejecutando job"} ${claimed.id} (${jobLabel})`);
       traceEntry("job_event", { message: "job_execution_started", job_id: claimed.id, job_label: jobLabel, dry_run: isDryRun });
-      const result = await executeJob(claimed);
+      activeAbortController = new AbortController();
+      const result = await executeJob(claimed, {signal:activeAbortController.signal});
       console.log(`Resultado local del job ${claimed.id}: ${result.status}`);
       traceEntry("job_event", {
         message: "job_execution_finished",
@@ -438,6 +431,7 @@ async function loop() {
         continue;
       }
       leaseHeartbeat.stop();
+      activeAbortController = null;
       traceEntry("job_event", { message: "job_result_reported", job_id: claimed.id, status: result.status, delivery_status: delivery.status });
       if (delivery.status === "CONFIRMED") console.info(`Job ${claimed.id} reportado como ${result.status}. Resultado confirmado.`);
       activeJobId = "";
@@ -446,6 +440,8 @@ async function loop() {
       await heartbeat("ONLINE");
       if (RUN_ONCE) return;
     } catch (error) {
+      activeAbortController?.abort();
+      activeAbortController = null;
       const failedJobId = activeJobId;
       const failedCorrelationId = activeCorrelationId;
       leaseHeartbeat.stop();

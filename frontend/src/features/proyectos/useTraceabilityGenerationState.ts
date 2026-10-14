@@ -1,5 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
 
+export function canAutoConfirmStoryAnalysis(analysis: any): boolean {
+  if (!Array.isArray(analysis?.questions) || analysis.questions.some((item: unknown) => String(item || '').trim())) return false
+  const assumptions = analysis?.proposed_assumptions
+  return Array.isArray(assumptions) && assumptions.length > 0 && new Set(assumptions.map((item: any) => item?.id)).size === assumptions.length && assumptions.every((item: any) =>
+    item && typeof item === 'object' && typeof item.id === 'string' && item.id.trim() &&
+    typeof item.text === 'string' && item.text.trim() && String(item.risk || '').trim().toUpperCase() === 'LOW')
+}
+
 export function useTraceabilityGenerationState(options: any) {
   const { components, projectId, requirements, proposalQuality } = options
   const [generationRequirement, setGenerationRequirement] = useState<any>(null)

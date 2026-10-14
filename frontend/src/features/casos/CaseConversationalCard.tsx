@@ -211,7 +211,7 @@ export function CaseConversationalCard({ context }: Props) {
   const previewMessage = previewResult.message_extracted ?? previewResult.message
   const previewHasSession = previewResult.session_detected === true
   const requiredMark = <span className="text-danger ms-1" aria-hidden="true">*</span>
-  return <Card className="border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
+  return <Card className="chatbot-case-editor border-0 shadow-sm rounded-3 bg-white text-start mb-3 overflow-hidden">
     <Card.Header className="bg-primary bg-opacity-10 border-0 py-3 d-flex align-items-center justify-content-between gap-3 flex-wrap">
       <div className="d-flex align-items-center gap-2"><Bot size={20} className="text-primary" aria-hidden="true" /><div><h6 className="fw-bold text-dark mb-0">{t('casos.chatbotConfigurationTitle')}</h6><small className="text-muted">{t('casos.chatbotConfigurationSubtitle')}</small></div></div>
       <div className="d-flex align-items-center gap-2 flex-wrap"><Badge bg={ready ? 'success' : 'warning'}>{ready ? t('casos.chatbotReady') : t('casos.chatbotIncomplete')}</Badge>{context.selectedTest && <Button type="button" size="sm" variant="primary" onClick={() => context.onRunChatbotCase?.(context.selectedTest)}>{t('casos.execute')}</Button>}<Button type="button" size="sm" variant="outline-primary" onClick={() => setConfigurationOpen(value => !value)} aria-expanded={configurationOpen} aria-controls="chatbot-configuration-body" className="d-inline-flex align-items-center gap-1"><ChevronDown size={15} aria-hidden="true" /> {configurationOpen ? t('casos.collapseConfiguration') : t('casos.expandConfiguration')}</Button></div>

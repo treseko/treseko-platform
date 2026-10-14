@@ -304,15 +304,23 @@ async def promote_build_case_version(db: AsyncSession, build_id: UUID, old_caso_
     return await set_build_casos(db, build_id, next_ids)
 
 # --- SUITES ---
-async def create_suite(db: AsyncSession, suite: schemas.SuiteCreate):
-    data = suite.model_dump()
-    if data.get("parent_id") and not data.get("componente_id"):
-        parent = await get_suite(db, data["parent_id"])
-        if parent:
-            data["componente_id"] = parent.componente_id
+async def create_suite(db: AsyncSession, suite: schemas.SuiteCreate, *, commit: bool = True):
+    from .suite_policy import suite_rows, editable_path
+    rows = await suite_rows(db, suite.proyecto_id)
+    data = suite.model_dump(exclude={'request_id'})
+    if data.get('parent_id'):
+        parent = editable_path(rows, data['parent_id'])
+        data['componente_id'] = data.get('componente_id') or parent.componente_id
+        if data['componente_id'] != parent.componente_id:
+            raise ValueError('La subsuite debe pertenecer al mismo componente que su carpeta padre.')
+    siblings = [row for row in rows if row.activo and row.parent_id == data.get('parent_id') and row.componente_id == data.get('componente_id')]
+    data['orden'] = max((row.orden or 0 for row in siblings), default=-1) + 1
     db_suite = models.Suite(**data)
     db.add(db_suite)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(db_suite)
     return db_suite
 
@@ -354,56 +362,27 @@ async def get_suite(db: AsyncSession, suite_id: UUID):
     result = await db.execute(select(models.Suite).filter(models.Suite.id == suite_id))
     return result.scalar_one_or_none()
 
-async def update_suite(db: AsyncSession, suite_id: UUID, suite_update: schemas.SuiteUpdate):
+async def update_suite(db: AsyncSession, suite_id: UUID, suite_update: schemas.SuiteUpdate, *, commit: bool = True):
     db_suite = await get_suite(db, suite_id)
     if not db_suite:
         return None
+    from .suite_policy import suite_rows, editable_path
+    db_suite = editable_path(await suite_rows(db, db_suite.proyecto_id), suite_id)
     update_data = suite_update.model_dump(exclude_unset=True)
+    if 'componente_id' in update_data and update_data['componente_id'] != db_suite.componente_id:
+        raise ValueError('No se puede cambiar el componente desde la edición de una suite. Conserva la ubicación del árbol y sus casos.')
     for field, value in update_data.items():
         setattr(db_suite, field, value)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     await db.refresh(db_suite)
     return db_suite
 
-async def archive_suite_tree(db: AsyncSession, suite_id: UUID, archivado: bool) -> tuple[bool, str, dict]:
-    db_suite = await get_suite(db, suite_id)
-    if not db_suite or not db_suite.activo:
-        return False, "Suite no encontrada", {}
-
-    descendants = await get_all_descendant_suites(db, suite_id)
-    all_suites = [db_suite] + descendants
-    all_suite_ids = [suite.id for suite in all_suites]
-    next_state = models.EstadoCaso.ARCHIVADO if archivado else models.EstadoCaso.ACTIVO
-
-    for suite in all_suites:
-        suite.archivado = archivado
-
-    cases_result = await db.execute(
-        select(models.CasoPrueba)
-        .filter(
-            models.CasoPrueba.suite_id.in_(all_suite_ids),
-            *_visible_case_filter(),
-        )
-    )
-    cases = cases_result.scalars().all()
-    master_ids = {case.master_id for case in cases}
-    if master_ids:
-        versions_result = await db.execute(
-            select(models.CasoPrueba).filter(
-                models.CasoPrueba.master_id.in_(master_ids),
-                *_visible_case_filter(),
-            )
-        )
-        for version in versions_result.scalars().all():
-            version.estado_caso = next_state
-
-    await db.commit()
-    action = "archivada" if archivado else "restaurada"
-    return True, f"Suite {action} correctamente", {
-        "suites_afectadas": len(all_suites),
-        "casos_afectados": len(master_ids),
-        "archivado": archivado,
-    }
+async def archive_suite_tree(db: AsyncSession, suite_id: UUID, archivado: bool, *, commit: bool = True):
+    from .suite_lifecycle import archive_tree
+    return await archive_tree(db, suite_id, archivado, commit=commit)
 
 async def has_executions(db: AsyncSession, caso_id: UUID) -> bool:
     final_states = [
@@ -422,43 +401,12 @@ async def has_executions(db: AsyncSession, caso_id: UUID) -> bool:
     return result.scalar_one_or_none() is not None
 
 async def get_all_descendant_suites(db: AsyncSession, suite_id: UUID) -> list:
-    result = await db.execute(select(models.Suite).filter(models.Suite.parent_id == suite_id))
-    children = result.scalars().all()
-    all_descendants = list(children)
-    for child in children:
-        all_descendants.extend(await get_all_descendant_suites(db, child.id))
-    return all_descendants
+    from .suite_policy import suite_rows, descendants
+    root = await get_suite(db, suite_id)
+    if not root:
+        return []
+    return descendants(await suite_rows(db, root.proyecto_id), suite_id)
 
-async def delete_suite(db: AsyncSession, suite_id: UUID) -> tuple[bool, str]:
-    db_suite = await get_suite(db, suite_id)
-    if not db_suite:
-        return False, "Suite no encontrada"
-
-    all_suite_ids = [suite_id] + [s.id for s in await get_all_descendant_suites(db, suite_id)]
-
-    for sid in all_suite_ids:
-        result = await db.execute(
-            select(models.CasoPrueba).filter(
-                models.CasoPrueba.suite_id == sid,
-                models.CasoPrueba.activo == True
-            )
-        )
-        casos = result.scalars().all()
-        for caso in casos:
-            if await has_executions(db, caso.id):
-                return False, f"No se puede eliminar la suite porque el caso '{caso.titulo}' tiene ejecuciones"
-
-    for sid in all_suite_ids:
-        result = await db.execute(select(models.Suite).filter(models.Suite.id == sid))
-        suite = result.scalar_one_or_none()
-        if suite:
-            suite.activo = False
-
-    await db.execute(
-        models.CasoPrueba.__table__.update()
-        .where(models.CasoPrueba.suite_id.in_(all_suite_ids))
-        .values(activo=False)
-    )
-
-    await db.commit()
-    return True, "Suite eliminada correctamente"
+async def delete_suite(db: AsyncSession, suite_id: UUID, *, commit: bool = True):
+    from .suite_lifecycle import delete_tree
+    return await delete_tree(db, suite_id, commit=commit)

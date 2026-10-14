@@ -1,4 +1,5 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import { useState } from 'react'
 import { Button, Form, Modal } from 'react-bootstrap'
 import { Bug, Database, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, Layers, LockKeyhole, Save, Search, Settings, ShieldCheck, Smartphone, Zap } from 'lucide-react'
 import { useI18n } from '../../i18n'
@@ -29,7 +30,7 @@ type SuiteAndComponentModalsProps = {
   folderConfig: { parentId: string | null }
   suitesTree: any[]
   setSuiteForm: Dispatch<SetStateAction<any>>
-  handleCreateSuite: (event: any) => void
+  handleCreateSuite: (event: any) => Promise<boolean | void>
   showSuiteModal: boolean
   setShowSuiteModal: (show: boolean) => void
   editingSuiteId: string | null
@@ -90,25 +91,48 @@ export function SuiteAndComponentModals({
   }
 
   const movingSuite = movingSuiteId ? findSuiteById(suitesTree, movingSuiteId) : null
+  const [suiteSaving, setSuiteSaving] = useState(false)
+  const suitePaths: any[] = []
+  const collectPaths = (rows: any[], path: string[] = [], seen = new Set<string>()) => {
+    for (const row of rows) {
+      if (!row?.id || seen.has(row.id) || row.archivado || row.activo === false) continue
+      const names = [...path, row.nombre]
+      const nextSeen = new Set(seen); nextSeen.add(row.id)
+      suitePaths.push({ ...row, pathLabel: names.join(' / ') })
+      collectPaths(row.children || [], names, nextSeen)
+    }
+  }
+  collectPaths(suitesTree)
   const movingDescendantIds = new Set(flattenSuites(movingSuite?.children || []).map((suite: any) => suite.id))
-  const moveSuiteOptions = flattenSuites(suitesTree).filter((suite: any) => {
+  const moveSuiteOptions = suitePaths.filter((suite: any) => {
     if (!movingSuiteId || suite.id === movingSuiteId || movingDescendantIds.has(suite.id)) return false
+    if (suite.archivado || suite.activo === false) return false
     const movingComponentId = movingSuite?.componente_id || movingSuite?.componentId || ''
     const suiteComponentId = suite.componente_id || suite.componentId || ''
     return movingComponentId === suiteComponentId
   })
 
-  const handleCreateFolder = (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateFolder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = event.currentTarget
     const name = (form.elements.namedItem('folderName') as HTMLInputElement | null)?.value
     const color = (form.elements.namedItem('color') as HTMLInputElement | null)?.value || '#F1F5F9'
     const icono = (form.elements.namedItem('icono') as HTMLSelectElement | null)?.value || 'folder'
-    if (!name) return
+    if (!name || suiteSaving) return
 
     setSuiteForm({ nombre: name, descripcion: '', parentId: folderConfig.parentId || '', color, icono })
-    handleCreateSuite(event)
-    setShowAddFolderModal(false)
+    setSuiteSaving(true)
+    try {
+      if (await handleCreateSuite(event)) setShowAddFolderModal(false)
+    } finally { setSuiteSaving(false) }
+  }
+
+  const submitSuite = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (suiteSaving) return
+    setSuiteSaving(true)
+    try { await (editingSuiteId ? handleUpdateSuite(event) : handleCreateSuite(event)) }
+    finally { setSuiteSaving(false) }
   }
 
   return (
@@ -131,7 +155,7 @@ export function SuiteAndComponentModals({
             )}
             <Form.Group>
               <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('casos.folderName')}</RequiredLabel></Form.Label>
-              <Form.Control name="folderName" autoFocus required placeholder={t('casos.folderNamePlaceholder')} className="bg-light shadow-none" />
+              <Form.Control name="folderName" maxLength={150} autoFocus required placeholder={t('casos.folderNamePlaceholder')} className="bg-light shadow-none" />
             </Form.Group>
             <div className="row g-2 mt-2">
               <Form.Group className="col-5">
@@ -157,7 +181,7 @@ export function SuiteAndComponentModals({
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0">
             <Button variant="light" size="sm" className="fw-bold text-muted" onClick={() => setShowAddFolderModal(false)}>{t('common.cancel')}</Button>
-            <Button variant="primary" size="sm" type="submit" className="fw-bold px-3 shadow-sm">{t('casos.createFolder')}</Button>
+            <Button variant="primary" size="sm" type="submit" disabled={suiteSaving} className="fw-bold px-3 shadow-sm">{t('casos.createFolder')}</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -169,12 +193,13 @@ export function SuiteAndComponentModals({
             {editingSuiteId ? t('casos.editSuite') : t('casos.newSuite')}
           </Modal.Title>
         </Modal.Header>
-        <Form onSubmit={editingSuiteId ? handleUpdateSuite : handleCreateSuite}>
+        <Form onSubmit={submitSuite}>
           <Modal.Body className="pt-0">
             <Form.Group className="mb-3">
               <Form.Label><RequiredLabel required>{t('casos.name')}</RequiredLabel></Form.Label>
               <Form.Control
                 name="nombre"
+                maxLength={150}
                 value={suiteForm.nombre}
                 onChange={(e) => setSuiteForm({ ...suiteForm, nombre: e.target.value })}
                 required
@@ -186,6 +211,7 @@ export function SuiteAndComponentModals({
               <Form.Control
                 as="textarea"
                 name="descripcion"
+                maxLength={4000}
                 value={suiteForm.descripcion}
                 onChange={(e) => setSuiteForm({ ...suiteForm, descripcion: e.target.value })}
                 rows={3}
@@ -255,8 +281,8 @@ export function SuiteAndComponentModals({
                   onChange={(e) => setSuiteForm({ ...suiteForm, parentId: e.target.value })}
                 >
                   <option value="">{t('casos.rootSuiteOption')}</option>
-                  {flattenSuites(suitesTree).map(suite => (
-                    <option key={suite.id} value={suite.id}>{suite.nombre}</option>
+                  {suitePaths.map(suite => (
+                    <option key={suite.id} value={suite.id}>{suite.pathLabel}</option>
                   ))}
                 </Form.Select>
               </Form.Group>
@@ -266,7 +292,7 @@ export function SuiteAndComponentModals({
             <Button variant="secondary" onClick={resetSuiteModal}>
               {t('common.cancel')}
             </Button>
-            <Button variant="primary" type="submit">
+            <Button variant="primary" type="submit" disabled={suiteSaving}>
               {editingSuiteId ? t('common.update') : t('common.create')}
             </Button>
           </Modal.Footer>
@@ -290,7 +316,7 @@ export function SuiteAndComponentModals({
               >
                 <option value="">{t('casos.rootSuiteWithoutParentOption')}</option>
                 {moveSuiteOptions.map(suite => (
-                  <option key={suite.id} value={suite.id}>{suite.nombre}</option>
+                  <option key={suite.id} value={suite.id}>{suite.pathLabel}</option>
                 ))}
               </Form.Select>
             </Form.Group>

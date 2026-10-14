@@ -16,7 +16,7 @@ test('creates a vault resolver without putting the secret in runtime metadata', 
     return new Response(JSON.stringify({ secret: 'mcp-secret' }), { status: 200 });
   }) as typeof fetch;
   try {
-    const services = createMcpRuntimeServices({ resolveHost: async () => ['93.184.216.34'] });
+    const services = createMcpRuntimeServices({ resolveHost: async () => ['93.184.216.34'], fetchImpl: globalThis.fetch });
     assert.ok(services);
     assert.equal(await services.resolveCredential('vault:credential-1'), 'mcp-secret');
     assert.equal(request?.headers.get('x-engine-internal-token'), 'engine-secret');

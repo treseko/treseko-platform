@@ -3,8 +3,13 @@ from sqlalchemy import exists
 from ..services.conversational_bug_context import infer_bug_is_conversational
 from .bug_context_filters import apply_bug_context_filter, mark_legacy_chatbot_items
 from ..services.chatbot_turns import find_executed_turn
+from .bug_issue_listing import (
+    BUG_CLOSED_STATES,
+    _apply_bug_attention_filter,
+    _bug_list_order,
+    _summarize_bug_items,
+)
 
-BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 BUG_SELF_RESOLUTION_STATES = {"RESUELTO"}
 BUG_LEAD_CLOSURE_STATES = {"CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}
 
@@ -31,30 +36,6 @@ def bug_transition_policy(next_state: str) -> tuple[str, str | None]:
     if normalized in BUG_LEAD_CLOSURE_STATES:
         return "bugs.cerrar", "leader_or_admin"
     return "bugs.triage", None
-
-def _summarize_bug_items(bugs):
-    def count_by(field):
-        data: Dict[str, int] = {}
-        for bug in bugs:
-            key = str(getattr(bug, field, None) or "N/D")
-            data[key] = data.get(key, 0) + 1
-        return data
-    open_bugs = [bug for bug in bugs if bug.estado not in BUG_CLOSED_STATES]
-    return {
-        "total": len(bugs),
-        "abiertos": len(open_bugs),
-        "criticos": len([bug for bug in open_bugs if bug.severidad in {"CRITICA", "ALTA"}]),
-        "bloquean_release": len([bug for bug in open_bugs if bug.bloquea_release]),
-        "listos_retest": len([bug for bug in open_bugs if bug.estado == "LISTO_PARA_RETEST"]),
-        "cerrados": len([bug for bug in bugs if bug.estado in BUG_CLOSED_STATES]),
-        "vinculados_externos": len([bug for bug in bugs if bug.external_issue_id or bug.external_links]),
-        "sin_evidencia": len([bug for bug in bugs if not bug.attachments and not (bug.metadata_json or {}).get("legacy_evidence_url")]),
-        "sin_asignado": len([bug for bug in open_bugs if not bug.asignado_a]),
-        "by_estado": count_by("estado"),
-        "by_severidad": count_by("severidad"),
-        "by_prioridad": count_by("prioridad"),
-        "by_origen": count_by("origen"),
-    }
 
 def _apply_bug_filters(query, filters: Dict[str, Any]):
     if filters.get("q"):
@@ -103,19 +84,27 @@ def _apply_bug_filters(query, filters: Dict[str, Any]):
         query = query.filter(models.BugIssue.created_at >= ensure_utc(filters["desde"]))
     if filters.get("hasta"):
         query = query.filter(models.BugIssue.created_at <= ensure_utc(filters["hasta"]))
-    return query
+    return _apply_bug_attention_filter(query, filters.get("attention"))
+
+
 async def list_project_bugs(db: AsyncSession, proyecto_id: UUID, **filters):
     skip = int(filters.pop("skip", 0) or 0)
     limit = min(max(int(filters.pop("limit", 50) or 50), 1), 200)
+    include_summary = filters.pop("include_summary", False)
+    sort = filters.pop("sort", "newest")
     base = select(models.BugIssue).filter(models.BugIssue.proyecto_id == proyecto_id)
     filtered = _apply_bug_filters(base, filters)
     count_result = await db.execute(select(func.count()).select_from(filtered.subquery()))
     total = int(count_result.scalar() or 0)
     result = await db.execute(
-        filtered.options(*_bug_options()).order_by(models.BugIssue.created_at.desc()).offset(skip).limit(limit)
+        filtered.options(*_bug_options()).order_by(*_bug_list_order(sort)).offset(skip).limit(limit)
     )
     items = await mark_legacy_chatbot_items(db, result.scalars().unique().all())
-    return {"items": items, "total": total, "skip": skip, "limit": limit}
+    payload = {"items": items, "total": total, "skip": skip, "limit": limit}
+    if include_summary:
+        result = await db.execute(filtered.options(selectinload(models.BugIssue.attachments), selectinload(models.BugIssue.external_links)))
+        payload["summary"] = _summarize_bug_items(result.scalars().unique().all())
+    return payload
 
 async def list_incident_center(
     db: AsyncSession,
@@ -133,6 +122,7 @@ async def list_incident_center(
     """
     skip = int(filters.pop("skip", 0) or 0)
     limit = min(max(int(filters.pop("limit", 50) or 50), 1), 200)
+    sort = filters.pop("sort", "newest")
     query = select(models.BugIssue)
     if organizacion_id is not None:
         query = query.join(models.Proyecto, models.Proyecto.id == models.BugIssue.proyecto_id)
@@ -154,7 +144,7 @@ async def list_incident_center(
     summary = _summarize_bug_items(summary_bugs)
     result = await db.execute(
         filtered.options(*_bug_options())
-        .order_by(models.BugIssue.created_at.desc())
+        .order_by(*_bug_list_order(sort))
         .offset(skip)
         .limit(limit)
     )
@@ -171,6 +161,7 @@ async def list_incident_center_export(
     **filters,
 ):
     """Return the complete filtered incident set for an authorized export."""
+    sort = filters.pop("sort", "newest")
     query = select(models.BugIssue)
     if organizacion_id is not None:
         query = query.join(models.Proyecto, models.Proyecto.id == models.BugIssue.proyecto_id)
@@ -182,7 +173,7 @@ async def list_incident_center_export(
     filtered = _apply_bug_filters(query, filters)
     result = await db.execute(
         filtered.options(*_bug_options())
-        .order_by(models.BugIssue.created_at.desc())
+        .order_by(*_bug_list_order(sort))
     )
     return await mark_legacy_chatbot_items(db, result.scalars().unique().all())
 
@@ -403,6 +394,8 @@ async def transition_bug_issue(
     old_status = str(bug.estado or "").upper()
     if old_status == next_state:
         return bug
+    if next_state == "DUPLICADO":
+        raise ValueError("Usa marcar duplicado y selecciona el bug principal para conservar la trazabilidad.")
 
     resolution_build_id = payload.resolution_build_id
     if next_state in BUG_CORRECTED_STATES:

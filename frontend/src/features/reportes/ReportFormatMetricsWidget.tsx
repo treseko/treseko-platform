@@ -84,7 +84,7 @@ export function ReportFormatMetricsWidget({
                   <div className="border-top mt-2 pt-2 x-small">
                     <div className="fw-bold text-secondary mb-1">{t('reportes.conversationalDetail')}</div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.turns')}</span><strong>{formatInt(specific.turns)}</strong></div>
-                    <div className="d-flex justify-content-between"><span>{t('reportes.p95Response')}</span><strong>{formatMs(specific.p95_latency_ms)}</strong></div>
+                    <div className="d-flex justify-content-between"><span>{t('reportes.p95Response')}</span><strong>{specific.latency_sample_count > 0 ? formatMs(specific.p95_latency_ms) : t('reportes.noLatencyMeasurement')}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.httpNon2xx')}</span><strong>{formatInt(specific.http_errors)}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.failedValidations')}</span><strong>{formatInt(specific.validation_failures)}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.memoryTools')}</span><strong>{formatInt(specific.memory_failures)} / {formatInt(specific.tool_failures)}</strong></div>
@@ -94,7 +94,7 @@ export function ReportFormatMetricsWidget({
                   <div className="border-top mt-2 pt-2 x-small">
                     <div className="fw-bold text-secondary mb-1">{t('reportes.apiDetail')}</div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.requests')}</span><strong>{formatInt(specific.requests)}</strong></div>
-                    <div className="d-flex justify-content-between"><span>{t('reportes.p95Response')}</span><strong>{formatMs(specific.p95_latency_ms)}</strong></div>
+                    <div className="d-flex justify-content-between"><span>{t('reportes.p95Response')}</span><strong>{specific.latency_sample_count > 0 ? formatMs(specific.p95_latency_ms) : t('reportes.noLatencyMeasurement')}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.httpNon2xx')}</span><strong>{formatInt(specific.http_errors)}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.failedValidations')}</span><strong>{formatInt(specific.validation_failures)}</strong></div>
                     <div className="d-flex justify-content-between"><span>{t('reportes.httpStatusGroups')}</span><strong>{formatInt(specific.status_2xx)} / {formatInt(specific.status_4xx)} / {formatInt(specific.status_5xx)}</strong></div>

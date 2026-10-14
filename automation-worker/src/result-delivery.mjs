@@ -88,7 +88,13 @@ export function createResultDelivery({
     const contents = JSON.stringify(envelope);
     fsImpl.writeFileSync(temporary, contents, { encoding: "utf8", mode: 0o600, flag: "wx" });
     try { fsImpl.chmodSync(temporary, 0o600); } catch (_) { /* best effort on Windows */ }
+    const fileDescriptor=fsImpl.openSync(temporary,'r');
+    try{fsImpl.fsyncSync(fileDescriptor);}finally{fsImpl.closeSync(fileDescriptor);}
     fsImpl.renameSync(temporary, target);
+    if(process.platform!=='win32'){
+      const directoryDescriptor=fsImpl.openSync(spoolDir,'r');
+      try{fsImpl.fsyncSync(directoryDescriptor);}finally{fsImpl.closeSync(directoryDescriptor);}
+    }
     return target;
   }
 

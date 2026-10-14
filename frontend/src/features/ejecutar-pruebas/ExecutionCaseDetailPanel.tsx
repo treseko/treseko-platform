@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button } from "react-bootstrap";
 import { AlertCircle, Bug, CheckCircle2, Clock, FileText, History, ImagePlus, Info, PlayCircle, User, XCircle } from "lucide-react";
 import type { AttachmentMeta } from "../../EvidenceUpload";
@@ -6,45 +6,34 @@ import { isImageAsset, resolveAssetUrl } from "../../shared/utils/assets";
 import { isEvidenceAvailable } from "../../shared/utils/evidenceAvailability";
 import { getExecutionHistoryStats, getStatusColor, normalizeExecutionHistory } from "../ejecucion/executionUtils";
 import { getBugPriorityPresentation } from "../bugs/bugPresentation";
+import { hydrateExecutionHistory } from "../ejecucion/executionHistoryState";
 import { ExecutionHistoryPanel } from "./ExecutionHistoryPanel";
 
 export function ExecutionCaseDetailPanel({ options }: { options: any }) {
   const { selectedTest, t, setSelectedTest, currentBuildId, loadCasoExecutionHistory, buildsList, canStartAnyExecution, isOutdatedExecutionCase, openSingleCaseExecutionSelector, getExecutionActionLabel, renderInternalBugButton, getBugStatusBadge, getBugSeverityBadge, getBugCriticalityBadge, getOpenBugsForCase, getStatusColor: _getStatusColor, onOpenRunHistory, onOpenEvidence, setZoomImage, showFeedback, onOpenBugTracker, canViewBugs } = options;
   const historyHydrationKey = useRef('');
+  const historyLoader = useRef(loadCasoExecutionHistory);
+  historyLoader.current = loadCasoExecutionHistory;
+  const [historyRetry, setHistoryRetry] = useState(0);
 
   useEffect(() => {
     if (!selectedTest?.id || typeof loadCasoExecutionHistory !== 'function') return;
-    const key = `${selectedTest.id}:${currentBuildId || ''}`;
+    const key = `${selectedTest.id}:${currentBuildId || ''}:${historyRetry}`;
     if (historyHydrationKey.current === key) return;
     historyHydrationKey.current = key;
     let cancelled = false;
-    void loadCasoExecutionHistory(selectedTest.id, currentBuildId).then((history: any[] & { total?: number; stats?: any }) => {
+    void historyLoader.current(selectedTest.id, currentBuildId).then((history: any[] & { total?: number; stats?: any }) => {
       if (cancelled) return;
-      setSelectedTest((previous: any) => previous?.id === selectedTest.id
-        ? (() => {
-            const resolvedHistory = history.length > 0 || !Array.isArray(previous.history)
-              ? history
-              : previous.history;
-            const latest = resolvedHistory[0];
-            return {
-              ...previous,
-              history: resolvedHistory,
-              historyTotal: history.length > 0 ? (history.total ?? history.length) : (previous.historyTotal || resolvedHistory.length),
-              historyStats: history.length > 0 ? (history.stats || null) : (previous.historyStats || null),
-              ...(latest ? {
-                lastResult: latest.status,
-                lastExecutedAt: latest.date,
-                lastExecutedBy: latest.executedBy,
-                lastExecutedVersion: latest.versionExecuted,
-              } : {}),
-            };
-          })()
-        : previous);
+      if ((history as any).error) {
+        setSelectedTest((previous: any) => previous?.id === selectedTest.id ? { ...previous, historyError: (history as any).error } : previous);
+        return;
+      }
+      setSelectedTest((previous: any) => previous?.id === selectedTest.id ? hydrateExecutionHistory(previous, history) : previous);
     }).catch(() => {
-      // Conserva el historial resumido que ya llegó con el caso.
+      if (!cancelled) setSelectedTest((previous: any) => previous?.id === selectedTest.id ? { ...previous, historyError: 'network' } : previous);
     });
     return () => { cancelled = true; };
-  }, [selectedTest?.id, selectedTest?.historyStats, currentBuildId, loadCasoExecutionHistory, setSelectedTest]);
+  }, [historyRetry, selectedTest?.id, currentBuildId, setSelectedTest]);
   if (!selectedTest) return null;
   return (
             <div
@@ -58,6 +47,10 @@ export function ExecutionCaseDetailPanel({ options }: { options: any }) {
     boxShadow: "-4px 0 16px rgba(0,0,0,0.06)",
   }}
             >
+  {selectedTest.historyError && <Alert variant="warning" className="m-2 small">
+    {t('ejecutarPruebas.historyLoadError')}
+    <Button size="sm" variant="outline-primary" className="ms-2" onClick={() => setHistoryRetry(value => value + 1)}>{t('common.retry')}</Button>
+  </Alert>}
   <div className="p-3 border-bottom d-flex justify-content-between align-items-start bg-primary bg-gradient text-white">
     <div style={{ flex: 1, minWidth: 0 }}>
       <div

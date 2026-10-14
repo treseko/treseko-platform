@@ -1,5 +1,6 @@
 import type { Page } from 'playwright'; import type { AIClient, AIResult } from '../ai/client.ts'; import type { BrowserObservation, ExecutionCheckpoint, QAEngineStep, StepContract, StepRunResult, StrictAIAction, StructuredHistoryItem } from './action-types.ts';
 import { executeStrictAction, normalizeAction, normalizeUrl, shouldUseCoordinateClickFallback, toCoordinateClickFallback, validateAction } from './action-executor.ts'; import { formatObservation, observeBrowser } from './observation.ts'; import { buildStepContract, evaluateStepContract, inferConventionalUiAction, inferStructuredAction, parseStepData, stepDataValue } from './step-contract.ts'; import { displayResolvedInput, interpretStepData } from './context-data-interpreter.ts';
+import { auditCoordinatePostValidation, revalidateCoordinateClick } from './step-runner-coordinate.ts';
 import type { RunStepsResult, StepRunnerOptions } from './step-runner-types.ts'; export type { RunStepsResult, StepRunnerOptions } from './step-runner-types.ts';
 import {
   stepGoal,
@@ -7,11 +8,9 @@ import {
   latestCheckpointContext,
   actionExplicitlySubmits,
   buildCheckpoint,
-  statusFromAction,
   isBrowserOpenStep,
   extractStepUrl,
   isUrlNavigationStep,
-  confidenceFromHistory,
   normalizeText,
   evidenceTerms,
   observationCorpus,
@@ -20,6 +19,9 @@ import {
   expectedCountRequirement,
   countVisibleTerm,
   hasDynamicResultEvidence,
+  confidencePayload,
+  confidenceRecord,
+  finalizeStepResult,
 } from './step-runner-helpers.ts';
 import {
   extractKeyValue,
@@ -84,6 +86,7 @@ export async function runQaSteps(
           action: 'finish',
           reason: 'El navegador ya esta abierto y la pagina inicial esta cargada.',
           confidence: 100,
+          ...confidenceRecord('rules'),
           step_number: step.number,
           ...(step.expected ? { expected: step.expected } : {}),
         },
@@ -110,13 +113,13 @@ export async function runQaSteps(
         screenshot: screenshotBase64,
         message: item.action.reason,
         action: item.action,
-        confidence: item.action.confidence,
+        ...confidencePayload(item.action),
       });
       options.logger?.log('BROWSER', 'INFO', `Paso ${step.number}: navegador disponible`, {
         step: step.number,
         action: item.action,
         execution: item.execution,
-        confidence: item.action.confidence,
+        ...confidencePayload(item.action),
       });
       results.push({
         number: step.number,
@@ -138,6 +141,7 @@ export async function runQaSteps(
         value: url,
         reason: `Navegacion deterministica usando la URL del paso: ${url}`,
         confidence: 100,
+        ...confidenceRecord('rules'),
         step_number: step.number,
         ...(step.expected ? { expected: step.expected } : {}),
       };
@@ -198,7 +202,7 @@ export async function runQaSteps(
         action_summary: execution.command || action.action || 'No se ejecuto una accion',
         action_executed: Boolean(execution.ok && !['blocked', 'fail'].includes(String(action.action || '').toLowerCase())),
         url: afterObservation.url,
-        confidence: action.confidence,
+        ...confidencePayload(action),
         contract,
         checkpoints: [item.checkpoint],
         deterministic: true,
@@ -232,10 +236,10 @@ export async function runQaSteps(
     }
     const stepMaxAttempts = isCompoundFlowStep(step) ? Math.max(maxAttempts, 6) : maxAttempts;
     for (let attempt = 1; attempt <= stepMaxAttempts; attempt++) {
-      const observation = await observeBrowser(page, options.executionId, step.number);
+      let observation = await observeBrowser(page, options.executionId, step.number);
       visitedUrls.add(observation.url);
       const observationText = formatObservation(observation);
-      const screenshot = await page.screenshot();
+      let screenshot = await page.screenshot();
       const screenshotBase64 = screenshot.toString('base64');
       options.emit?.('status', {
         agent: 'AI_AGENT',
@@ -281,6 +285,7 @@ export async function runQaSteps(
           attempt,
         });
       let action = normalizeAction(aiResult.data, step.number);
+      Object.assign(action, confidenceRecord(deterministicAction ? 'rules' : 'model'));
       if (action.action === 'fill_form' && action.submit_after_type && !actionExplicitlySubmits(step)) {
         action = {
           ...action,
@@ -306,7 +311,7 @@ export async function runQaSteps(
             original_action: action,
             recovered_action: recovered,
           });
-          action = recovered;
+          action = { ...recovered, confidence_source: 'rules', confidence_calibration: 'uncalibrated' };
           validation = validateAction(action, observation, step.number);
         } else {
           validation = {
@@ -316,14 +321,13 @@ export async function runQaSteps(
         }
       }
       if (!validation.ok && shouldUseCoordinateClickFallback(action, validation.reason)) {
-        const originalValidation = validation;
-        action = toCoordinateClickFallback(action, originalValidation.reason);
-        validation = validateAction(action, observation, step.number);
+        const refreshed = await revalidateCoordinateClick(page, action, observation, options.executionId, step.number, validation);
+        ({ action, observation, screenshot, validation } = refreshed);
         options.logger?.log('QA_GUARD', validation.ok ? 'INFO' : 'WARN', `Paso ${step.number}: fallback visual click_at -> ${validation.reason}`, {
           step: step.number,
           attempt,
           action,
-          original_validation: originalValidation,
+          original_validation: refreshed.originalValidation,
           validation,
         });
       }
@@ -359,7 +363,7 @@ export async function runQaSteps(
         if (execution.ok) {
           await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
           afterObservation = await waitForExpectedEvidence(page, step, action, options.executionId);
-          postValidation = validateExpectedOutcome(step, observation, afterObservation);
+          postValidation = auditCoordinatePostValidation(action, validateExpectedOutcome(step, observation, afterObservation));
           options.logger?.log('VALIDATOR', postValidation.ok ? 'INFO' : 'WARN', `Paso ${step.number}: ${postValidation.reason}`, {
             step: step.number,
             attempt,
@@ -446,35 +450,15 @@ export async function runQaSteps(
         action,
         validation,
         execution,
-        confidence: action.confidence,
+        ...confidencePayload(action),
       });
       const terminalModelDecision = validation.ok && (action.action === 'blocked' || action.action === 'fail');
       const compoundContinuation = actionExecutionSucceeded && isCompoundFlowStep(step) && needsCompoundContinuation(step, afterObservation);
       const conclusiveAssertionFailure = execution.command === 'postActionValidation' && postValidation.conclusive && !compoundContinuation;
-      if ((execution.ok && !compoundContinuation) || terminalModelDecision || conclusiveAssertionFailure || attempt === stepMaxAttempts) {
-        const status = execution.command === 'postActionValidation'
-          ? (postValidation.conclusive ? 'FALLO' : 'BLOQUEADO')
-          : statusFromAction(action, execution.ok);
-        const reason = execution.ok
-          ? action.reason || `Paso ${step.number} ejecutado correctamente`
-          : execution.message || action.reason || `Paso ${step.number} no pudo ejecutarse`;
-        if (!execution.ok) errors.push(`Paso ${step.number}: ${reason}`);
-        finalResult = {
-          number: step.number,
-          status,
-          observations: reason,
-          history: stepHistory,
-          confidence: confidenceFromHistory(stepHistory),
-          contract,
-          checkpoints: stepHistory.map((historyItem) => historyItem.checkpoint).filter(Boolean) as ExecutionCheckpoint[],
-        };
-        if (item.screenshot_base64) finalResult.screenshot_base64 = item.screenshot_base64;
-        if (!execution.ok) {
-          finalResult.error_log = execution.error || execution.message;
-          finalResult.failure_category = execution.command === 'postActionValidation'
-            ? 'expected_result_not_met'
-            : (validation.ok ? 'model_blocked' : 'invalid_model_action');
-        }
+      if ((execution.ok && !compoundContinuation) || (action.coordinate_fallback && actionExecutionSucceeded && !postValidation.conclusive) || terminalModelDecision || conclusiveAssertionFailure || attempt === stepMaxAttempts) {
+        const finalized = finalizeStepResult({ step, execution, action, validation, postValidation, contract, history: stepHistory, screenshot: item.screenshot_base64 });
+        if (!execution.ok) errors.push(`Paso ${step.number}: ${finalized.reason}`);
+        finalResult = finalized.result;
         break;
       }
       options.logger?.log('RECOVERY', 'INFO', `Paso ${step.number}: reintentando con nuevo snapshot por ${execution.message}`, {

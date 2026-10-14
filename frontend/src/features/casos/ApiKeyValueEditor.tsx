@@ -81,7 +81,7 @@ export function ApiKeyValueEditor({
   const accessibleFieldLabel = fieldLabel || fieldName
 
   return (
-    <div>
+    <div className="api-pair-editor">
       {rows.length === 0 && <div className="small text-muted py-3 text-center border rounded-2 bg-light-subtle">{emptyText}</div>}
       {rows.length > 0 && (
         <div className="api-pair-head" aria-hidden="true">

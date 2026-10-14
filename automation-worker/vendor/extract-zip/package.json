@@ -1,0 +1,52 @@
+{
+  "name": "extract-zip",
+  "version": "2.0.1-treseko.1",
+  "description": "Treseko hardened fork of extract-zip with extraction root containment",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "extract-zip": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "index.d.ts",
+    "index.js",
+    "LICENSE",
+    "readme.md"
+  ],
+  "author": "max ogden",
+  "license": "BSD-2-Clause",
+  "keywords": [
+    "unzip",
+    "zip",
+    "extract"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "debug": "^4.1.1",
+    "get-stream": "^5.1.0",
+    "yauzl": "^2.10.0"
+  },
+  "eslintConfig": {
+    "extends": [
+      "eslint:recommended",
+      "plugin:ava/recommended",
+      "plugin:import/errors",
+      "plugin:import/warnings",
+      "plugin:node/recommended",
+      "plugin:promise/recommended",
+      "standard"
+    ]
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "*.js": "yarn lint:js --fix",
+    "*.ts": "yarn lint:ts --fix"
+  }
+}

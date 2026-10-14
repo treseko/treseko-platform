@@ -1,11 +1,14 @@
+import {downloadCompleteEvidence} from './downloadCompleteEvidence'
+import { FAILED_STATUSES, INFRA_STATUSES, statusVariant, statusLabel, failureCategoryLabel, friendlyStepDiagnosis, elapsedLabel } from './automationMonitorPresentation'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, ProgressBar, Spinner, Table } from 'react-bootstrap'
 import { Activity, Clock, Download, ExternalLink, ServerCog } from 'lucide-react'
 import { useI18n } from '../../i18n'
 import { API_BASE } from '../../app/constants'
-import { dateTimeMs, formatTime } from '../../shared/utils/dateTime'
+import { formatTime } from '../../shared/utils/dateTime'
 import { languageLabel } from '../casos/caseUtils'
 import { AutomationArtifactModal } from './AutomationArtifactModal'
+import { RecordingEvidence } from '../motor-ia/RecordingEvidence'
 type MonitorJob = {
   jobId?: string
   executionId?: string
@@ -30,50 +33,6 @@ type AutomationRunMonitorModalProps = {
   onExecutionResultsSettled?: () => void | Promise<void>
 }
 const ACTIVE_STATUSES = new Set(['PENDING', 'CLAIMED', 'RUNNING'])
-const SUCCESS_STATUSES = new Set(['PASSED'])
-const FAILED_STATUSES = new Set(['FAILED', 'BLOCKED'])
-const INFRA_STATUSES = new Set(['ERROR', 'TIMEOUT', 'CANCELLED', 'BLOCKED_BY_RUNNER'])
-const statusVariant = (status?: string) => {
-  if (!status) return 'secondary'
-  if (status === 'PASO') return 'success'
-  if (status === 'FALLO') return 'danger'
-  if (status === 'BLOQUEADO') return 'primary'
-  if (SUCCESS_STATUSES.has(status)) return 'success'
-  if (FAILED_STATUSES.has(status)) return status === 'BLOCKED' ? 'primary' : 'danger'
-  if (INFRA_STATUSES.has(status)) return 'dark'
-  if (status === 'RUNNING') return 'primary'
-  if (status === 'CLAIMED') return 'info'
-  return 'secondary'
-}
-const statusLabel = (status: string | undefined, t: (key: any) => string) => {
-  const labels: Record<string, string> = {
-    PENDING: t('common.statusPending'), CLAIMED: t('common.statusClaimed'), RUNNING: t('common.statusRunning'), PASSED: t('common.statusPassed'), FAILED: t('common.statusFailed'), BLOCKED: t('common.statusBlocked'), PASO: t('common.statusPassed'), FALLO: t('common.statusFailed'), BLOQUEADO: t('common.statusBlocked'), ERROR: t('common.statusErrorRunner'), TIMEOUT: t('common.statusTimeout'), CANCELLED: t('common.statusCancelled'), BLOCKED_BY_RUNNER: t('common.statusNoWorker')
-  }
-  return status ? labels[status] || status : t('common.statusNoJob')
-}
-const failureCategoryLabel = (category: string | undefined, t: (key: any) => string) => ({ passed: t('common.categoryPassed'), required_element_not_found: t('common.categoryElementMissing'), navigation_error: t('common.categoryNavigation'), expected_result_not_met: t('common.categoryExpectedMissing'), browser_action_failed: t('common.categoryBrowserAction'), model_blocked: t('common.categoryModelBlocked') }[String(category || '')] || category || t('common.categoryUnclassified'))
-
-const friendlyStepDiagnosis = (step: any, t: (key: any) => string) => {
-  const category = String(step?.failure_category || '')
-  if (category === 'expected_result_not_met') return t('common.diagnosisExpected')
-  if (category === 'required_element_not_found') return t('common.diagnosisElement')
-  if (category === 'navigation_error') return t('common.diagnosisNavigation')
-  if (category === 'browser_action_failed') return t('common.diagnosisBrowser')
-  if (category === 'model_blocked') return t('common.diagnosisBlocked')
-  return step?.status === 'PASO' ? t('common.diagnosisPassed') : t('common.diagnosisFailed')
-}
-
-const elapsedLabel = (from?: string, to?: string) => {
-  if (!from) return '-'
-  const start = dateTimeMs(from)
-  const end = to ? dateTimeMs(to) : Date.now()
-  if (!start || !end) return '-'
-  const seconds = Math.max(0, Math.round((end - start) / 1000))
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds % 60
-  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`
-}
-
 export function AutomationRunMonitorModal({
   show,
   onHide,
@@ -88,10 +47,12 @@ export function AutomationRunMonitorModal({
   onExecutionResultsSettled
 }: AutomationRunMonitorModalProps) {
   const { t } = useI18n()
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadingJob, setDownloadingJob] = useState<string | null>(null)
   const [jobDetails, setJobDetails] = useState<Record<string, any>>({})
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
-  const [selectedArtifact, setSelectedArtifact] = useState<{ href: string; label: string; filename?: string } | null>(null)
+  const [selectedArtifact, setSelectedArtifact] = useState<{ href: string; label: string; filename?: string; contentType?: string } | null>(null)
   const [aiLive, setAiLive] = useState<any>({ status: 'RUNNING', steps: [], artifacts: [], timeline: [], resolvedContext: [], provider: '-', model: '-', observations: '' })
   const settledNotificationKeyRef = useRef('')
   const isDryRun = mode === 'dry-run'
@@ -105,6 +66,7 @@ export function AutomationRunMonitorModal({
     setLastRefresh(null)
     setExpandedJobId(null)
     setSelectedArtifact(null)
+    setDownloadError(null)
     setAiLive({ status: 'RUNNING', steps: [], artifacts: [], timeline: [], resolvedContext: [], provider: '-', model: '-', observations: '' })
   }, [jobIdsKey, run?.id, run?.nombre])
 
@@ -152,6 +114,8 @@ export function AutomationRunMonitorModal({
             next.model = event.metadata?.model || next.model
             next.aiReport = event.ai_report || {}
             next.steps = Array.isArray(event.steps) ? event.steps : next.steps
+            next.recording_ref = event.ai_report?.recording_ref || next.recording_ref
+            next.recording_status = event.ai_report?.recording_status || next.recording_status
             if (event.final_screenshot_base64) next.artifacts = [...(next.artifacts || []), {
               type: 'screenshot final', filename: 'ai-final.png', content_type: 'image/png', base64: event.final_screenshot_base64
             }]
@@ -286,6 +250,9 @@ export function AutomationRunMonitorModal({
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4">
+        {downloadError && <Alert variant="danger">{downloadError}</Alert>}
+        {isDryRun && !isAiDryRun && Object.values(jobDetails).flatMap((detail: any) => (detail?.metadata_resultado?.artifacts || []).filter((artifact: any) => artifact.recording_ref || artifact.recording_status).map((artifact: any) => <RecordingEvidence key={artifact.recording_ref?.id || artifact.filename} reference={artifact.recording_ref} status={artifact.recording_status} inlineTemporary fetchWithAuth={fetchWithAuth} />))}
+        {isAiDryRun && <RecordingEvidence reference={aiLive.recording_ref} status={aiLive.recording_status} inlineTemporary fetchWithAuth={fetchWithAuth} />}
         <Alert variant="info" className="small">
           {isAiDryRun
             ? t('ejecutarPruebas.notInHistory')
@@ -386,6 +353,16 @@ export function AutomationRunMonitorModal({
                             </Alert>
                           )}
                           {row.error && <Alert variant="danger" className="small mb-2">{row.error}</Alert>}
+                          {row.detail?.metadata_resultado?.complete_evidence_url && (
+                            <Button variant="outline-secondary" size="sm" className="mb-2" disabled={downloadingJob === row.detail.id}
+                              onClick={async () => {
+                                setDownloadError(null); setDownloadingJob(row.detail.id)
+                                try { await downloadCompleteEvidence({jobId: row.detail.id, url: row.detail.metadata_resultado.complete_evidence_url, apiBase: API_BASE, fetchWithAuth}) }
+                                catch { setDownloadError(t('common.evidenceLoadFailed')) }
+                                finally { setDownloadingJob(null) }
+                              }}>{t('common.downloadCompleteResult')}</Button>
+                          )}
+                          {!isAiDryRun && <RecordingEvidence reference={row.detail?.metadata_resultado?.ai_report?.recording_ref} status={row.detail?.metadata_resultado?.ai_report?.recording_status} />}
                           <div className="text-uppercase text-muted x-small fw-bold mb-2">{responseLabel}</div>
                           <pre className="bg-dark text-light rounded-3 p-3 small mb-2 overflow-auto" style={{ maxHeight: 260, whiteSpace: 'pre-wrap' }}>
                             {resultDetail}
@@ -425,7 +402,7 @@ export function AutomationRunMonitorModal({
                       variant="outline-primary"
                       size="sm"
                       className="x-small flex-grow-1"
-                      onClick={() => setSelectedArtifact({ href, label, filename: artifact.filename || label })}
+                      onClick={() => setSelectedArtifact({ href, label, filename: artifact.filename || label, contentType: artifact.content_type })}
                     >
                       {t('ejecutarPruebas.view')}
                     </Button>
@@ -496,7 +473,7 @@ export function AutomationRunMonitorModal({
         )}
       </Modal.Body>
       <Modal.Footer className="border-0 pt-0">
-        <Button variant="outline-secondary" onClick={onHide}>{t('ejecutarPruebas.followOnScreen')}</Button>
+        <Button variant="outline-secondary" onClick={onHide}>{isDryRun ? t('common.close') : t('ejecutarPruebas.followOnScreen')}</Button>
         <Button variant="outline-primary" onClick={onOpenWorkers}>
           <ServerCog size={16} className="me-1" />
           {t('ejecutarPruebas.viewWorkers')}

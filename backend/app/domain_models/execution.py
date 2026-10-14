@@ -71,6 +71,7 @@ class EjecucionCaso(Base):
     # historical evidence is rendered or exported.
     evidence_policy = Column(JSON, default=dict, nullable=False)
     chatbot_config_snapshot = Column(JSON, default=dict)
+    chatbot_manual_context_secret = Column(Text, nullable=True)
     chatbot_resultado = Column(JSON, default=dict)
     api_config_snapshot = Column(JSON, default=dict)
     api_resultado = Column(JSON, default=dict)

@@ -31,7 +31,7 @@ import { ReportFormatMetricsWidget } from './ReportFormatMetricsWidget'
 import { ReportFormatModeMatrixWidget } from './ReportFormatModeMatrixWidget'
 import { ReportSecondaryWidgets } from './ReportSecondaryWidgets'
 import { SharedReportHistory } from './SharedReportHistory'
-import { ReportEmptyState } from './ReportEmptyState'
+import { ReportEmptyState, ReportMetricsNotice } from './ReportEmptyState'
 import { SharedReportPremiumNotice } from './SharedReportPremiumNotice'
 import { useReportExportActions } from './useReportExportActions'
 import { useReportConfiguration } from './useReportConfiguration'
@@ -126,7 +126,7 @@ class ReportWidgetErrorBoundary extends Component<{ children: ReactNode, errorTe
 }
 
 type ReportesPageProps = {
-  metricsLoading: boolean
+  metricsLoading: boolean; metricsError?: string
   projectMetrics: any
   expandedMetricSuites: Set<string>
   setExpandedMetricSuites: (suites: Set<string>) => void
@@ -145,7 +145,7 @@ type ReportesPageProps = {
 }
 
 export function ReportesPage({
-  metricsLoading,
+  metricsLoading, metricsError,
   projectMetrics,
   expandedMetricSuites,
   setExpandedMetricSuites,
@@ -205,7 +205,7 @@ export function ReportesPage({
     t,
   })
   const {
-    sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal,
+    sharedHistoryError, sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal,
     shareAcknowledged, setShareAcknowledged, sharedReportHistory, setSharedReportHistory,
     sharedReportHistoryBuildId, setSharedReportHistoryBuildId, loadingSharedHistory,
     showFullSharedHistory, setShowFullSharedHistory, buildDefinition, setBuildDefinition, qaComment, setQaComment,
@@ -220,7 +220,7 @@ export function ReportesPage({
     status: '',
     owner: '',
     executionMode: '',
-    bug: 'open',
+    bug: '',
     evidence: '',
   })
   const {
@@ -363,7 +363,7 @@ export function ReportesPage({
               <RefreshCw size={14} className="me-1" /> {t('reportes.refresh')}
             </Button>
             {canExportReports && (
-              <Button variant="outline-secondary" size="sm" className="fw-bold px-3 border-2 rounded-3 hover-bg-light shadow-none" disabled={!projectMetrics} onClick={exportPdfReport}>
+              <Button variant="outline-secondary" size="sm" className="fw-bold px-3 border-2 rounded-3 hover-bg-light shadow-none" title={t('reportes.fullExportScope')} disabled={!projectMetrics} onClick={exportPdfReport}>
                 <Download size={14} className="me-1" /> {t('reportes.pdf')}
               </Button>
             )}
@@ -381,7 +381,7 @@ export function ReportesPage({
               </PremiumGate>
             )}
             {canExportReports && (
-              <Button variant="primary" size="sm" className="fw-bold px-3 border-0 shadow rounded-3 shadow-none" disabled={!projectMetrics} onClick={exportExcelReport}>
+              <Button variant="primary" size="sm" className="fw-bold px-3 border-0 shadow rounded-3 shadow-none" title={t('reportes.fullExportScope')} disabled={!projectMetrics} onClick={exportExcelReport}>
                 <Download size={14} className="me-1" /> {t('reportes.xls')}
               </Button>
             )}
@@ -389,7 +389,7 @@ export function ReportesPage({
         </div>
       </div>
 
-      {metricsLoading ? (
+      <ReportMetricsNotice error={metricsError} hasPreviousData={Boolean(projectMetrics)} loading={metricsLoading} onRetry={() => loadProjectMetrics()} />{metricsLoading ? (
         <div className="text-center py-5">
           <RefreshCw size={32} className="text-primary animate-pulse" />
           <p className="text-muted mt-2">{t('reportes.loadingMetrics')}</p>
@@ -494,7 +494,7 @@ export function ReportesPage({
             executionModeMax, hasExecutionModeData, caseTypeData,
           })}
           {SharedReportHistory({
-            canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
+            sharedHistoryError, canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
             showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
             visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
             openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,
@@ -502,7 +502,7 @@ export function ReportesPage({
         </ResponsiveReportesGridLayout>
         </>
       ) : (
-        <ReportEmptyState t={t} loadProjectMetrics={loadProjectMetrics} />
+        metricsError ? null : <ReportEmptyState t={t} loadProjectMetrics={loadProjectMetrics} />
       )}
       <SharedReportPremiumNotice
         enabled={canViewSharedReportsByPermission}

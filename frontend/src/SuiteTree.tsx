@@ -1,3 +1,4 @@
+import { SuiteActionsMenu, CaseActionsMenu } from './SuiteTreeMenus'
 import { memo, useMemo, useState, type CSSProperties } from 'react'
 import { Button, Dropdown } from 'react-bootstrap'
 import { Archive, ArrowDown, ArrowUp, Bug, ChevronDown, ChevronRight, ClipboardCopy, Database, Edit, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, History, LockKeyhole, MoreVertical, MoveRight, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Trash2, Zap } from 'lucide-react'
@@ -8,6 +9,10 @@ import { caseCreationFormats, caseFormatPresentation, normalizeCaseFormat, type 
 import { stopCaseDropPropagation } from './features/casos/caseOrganization'
 
 type SuiteTreeProps = {
+  canEditSuites?: boolean
+  canEditCases?: boolean
+  canViewVersions?: boolean
+  onReorderSuite?: (suiteId: string, direction: 'up' | 'down') => void
   suites: any[]
   expandedSuites: Record<string, boolean>
   selectedSuiteId: string
@@ -169,6 +174,10 @@ const SuiteTreeNode = ({
     onViewVersions,
     onDeleteCase,
     showActions = true,
+    canEditSuites = true,
+    canEditCases = true,
+    canViewVersions = true,
+    onReorderSuite,
     showMetrics = false,
     getSuiteMetrics,
     openTestDropdown,
@@ -189,7 +198,7 @@ const SuiteTreeNode = ({
   const hasChildSuites = (suite.children || []).length > 0
   const organizationAvailable = Boolean(onOrganizeCase)
   const organizationRows = (organizationCases || casosList).filter(test => test?.activo !== false && test?.caseStatus !== 'ARCHIVADO' && test?.estado_caso !== 'ARCHIVADO')
-  const canOrganize = organizationAvailable
+  const canOrganize = organizationAvailable && canEditCases && !suite.archivado
   const canonicalPositionForVisibleIndex = (targetSuiteId: string, visibleIndex: number) => {
     const target = suiteTests[visibleIndex]
     if (!target) return organizationRows.filter(item => (item.suiteId ?? item.suite_id) === targetSuiteId).length
@@ -205,6 +214,7 @@ const SuiteTreeNode = ({
   const metrics = showMetrics && getSuiteMetrics ? getSuiteMetrics(suite.id) : null
   const hasMetricResults = !!metrics && (metrics.passed > 0 || metrics.failed > 0 || metrics.blocked > 0 || metrics.pending > 0)
   const suiteTreeIds = collectSuiteIds(suite)
+  const canRetireSuite = canEditCases || ![...casosList, ...(organizationCases || [])].some(test => suiteTreeIds.includes(test.suiteId))
   const descendantSuiteCount = Math.max(0, suiteTreeIds.length - 1)
   const cumulativeTestCount = casosList.filter(test =>
     (isUnsuitedRoot ? !test.suiteId : suiteTreeIds.includes(test.suiteId)) && (!currentCompId || test.componentId === currentCompId)
@@ -309,54 +319,7 @@ const SuiteTreeNode = ({
           </span>
         )}
 
-        {showActions && !isUnsuitedRoot && <div className="ms-auto pl-2 flex-shrink-0">
-          <Dropdown show={suiteMenuOpen} onToggle={(isOpen) => onToggleSuiteDropdown?.(isOpen ? suite.id : null)} onClick={(e) => e.stopPropagation()}>
-            <Dropdown.Toggle variant="link" size="sm" className="p-1 text-muted shadow-none border-0 hover-text-primary d-flex align-items-center flex-shrink-0">
-              <Settings size={14} />
-            </Dropdown.Toggle>
-            <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
-              <Dropdown.Header className="px-3 pb-1 text-uppercase x-small text-muted">{t('common.newTestCase')}</Dropdown.Header>
-              {caseCreationFormats.map((format) => {
-                const FormatIcon = caseFormatPresentation[format].icon
-                const label = t(caseFormatPresentation[format].labelKey)
-                return (
-                  <Dropdown.Item
-                    key={format}
-                    onClick={() => onCreateCase(suite.id, format)}
-                    className="d-flex align-items-center gap-2 text-dark"
-                  >
-                    <FormatIcon size={14} style={{ color: caseFormatPresentation[format].color }} aria-hidden="true" />
-                    {label}
-                  </Dropdown.Item>
-                )
-              })}
-              <Dropdown.Divider />
-              <Dropdown.Item onClick={() => onCreateSuite(suite.id)} className="d-flex align-items-center gap-2 text-dark"><FolderPlus size={14}/> {t('common.newSubfolder')}</Dropdown.Item>
-              <Dropdown.Item onClick={() => onEditSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Edit size={14}/> {t('common.editFolder')}</Dropdown.Item>
-              {onCloneSuite && (
-                <Dropdown.Item onClick={() => onCloneSuite(suite)} className="d-flex align-items-center gap-2 text-dark">
-                  <ClipboardCopy size={14} className="flex-shrink-0" aria-hidden="true" />
-                  <span className="text-truncate">{t('common.copySuite')}</span>
-                </Dropdown.Item>
-              )}
-              {onMoveSuite && (
-                <Dropdown.Item onClick={() => onMoveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><MoveRight size={14}/> {t('common.moveFolder')}</Dropdown.Item>
-              )}
-              {(onArchiveSuite || onRestoreSuite) && <Dropdown.Divider />}
-              {suite.archivado ? (
-                onRestoreSuite && (
-                  <Dropdown.Item onClick={() => onRestoreSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><RotateCcw size={14}/> {t('common.restoreSuite')}</Dropdown.Item>
-                )
-              ) : (
-                onArchiveSuite && (
-                  <Dropdown.Item onClick={() => onArchiveSuite(suite)} className="d-flex align-items-center gap-2 text-dark"><Archive size={14}/> {t('common.archiveSuite')}</Dropdown.Item>
-                )
-              )}
-              <Dropdown.Divider />
-              <Dropdown.Item onClick={() => onDeleteSuite(suite.id)} className="d-flex align-items-center gap-2 text-danger"><Trash2 size={14}/> {t('common.deleteFolder')}</Dropdown.Item>
-            </Dropdown.Menu>
-          </Dropdown>
-        </div>}
+        <SuiteActionsMenu props={props} suite={suite} canRetireSuite={canRetireSuite} />
       </div>
 
       {isExpanded && hasChildSuites && (
@@ -454,62 +417,7 @@ const SuiteTreeNode = ({
               {test.caseStatus === 'ARCHIVADO' && (
                 <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle x-small flex-shrink-0">{t('common.archived')}</span>
               )}
-              {showActions && <Dropdown show={openTestDropdown === test.id} onToggle={(isOpen) => onToggleTestDropdown?.(isOpen ? test.id : null)} onClick={(e) => e.stopPropagation()}>
-                <Dropdown.Toggle
-                  as="button"
-                  type="button"
-                  bsPrefix="suite-tree-case-actions-toggle"
-                  className="text-muted suite-tree-case-actions d-inline-flex align-items-center justify-content-center"
-                  title={t('common.caseOptions')}
-                  aria-label={`${t('common.caseOptions')}: ${testTooltip}`}
-                >
-                  <MoreVertical size={14} />
-                </Dropdown.Toggle>
-                <Dropdown.Menu className="shadow-sm border-light-subtle app-small">
-                  {onViewVersions && test.version > 1 && (
-                    <Dropdown.Item onClick={() => onViewVersions(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <History size={14} /> {t('common.viewChanges')}
-                    </Dropdown.Item>
-                  )}
-                  <Dropdown.Item onClick={() => onEditCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                    <Edit size={14} /> {t('common.editCase')}
-                  </Dropdown.Item>
-                  {onCloneCase && (
-                    <Dropdown.Item onClick={() => onCloneCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <ClipboardCopy size={14} /> {t('common.copyAsNewTest')}
-                    </Dropdown.Item>
-                  )}
-                  {onOrganizeCase && (
-                    <>
-                      <Dropdown.Item disabled={!canOrganize || isUnsuitedRoot || testIndex === 0} onClick={() => void organize(test, suite.id, canonicalPositionForVisibleIndex(suite.id, testIndex - 1))} className="d-flex align-items-center gap-2 text-dark"><ArrowUp size={14} /> {t('casos.moveCaseUp')}</Dropdown.Item>
-                      <Dropdown.Item disabled={!canOrganize || isUnsuitedRoot || testIndex === suiteTests.length - 1} onClick={() => void organize(test, suite.id, canonicalPositionForVisibleIndex(suite.id, testIndex + 1))} className="d-flex align-items-center gap-2 text-dark"><ArrowDown size={14} /> {t('casos.moveCaseDown')}</Dropdown.Item>
-                    </>
-                  )}
-                  {onMoveCase && (
-                    <Dropdown.Item onClick={() => onMoveCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                      <MoveRight size={14} /> {t('common.moveTest')}
-                    </Dropdown.Item>
-                  )}
-                  {(onArchiveCase || onRestoreCase) && <Dropdown.Divider />}
-                  {test.caseStatus === 'ARCHIVADO' ? (
-                    onRestoreCase && (
-                      <Dropdown.Item onClick={() => onRestoreCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                        <RotateCcw size={14} /> {t('common.restoreTest')}
-                      </Dropdown.Item>
-                    )
-                  ) : (
-                    onArchiveCase && (
-                      <Dropdown.Item onClick={() => onArchiveCase(test)} className="d-flex align-items-center gap-2 text-dark">
-                        <Archive size={14} /> {t('common.archiveTest')}
-                      </Dropdown.Item>
-                    )
-                  )}
-                  <Dropdown.Divider />
-                  <Dropdown.Item onClick={() => onDeleteCase(test.id)} className="d-flex align-items-center gap-2 text-danger">
-                    <Trash2 size={14} /> {t('common.deleteCase')}
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown>}
+              <CaseActionsMenu props={props} suite={suite} test={test} testTooltip={testTooltip} testIndex={testIndex} testCount={suiteTests.length} canOrganize={canOrganize} organize={organize} canonicalPositionForVisibleIndex={canonicalPositionForVisibleIndex} />
               {dragOverCase?.id === String(test.id) && dragOverCase.after && <span className="position-absolute start-0 end-0 bg-primary" style={{ height: '3px', bottom: '-2px' }} aria-hidden="true" />}
             </div>
           )})}

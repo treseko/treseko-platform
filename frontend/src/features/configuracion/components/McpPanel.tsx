@@ -19,7 +19,7 @@ type Props = {
   rawCredential: string | null
   onDismissRawCredential?: () => void
   copyToClipboard: (value: string, label?: string) => void
-  onCreate: (name: string, scopes: string[], expiresAt?: string) => void
+  onCreate: (name: string, scopes: string[], expiresAt?: string) => void | Promise<boolean | undefined>
   onRevoke: (credential: McpCredential) => void
   onSetState?: (credential: McpCredential, estado: 'ACTIVE' | 'PAUSED') => void
   onToggle?: (enabled: boolean) => void
@@ -39,9 +39,10 @@ export function McpPanel({ canEdit, enabled = true, status = 'available', endpoi
   const [expiresAt, setExpiresAt] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const authorizedToolNames = new Set(scopeCatalog.filter(item => item.selectable).flatMap(item => item.tools.map(tool => tool.name)))
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    onCreate(name.trim() || t('configuracion.mcpDefaultName'), scopes, expiresAt ? new Date(expiresAt).toISOString() : undefined)
+    const created = await onCreate(name.trim() || t('configuracion.mcpDefaultName'), scopes, expiresAt ? new Date(expiresAt).toISOString() : undefined)
+    if (created === true) { setShowCreateModal(false); setName(''); setScopes([]); setExpiresAt('') }
   }
   return (
     <Card className="border-0 shadow-sm rounded-4 bg-white p-4 mt-4" aria-busy={loading}>
@@ -112,7 +113,7 @@ export function McpPanel({ canEdit, enabled = true, status = 'available', endpoi
       </Accordion>
       {canEdit && mcpEnabled && <div className="border-top pt-4 mb-4"><Button onClick={() => setShowCreateModal(true)} disabled={loading}>{t('configuracion.mcpCreate')}</Button></div>}
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} centered size="lg" aria-labelledby="mcp-create-modal-title">
-        <Form onSubmit={event => { submit(event); setShowCreateModal(false) }}>
+        <Form onSubmit={event => { void submit(event) }}>
           <Modal.Header closeButton><Modal.Title id="mcp-create-modal-title">{t('configuracion.mcpCreateTitle')}</Modal.Title></Modal.Header>
           <Modal.Body>
             <Alert variant="info" className="small">{t('configuracion.mcpModalPermissionHint')}</Alert>
@@ -145,8 +146,8 @@ export function McpPanel({ canEdit, enabled = true, status = 'available', endpoi
           <Accordion.Header>{t('configuracion.mcpCredentials')}</Accordion.Header>
           <Accordion.Body>
             <div className="small text-muted mb-2">{t('configuracion.mcpCredentialMetadataHint')}</div>
-            <Table responsive hover size="sm" className="mb-0 align-middle"><thead><tr><th>{t('configuracion.name')}</th><th>{t('configuracion.prefix')}</th><th>{t('configuracion.mcpScope')}</th><th>{t('configuracion.status')}</th>{canEdit && mcpEnabled && <th className="text-end">{t('configuracion.action')}</th>}</tr></thead><tbody>
-              {credentials.map(credential => <tr key={credential.id}><td>{credential.nombre}</td><td><code>{credential.key_prefix}...</code></td><td>{credential.scopes_json.join(', ')}</td><td><Badge bg={credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? 'success' : credential.estado === 'PAUSED' ? 'warning' : 'secondary'} text={credential.estado === 'PAUSED' ? 'dark' : undefined}>{credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? t('configuracion.active') : credential.estado === 'PAUSED' ? t('configuracion.paused') : t('configuracion.revoked')}</Badge>{credential.ultimo_uso && <div className="x-small text-muted">{formatDateTime(credential.ultimo_uso)}</div>}</td>{canEdit && mcpEnabled && <td className="text-end"><div className="d-flex justify-content-end gap-2 flex-wrap">{credential.estado !== 'REVOKED' && credential.activo && <Button variant="link" className="text-warning p-0" disabled={loading} onClick={() => onSetState(credential, 'PAUSED')}>{t('configuracion.pause')}</Button>}{credential.estado === 'PAUSED' && <Button variant="link" className="text-success p-0" disabled={loading} onClick={() => onSetState(credential, 'ACTIVE')}>{t('configuracion.activate')}</Button>}<Button variant="link" className="text-danger p-0" disabled={loading || credential.estado === 'REVOKED' || (!credential.estado && !credential.activo)} onClick={() => onRevoke(credential)}>{t('configuracion.revoke')}</Button></div></td>}</tr>)}
+            <Table responsive hover size="sm" className="mb-0 align-middle"><thead><tr><th>{t('configuracion.name')}</th><th>{t('configuracion.prefix')}</th><th>{t('configuracion.mcpScope')}</th><th>{t('configuracion.status')}</th>{canEdit && <th className="text-end">{t('configuracion.action')}</th>}</tr></thead><tbody>
+              {credentials.map(credential => <tr key={credential.id}><td>{credential.nombre}</td><td><code>{credential.key_prefix}...</code></td><td>{credential.scopes_json.join(', ')}</td><td><Badge bg={credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? 'success' : credential.estado === 'PAUSED' ? 'warning' : 'secondary'} text={credential.estado === 'PAUSED' ? 'dark' : undefined}>{credential.estado === 'ACTIVE' || (!credential.estado && credential.activo) ? t('configuracion.active') : credential.estado === 'PAUSED' ? t('configuracion.paused') : t('configuracion.revoked')}</Badge>{credential.ultimo_uso && <div className="x-small text-muted">{formatDateTime(credential.ultimo_uso)}</div>}</td>{canEdit && <td className="text-end"><div className="d-flex justify-content-end gap-2 flex-wrap">{credential.estado !== 'REVOKED' && credential.activo && <Button variant="link" className="text-warning p-0" disabled={loading} onClick={() => onSetState(credential, 'PAUSED')}>{t('configuracion.pause')}</Button>}{credential.estado === 'PAUSED' && <Button variant="link" className="text-success p-0" disabled={loading} onClick={() => onSetState(credential, 'ACTIVE')}>{t('configuracion.activate')}</Button>}<Button variant="link" className="text-danger p-0" disabled={loading || credential.estado === 'REVOKED' || (!credential.estado && !credential.activo)} onClick={() => onRevoke(credential)}>{t('configuracion.revoke')}</Button></div></td>}</tr>)}
               {credentials.length === 0 && !loading && <tr><td colSpan={canEdit && mcpEnabled ? 5 : 4} className="text-center py-3 text-muted small">{t('configuracion.mcpNoCredentials')}</td></tr>}
             </tbody></Table>
           </Accordion.Body>

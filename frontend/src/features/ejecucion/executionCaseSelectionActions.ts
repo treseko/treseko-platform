@@ -1,11 +1,14 @@
 import { startTransition } from 'react'
+import { hydrateExecutionHistory } from './executionHistoryState'
 import type { Dispatch, SetStateAction } from 'react'
 
 type CreateExecutionCaseSelectionActionsParams = {
   viewMode: 'list' | 'manual_exec' | 'chatbot_manual'
   currentExecutionRun: any
   loadCasoExecutionHistory: (caseId: string) => Promise<any[] & { total?: number; stats?: any }>
-  loadExecutionDetails: (runId: string, caseId: string) => Promise<any>
+  loadExecutionDetails: (runId: string, caseId: string, options?: any) => Promise<any>
+  beforeSelect?: () => Promise<boolean>
+  executionGuardRef?: { current: { selection: number; context: string } }
   setStepResults: Dispatch<SetStateAction<Record<number, string>>>
   setSnapshotNotes: Dispatch<SetStateAction<Record<number, string>>>
   setGeneralExecutionStatus: (status: string) => void
@@ -32,9 +35,16 @@ export function createExecutionCaseSelectionActions({
   setCurrentExecutionRun,
   setExecutionMode,
   setSelectedTest,
-  setCasosList
+  setCasosList,
+  beforeSelect,
+  executionGuardRef = { current: { selection: 0, context: '' } },
 }: CreateExecutionCaseSelectionActionsParams) {
   const handleSelectTestForExecution = async (test: any) => {
+    const generation = ++executionGuardRef.current.selection
+    const context = executionGuardRef.current.context
+    const isCurrent = () => generation === executionGuardRef.current.selection && context === executionGuardRef.current.context
+    if (beforeSelect && !await beforeSelect()) return
+    if (!isCurrent()) return
     const activeRun = (viewMode === 'manual_exec' || viewMode === 'chatbot_manual') ? currentExecutionRun : null
 
     // En una ejecución activa, conservar el caso visible hasta disponer de
@@ -43,20 +53,11 @@ export function createExecutionCaseSelectionActions({
     // ejecución anterior se perdió.
     if (activeRun?.id) {
       const history = await loadCasoExecutionHistory(test.id)
-      const latestHistory = history[0]
-      const hydratedTest = latestHistory
-        ? {
-            ...test,
-            lastResult: latestHistory.status,
-            lastExecutedAt: latestHistory.date,
-            lastExecutedBy: latestHistory.executedBy,
-            lastExecutedVersion: latestHistory.versionExecuted,
-            history,
-            historyTotal: history.total ?? history.length,
-            historyStats: history.stats || null,
-          }
-        : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history, historyTotal: history.total ?? history.length, historyStats: history.stats || null }
-      await loadExecutionDetails(activeRun.id, test.id)
+      const hydratedTest = hydrateExecutionHistory(test, history)
+      if (!isCurrent()) return
+      const loaded = await loadExecutionDetails(activeRun.id, test.id, { isCurrent })
+      if (loaded === null) return
+      if (!isCurrent()) return
       startTransition(() => {
         setSelectedTest(hydratedTest)
         setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))
@@ -81,19 +82,8 @@ export function createExecutionCaseSelectionActions({
     // Fuera de una ejecución activa, la selección no necesita esperar al
     // backend: el historial sólo enriquece el caso mostrado.
     const history = await loadCasoExecutionHistory(test.id)
-    const latestHistory = history[0]
-    const hydratedTest = latestHistory
-      ? {
-          ...test,
-          lastResult: latestHistory.status,
-          lastExecutedAt: latestHistory.date,
-          lastExecutedBy: latestHistory.executedBy,
-          lastExecutedVersion: latestHistory.versionExecuted,
-          history,
-          historyTotal: history.total ?? history.length,
-          historyStats: history.stats || null,
-        }
-      : { ...test, lastResult: null, lastExecutedAt: null, lastExecutedBy: null, lastExecutedVersion: null, history, historyTotal: history.total ?? history.length, historyStats: history.stats || null }
+    if (!isCurrent()) return
+    const hydratedTest = hydrateExecutionHistory(test, history)
     startTransition(() => {
       setSelectedTest(hydratedTest)
       setCasosList(prev => prev.map(c => c.id === test.id ? { ...c, ...hydratedTest } : c))

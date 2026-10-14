@@ -13,6 +13,11 @@ Verificá que estés dentro de la **Solución** correcta. La solución agrupa
 proyectos relacionados. Si no ves la acción para crear o editar, necesitás que
 un administrador revise tu rol y permisos.
 
+Los proyectos de distintas soluciones pueden tener el mismo nombre. Dentro de
+una solución, elegí nombres diferentes; no se aceptan nombres vacíos ni formados
+solo por espacios. Crear o importar un proyecto activo, reactivarlo o trasladarlo
+a otra solución debe respetar el cupo vigente de la solución de destino.
+
 ## 1. Crear el proyecto
 
 1. Abrí **Proyectos**.
@@ -44,6 +49,16 @@ administrador que confirme tu rol y capacidades.
 Una build histórica conserva su contexto para consulta y comparación. No la
 trates como activa: sus casos, configuración, trazabilidad y ejecución no deben
 modificarse desde ese contexto.
+
+Para conservar la trazabilidad, un componente con builds, casos o suites no se
+puede eliminar, aunque sus casos o suites estén archivados. Una build con
+ejecuciones registradas tampoco se puede eliminar. Usá **Ocultar** para retirar
+una build de los selectores sin perder su historial. Solo se pueden borrar
+componentes vacíos y builds elegibles sin ejecuciones.
+
+Si seleccionás una organización sin proyectos, Treseko conserva esa selección
+y muestra el estado vacío. Si falla la creación de un proyecto, conserva el
+nombre para reintentar; el envío queda bloqueado mientras se guarda.
 
 ## 4. Ambientes y datasets
 

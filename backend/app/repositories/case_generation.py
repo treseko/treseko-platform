@@ -20,6 +20,9 @@ from .traceability_records import get_historia
 from .suites_cases import generate_case_code
 from ..services.edition.entitlement_service import check_limit
 
+from .generation_guards import lock_generation, require_current_sources, checked_answers, check_assumptions, case_quality, case_readiness
+from .generation_semantic_review import effective_audit_runtime, stamp_semantic_review, reviews_for_application
+
 CASE_NODES = ["CaseScopeAnalyzer", "TestDesignPlanner", "TestCaseAuthor", "QaCaseCritic", "CoverageTraceabilityAuditor"]
 _DUPLICATE_STOPWORDS = {"a", "al", "con", "de", "del", "el", "en", "la", "las", "los", "para", "por", "que", "se", "un", "una", "y"}
 
@@ -150,6 +153,8 @@ async def _resolve_destination_suite(db, project_id, suite_id, requested_compone
     if not component:
         raise ValueError("El componente destino no es válido para este proyecto.")
 
+    from .suite_policy import require_editable_suite
+    suite = await require_editable_suite(db, project_id, suite_uuid, component.id)
     return suite, component.id
 
 
@@ -201,12 +206,12 @@ async def _quota(db, project):
 
 
 def case_generation_payload(run):
-    return {"id": run.id, "historia_id": run.historia_id, "requisito_id": run.requisito_id, "proyecto_id": run.proyecto_id, "workflow_id": run.workflow_id, "workflow_version": run.workflow_version, "estado": run.estado, "analysis": run.analysis_json or {}, "estimacion": run.estimacion or {}, "propuestas": run.propuestas_finales_json or [], "propuestas_originales": run.propuestas_originales_json or [], "accepted_assumption_ids": run.accepted_assumption_ids or [], "warnings": run.warnings_json or [], "workflow_traces": run.workflow_traces_json or [], "error_detalle": run.sanitized_error, "decisiones": run.decisiones_json or {}}
+    return {"criterios": (run.fuente_snapshot or {}).get("criterios", []), "id": run.id, "historia_id": run.historia_id, "requisito_id": run.requisito_id, "proyecto_id": run.proyecto_id, "workflow_id": run.workflow_id, "workflow_version": run.workflow_version, "estado": run.estado, "analysis": run.analysis_json or {}, "estimacion": run.estimacion or {}, "propuestas": run.propuestas_finales_json or [], "propuestas_originales": run.propuestas_originales_json or [], "accepted_assumption_ids": run.accepted_assumption_ids or [], "warnings": run.warnings_json or [], "workflow_traces": run.workflow_traces_json or [], "error_detalle": run.sanitized_error, "decisiones": run.decisiones_json or {}}
 
 
 async def _call_engine(db, workflow, phase, context, instructions, max_cases=None):
     config = await get_ai_engine_config(db)
-    timeout_seconds = max(30, min(int(config.get("timeout_seconds") or 300), 900))
+    timeout_seconds = max(30, min(int(config.get("timeout_seconds") or 300), 7200))
     provider_payload = await workflow_provider_payload(db, workflow, config)
     provider_name = str(provider_payload.get("provider") or "").strip().lower()
     no_key_required = provider_name in {"openai-compatible", "lm-studio", "ollama"}
@@ -228,6 +233,7 @@ async def _call_engine(db, workflow, phase, context, instructions, max_cases=Non
         **provider_payload,
         "temperature": config.get("temperature"),
         "max_completion_tokens": min(int(config.get("max_completion_tokens") or 4096), 12000),
+        "context_window_tokens": int(config.get("context_window_tokens") or 8192),
     }
     headers = engine_internal_headers(current_correlation_id())
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -254,7 +260,8 @@ async def _call_engine(db, workflow, phase, context, instructions, max_cases=Non
 
 def _persist_engine_audit(run, workflow, result, config):
     metrics = result.get("metrics") if isinstance(result.get("metrics"), dict) else {}
-    run.provider, run.model, run.temperature = config.get("provider"), config.get("model"), config.get("temperature")
+    runtime = effective_audit_runtime(result)
+    run.provider, run.model, run.temperature = runtime["provider"], runtime["model"], runtime["temperature"]
     run.workflow_snapshot, run.context_hash = _workflow_definition(workflow), _hash(run.fuente_snapshot or {})
     run.prompt_hash, run.prompt_version = result.get("prompt_hash") or _hash(run.workflow_snapshot), str(workflow.version)
     run.workflow_traces_json = result.get("workflow_traces") or []
@@ -277,8 +284,10 @@ async def estimate_case_generation(db, story_id, request, user_id):
     if request.wiki_page_ids:
         rows = (await db.execute(select(models.WikiPage).where(models.WikiPage.proyecto_id == story.proyecto_id, models.WikiPage.id.in_(request.wiki_page_ids)))).scalars().all()
         if len(rows) != len(set(request.wiki_page_ids)): raise ValueError("Las páginas Wiki seleccionadas deben pertenecer al proyecto.")
-        wiki = [{"id": str(x.id), "titulo": x.titulo, "contenido": (x.contenido or "")[:12000]} for x in rows]
-    context = {"historia": {"id": str(story.id), "codigo": story.codigo, "titulo": story.titulo, "descripcion": story.descripcion_markdown}, "requisito": {"id": str(story.requisito.id), "codigo": story.requisito.codigo, "titulo": story.requisito.titulo}, "criterios": [{"id": str(c.id), "codigo": c.codigo, "tipo": c.tipo, "titulo": c.titulo, "given": c.given_text, "when": c.when_text, "then": c.then_items, "observable_result": c.observable_result, "mandatory": c.mandatory, "source_refs": c.source_refs, "assumption_refs": c.assumption_refs} for c in criteria], "componentes": components, "wiki": wiki, "focus_categories": request.focus_categories}
+        wiki = [{"id": str(x.id), "titulo": x.titulo, "contenido": x.contenido or ""} for x in rows]
+    context = {"historia": {"id": str(story.id), "codigo": story.codigo, "titulo": story.titulo, "descripcion": story.descripcion_markdown, "revision": story.ultima_actualizacion.isoformat()}, "requisito": {"id": str(story.requisito.id), "codigo": story.requisito.codigo, "titulo": story.requisito.titulo, "revision": story.requisito.ultima_actualizacion.isoformat()}, "criterios": [{"id": str(c.id), "codigo": c.codigo, "tipo": c.tipo, "titulo": c.titulo, "given": c.given_text, "when": c.when_text, "then": c.then_items, "observable_result": c.observable_result, "mandatory": c.mandatory, "source_refs": c.source_refs, "assumption_refs": c.assumption_refs} for c in criteria], "componentes": components, "wiki": wiki, "focus_categories": request.focus_categories}
+    context["context_version"] = 2
+    context["requisito"]["descripcion_markdown"] = story.requisito.descripcion_markdown or ""
     run = models.CasoGeneracion(
         historia_id=story.id,
         requisito_id=story.requisito_id,
@@ -297,33 +306,60 @@ async def estimate_case_generation(db, story_id, request, user_id):
         run.analysis_json = result.get("analysis") or {}
         run.estimacion = {**(result.get("estimacion") or {}), "scenarios": result.get("scenarios") or []}
         _persist_engine_audit(run, workflow, result, config)
-        readiness = str(run.analysis_json.get("readiness") or "NEEDS_CLARIFICATION").upper()
+        readiness = case_readiness(run.analysis_json)
         run.estado = "LISTA_PARA_GENERAR" if readiness == "READY" else "BLOQUEADA" if readiness == "BLOCKED" else "ESPERANDO_ACLARACIONES"
         await db.commit()
     except Exception as exc:
         run.estado, run.sanitized_error = "BLOQUEADA", "No se pudo completar el análisis de generación de casos."
         await db.commit()
-        raise ValueError(str(exc)) from exc
+        raise ValueError(str(exc).strip() or run.sanitized_error) from exc
     return case_generation_payload(run)
 
 
 async def confirm_case_generation_assumptions(db, run, payload):
+    workflow = await _workflow(db)
+    run = await lock_generation(db, run)
+    await require_current_sources(db, run)
     if run.estado not in {"ESPERANDO_ACLARACIONES", "BLOQUEADA"}: raise ValueError("La generación no espera aclaraciones.")
     analysis = run.analysis_json or {}
-    proposed = {str(x.get("id")): x for x in analysis.get("proposed_assumptions", []) if isinstance(x, dict)}
-    if any(item not in proposed for item in payload.assumption_ids): raise ValueError("El supuesto no pertenece a la generación.")
-    run.accepted_assumption_ids = sorted(set(payload.assumption_ids))
-    run.decisiones_json = {**(run.decisiones_json or {}), "question_answers": [x.model_dump() for x in payload.question_answers], "assumption_decision_mode": payload.continuation_mode}
-    unanswered = [str(x).strip() for x in analysis.get("questions", []) if str(x).strip()]
-    if unanswered and not payload.question_answers: raise ValueError("Responde las preguntas abiertas antes de continuar.")
-    run.estado = "LISTA_PARA_GENERAR"
+    if not analysis:
+        raise ValueError("El análisis está bloqueado. Inicia un nuevo análisis con la información faltante.")
+    answers = checked_answers(analysis, payload.question_answers)
+    accepted = check_assumptions(analysis, payload.assumption_ids, payload.continuation_mode)
+    previous_answers = (run.decisiones_json or {}).get("question_answers", [])
+    merged_answers = {item["question"]: item for item in previous_answers}
+    merged_answers.update({item["question"]: item for item in answers})
+    answers = list(merged_answers.values())
+    reanalyzed = bool(analysis.get("questions") or analysis.get("readiness") == "BLOCKED")
+    if reanalyzed:
+        if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
+            raise ValueError("El workflow cambió. Inicia un nuevo análisis.")
+        original_assumptions = {str(item.get("id")): item for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict)}
+        context = {**(run.fuente_snapshot or {}), "analysis": analysis, "question_answers": answers, "accepted_assumption_ids": accepted}
+        result, config = await _call_engine(db, workflow, "analyze", context, run.instrucciones)
+        analysis = result.get("analysis") or {}
+        case_readiness(analysis)
+        run.analysis_json = analysis
+        run.estimacion = {**(result.get("estimacion") or {}), "scenarios": result.get("scenarios") or []}
+        _persist_engine_audit(run, workflow, result, config)
+        new_assumptions = {str(item.get("id")): item for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict)}
+        accepted = [key for key in accepted if new_assumptions.get(key) == original_assumptions.get(key)]
+    run.accepted_assumption_ids = accepted
+    run.decisiones_json = {**(run.decisiones_json or {}), "question_answers": answers, "assumption_decision_mode": payload.continuation_mode}
+    critical_pending = any(str(item.get("risk", "")).upper() == "CRITICAL" and str(item.get("id")) not in accepted for item in analysis.get("proposed_assumptions", []) if isinstance(item, dict))
+    run.sanitized_error = None
+    run.estado = "BLOQUEADA" if analysis.get("readiness") == "BLOCKED" else "ESPERANDO_ACLARACIONES" if analysis.get("questions") or critical_pending or (reanalyzed and analysis.get("readiness") != "READY") else "LISTA_PARA_GENERAR"
     await db.commit()
     return case_generation_payload(run)
 
 
 async def generate_case_proposals(db, run, request):
-    if run.estado != "LISTA_PARA_GENERAR": raise ValueError("La generación no está lista para planificar casos.")
     workflow = await _workflow(db)
+    run = await lock_generation(db, run)
+    await require_current_sources(db, run)
+    if run.estado != "LISTA_PARA_GENERAR": raise ValueError("La generación no está lista para planificar casos.")
+    if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
+        raise ValueError("El workflow cambió. Inicia un nuevo análisis.")
     planned = [item for item in (run.estimacion or {}).get("scenarios", []) if isinstance(item, dict)]
     planned_by_id = {str(item.get("local_id")): item for item in planned if str(item.get("local_id") or "").strip()}
     if request.scenario_ids and any(item not in planned_by_id for item in request.scenario_ids):
@@ -336,7 +372,9 @@ async def generate_case_proposals(db, run, request):
     try:
         result, config = await _call_engine(db, workflow, "generate", context, run.instrucciones, min(request.max_casos, len(selected_scenarios) or request.max_casos))
         proposals = result.get("propuestas") or []
-        validated = [schemas.CasoGeneracionProposalInput.model_validate({**x, "selected": True}).model_dump(mode="json") for x in proposals]
+        validated = [schemas.CasoGeneracionProposalInput.model_validate({**x, "selected": False}).model_dump(mode="json") for x in proposals]
+        if len({item["local_id"] for item in validated}) != len(validated):
+            raise ValueError("Las propuestas deben tener identificadores distintos.")
         if not validated: raise ValueError("La IA no devolvió casos con el contrato requerido.")
         decisions = run.decisiones_json or {}
         destination_suite_id = decisions.get("suite_id")
@@ -351,10 +389,14 @@ async def generate_case_proposals(db, run, request):
         )
         candidates = await _location_case_candidates(db, run.proyecto_id, destination_suite.id, destination_component_id)
         for proposal, validated_proposal in zip(proposals, validated):
+            typed = schemas.CasoGeneracionProposalInput.model_validate(validated_proposal)
+            evaluation = case_quality(typed, proposal, run, enforce_review=False)
+            validated_proposal["quality"] = {**validated_proposal["quality"], "testability": evaluation["testability"], "warnings": list(dict.fromkeys([*(validated_proposal["quality"].get("warnings") or []), *evaluation["findings"]]))[:30]}
             validated_proposal["duplicate_candidates"] = _duplicate_signals(
                 schemas.CasoGeneracionProposalInput.model_validate(validated_proposal), candidates
             )
         for item in validated:
+            stamp_semantic_review(item)
             item["original_fingerprint"] = _proposal_fingerprint(item)
         run.propuestas_originales_json = [dict(item, original_fingerprint=_proposal_fingerprint(item)) for item in proposals]
         run.propuestas_finales_json = validated
@@ -365,15 +407,18 @@ async def generate_case_proposals(db, run, request):
     except Exception as exc:
         run.estado, run.sanitized_error = "BLOQUEADA", "El modelo no devolvió propuestas de casos válidas."
         await db.commit()
-        raise ValueError(str(exc)) from exc
+        raise ValueError(str(exc).strip() or run.sanitized_error) from exc
     return case_generation_payload(run)
 
 
-async def apply_case_generation(db, run, payload, user_id):
+async def apply_case_generation(db, run, payload, user_id, *, commit=True):
+    run = await lock_generation(db, run, applying=True)
+    db.info["generation_replayed"] = run.estado == "APLICADA"
     if run.estado == "APLICADA":
         return (run.decisiones_json or {}).get("created_cases", [])
     if run.estado != "LISTA_PARA_REVISION":
         raise ValueError("La generación no está lista para revisión.")
+    await require_current_sources(db, run)
     story, criteria = await _structured_story(db, run.historia_id)
     criteria_by_id = {item.id: item for item in criteria}
     decisions = run.decisiones_json or {}
@@ -385,6 +430,10 @@ async def apply_case_generation(db, run, payload, user_id):
     selected = [item for item in payload.casos if item.selected]
     if not selected:
         raise ValueError("Selecciona al menos un caso.")
+    workflow = await _workflow(db)
+    if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
+        raise ValueError("El workflow cambió. Inicia un nuevo análisis.")
+    semantic_reports = await reviews_for_application(db, run, workflow, selected, _call_engine, kind="case")
     created = []
     duplicate_overrides = []
     proposal_decisions = []
@@ -401,6 +450,7 @@ async def apply_case_generation(db, run, payload, user_id):
         original = original_by_id.get(str(proposal.local_id))
         if not original:
             raise ValueError("La propuesta no pertenece a esta generación.")
+        quality = case_quality(proposal, original, run)
         original_fingerprint = str(original.get("original_fingerprint") or _proposal_fingerprint(original))
         edited_fingerprint = _proposal_fingerprint(proposal)
         changed = edited_fingerprint != original_fingerprint
@@ -426,17 +476,20 @@ async def apply_case_generation(db, run, payload, user_id):
             "original_fingerprint": original_fingerprint,
             "edited_fingerprint": edited_fingerprint,
             "edited": changed,
+            "quality_decision": {**quality, "semantic_review": semantic_reports[proposal.local_id]},
             "decided_by": str(user_id),
             "decided_at": datetime.now(timezone.utc).isoformat(),
         })
     mandatory = {x.id for x in criteria if x.mandatory}
     covered = {ref for proposal in selected for ref in proposal.criterion_refs}
+    if any(key not in criteria_by_id or not reason.strip() for key, reason in payload.excluded_criteria_reasons.items()):
+        raise ValueError("Toda exclusión requiere un criterio válido y una justificación.")
     excluded = set(payload.excluded_criteria_reasons)
     if missing := mandatory - covered - excluded: raise ValueError("Hay criterios obligatorios sin cobertura o motivo de exclusión.")
     coverage = {
         str(criteria_id): [str(proposal.local_id) for proposal in selected if criteria_id in proposal.criterion_refs]
         for criteria_id in criteria_by_id
     }
-    run.estado = "APLICADA"; run.decisiones_json = {**(run.decisiones_json or {}), "created_cases": created, "excluded_criteria_reasons": {str(k): v for k, v in payload.excluded_criteria_reasons.items()}, "duplicate_overrides": duplicate_overrides, "proposal_decisions": proposal_decisions, "coverage_matrix": coverage, "applied_by": str(user_id)}
-    await db.commit()
+    run.estado = "APLICADA"; run.decisiones_json = {**(run.decisiones_json or {}), "created_cases": created, "excluded_criteria_reasons": {str(k): v for k, v in payload.excluded_criteria_reasons.items()}, "duplicate_overrides": duplicate_overrides, "proposal_decisions": proposal_decisions, "coverage_matrix": coverage, "coverage_kind": "criterion_links", "semantic_coverage": {key: [{"proposal_id": proposal.local_id, **entry, "execution_verified": False} for proposal in selected for entry in semantic_reports[proposal.local_id].get("coverage", []) if entry.get("criterion_id") == key] for key in coverage}, "applied_by": str(user_id)}
+    await db.commit() if commit else await db.flush()
     return created

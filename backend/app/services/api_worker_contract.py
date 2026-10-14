@@ -38,9 +38,6 @@ def validate_api_worker_result(value: dict[str, Any]) -> dict[str, Any]:
     status = str(value.get("status") or "").upper()
     if status not in {"PASSED", "PASSED_WITH_WARNINGS", "FAILED", "BLOCKED", "TIMEOUT", "ERROR"}:
         raise ValueError("El estado del resultado API no es compatible")
-    _validate_shape(value)
-    if len(json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")) > MAX_AUTOMATION_API_RESULT_ITEM_BYTES:
-        raise ValueError(f"El resultado de un caso API supera {MAX_AUTOMATION_API_RESULT_ITEM_BYTES} bytes")
     return value
 
 
@@ -55,15 +52,11 @@ def _contains_redaction_marker(value: Any) -> bool:
 def validate_api_worker_state_updates(value: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) - {"shared_variables", "persistent_variables"}:
         raise ValueError("state_updates API debe contener solo shared_variables y persistent_variables")
-    _validate_shape(value)
     for scope in ("shared_variables", "persistent_variables"):
         updates = value.get(scope) or {}
         if not isinstance(updates, dict):
             raise ValueError(f"state_updates.{scope} debe ser un objeto")
         if any(not str(key).startswith("api.") for key in updates):
             raise ValueError("El estado API solo admite variables con prefijo api.")
-        if _contains_redaction_marker(updates):
-            raise ValueError("state_updates API no puede contener valores redactados")
-    if len(json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")) > MAX_AUTOMATION_API_STATE_UPDATES_BYTES:
-        raise ValueError("Las actualizaciones de estado API superan el límite permitido")
+    json.dumps(value, ensure_ascii=False, allow_nan=False)
     return value

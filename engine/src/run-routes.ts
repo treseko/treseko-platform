@@ -1,8 +1,46 @@
 import express from "express";
+import { registerMcpBrowserRoutes } from "./automation/mcp-browser-routes.ts";
+import { videoEvidenceStore } from './video-evidence.ts';
 import { deliverTerminalResult, persistPendingTerminalDelivery, validateTerminalCallbackUrl } from "./delivery/terminal-callback.ts";
 import type { UpdateAdmission } from "./update-admission.ts";
 export function registerRunRoutes(app: express.Express, deps: any) {
   const { protectedStoryEndpoint, requestCorrelationId, allowedEndpoint, allowedFallbacks, sendPublicError, runTask, traceRequestId, traceEntry, traceBody, publicError, sanitizeTraceValue, ENGINE_NAME, ENGINE_VERSION, io, activeExecutionIds, updateAdmission, mcpRuntime } = deps as { updateAdmission?: UpdateAdmission } & any;
+  registerMcpBrowserRoutes(app, protectedStoryEndpoint);
+  app.get('/internal/videos/:id', (req, res) => {
+    if (!protectedStoryEndpoint(req, res)) return;
+    const page = String(req.query.page || '0');
+    if (!/^\d{1,2}$/.test(page)) return res.sendStatus(404);
+    const file = videoEvidenceStore().resolve(String(req.params.id), Number(page));
+    if (!file) return res.sendStatus(404);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.type('video/webm').sendFile(file);
+  });
+  app.post('/internal/videos/temporary', (req, res, next) => {
+    if (protectedStoryEndpoint(req, res)) next();
+  }, express.raw({ type: 'video/webm', limit: '10mb' }), async (req, res) => {
+    if (!Buffer.isBuffer(req.body) || req.body.subarray(0, 4).toString('hex') !== '1a45dfa3') return res.sendStatus(400);
+    try {
+      const store = videoEvidenceStore();
+      const recording = store.begin(true);
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      fs.writeFileSync(path.join(recording.directory, 'worker.webm'), req.body);
+      const reference = await store.finish(recording);
+      if (!reference) return res.sendStatus(503);
+      return res.status(201).json(reference);
+    } catch { return res.sendStatus(503); }
+  });
+  app.delete('/internal/videos/:id', (req, res) => {
+    if (!protectedStoryEndpoint(req, res)) return;
+    try {
+      if (!videoEvidenceStore().deleteTemporary(String(req.params.id))) return res.sendStatus(409);
+      return res.sendStatus(204);
+    } catch { return res.sendStatus(503); }
+  });
+  const cleanupTimer = setInterval(() => {
+    try { videoEvidenceStore().cleanup(); } catch { console.warn('Video cleanup failed.'); }
+  }, 60000);
+  cleanupTimer.unref();
   const beginAdmission = (kind: "run-task" | "run-task-sync", label: string) => {
     try {
       return updateAdmission?.beginLease(kind, label) || (() => undefined);
@@ -98,6 +136,8 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         step_map,
         {
           headless: Boolean(headless),
+          dryRun: req.body.dry_run === true,
+          recordVideo: req.body.record_video !== false,
           viewport: {
             width: Number(viewport_width || 1920),
             height: Number(viewport_height || 1080),
@@ -357,6 +397,8 @@ export function registerRunRoutes(app: express.Express, deps: any) {
         step_map || {},
         {
           headless: Boolean(headless),
+          dryRun: req.body.dry_run === true,
+          recordVideo: req.body.record_video !== false,
           viewport: {
             width: Number(viewport_width || 1920),
             height: Number(viewport_height || 1080),
@@ -455,5 +497,4 @@ export function registerRunRoutes(app: express.Express, deps: any) {
       releaseAdmission();
     }
   });
-
 }

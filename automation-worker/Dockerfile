@@ -15,7 +15,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates rsync \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
+COPY vendor ./vendor
 # Install every runtime explicitly once. The package postinstall hooks are
 # disabled so they cannot download a duplicate browser during npm ci.
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 CYPRESS_INSTALL_BINARY=0 PUPPETEER_SKIP_DOWNLOAD=1 npm ci \

@@ -37,6 +37,8 @@ export function createProyectosActions(params: any) {
     setProjectSyncMessage: params.setProjectSyncMessage,
     showFeedback: params.showFeedback,
     t: params.t,
+    projectsLoadVersionRef: params.projectsLoadVersionRef,
+    projectCreateInFlightRef: params.projectCreateInFlightRef,
   })
 
   const componentActions = createComponentActions({

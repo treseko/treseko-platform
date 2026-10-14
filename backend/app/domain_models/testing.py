@@ -23,6 +23,7 @@ class Suite(Base):
     orden = Column(Integer, default=0, nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
     archivado = Column(Boolean, default=False, nullable=False, index=True)
+    archive_snapshot = Column(JSON, nullable=True)
 
     proyecto = relationship("Proyecto", back_populates="suites")
     parent = relationship("Suite", remote_side=[id], back_populates="children")

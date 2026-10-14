@@ -1,3 +1,4 @@
+import { matchesReportDetailFilters } from './reportDetailFilters'
 import { useMemo } from 'react'
 
 export function useReportDataModel(options: any) {
@@ -13,12 +14,8 @@ export function useReportDataModel(options: any) {
   const statusVariant = (state: any) => { const normalized = String(state || '').toUpperCase(); if (normalized === 'BLOQUEADO' || normalized === 'NO_RECOMENDADO') return 'danger'; if (normalized === 'RECOMENDADO_CON_OBSERVACIONES' || normalized === 'EN_EVALUACION') return 'warning'; return 'success' }
   const displayedSharedHistory = showFullSharedHistory ? sharedReportHistory : sharedReportHistory.slice(0, 5)
   const uniqueOptions = (items: any[], getter: (item: any) => any) => Array.from(new Set(items.map(getter).filter((value) => value !== null && value !== undefined && String(value).trim() !== '').map((value) => String(value)))).sort((a, b) => a.localeCompare(b))
-  const allReportBugs = projectMetrics?.bugs || []; const suiteFilterOptions = uniqueOptions([...allReportBugs, ...failureItems], (item) => item.suite); const priorityFilterOptions = uniqueOptions([...allReportBugs, ...failureItems], (item) => item.prioridad); const ownerFilterOptions = uniqueOptions([...allReportBugs, ...failureItems], (item) => item.responsable)
-  const matchesDetailFilters = (item: any, kind: 'bug' | 'failure' | 'evidence') => {
-    const suite = String(item.suite || ''), priority = String(item.prioridad || ''), status = String(item.estado || item.status || ''), owner = String(item.responsable || item.created_by || ''), mode = String(item.execution_mode || '')
-    const hasBug = kind === 'bug' ? true : Array.isArray(item.bug) ? item.bug.length > 0 : Boolean(item.bug); const bugIsOpen = kind === 'bug' ? item.is_open !== false : true; const hasEvidence = kind === 'bug' ? Boolean(item.has_evidence) : kind === 'evidence' ? item.status === 'completa' : !item.flags?.sin_evidencia
-    return (!detailFilters.suite || suite === detailFilters.suite) && (!detailFilters.priority || priority === detailFilters.priority) && (!detailFilters.status || status === detailFilters.status) && (!detailFilters.owner || owner === detailFilters.owner) && (!detailFilters.executionMode || mode === detailFilters.executionMode) && (!detailFilters.bug || (kind === 'bug' ? detailFilters.bug === 'open' ? bugIsOpen : detailFilters.bug === 'closed' ? !bugIsOpen : true : detailFilters.bug === 'with' ? hasBug : detailFilters.bug === 'without' ? !hasBug : true)) && (!detailFilters.evidence || (detailFilters.evidence === 'with' ? hasEvidence : !hasEvidence))
-  }
+  const allReportBugs = projectMetrics?.bugs || []; const suiteFilterOptions = uniqueOptions([...allReportBugs, ...failureItems, ...evidenceItems], (item) => item.suite); const priorityFilterOptions = uniqueOptions([...allReportBugs, ...failureItems, ...evidenceItems], (item) => item.prioridad); const ownerFilterOptions = uniqueOptions([...allReportBugs, ...failureItems, ...evidenceItems], (item) => item.responsable)
+  const matchesDetailFilters = (item: any, kind: 'bug' | 'failure' | 'evidence') => matchesReportDetailFilters(item, kind, detailFilters)
   const filteredReportBugs = allReportBugs.filter((item: any) => matchesDetailFilters(item, 'bug')); const filteredFailures = failureItems.filter((item: any) => matchesDetailFilters(item, 'failure')); const filteredEvidenceItems = evidenceItems.filter((item: any) => matchesDetailFilters(item, 'evidence'))
   const bugStatusIsOpen = (status: any) => !['RESUELTO', 'CERRADO', 'DUPLICADO', 'NO_REPRODUCIBLE', 'NO_CORRESPONDE'].includes(String(status || '').toUpperCase())
   const formatMoney = (value: any) => `$${Number(value || 0).toFixed(5)}`; const formatMs = (value: any) => { const ms = Number(value || 0); if (!ms) return '0ms'; if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`; return `${ms}ms` }

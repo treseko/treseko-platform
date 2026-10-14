@@ -3,6 +3,9 @@ import { API_BASE } from '../../app/constants'
 import { isValidUUID } from '../../app/validation'
 import type { TranslationKey } from '../../i18n'
 
+export type MetricsRequestState = { context: string; sequence: number; active: boolean }
+export const metricsContextKey = (project: string, build: string, source: string) => `${source}:${project}:${build}`
+
 type CreateReportActionsParams = {
   currentProjectId: string
   currentBuildId: string
@@ -10,6 +13,8 @@ type CreateReportActionsParams = {
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>
   setProjectMetrics: Dispatch<SetStateAction<any>>
   setMetricsLoading: (loading: boolean) => void
+  setMetricsError: (error: string) => void
+  requestRef: { current: MetricsRequestState }
   setProjectSyncMessage: (message: string) => void
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
 }
@@ -21,16 +26,25 @@ export function createReportActions({
   fetchWithAuth,
   setProjectMetrics,
   setMetricsLoading,
+  setMetricsError,
+  requestRef,
   setProjectSyncMessage,
   t
 }: CreateReportActionsParams) {
   const loadProjectMetrics = async (buildId?: string, options?: { silent?: boolean }) => {
+    const context = metricsContextKey(currentProjectId, currentBuildId, projectsSource)
+    if (!requestRef.current.active || requestRef.current.context !== context) return
+    const sequence = ++requestRef.current.sequence
+    const isCurrent = () => requestRef.current.active && requestRef.current.context === context && requestRef.current.sequence === sequence
     if (!currentProjectId || !isValidUUID(currentProjectId) || projectsSource !== 'backend') {
       setProjectMetrics(null)
+      setMetricsError('')
+      setMetricsLoading(false)
       return
     }
     const silent = Boolean(options?.silent)
-    if (!silent) setMetricsLoading(true)
+    setMetricsLoading(!silent)
+    setMetricsError('')
     try {
       const effectiveBuildId = buildId || currentBuildId
       const url = effectiveBuildId && isValidUUID(effectiveBuildId)
@@ -42,11 +56,14 @@ export function createReportActions({
         throw new Error(error?.detail || `Backend respondió ${response.status}`)
       }
       const data = await response.json()
-      setProjectMetrics(data)
+      if (isCurrent()) setProjectMetrics(data)
     } catch (error: any) {
-      setProjectSyncMessage(`${t('reportes.metricsLoadError')}: ${error?.message || String(error)}`)
+      if (!isCurrent()) return
+      const message = `${t('reportes.metricsLoadError')}: ${error?.message || String(error)}`
+      setMetricsError(message)
+      setProjectSyncMessage(message)
     } finally {
-      if (!silent) setMetricsLoading(false)
+      if (isCurrent()) setMetricsLoading(false)
     }
   }
 

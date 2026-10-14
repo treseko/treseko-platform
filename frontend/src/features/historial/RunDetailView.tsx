@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, FileText, History, Search } from 'lucide-react'
+import { HistoryFormatEvidence } from './HistoryFormatEvidence'
 import { AiExecutionReportModal } from '../motor-ia/AiExecutionReportModal'
 
 const localizedExecutionModeLabel = (mode: string | undefined, fallback: string | undefined, t: any) => {
@@ -35,7 +36,7 @@ const localizedCaseTypeLabel = (label: string | undefined, t: any) => {
 }
 
 export function RunDetailView({ options }: { options: any }) {
-  const { t, detail, detailLoading, detailError, onHide, focusedCase, focusError, displayCases, canViewEvidence, onOpenEvidence, getStatusColor, runStateLabel, executionModeBadge, executionModeCopy, caseTypeBadge, caseTypeCopy, effectiveExecutionMode, getExecutionId, buildHistoryAiReportPayload, createChatbotBug, markAiReviewed, markingReviewIds, reviewActionError, reviewConfirmCase, setReviewConfirmCase, reviewNote, setReviewNote, aiReportCase, setAiReportCase, showExecutionSnapshot, setShowExecutionSnapshot, showTechnicalVariables, setShowTechnicalVariables, frozenVariables, frozenSearch, setFrozenSearch, canRevealSecrets, revealedSecrets, revealSecret, FrozenDataCard, FrozenValue, EvidenceList, isAiRun, onMarkAiReviewed, showFeedback, focusedExecutionId, isNestedModalOpen, setRevealedSecrets, formatDate, formatSeconds } = options
+  const { t, detail, detailLoading, detailError, onHide, onRetry, focusedCase, focusError, displayCases, canViewEvidence, onOpenEvidence, getStatusColor, runStateLabel, executionModeBadge, executionModeCopy, caseTypeBadge, caseTypeCopy, effectiveExecutionMode, getExecutionId, buildHistoryAiReportPayload, createChatbotBug, markAiReviewed, markingReviewIds, reviewActionError, reviewConfirmCase, setReviewConfirmCase, reviewNote, setReviewNote, aiReportCase, setAiReportCase, showExecutionSnapshot, setShowExecutionSnapshot, showTechnicalVariables, setShowTechnicalVariables, frozenVariables, frozenSearch, setFrozenSearch, canRevealSecrets, revealedSecrets, revealSecret, FrozenDataCard, FrozenValue, EvidenceList, isAiRun, onMarkAiReviewed, showFeedback, focusedExecutionId, isNestedModalOpen, setRevealedSecrets, formatDate, formatSeconds } = options
   return (
     <>
       <Modal
@@ -52,7 +53,7 @@ export function RunDetailView({ options }: { options: any }) {
         </Modal.Header>
         <Modal.Body>
           {detailLoading && <div className="text-center py-5"><Spinner className="mb-2" /><div className="small text-muted">{t('historial.loadingDetail')}</div></div>}
-          {detailError && <Alert variant="danger">{detailError}</Alert>}
+          {detailError && <Alert variant="danger">{detailError}{onRetry && <Button variant="outline-danger" size="sm" className="ms-2" onClick={onRetry}>{t('historial.retry')}</Button>}</Alert>}
           {reviewActionError && <Alert variant="danger">{reviewActionError}</Alert>}
           {detail && (
             <div className="d-flex flex-column gap-3">
@@ -191,6 +192,7 @@ export function RunDetailView({ options }: { options: any }) {
                       <Badge bg="light" text="primary" className="border">{caso.codigo || caso.caso_id?.slice(0, 8)}</Badge>
                       <span className="fw-bold">{caso.titulo}</span>
                       <Badge bg={caseTypeBadge(caso.case_type)}>{caseTypeCopy(localizedCaseTypeLabel(caso.case_type_label, t), t)}</Badge>
+                      {caso.formato_prueba === 'API' && <Badge bg="dark">API</Badge>}
                       {caso.formato_prueba === 'CONVERSACIONAL' && <Badge bg="dark">{t('historial.caseLabel', { label: 'Chatbot' })}</Badge>}
                       <Badge bg={executionModeBadge(executionMode)}>{executionModeCopy(executionMode, executionLabel, t)}</Badge>
                       {caso.ai_review_status === 'REVISADA' && <Badge bg="success">{t('historial.aiReviewed')}</Badge>}
@@ -201,12 +203,12 @@ export function RunDetailView({ options }: { options: any }) {
                   <Badge bg={getStatusColor(caso.estado)}>{localizedResultStatus(caso.estado, t)}</Badge>
                 </Card.Header>
                 <Card.Body className="d-flex flex-column gap-3">
-                  {caso.formato_prueba === 'CONVERSACIONAL' && (
+                  {caso.formato_prueba === 'CONVERSACIONAL' && caso.public_test_data && canViewEvidence && (
                     <Alert variant="warning" className="mb-0 small">
                       {t('historial.conversationalEvaluationWarning')}
                     </Alert>
                   )}
-                  {caso.has_ai_report && (
+                  {canViewEvidence && caso.has_ai_report && (
                     <Alert variant={caso.ai_human_review_required ? 'warning' : 'info'} className="mb-0">
                       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <div>
@@ -250,7 +252,7 @@ export function RunDetailView({ options }: { options: any }) {
                       </div>
                     </Alert>
                   )}
-                  {!caso.has_ai_report && executionMode === 'IA' && (
+                  {canViewEvidence && !caso.has_ai_report && executionMode === 'IA' && (
                     <Alert variant="info" className="mb-0">
                       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <div>
@@ -271,6 +273,8 @@ export function RunDetailView({ options }: { options: any }) {
                       </div>
                     </Alert>
                   )}
+                  {caso.observaciones && <div className="small text-break"><div className="fw-semibold text-muted">{t('historial.observations')}</div><div className="white-space-pre-wrap">{caso.observaciones}</div></div>}
+                  {canViewEvidence ? <HistoryFormatEvidence caso={caso} /> : <Alert variant="secondary" className="small">{t('historial.noAccess')}</Alert>}
                   {(caso.descripcion || caso.precondiciones || caso.postcondiciones) && (
                     <Row className="g-2 small">
                       {caso.descripcion && <Col md={4}><div className="fw-bold text-muted x-small text-uppercase">{t('historial.objective')}</div><div>{caso.descripcion}</div></Col>}
@@ -315,7 +319,7 @@ export function RunDetailView({ options }: { options: any }) {
         report={aiReportCase}
         onHide={() => setAiReportCase(null)}
         onMarkReviewed={onMarkAiReviewed ? (executionId: string) => markAiReviewed(executionId) : undefined}
-        onCreateBug={createChatbotBug}
+        onCreateBug={aiReportCase?.formato_prueba === 'CONVERSACIONAL' ? createChatbotBug : undefined}
       />
       <Modal show={!!reviewConfirmCase} onHide={() => setReviewConfirmCase(null)} centered>
         <Modal.Header closeButton>

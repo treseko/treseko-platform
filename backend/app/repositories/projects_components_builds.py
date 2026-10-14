@@ -1,6 +1,7 @@
 from .repository_context import *
 from ..project_status import PROJECT_ACTIVE_STATUSES, normalize_project_status
 from ..time_utils import utc_now
+from .project_write_policy import lock_project_writes, prepare_project_write, validate_project_capacity, validate_project_name
 
 
 async def add_organizacion_miembro(db: AsyncSession, org_id: UUID, miembro: schemas.OrganizacionMiembroCreate):
@@ -48,21 +49,24 @@ async def get_proyectos(db: AsyncSession, skip: int = 0, limit: int = 100):
         select(models.Proyecto)
         .join(models.Organizacion, models.Organizacion.id == models.Proyecto.organizacion_id)
         .filter(models.Organizacion.activo.is_(True))
+        .order_by(models.Proyecto.id)
         .offset(skip)
         .limit(limit)
     )
     return result.scalars().all()
 
 async def create_proyecto(db: AsyncSession, proyecto: schemas.ProyectoCreate):
+    await lock_project_writes(db)
     proyecto_data = proyecto.model_dump()
     if not proyecto_data.get("nombre"):
         raise ValueError("El nombre del proyecto es obligatorio")
     proyecto_data["organizacion_id"] = await resolve_project_organizacion(db, proyecto.organizacion_id)
+    await prepare_project_write(db, proyecto_data["organizacion_id"])
     proyecto_data["estado"] = normalize_project_status(proyecto_data.get("estado"), proyecto_data.get("activo"))
     proyecto_data["activo"] = proyecto_data["estado"] in PROJECT_ACTIVE_STATUSES
-    existing = await db.execute(select(models.Proyecto).filter(models.Proyecto.nombre == proyecto_data["nombre"]))
-    if existing.scalar_one_or_none():
-        raise ValueError("Ya existe un proyecto con ese nombre")
+    await validate_project_name(db, proyecto_data["organizacion_id"], proyecto_data["nombre"])
+    if proyecto_data["activo"]:
+        await validate_project_capacity(db, proyecto_data["organizacion_id"])
     proyecto_data["codigo"] = await generate_short_code(
         db,
         models.Proyecto,
@@ -76,30 +80,35 @@ async def create_proyecto(db: AsyncSession, proyecto: schemas.ProyectoCreate):
     return db_proyecto
 
 async def get_proyecto(db: AsyncSession, proyecto_id: UUID):
-    result = await db.execute(select(models.Proyecto).filter(models.Proyecto.id == proyecto_id))
+    result = await db.execute(select(models.Proyecto).filter(models.Proyecto.id == proyecto_id).execution_options(populate_existing=True))
     return result.scalar_one_or_none()
 
 async def update_proyecto(db: AsyncSession, proyecto_id: UUID, proyecto_update: schemas.ProyectoUpdate):
-    db_proyecto = await get_proyecto(db, proyecto_id)
-    if not db_proyecto:
-        return None
+    while True:
+        db_proyecto = await get_proyecto(db, proyecto_id)
+        if not db_proyecto:
+            return None
+        organization_id = proyecto_update.organizacion_id or db_proyecto.organizacion_id
+        await prepare_project_write(db, organization_id)
+        db_proyecto = await get_proyecto(db, proyecto_id)
+        if proyecto_update.organizacion_id or db_proyecto.organizacion_id == organization_id:
+            break
+    db.info.setdefault("project_previous_active", {})[proyecto_id] = db_proyecto.activo
     update_data = proyecto_update.model_dump(exclude_unset=True)
     if update_data.get("nombre") is None and "nombre" in update_data:
         raise ValueError("El nombre del proyecto es obligatorio")
-    if update_data.get("nombre"):
-        existing = await db.execute(
-            select(models.Proyecto).filter(
-                models.Proyecto.nombre == update_data["nombre"],
-                models.Proyecto.id != proyecto_id,
-            )
-        )
-        if existing.scalar_one_or_none():
-            raise ValueError("Ya existe un proyecto con ese nombre")
     if "organizacion_id" in update_data:
         update_data["organizacion_id"] = await resolve_project_organizacion(db, update_data["organizacion_id"])
     if "estado" in update_data or "activo" in update_data:
         update_data["estado"] = normalize_project_status(update_data.get("estado"), update_data.get("activo", db_proyecto.activo))
         update_data["activo"] = update_data["estado"] in PROJECT_ACTIVE_STATUSES
+    organization_id = update_data.get("organizacion_id", db_proyecto.organizacion_id)
+    if "nombre" in update_data or organization_id != db_proyecto.organizacion_id:
+        await validate_project_name(db, organization_id, update_data.get("nombre", db_proyecto.nombre), exclude_project_id=proyecto_id)
+    if update_data.get("activo", db_proyecto.activo) and (
+        not db_proyecto.activo or organization_id != db_proyecto.organizacion_id
+    ):
+        await validate_project_capacity(db, organization_id, exclude_project_id=proyecto_id)
     if update_data.get("imagen_url") is not None:
         update_data["imagen_url"] = str(update_data["imagen_url"]).strip() or None
     for field, value in update_data.items():
@@ -187,7 +196,7 @@ async def delete_proyecto_miembro(db: AsyncSession, proyecto_id: UUID, usuario_i
     return True
 
 # --- COMPONENTES ---
-async def create_componente(db: AsyncSession, comp: schemas.ComponenteCreate):
+async def create_componente(db: AsyncSession, comp: schemas.ComponenteCreate, *, commit: bool = True):
     comp_data = comp.model_dump()
     comp_data["codigo"] = await generate_short_code(
         db,
@@ -197,14 +206,18 @@ async def create_componente(db: AsyncSession, comp: schemas.ComponenteCreate):
     )
     db_comp = models.Componente(**comp_data)
     db.add(db_comp)
-    await db.commit()
-    await db.refresh(db_comp)
+    if commit:
+        await db.commit()
+        await db.refresh(db_comp)
+    else:
+        await db.flush()
     return db_comp
 
 async def get_componentes_proyecto(db: AsyncSession, proyecto_id: UUID, skip: int = 0, limit: int = 100):
     result = await db.execute(
         select(models.Componente)
         .filter(models.Componente.proyecto_id == proyecto_id)
+        .order_by(models.Componente.id)
         .offset(skip)
         .limit(limit)
     )
@@ -222,10 +235,14 @@ async def update_componente(db: AsyncSession, componente_id: UUID, comp_update: 
     return db_comp
 
 async def delete_componente(db: AsyncSession, componente_id: UUID):
-    result = await db.execute(select(models.Componente).filter(models.Componente.id == componente_id))
+    result = await db.execute(select(models.Componente).filter(models.Componente.id == componente_id).with_for_update())
     db_comp = result.scalar_one_or_none()
     if not db_comp:
         return False
+    for model in (models.Build, models.CasoPrueba, models.Suite):
+        linked = await db.execute(select(model.id).where(model.componente_id == componente_id).limit(1))
+        if linked.first():
+            raise ValueError("El componente contiene builds, suites o casos de prueba. No se puede eliminar sin perder su contexto; conservá el componente y ocultá las builds que ya no uses.")
     await db.delete(db_comp)
     await db.commit()
     return True
@@ -251,7 +268,7 @@ async def get_builds_componente(db: AsyncSession, componente_id: UUID, skip: int
     )
     return result.scalars().all()
 
-async def create_build(db: AsyncSession, build: schemas.BuildCreate):
+async def create_build(db: AsyncSession, build: schemas.BuildCreate, *, commit: bool = True):
     target_state = "ACTIVA" if build.activo else build.estado
     if target_state == "ACTIVA":
         await db.execute(
@@ -276,8 +293,11 @@ async def create_build(db: AsyncSession, build: schemas.BuildCreate):
     )
     db_build = models.Build(**build_data)
     db.add(db_build)
-    await db.commit()
-    await db.refresh(db_build)
+    if commit:
+        await db.commit()
+        await db.refresh(db_build)
+    else:
+        await db.flush()
     return db_build
 
 async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.BuildUpdate):
@@ -326,10 +346,16 @@ async def update_build(db: AsyncSession, build_id: UUID, build_update: schemas.B
     return db_build
 
 async def delete_build(db: AsyncSession, build_id: UUID):
-    result = await db.execute(select(models.Build).filter(models.Build.id == build_id))
+    result = await db.execute(select(models.Build).filter(models.Build.id == build_id).with_for_update())
     db_build = result.scalar_one_or_none()
     if not db_build:
         return False
+    runs = await db.execute(select(models.TestRun.id).where(models.TestRun.build_id == build_id).limit(1))
+    if runs.first():
+        raise ValueError("La build tiene ejecuciones registradas. Conservá el historial y ocultá la build en lugar de eliminarla.")
+    schedules = await db.execute(select(models.AiScheduledMission.id).where(models.AiScheduledMission.build_id == build_id).limit(1))
+    if schedules.first():
+        raise ValueError("La build tiene programaciones IA registradas. Ocultá la build para conservar su programación e historial.")
     await db.delete(db_build)
     await db.commit()
     return True

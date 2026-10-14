@@ -116,7 +116,7 @@ def _backend_callback_base_url() -> str:
     if configured:
         return configured.rstrip("/")
     return "http://backend:8000"
-async def _require_ai_execution_entitlement(db: AsyncSession, execution: models.EjecucionCaso, requested_mode: models.ExecutionMode = models.ExecutionMode.IA):
+async def _require_ai_execution_entitlement(db: AsyncSession, execution: models.EjecucionCaso, requested_mode: models.ExecutionMode = models.ExecutionMode.IA, *, record_video: bool = True):
     result = await db.execute(
         select(models.TestRun, models.Proyecto)
         .join(models.Proyecto, models.Proyecto.id == models.TestRun.proyecto_id)
@@ -187,7 +187,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession, requested_m
         execution=ejec,
         config=chatbot_context.get("config") if chatbot_context else None,
     ) if is_chatbot else False
-    if is_chatbot:
+    if is_chatbot and not (ejec.evidence_policy or {}).get("complete_data"):
         ejec.evidence_policy = evidence_policy_marker(public_chatbot_evidence)["evidence_policy"]
     chatbot_config_errors = validate_chatbot_execution_config(case, environment_config=environment_chatbot_config, variables=variables_resueltas) if is_chatbot else []
     if is_chatbot and chatbot_config_errors:
@@ -355,7 +355,7 @@ async def trigger_ai_execution(ejecucion_id: UUID, db: AsyncSession, requested_m
         ),
         "maxSteps": len(steps) or int(config.get("max_steps") or 10),
         "timeout_seconds": int(config.get("timeout_seconds") or 900),
-        "headless": bool(config.get("headless")),
+        "headless": bool(config.get("headless")), "record_video": record_video,
         "viewport_width": int(config.get("viewport_width") or 1920),
         "viewport_height": int(config.get("viewport_height") or 1080),
         "agent_workflow": runtime_agent_workflow(config, workflow_definition),

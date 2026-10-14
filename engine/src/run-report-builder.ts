@@ -24,12 +24,6 @@ function normalizeAuditStatus(status: string | undefined): string {
   return 'FALLO';
 }
 
-function averageConfidence(values: Array<number | undefined>): number {
-  const clean = values.map((value) => Number(value || 0)).filter((value) => value > 0);
-  if (!clean.length) return 0;
-  return Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length);
-}
-
 function sumMetricsFromTimeline(timeline: AgentTimelineEvent[]): Record<string, number> {
   return timeline.reduce((acc, item) => {
     const metrics = item.metrics || {};
@@ -296,8 +290,15 @@ function buildAiReport(args: {
   workflowTraces?: any[];
   parameters?: Record<string, any>;
 }): Record<string, any> {
-  const stepConfidences = args.runResult?.steps.map((step: any) => step.confidence) || [];
-  const confidence = averageConfidence([args.consensusDecision.confidence, ...stepConfidences]);
+  const confidence = args.consensusDecision.confidence;
+  const confidenceAssessment = {
+    kind: 'internal_score', source: 'audit_consensus', calibration: 'uncalibrated',
+    is_probability: false,
+    components: (args.runResult?.steps || []).map((step: any) => ({
+      step_number: step.number, score: step.confidence,
+      source: step.history?.at(-1)?.action?.confidence_source || 'unknown',
+    })),
+  };
   const category = failureCategory(args.status, args.errors, args.auditEvidence.summary.failed_assertions);
   const deterministicDecision = args.auditEvidence.summary.failed_assertions > 0
     || (
@@ -376,6 +377,7 @@ function buildAiReport(args: {
     status: args.status,
     duration_seconds: args.durationSeconds,
     confidence,
+    confidence_assessment: confidenceAssessment,
     consensus: args.status,
     consensus_signals: consensusSignals,
     visual_audit: visualAudit,
@@ -433,7 +435,9 @@ function buildAiReport(args: {
       data: evidenceStepsByNumber.get(Number(step.number))?.data || step.data,
       expected_result: evidenceStepsByNumber.get(Number(step.number))?.expected_result || args.expected || undefined,
       observations: step.observations,
-      confidence: step.confidence ?? averageConfidence(step.history.map((item: any) => item.action?.confidence)),
+      confidence: step.confidence ?? step.history.at(-1)?.action?.confidence ?? 0,
+      confidence_source: step.history.at(-1)?.action?.confidence_source || 'unknown',
+      confidence_calibration: 'uncalibrated',
       failure_category: step.failure_category,
       attempts: step.history.map((item: any) => ({
         ...compactHistoryItem(item),

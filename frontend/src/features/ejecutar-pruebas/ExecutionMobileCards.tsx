@@ -44,6 +44,7 @@ export function ExecutionMobileCards({ options }: { options: any }) {
     renderInternalBugButton,
     executionInitialLoading,
     bugCaseFilter,
+    currentComponentName = '',
   } = options;
 
   return (
@@ -52,6 +53,9 @@ export function ExecutionMobileCards({ options }: { options: any }) {
         const isSelected = selectedTest?.id === test.id;
         const lastResultColor = getLastResultColor(test);
         const trend = getTrend(test);
+        const componentLabel = test.component === 'Componente no encontrado' && currentComponentName
+          ? currentComponentName
+          : test.component;
         const isResultHydrating =
           activeBuildResultsLoading && !activeBuildResultsLoaded;
         const openBugs = getOpenBugsForCase(test);
@@ -80,7 +84,7 @@ export function ExecutionMobileCards({ options }: { options: any }) {
             </div>
 
             <div className="d-flex flex-wrap gap-2 mb-3">
-              <Badge bg="light" text="dark" className="border">{test.component}</Badge>
+              <Badge bg="light" text="dark" className="border">{componentLabel}</Badge>
               <Badge
                 bg={test.priority === "ALTA" || test.priority === "CRITICA" ? "danger" : test.priority === "BAJA" ? "secondary" : "warning"}
                 text={test.priority === "MEDIA" ? "dark" : undefined}

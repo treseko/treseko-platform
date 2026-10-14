@@ -1,37 +1,7 @@
-# MCP gobernado
+# Gobierno MCP
 
-El servidor MCP de Treseko está deshabilitado por defecto. Para habilitarlo se
-requiere `TRESEKO_MCP_ENABLED=true`, una allowlist explícita y una topología
-segura: `TRESEKO_MCP_DEPLOYMENT_TOPOLOGY=single_process` para un único proceso,
-o `shared_redis` con `REDIS_URL` (o `TRESEKO_MCP_RATE_LIMIT_REDIS_URL`) para
-workers o réplicas múltiples. Una declaración ausente o ambigua deshabilita MCP.
+Las herramientas se descubren por scopes y RBAC efectivos. Lecturas requieren `read`; mutaciones requieren `edit` en capacidad, organización y proyecto, confirmación y recibo idempotente. No se conceden permisos por instrucciones del modelo.
 
-La autenticación usa exclusivamente `X-MCP-API-Key`, una API key pausible o
-revocable. El
-endpoint no acepta JWT de navegador y comprueba membresía de proyecto y
-organización en cada llamada.
+Las nuevas funciones workspace usan scopes separados de lectura/escritura. Las revisiones previenen sobrescrituras obsoletas y la transacción une cambios, recibos y auditoría. Los resultados conservan evidencia, redactan secretos y fallan explícitamente si exceden límites. Las anotaciones MCP describen cada operación; no sustituyen autorización.
 
-El resolvedor interno de credenciales del Engine comparte la misma admisión:
-permanece cerrado si MCP está deshabilitado o la topología no es válida, antes
-de evaluar el token técnico. Sus errores siguen siendo genéricos.
-
-La superficie combina lecturas y operaciones gobernadas de escritura. La
-allowlist se intersecta con la capability RBAC y scopes declarados por cada
-herramienta. El catálogo no incluye shell,
-filesystem, secretos, base de datos, red privada ni ejecución arbitraria.
-
-El límite es de 30 llamadas por minuto, 64 KiB por solicitud y 256 KiB por
-respuesta. Redis compartido se verifica con timeout corto y caché segura; si no
-responde, todas las rutas MCP, incluido `initialize`, discovery y autenticación,
-fallan cerradas. Los handlers deben devolver resultados JSON seguros y acotados;
-las cadenas, listas, profundidad y bytes se truncan o rechazan antes de construir
-el sobre JSON-RPC.
-
-Las credenciales pueden pasar de `ACTIVE` a `PAUSED` y volver a activarse;
-`REVOKED` es irreversible. El cambio requiere capability de edición, queda
-auditado y bloquea las llamadas mientras está pausado.
-
-Las llamadas y rechazos se auditan con detalles saneados y acotados. No se
-persisten prompts, credenciales ni resultados completos. No se publica MCP
-abierto a Internet ni se agregan mutaciones sin una capability específica,
-allowlist, schema y pruebas de auditoría correspondientes.
+Ver [Guía MCP](MCP_GUIDE.md) y [Operación MCP](MCP_OPERATIONS.md).

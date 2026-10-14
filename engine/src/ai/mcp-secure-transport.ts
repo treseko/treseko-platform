@@ -76,22 +76,26 @@ export function isForbiddenAddress(hostname: string): boolean {
   return host === 'localhost' || host.endsWith('.local') || host.endsWith('.localhost');
 }
 
-export async function resolveSafeAddress(url: URL, resolver?: HostResolver): Promise<string | undefined> {
-  if (isForbiddenAddress(url.hostname)) return undefined;
+function isTrustedPrivateAddress(host: string): boolean {
+  return isIP(host) === 4 && (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(?:1[6-9]|2[0-9]|3[01])\./.test(host));
+}
+
+export async function resolveSafeAddress(url: URL, resolver?: HostResolver, trustedPrivate = false): Promise<string | undefined> {
+  if (isForbiddenAddress(url.hostname) && !(trustedPrivate && isTrustedPrivateAddress(url.hostname))) return undefined;
   if (isIP(url.hostname)) return url.hostname;
   try {
     const lookup = resolver || (async (hostname: string) => (await dns.lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address));
     const addresses = await lookup(url.hostname);
-    return addresses.length > 0 && addresses.every((address) => isIP(address) !== 0 && !isForbiddenAddress(address)) ? addresses[0] : undefined;
+    return addresses.length > 0 && addresses.every((address) => isIP(address) !== 0 && (!isForbiddenAddress(address) || (trustedPrivate && isTrustedPrivateAddress(address)))) ? addresses[0] : undefined;
   } catch { return undefined; }
 }
 
-export function createPinnedFetch(fetchImpl: typeof fetch, pinnedUrl: URL, authority: string, options: { allowInsecureHttp?: boolean; pinNetwork?: boolean } = {}): typeof fetch {
+export function createPinnedFetch(fetchImpl: typeof fetch, pinnedUrl: URL, authority: string, options: { allowInsecureHttp?: boolean; pinNetwork?: boolean; trustedPrivate?: boolean } = {}): typeof fetch {
   const expected = pinnedUrl.toString();
   return async (input, init) => {
     const supplied = new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url);
     const protocolAllowed = supplied.protocol === 'https:' || (options.allowInsecureHttp === true && supplied.protocol === 'http:');
-    if (supplied.toString() !== expected || !protocolAllowed || isForbiddenAddress(supplied.hostname)) throw new Error('MCP_UNSAFE_DESTINATION');
+    if (supplied.toString() !== expected || !protocolAllowed || (isForbiddenAddress(supplied.hostname) && !(options.trustedPrivate && isTrustedPrivateAddress(supplied.hostname)))) throw new Error('MCP_UNSAFE_DESTINATION');
     const safeInit = { ...(init || {}), redirect: 'error' as RequestRedirect, headers: { ...(init?.headers || {}), host: authority } };
     const response = options.pinNetwork
       ? await requestPinned(pinnedUrl, authority, safeInit)
@@ -122,7 +126,18 @@ function requestPinned(url: URL, authority: string, init: RequestInit): Promise<
       lookup: (_hostname, _options, callback) => callback(null, url.hostname, isIP(url.hostname) as 4 | 6),
     }, (response) => {
       const chunks: Buffer[] = [];
-      response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      let bytes = 0;
+      response.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (bytes > 256 * 1024) {
+          response.destroy(); request.destroy();
+          signal?.removeEventListener('abort', abortRequest);
+          reject(new Error('MCP_RESPONSE_TOO_LARGE'));
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.once('error', reject);
       response.on('end', () => {
         signal?.removeEventListener('abort', abortRequest);
         resolve(new Response(Buffer.concat(chunks), { status: response.statusCode, headers: response.headers as Record<string, string> }));

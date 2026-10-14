@@ -13,7 +13,7 @@ export async function fetchProjectRunHistory(fetchWithAuth: FetchWithAuth, proje
   return readJsonOrThrow(response, `${fallback} ${response.status}`)
 }
 
-export async function fetchTestRunDetail(fetchWithAuth: FetchWithAuth, runId: string, fallback = 'Backend responded') {
-  const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/`)
+export async function fetchTestRunDetail(fetchWithAuth: FetchWithAuth, runId: string, fallback = 'Backend responded', view?: string) {
+  const response = await fetchWithAuth(`${API_BASE}/test-runs/${runId}/detalle/${view ? `?view=${encodeURIComponent(view)}` : ''}`)
   return readJsonOrThrow(response, `${fallback} ${response.status}`)
 }
