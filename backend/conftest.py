@@ -9,4 +9,6 @@ os.environ.setdefault(
 os.environ.setdefault("SECRET_KEY", "public-release-mcp-test-secret-" + ("x" * 48))
 os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6379/15")
 os.environ.setdefault("TRESEKO_MCP_DEPLOYMENT_TOPOLOGY", "single_process")
-os.environ.setdefault("TRESEKO_DISABLE_INSTALLATION_PING", "1")
+# Backend tests must never contact the public verification service, even when
+# the developer shell explicitly enables the optional installation ping.
+os.environ["TRESEKO_DISABLE_INSTALLATION_PING"] = "1"

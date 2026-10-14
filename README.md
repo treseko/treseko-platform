@@ -18,6 +18,7 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 - La generación de historias y casos conserva aclaraciones, criterios de aceptación y revisión antes de crear registros.
 - Suites, ejecución, historial y reportes guardan avances recuperables y conservan resultados y evidencias según el formato de prueba.
 - La instalación de escritorio queda temporalmente fuera del paquete; se mantienen los scripts Bash y PowerShell.
+- El ping de instalación queda desactivado por defecto; el administrador puede activarlo de forma explícita.
 
 La secuencia de releases Community publicada incluye 1.0.1, 1.0.2 y 1.0.6.
 La versión preparada a continuación es 1.0.7;

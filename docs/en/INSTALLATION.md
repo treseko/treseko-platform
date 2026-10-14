@@ -15,6 +15,17 @@ temporarily excluded from this release. The package also includes
 - Storage for PostgreSQL, evidence and backups.
 - A Linux host for remote installation over SSH.
 
+## Optional installation ping
+
+A fresh installation does not send installation data by default. If the
+administrator sets `TRESEKO_ENABLE_INSTALLATION_PING=true` in
+`compose.production.env`, the backend sends the installation's persistent ID,
+version, Community edition, operating system and runtime to
+`verify.treseko.com` once. It does not include users, projects, cases,
+credentials or prompts. `TRESEKO_DISABLE_INSTALLATION_PING=true` disables the
+ping even when it is enabled. This setting is separate from the optional
+onboarding survey.
+
 ## Local installation with scripts
 
 On Linux and macOS, use the Bash script. On Windows, use the PowerShell script.

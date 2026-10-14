@@ -4,6 +4,7 @@
 - Historias y casos: conserva aclaraciones, criterios, trazabilidad y revisión antes de aplicar propuestas.
 - Suites, historial, ejecución y reportes: mejora guardados recuperables, paginación, evidencia por formato y cálculo de resultados.
 - Instalación: los instaladores gráficos de escritorio se retiran temporalmente del paquete; se mantienen los scripts Bash y PowerShell.
+- Privacidad: el ping de instalación es opcional y permanece desactivado salvo activación explícita del administrador.
 
 # Treseko 1.0.6
 

@@ -22,6 +22,7 @@ test_auth_ad_oidc_url_security.py
 test_session_version_security.py
 test_system_http_flow.py
 test_system_updates_http_flow.py
+test_installation_telemetry.py
 test_update_legacy_premium_download.py
 test_updater_history.py
 test_story_generation_http_flow.py

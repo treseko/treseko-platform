@@ -13,6 +13,17 @@ contienen secretos reales.
 - Almacenamiento para PostgreSQL, evidencias y backups.
 - Host Linux para instalación remota por SSH.
 
+## Ping opcional de instalación
+
+El primer arranque no envía información de instalación por defecto. Si el
+administrador activa `TRESEKO_ENABLE_INSTALLATION_PING=true` en
+`compose.production.env`, el backend envía una sola vez el identificador
+persistente de la instalación, la versión, la edición Community, el sistema
+operativo y el runtime a `verify.treseko.com`. No incluye usuarios, proyectos,
+casos, credenciales ni prompts. `TRESEKO_DISABLE_INSTALLATION_PING=true`
+desactiva el envío incluso si también se activó. Esta opción es independiente
+de la encuesta opcional que aparece durante el onboarding.
+
 ## Instalación local por script
 
 En Linux y macOS ejecutá el script Bash. En Windows usá el script PowerShell.

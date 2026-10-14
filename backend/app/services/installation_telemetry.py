@@ -16,12 +16,17 @@ from app.services.premium_runtime.verification_client import get_or_create_insta
 
 INSTALLATION_PING_SETTING_KEY = "treseko_installation_ping"
 INSTALLATION_PING_ENDPOINT = os.getenv("TRESEKO_INSTALLATION_PING_ENDPOINT", "https://verify.treseko.com/api/phone-home")
-INSTALLATION_PING_DISABLED = str(os.getenv("TRESEKO_DISABLE_INSTALLATION_PING") or "").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+
+
+def _environment_flag(name: str) -> bool:
+    return str(os.getenv(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def installation_ping_enabled() -> bool:
+    """Send the installation ping only after an explicit operator opt-in."""
+    return _environment_flag("TRESEKO_ENABLE_INSTALLATION_PING") and not _environment_flag(
+        "TRESEKO_DISABLE_INSTALLATION_PING"
+    )
 
 
 def _read_version() -> str:
@@ -64,7 +69,7 @@ async def _save_setting(db: AsyncSession, value: dict[str, Any]) -> None:
 
 
 async def send_installation_ping_once(db: AsyncSession, *, timeout_seconds: float = 2.0) -> None:
-    if INSTALLATION_PING_DISABLED:
+    if not installation_ping_enabled():
         return
     existing = await _setting_value(db)
     if isinstance(existing, dict) and existing.get("status") == "sent":
