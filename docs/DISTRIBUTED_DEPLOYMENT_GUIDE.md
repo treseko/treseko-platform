@@ -23,7 +23,7 @@ flowchart LR
 | C | Engine IA | Privada. |
 | D | Uno o más Automation Worker y sus navegadores | Privada; cada uno requiere pairing. |
 | L | Proveedor LLM autorizado | Salida controlada según su configuración. |
-| P opcional | Perfil de complementos declarado, pero no incluido en este snapshot público | No operativo desde este paquete. |
+| P opcional | Plugin Runner aislado, activable con el perfil `plugins`; admite `junit_xml.import_results`. | Red privada dedicada, sin base, Redis, secretos ni socket Docker. |
 
 El worker procesa automatización clásica y API declarativa. Community admite un
 solo worker. Agregar workers requiere la capability/entitlement Premium; cada

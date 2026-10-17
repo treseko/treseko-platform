@@ -77,6 +77,7 @@ async def review_drafts(kind: Literal['historias', 'casos'], generation_id: UUID
         await crud.create_audit_log(db=db, usuario_id=user.id, accion='REVIEW', recurso='generacion_contenido', recurso_id=run.id,
                                     detalles={'proyecto_id': str(run.proyecto_id), 'propuestas': list(updated)}, ip_address='api', commit=False)
         await db.commit()
+        await db.refresh(run)
     except (ValueError, TypeError) as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

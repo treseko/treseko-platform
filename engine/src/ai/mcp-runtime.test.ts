@@ -63,6 +63,44 @@ test('allows the Compose HTTP resolver only when explicitly enabled', async () =
   }
 });
 
+test('keeps the 1.0.6 Compose MCP resolver working without the new trusted-origin variable', async () => {
+  const previous = {
+    url: process.env.MCP_RUNTIME_RESOLVER_URL,
+    origins: process.env.MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS,
+    trusted: process.env.MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS,
+    token: process.env.AI_ENGINE_INTERNAL_TOKEN,
+    insecure: process.env.MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP,
+  };
+  process.env.MCP_RUNTIME_RESOLVER_URL = 'http://backend:8000/api/mcp/internal/runtime-credential';
+  process.env.MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS = 'http://backend:8000';
+  delete process.env.MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS;
+  process.env.AI_ENGINE_INTERNAL_TOKEN = 'engine-secret';
+  process.env.MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP = 'true';
+  try {
+    let requestedUrl = '';
+    const services = createMcpRuntimeServices({
+      resolveHost: async () => ['172.20.0.4'],
+      fetchImpl: async (input) => {
+        requestedUrl = String(input);
+        return new Response(JSON.stringify({ secret: 'resolved' }), { status: 200 });
+      },
+    });
+    assert.ok(services);
+    assert.equal(await services.resolveCredential('vault:credential-1'), 'resolved');
+    assert.equal(requestedUrl, 'http://172.20.0.4:8000/api/mcp/internal/runtime-credential');
+  } finally {
+    for (const [key, value] of Object.entries({
+      MCP_RUNTIME_RESOLVER_URL: previous.url,
+      MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS: previous.origins,
+      MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS: previous.trusted,
+      AI_ENGINE_INTERNAL_TOKEN: previous.token,
+      MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP: previous.insecure,
+    })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test('does not create a resolver without both internal boundary settings', () => {
   const previousUrl = process.env.MCP_RUNTIME_RESOLVER_URL;
   const previousToken = process.env.AI_ENGINE_INTERNAL_TOKEN;

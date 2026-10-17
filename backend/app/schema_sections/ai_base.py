@@ -166,7 +166,10 @@ def validate_ai_provider_endpoint(value: str) -> str:
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("El endpoint IA no puede contener credenciales, query ni fragment")
     hostname = (parsed.hostname or "").lower()
-    local = hostname in {"localhost", "127.0.0.1", "::1"}
+    # Docker Desktop exposes the host through this alias. The Engine already
+    # treats it as a local provider endpoint; allow it here so provider
+    # profiles can reach LM Studio/Ollama running on the developer host.
+    local = hostname in {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
     # Local providers may run on another machine in the same private/Tailscale
     # network (for example LM Studio on Windows). Keep HTTP restricted to
     # non-public address ranges; public providers still require HTTPS.

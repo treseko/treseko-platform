@@ -2,7 +2,7 @@ import { Button, Form } from 'react-bootstrap'
 import { ChevronDown, ChevronRight, Eye } from 'lucide-react'
 
 export function TraceabilityGenerationContext({ options }: { options: any }) {
-  const { generationStep, generationContextExpanded, setGenerationContextExpanded, tx, t, generationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationBusy, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, locale } = options
+  const { generationStep, generationContextExpanded, setGenerationContextExpanded, tx, t, generationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationQuestionScopeDecisions, setGenerationQuestionScopeDecisions, generationAcceptedAssumptions, setGenerationAcceptedAssumptions, generationBusy, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, locale } = options
   return (
     <>
               {generationStep === "context" && (
@@ -147,7 +147,17 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                         <div><span className="fw-semibold">{tx("ambiguities")}</span> {generationRun.analysis.ambiguities.join("; ")}</div>
                       )}
                       {!!generationRun.analysis?.proposed_assumptions?.length && (
-                        <div><span className="fw-semibold">{tx("proposedAssumptions")}</span> {generationRun.analysis.proposed_assumptions.map((item: any) => item.text).join("; ")}</div>
+                        <div>
+                          <div className="fw-semibold">{tx("proposedAssumptions")}</div>
+                          <div className="d-flex flex-column gap-1 mt-1">
+                            {generationRun.analysis.proposed_assumptions.map((item: any) => (
+                              <Form.Check key={item.id} type="checkbox" disabled={generationBusy || generationCandidates.length > 0}
+                                checked={generationAcceptedAssumptions.includes(item.id)}
+                                onChange={(event) => setGenerationAcceptedAssumptions((previous: string[]) => event.target.checked ? [...new Set([...previous, item.id])] : previous.filter((id) => id !== item.id))}
+                                label={`${item.text} (${String(item.risk || 'UNKNOWN').toLowerCase()})`} />
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -178,6 +188,20 @@ export function TraceabilityGenerationContext({ options }: { options: any }) {
                                 }
                               }
                               placeholder={tx("answerPlaceholder")}
+                            />
+                            <Form.Check
+                              className="mt-1"
+                              type="checkbox"
+                              checked={Boolean(generationQuestionScopeDecisions?.[question])}
+                              disabled={generationBusy || generationCandidates.length > 0}
+                              label={tx("markOutOfScope")}
+                              onChange={(event) => {
+                                setAutoContinuePaused(true)
+                                setGenerationQuestionScopeDecisions((previous: Record<string, boolean>) => ({
+                                  ...previous,
+                                  [question]: event.target.checked,
+                                }))
+                              }}
                             />
                           </Form.Group>
                         ))}

@@ -93,6 +93,9 @@ another update.
 release passes validation while admission remains fenced. If an earlier phase
 fails, the previous release remains active. Versioned directories and their
 manifests are retained for recovery and audit.
+The update coordinator verifies the active manifest and rejects an older
+candidate before changing services or data. To upgrade, use the target
+version's package.
 
 This mode prioritizes consistency over availability: the local service is
 offline during migration and validation. Docker snapshots and previous image
@@ -119,6 +122,12 @@ installer on the host. There is no legacy application fallback because it does
 not provide the same atomic transaction. Operational host-coordinator
 integration for that option is still pending and must not be confused with the
 atomic local update.
+
+To move from Treseko 1.0.6 to 1.0.7 on a local Compose installation, download
+the complete target release package and run its installer with `--update` (or
+`-Update` in PowerShell). **Settings → Updates** can apply the release only
+after the host coordinator has been installed and bound; the application
+service cannot access the host Compose file to replace it on its own.
 
 ### Conservative uninstall
 

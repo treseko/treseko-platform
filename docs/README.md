@@ -77,9 +77,9 @@ Para crear y ejecutar casos, empezá por [Crear y mantener casos de prueba](TEST
 
 ## Versión distribuida
 
-La versión estable distribuida es `1.0.4`. Incluye formatos API y
-conversacional, ejecución unificada mediante worker, evidencia por formato,
-bugs, snapshots de reportes, trazabilidad, automatización, IA y administración.
+La última versión Community publicada es `1.0.6`. La versión preparada para la
+próxima publicación es `1.0.7`; hasta que se publique, `1.0.6` sigue siendo la
+versión estable para producción.
 
 Consultá el [changelog](../CHANGELOG.md) para conocer las novedades incluidas.
 

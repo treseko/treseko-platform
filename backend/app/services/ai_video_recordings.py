@@ -39,9 +39,8 @@ async def register_recording(db, report, project_id, *, execution_id=None, tempo
 
 
 def worker_video_path(identifier):
-    import os
-    from pathlib import Path
-    root = Path(os.environ.get('AUTOMATION_RESULT_UPLOAD_DIR', str(Path(__file__).resolve().parents[2] / '.treseko' / 'worker-results'))) / 'temporary-videos'
+    from .worker_result_storage import result_upload_root
+    root = result_upload_root() / 'temporary-videos'
     return root / f'{UUID(str(identifier))}.webm'
 
 

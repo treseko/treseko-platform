@@ -17,10 +17,14 @@ technical accounts and never paste tokens into cases or evidence.
 
 ## plugin-runner
 
-The `plugins` profile adds the isolated Plugin Runner. In 1.0.4 it accepts only
+The `plugins` profile adds the isolated Plugin Runner. In Community 1.0.7 it accepts only
 the declarative `junit_xml.import_results` invocation; it does not execute
 arbitrary code, WASM or third-party plugins. It has a dedicated network with no
 DB, Redis, secrets or Docker socket access.
+
+When enabling the profile manually, pass `TRESEKO_RELEASE_VERSION` with the
+value from `VERSION` to `docker compose` so the image records the correct
+release. The atomic updater sets this value when rebuilding active services.
 
 ## Portability
 

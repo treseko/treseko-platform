@@ -92,6 +92,13 @@ if [ -d "$IMAGE_DIST_DIR" ]; then
   fi
 fi
 
+# Los paquetes pueden extraerse con umask 077. En ese caso los assets copiados
+# desde `frontend/public` quedan en 0600 y el worker de nginx no puede leerlos.
+# El bundle ya fue validado por digest; habilitar lectura para contenido público
+# y recorrido para sus carpetas, manteniendo privados los marcadores ocultos.
+find "$FRONTEND_HTML_DIR" -type d -exec chmod a+rx {} +
+find "$FRONTEND_HTML_DIR" -type f ! -name '.*' -exec chmod a+r {} +
+
 installed_version="$(read_bundle_version "$FRONTEND_HTML_DIR")"
 metadata_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$FRONTEND_HTML_DIR/version.json" | head -n 1)"
 if [ -r "$FRONTEND_HTML_DIR/VERSION" ] && [ -r "$FRONTEND_HTML_DIR/version.json" ] && [ "$installed_version" != "$metadata_version" ]; then
@@ -203,9 +210,22 @@ watch_update_restart &
 watcher_pid="$!"
 
 cleanup() {
-  kill -TERM "$nginx_pid" "$watcher_pid" 2>/dev/null || true
+  signal="${1:-TERM}"
+  trap - EXIT INT TERM QUIT
+  kill -TERM "$watcher_pid" 2>/dev/null || true
+  if [ "$signal" = "QUIT" ]; then
+    kill -QUIT "$nginx_pid" 2>/dev/null || true
+  else
+    kill -TERM "$nginx_pid" 2>/dev/null || true
+  fi
   wait "$watcher_pid" 2>/dev/null || true
+  wait "$nginx_pid" 2>/dev/null || true
 }
 
-trap cleanup EXIT INT TERM
+# nginx:alpine uses SIGQUIT as its stop signal. PID 1 here is this shell,
+# so forward that signal to the background nginx master for a graceful stop.
+trap 'cleanup TERM' EXIT
+trap 'cleanup INT' INT
+trap 'cleanup TERM' TERM
+trap 'cleanup QUIT' QUIT
 wait "$nginx_pid"

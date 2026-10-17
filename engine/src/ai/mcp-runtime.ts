@@ -5,7 +5,13 @@ import { isForbiddenAddress, resolveSafeAddress, createPinnedFetch } from './mcp
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 function trustedPrivateResolver(url: URL): boolean {
-  return String(process.env.MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS || '').split(',').map(value => value.trim()).includes(url.origin);
+  const configured = String(process.env.MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  // 1.0.6 Docker deployments do not declare the new trusted-origin variable.
+  // Keep the one fixed, internal Compose service address working; arbitrary
+  // private origins still require an explicit trust declaration.
+  return configured.includes(url.origin)
+    || (url.protocol === 'http:' && url.hostname === 'backend' && url.port === '8000');
 }
 
 function allowInsecureResolverTransport(): boolean {

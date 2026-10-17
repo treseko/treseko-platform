@@ -78,13 +78,30 @@ def _validate_component_contract(payload: Path, manifest: dict) -> None:
     )):
         raise ValueError("Release component contract inventory is missing")
 
+    deployment_values = [manifest.get("deployment"), embedded.get("deployment"),
+                         plan.get("deployment")]
+    expected_deployment = {
+        "mode": "complete-source", "path": "source-release",
+        "compose_file": "docker-compose.prod.yml", "activation": "atomic-compose",
+    }
+    complete_source = any(value is not None for value in deployment_values)
+    if complete_source and any(value != expected_deployment for value in deployment_values):
+        raise ValueError("Release deployment contract disagrees across signed manifest and update plan")
+    source_marker = signed_components.get("source-release")
+    if complete_source and source_marker is not True:
+        raise ValueError("Complete-source release is missing its signed source-release component marker")
+    if not complete_source and source_marker is not None:
+        raise ValueError("Source-release component marker requires a complete-source deployment")
+
     def enabled_components(value: dict, names_map: dict[str, str]) -> set[str]:
         unknown = set(value) - set(names_map)
         if unknown:
             raise ValueError("Release declares unknown components: " + ", ".join(sorted(unknown)))
         return {names_map[key] for key, enabled in value.items() if enabled is True}
 
-    signed = enabled_components(signed_components, MANIFEST_COMPONENT_NAMES)
+    runtime_signed_components = dict(signed_components)
+    runtime_signed_components.pop("source-release", None)
+    signed = enabled_components(runtime_signed_components, MANIFEST_COMPONENT_NAMES)
     embedded_set = enabled_components(embedded_components, MANIFEST_COMPONENT_NAMES)
     allowed_runtime_names = set(MANIFEST_COMPONENT_NAMES.values())
     if set(plan_components) != allowed_runtime_names.intersection(plan_components):
@@ -116,6 +133,27 @@ def _validate_component_contract(payload: Path, manifest: dict) -> None:
             raise ValueError(f"Runtime Dockerfile is missing for declared component: {component}")
     if plan.get("rollback", {}).get("enabled") is not True:
         raise ValueError("Release component plan must enable rollback")
+
+    # A complete-source release carries the host-level Compose definition and
+    # every build context. The signed manifest and embedded plan bind this
+    # deployment contract to the exact archive digest before staging.
+    if any(value is not None for value in deployment_values):
+        source = payload / "source-release"
+        required_files = (
+            "VERSION", "docker-compose.prod.yml", "scripts/atomic_local_update.py",
+            "scripts/install_local_treseko.sh", "backend/Dockerfile", "frontend/Dockerfile",
+            "engine/Dockerfile", "automation-worker/Dockerfile", "plugin-runner/Dockerfile",
+        )
+        missing = [relative for relative in required_files if not (source / relative).is_file()]
+        required_dirs = ("backend/app", "backend/alembic", "frontend/src", "engine/src",
+                         "automation-worker/src", "plugin-runner/src")
+        missing.extend(relative for relative in required_dirs if not (source / relative).is_dir())
+        if missing:
+            raise ValueError("Complete source release is incomplete: " + ", ".join(missing))
+        if (source / "VERSION").read_text(encoding="utf-8").strip() != version:
+            raise ValueError("Complete source release version mismatch")
+        if not (source / "docker-compose.prod.yml").stat().st_size:
+            raise ValueError("Complete source release Compose file is empty")
 
 
 def stage_verified_package(archive: Path, manifest: dict, destination: Path,

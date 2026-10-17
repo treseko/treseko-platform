@@ -8,6 +8,7 @@ export type WorkflowAgentPromptArgs = {
   maxCompletionTokens?: number;
   responseFormat?: 'json_schema' | 'json_object' | 'text';
   maxInputChars?: number;
+  timeoutMs?: number;
 };
 
 export function buildWorkflowAgentPrompt(args: WorkflowAgentPromptArgs): string {

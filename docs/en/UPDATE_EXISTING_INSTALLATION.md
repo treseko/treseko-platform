@@ -5,6 +5,13 @@
 Status: **local orchestration deliverable; it is not rollout certification or
 production readiness**.
 
+Releases whose signed manifest declares `deployment.mode=complete-source` are
+rejected before component planning while the host bridge does not have the
+`atomic-compose` transaction enabled. Component runtime preparation must not be
+treated as installation of the full Compose project. This guard prevents a
+mixed-version application; release 1.0.7 is not ready for distribution until
+this path is integrated and tested with Docker, data preservation, and rollback.
+
 ## Flow
 
 It uses the controller's combined private configuration (`participants`,

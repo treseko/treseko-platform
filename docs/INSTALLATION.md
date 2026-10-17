@@ -91,6 +91,9 @@ El archivo `.treseko-local/active-release.json` se reemplaza atómicamente solo
 después de validar la release nueva mientras la barrera sigue cerrada. Si una
 fase anterior falla, la release previa sigue activa. Los directorios versionados
 y sus manifiestos se conservan para recuperación y auditoría.
+El coordinador de actualización comprueba el manifiesto activo y rechaza una
+release candidata anterior antes de modificar servicios o datos. Para avanzar,
+usa el paquete de la versión destino.
 
 Este modo prioriza consistencia sobre disponibilidad: el servicio local queda
 fuera de línea durante la migración y la validación. Los snapshots de Docker y
@@ -118,6 +121,13 @@ el instalador local del equipo host. No hay fallback de aplicación legacy
 porque no ofrece la misma transacción atómica. La integración operativa del
 coordinador de host para esa opción sigue pendiente y no debe confundirse con
 la actualización local atómica.
+
+Para pasar de Treseko 1.0.6 a 1.0.7 en una instalación Compose local, descargá
+el paquete completo de la versión destino y ejecutá su instalador con
+`--update` (o `-Update` en PowerShell). La actualización desde **Configuración →
+Actualizaciones** solo aplica cuando el coordinador del host ya está instalado
+y enlazado; el servicio de aplicación no tiene acceso al Compose del host para
+reemplazarlo por sí mismo.
 
 ### Desinstalación conservadora
 

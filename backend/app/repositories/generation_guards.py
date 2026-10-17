@@ -25,12 +25,13 @@ def checked_answers(analysis, answers, *, require_all=True):
     answered = {}
     for item in answers:
         question, answer = item.question.strip(), item.answer.strip()
-        if question not in known or not answer or question in answered:
-            raise ValueError('Responde cada pregunta del análisis una sola vez, sin respuestas vacías.')
-        answered[question] = answer
+        scope_decision = str(getattr(item, 'scope_decision', 'IN_SCOPE') or 'IN_SCOPE')
+        if question not in known or (not answer and scope_decision != 'OUT_OF_SCOPE') or question in answered:
+            raise ValueError('Responde cada pregunta del análisis una sola vez; una pregunta sin respuesta requiere marcarse fuera del alcance.')
+        answered[question] = (answer, scope_decision)
     if require_all and known - answered.keys():
         raise ValueError('Responde todas las preguntas pendientes antes de continuar.')
-    return [{'question': q, 'answer': a} for q, a in answered.items()]
+    return [{'question': q, 'answer': value[0], 'scope_decision': value[1]} for q, value in answered.items()]
 
 
 def check_assumptions(analysis, accepted_ids, mode='MANUAL'):

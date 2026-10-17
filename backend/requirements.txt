@@ -22,4 +22,4 @@ openpyxl
 xlrd
 ldap3
 
-jsonschema>=4.26,<5
+jsonschema==4.26.0

@@ -175,3 +175,43 @@ explícitamente su configuración privada y
 validan imports reales de los tres módulos con el Python operador. Esta entrega
 cubre el bootstrap local y una instalación real del árbol indicado, pero no
 certifica servicios legacy ni producción.
+
+## Migrar el actualizador host antes de subir la app 1.0.6
+
+El bridge host 1.0.6 es un helper versionado instalado por separado. Actualizar
+el volumen backend de la aplicación no lo reemplaza, y el bridge 1.0.6 ignora
+el descriptor de despliegue completo. Por eso un operador debe instalar
+primero el helper 1.0.7, antes de permitir que esa instalación aplique el
+paquete de la aplicación 1.0.7. Es un requisito del host; el actualizador
+integrado en 1.0.6 no puede realizarlo por sí mismo.
+
+1. Obtener el paquete firmado 1.0.7 y su manifest mediante el proceso aprobado
+   para operadores. Conservar su firma y checksum. Colocar el manifest en la
+   ruta configurada en `helper-installation.json` y el archivo en
+   `<cache-configurado>/<checksum_sha256>.tar.gz`. Ambos deben seguir siendo
+   privados y propiedad de root.
+2. Desde el checkout público 1.0.7 revisado, construir la imagen confiable con
+   `scripts/build_trusted_update_helper_image.sh`. El script prepara un contexto
+   temporal con solo las fuentes permitidas e imprime el ID inmutable local de
+   la imagen. Revisar y registrar en el entorno privado del operador los IDs de
+   las imágenes base y de la imagen resultante.
+3. Confirmar que no haya una transacción del bridge pendiente. Ejecutar
+   `scripts/bootstrap_update_helpers_docker.sh` con ese ID, la configuración
+   privada actual de instalación de helpers, Docker CLI, socket, red dedicada y
+   root prefix configurado. El instalador verifica la firma del paquete,
+   instala de forma transaccional el backend versionado y los wrappers,
+   registra el receipt y conserva los datos para rollback.
+4. Confirmar que el receipt informa versión `1.0.7`. Cuando esté inactivo,
+   reiniciar el servicio host bridge del operador para que cargue el helper
+   nuevo. Si la instalación falla, ejecutar el mismo bootstrap con
+   `--rollback` y la configuración privada guardada.
+5. Recién entonces ejecutar la actualización normal de la aplicación. El
+   helper compatible podrá validar y reemplazar transaccionalmente el proyecto
+   Compose completo.
+
+No habilitar el paquete para instalaciones origen 1.0.6 hasta pasar este
+procedimiento en un host Linux de staging con Docker, incluyendo rollback del
+helper y del Compose completo. El constructor rechaza ese origen salvo que el
+modo `complete-source` y la verificación del bootstrap estén activados
+explícitamente. Esa variable es una atestación del release; no ejecuta esta
+migración en los hosts de los clientes.

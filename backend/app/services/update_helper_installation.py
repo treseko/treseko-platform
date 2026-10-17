@@ -64,10 +64,8 @@ def _private_directory(path, label, *, required=False):
     if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o077):
         raise ValueError(f"Unsafe private {label} directory")
 
-
 def _public_directory(path, label):
     return _directory_identity(path, label, private=False)
-
 
 def _directory_identity(path, label, *, private):
     info = path.lstat()
@@ -77,7 +75,6 @@ def _directory_identity(path, label, *, private):
             or (not private and not stat.S_IMODE(info.st_mode) & 0o555)):
         raise ValueError(f"Unsafe public {label} directory")
     return (info.st_dev, info.st_ino, info.st_uid, stat.S_IMODE(info.st_mode))
-
 
 def _assert_directory_identity(path, identity, label):
     info = path.lstat()
@@ -123,6 +120,9 @@ def _config(config, root):
     for path in configs.values(): _reject_symlink_components(root, path)
     if launcher_config is not None:
         launcher.validate_active_compose_state(configs["participant"], root, launcher_config)
+        if "host_bridge" in configs:
+            from .update_helper_complete_source import validate_complete_source_mounts
+            validate_complete_source_mounts(configs["host_bridge"], root, launcher_config)
     dependencies = config.get("dependencies", ["cryptography"])
     if (not isinstance(dependencies, list) or len(set(dependencies)) != len(dependencies)
             or not all(isinstance(v, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", v) for v in dependencies)):

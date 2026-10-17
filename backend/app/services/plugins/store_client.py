@@ -10,11 +10,19 @@ import httpx
 PLUGIN_STORE_URL = (os.getenv("TRESEKO_PLUGIN_STORE_URL") or "https://app.treseko.com/api/plugins").rstrip("/")
 
 
+def official_store_enabled() -> bool:
+    return (os.getenv("TRESEKO_PLUGIN_STORE_ENABLED") or "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 class PluginStoreClientError(ValueError):
     pass
 
 
 async def fetch_official_catalog() -> list[dict[str, Any]]:
+    if not official_store_enabled():
+        raise PluginStoreClientError("La tienda oficial no está habilitada en esta instalación")
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0), follow_redirects=False) as client:
             response = await client.get(f"{PLUGIN_STORE_URL}/catalog", headers={"accept": "application/json"})

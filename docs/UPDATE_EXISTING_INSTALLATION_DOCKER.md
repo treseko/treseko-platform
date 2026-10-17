@@ -37,3 +37,50 @@ wrapper instalado no recibe argumentos: invoca internamente `--once --spool`
 con configuración fija. No se deben ejecutar esos flags como argumentos
 externos del wrapper ni considerar las plantillas listas hasta sustituir sus
 placeholders y validar bindings/permisos.
+
+## Reemplazo transaccional del Compose completo
+
+Para paquetes firmados con `deployment.mode=complete-source`, el controlador
+requiere `atomic_compose` en su configuración privada:
+
+```json
+{
+  "schema": 1,
+  "project": "treseko",
+  "project_root": "/opt/treseko",
+  "env_file": "<project-root>/.env"
+}
+```
+
+`project_root` debe ser la raíz del Compose actualmente instalado, propiedad de
+root/operador y no modificable por grupo u otros. `env_file` debe estar dentro
+de esa raíz, ser regular, privado y legible. El launcher Docker del controlador
+monta la raíz de proyecto en solo lectura (`purpose: atomic-project`), el
+estado del controlador en lectura/escritura y el socket Docker solo dentro del
+helper de confianza. El instalador prepara el árbol firmado, valida el Compose
+candidato sin detener servicios y conserva el proyecto previo para rollback.
+Los volúmenes persistentes y el archivo de entorno quedan fuera del reemplazo
+de código.
+
+La ruta `complete-source` admite únicamente una instalación concentrada en un
+host Docker local. Si la instalación está distribuida entre hosts, el plan se
+rechaza; se necesita un adaptador transaccional propio para esa topología.
+
+Para Premium coordinado, la transición desde 1.0.6 usa el instalador de helpers
+que ya incluye esa versión. Preparar el mismo paquete firmado completo en el
+cache/manifest privados de HelperInstallation y ejecutar
+`scripts/bootstrap_update_helpers_docker.sh` con la imagen helper 1.0.6
+inmutable y su configuración ya vinculada. El instalador verifica el paquete y
+publica el backend helper 1.0.7 en su propio directorio versionado; no reinicia
+los servicios Treseko ni aplica Compose. Verificar el receipt 1.0.7 y que
+incluya `treseko-update-host-bridge`, junto con los mounts privados de
+`atomic_compose`; luego aplicar el mismo paquete desde Configuración →
+Actualizaciones. La app Premium 1.0.6 ya envía las transacciones coordinadas al
+helper host.
+
+La prueba Linux de bootstrap usa el código real de instalación de helpers
+1.0.6, pero un prefijo efímero; no instala wrappers en el host ni simula una
+sesión UI. La publicación requiere validar también Configuración →
+Actualizaciones en una instancia Premium aislada. Este camino no cubre
+instalaciones legacy sin coordinador: deben migrarse al coordinador o usar el
+instalador Compose local con `--update` / `-Update`.

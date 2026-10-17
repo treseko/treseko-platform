@@ -19,6 +19,8 @@ export function useTraceabilityGenerationState(options: any) {
   const [generationComponentIds, setGenerationComponentIds] = useState<string[]>([])
   const [generationMaxStories, setGenerationMaxStories] = useState(1)
   const [generationQuestionAnswers, setGenerationQuestionAnswers] = useState<Record<string, string>>({})
+  const [generationQuestionScopeDecisions, setGenerationQuestionScopeDecisions] = useState<Record<string, boolean>>({})
+  const [generationAcceptedAssumptions, setGenerationAcceptedAssumptions] = useState<string[]>([])
   const [generationCandidates, setGenerationCandidates] = useState<any[]>([])
   const [generationBusy, setGenerationBusy] = useState(false)
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0)
@@ -55,7 +57,8 @@ export function useTraceabilityGenerationState(options: any) {
     generationRequirement, setGenerationRequirement, generationStep, setGenerationStep, generationRun, setGenerationRun,
     generationInstructions, setGenerationInstructions, generationWiki, setGenerationWiki, generationWikiIds, setGenerationWikiIds,
     generationComponentIds, setGenerationComponentIds, generationMaxStories, setGenerationMaxStories, generationQuestionAnswers,
-    setGenerationQuestionAnswers, generationCandidates, setGenerationCandidates, generationBusy, setGenerationBusy,
+    setGenerationQuestionAnswers, generationQuestionScopeDecisions, setGenerationQuestionScopeDecisions,
+    generationAcceptedAssumptions, setGenerationAcceptedAssumptions, generationCandidates, setGenerationCandidates, generationBusy, setGenerationBusy,
     generationElapsedSeconds, setGenerationElapsedSeconds, generationContextExpanded, setGenerationContextExpanded,
     expandedCandidateIndexes, setExpandedCandidateIndexes, estimateExplanationVisible, setEstimateExplanationVisible,
     autoContinuePaused, setAutoContinuePaused, autoContinueRemaining, setAutoContinueRemaining, generationHasActionableReview,

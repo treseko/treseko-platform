@@ -230,8 +230,8 @@ Responde JSON:
   private safeJsonParse(raw: string): any {
     return parseAIJson(raw);
   }
-  private async sendWithRetry<T>(messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text'): Promise<AIResult<T>> {
-    return sendWithRetry<T>(this, messages, temperature, maxCompletionTokens, responseFormat);
+  private async sendWithRetry<T>(messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text', timeoutOverrideMs?: number, outputSchema?: Record<string, any>): Promise<AIResult<T>> {
+    return sendWithRetry<T>(this, messages, temperature, maxCompletionTokens, responseFormat, timeoutOverrideMs, outputSchema);
   }
   async checkLoadingState(screenshotBase64: string): Promise<AIResult<{ loading: boolean, reason: string }>> {
     return checkLoadingState(this, screenshotBase64);
@@ -263,6 +263,8 @@ Responde JSON:
       args.temperature ?? this.temperature,
       args.maxCompletionTokens,
       args.responseFormat,
+      args.timeoutMs,
+      args.outputSchema,
     );
   }
   async waitForStability(page: any): Promise<void> {

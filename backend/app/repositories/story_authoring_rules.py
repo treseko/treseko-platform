@@ -149,3 +149,11 @@ def validate_proposal(
     quality["testability"] = "FAIL" if any(item["severity"] == "FAIL" for item in findings) else ("WARN" if warnings else "PASS")
     proposal["rule_findings"] = findings
     return findings
+
+
+def has_normalized_duplicate(findings: list[dict]) -> bool:
+    return any(
+        item.get("code") == "STORY_DUPLICATE_NORMALIZED"
+        and item.get("severity") == "FAIL"
+        for item in findings
+    )

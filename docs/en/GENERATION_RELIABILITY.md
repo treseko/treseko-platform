@@ -112,4 +112,23 @@ Case analysis retains up to 20 scenarios when a count has not been selected yet.
 
 The total generation wait honors timeout_seconds between 30 and 7200 seconds, matching the UI/API configuration. This budget is separate from the profile request_timeout_seconds, which limits each provider call to at most 900 seconds. Increasing the wait does not guarantee quality or bypass deployment proxy limits.
 
+Case authoring splits scenarios into batches based on the configured output
+budget. Before accepting a response, it checks whether the provider reported an
+output limit; if so, it splits the batch again and retries it. Truncated
+proposals are never retained. If the response for a single scenario also hits
+the limit, the flow reports that the output budget must increase or the output
+detail must be reduced.
+
+Each generated case retains the scenario assigned to it. Before review, the
+engine checks that its criterion references exactly match that scenario. The
+reviewer receives the scenario and evaluates that test unit’s objective; it does
+not require one case to cover every result under the parent criterion. The
+review report separates parent `coverage`, which may be partial for an atomic
+case, from `scenario_coverage`, which must confirm that the case verifies its
+assigned scenario. Case failures use the latter scope; mandatory aggregate
+coverage is checked across the case set before generation is applied. Persisted
+criterion links remain in place. Reviewer findings show their scope:
+`PARENT_CRITERION` notices are informational and do not block an atomic case;
+assigned-scenario and case-quality findings remain actionable.
+
 Wait failures show a readable diagnostic. An exception without a message must not leave the persisted detail or the case flow error response empty.

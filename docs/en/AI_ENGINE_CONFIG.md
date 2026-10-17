@@ -32,6 +32,18 @@ versioned files.
 Credentials are stored protected. Do not copy them into cases, workflows,
 comments, screenshots or versioned files.
 
+For desktop web tests, start with this configuration and adjust the viewport to
+match the target application:
+
+```text
+viewport_width=1920
+viewport_height=1080
+headless=true
+temperature=0.1
+max_parallel_ai_runs=1
+timeout_seconds=900
+```
+
 ## Choose the right model
 
 - Use a vision model when you need visual auditing or screenshots.
@@ -121,3 +133,16 @@ Story and case analysis, generation and review request only their output schema.
 An HTTP200 response or a model SUCCESS indicator does not approve a proposal. Structural validation, reference checks and content review remain required. Incomplete responses are rejected; correcting the request contract does not demonstrate that every model can generate valid cases.
 
 Each case proposal must retain the author's `local_id`: non-empty text of up to 80 characters. If it is missing or invalid, the Engine requests a repair and rejects a response that still violates the contract before semantic review. It does not invent identifiers to complete model responses.
+
+## Start and validate the Docker stack
+
+From the repository, run:
+
+```bash
+scripts/run_treseko_docker.sh
+scripts/check_treseko_docker_runtime.sh
+```
+
+The application is served on `TRESEKO_HTTP_PORT` (default `9095`). Use
+`scripts/run_backend_local.sh` only for an explicitly native setup; do not mix
+it with the Docker stack.

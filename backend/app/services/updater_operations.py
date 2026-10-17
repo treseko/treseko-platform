@@ -185,10 +185,9 @@ async def apply_update(
     download_manifest: dict[str, Any] | None = None,
 ) -> str:
     manifest = manifest or {}
-    mode = require_installation_mode("request")
-    if mode == "coordinated":
-        from .update_host_bridge_client import CoordinatedBridgeSettings
-        CoordinatedBridgeSettings.from_environment()
+    require_atomic_update_coordinator()
+    from .update_host_bridge_client import CoordinatedBridgeSettings
+    CoordinatedBridgeSettings.from_environment()
     self.validate_update_request(channel=channel, manifest=manifest)
     async with self._lock:
         requested_version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()

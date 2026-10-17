@@ -11,23 +11,19 @@ trusted bootstrap code and its dependencies.
 
 ## Reproducible local build
 
-Use an explicit base tag, never `latest`, and a unique local tag:
+Use explicit base tags, never `latest`, and a unique local tag:
 
 ```bash
 BASE_TAG=python:3.12-slim-bookworm
 COMPOSE_TAG=docker/compose-bin:v5.4.0
 LOCAL_TAG=treseko-helper-bootstrap:local-$(uuidgen | tr '[:upper:]' '[:lower:]')
-docker build \
-  --build-arg BASE_IMAGE="$BASE_TAG" \
-  --build-arg COMPOSE_IMAGE="$COMPOSE_TAG" \
-  -f scripts/update-runtime/bootstrap/Dockerfile \
-  -t "$LOCAL_TAG" .
+BASE_IMAGE="$BASE_TAG" COMPOSE_IMAGE="$COMPOSE_TAG" \
+  scripts/build_trusted_update_helper_image.sh "$LOCAL_TAG"
 ```
 
-The context must be the trusted checkout containing only the recipe's `COPY`
-files; the recipe does not use `COPY .`, and does not copy `.env`, update
-packages, or user artifacts. Before using the image, inspect and record the
-resolved ID locally:
+The builder creates a temporary context containing only allowlisted `COPY`
+files; it does not send the rest of the checkout to Docker. Before using the
+image, inspect and record the resolved ID locally:
 
 ```bash
 docker image inspect --format '{{.Id}}' "$LOCAL_TAG" | tee .treseko-helper-bootstrap-image-id
@@ -50,9 +46,10 @@ inside the image; the external CLI only controls the container.
 
 The Python allowlist is located at
 `scripts/update-runtime/bootstrap/helper-modules.txt` and is reflected in the
-explicit `COPY` instructions. It includes the three current helpers and the
-importable modules of the fourth, `host_bridge`, but does not enable it in
-`HelperInstallation` until the Socrates bridge is complete.
+explicit `COPY` instructions. It includes the coordinator, helper installer,
+and `host_bridge` modules with complete Compose support. The
+`scripts/build_trusted_update_helper_image.sh` builder creates a temporary
+context containing only those files and the Dockerfile.
 
 ## Dependencies and boundaries
 

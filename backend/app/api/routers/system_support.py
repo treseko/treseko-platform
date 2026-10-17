@@ -68,7 +68,11 @@ async def first_run_state(db: AsyncSession, current_user: models.Usuario | None 
     counts = await installation_data_counts(db)
     installation_has_data = any(counts.values())
     completed = bool(setting.get("completed"))
-    if not completed and installation_has_data:
+    # A migration-created marker distinguishes a new installation that must
+    # finish onboarding from legacy installations that predate this setting.
+    # Creating data must never implicitly accept/skip the terms in a new install.
+    onboarding_required = setting.get("onboarding_required") is True
+    if not completed and installation_has_data and not onboarding_required:
         setting = await config_service.update_first_run_onboarding(db, {
             **setting,
             "completed": True,
@@ -80,7 +84,7 @@ async def first_run_state(db: AsyncSession, current_user: models.Usuario | None 
         completed = True
     return {
         "completed": completed,
-        "requires_onboarding": not completed and not installation_has_data,
+        "requires_onboarding": not completed and (onboarding_required or not installation_has_data),
         "installation_has_data": installation_has_data,
         "completion_source": setting.get("completion_source"),
         "completed_at": setting.get("completed_at"),

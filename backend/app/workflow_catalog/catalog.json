@@ -11,19 +11,19 @@
     },
     {
       "filename": "story-generation.v2.treseko-workflow.zip",
-      "package_sha256": "868d5373a6d2690b6cb7f7998a9c4e9953fbdbefe54a15b2c1b62df2305c9b9d",
+      "package_sha256": "927ad104ec816754d37c9f40cb22b40869a15cf778d2c6f5b576839863c063a3",
       "slug": "story-generation",
       "version": "2",
       "workflow_purpose": "story_generation",
-      "workflow_sha256": "77c4467f895203f2922d4bdbac1dd1e93ab3ad63f5b198ec885e54fd170cd1f4"
+      "workflow_sha256": "0987167cfc2b66dc5f031679fc20ce649230c53f5d7febf8393f286f06281edb"
     },
     {
       "filename": "test-case-generation.v2.treseko-workflow.zip",
-      "package_sha256": "6a82c41617dbd348c46d25efe4f02deddd8a00c36e77daa860b55fdb9dd224bf",
+      "package_sha256": "1452ab4a615fedbb86da23540e2301083ad954a7a1a1b56da3ff096066faa9d9",
       "slug": "test-case-generation",
       "version": "2",
       "workflow_purpose": "test_case_generation",
-      "workflow_sha256": "995de80df8bb500305552bf0dea1a45fc8206a6a4d2fba354ebb772604254de4"
+      "workflow_sha256": "3a4a51736a99fe6653fdbd78e831cd76fdc24b2aed2d2f76711cd9653aab8308"
     },
     {
       "filename": "chatbot-evaluation.v1.treseko-workflow.zip",

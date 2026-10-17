@@ -5,7 +5,7 @@ import { TraceabilityGenerationResults } from './TraceabilityGenerationResults'
 import { GenerationStepper } from './GenerationStepper'
 
 export function TraceabilityGenerationModal({ options }: { options: any }) {
-  const { generationRequirement, setGenerationRequirement, generationBusy, t, tx, generationStep, setGenerationStep, locale, generationCompletedCount, generationRequestedCount, generationElapsedSeconds, generationContextExpanded, setGenerationContextExpanded, generationRun, setGenerationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, preflightExcludedStories, selectedCandidateCount, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor, estimateGeneration, generationHasActionableReview, confirmAssumptions, generationHasCriticalAssumptions, autoContinueRemaining, autoContinuePaused, recalculateGenerationScope, generationMaxStories, setGenerationMaxStories, generateCandidates, selectedCriticalCandidatesNeedDecision, applyCandidates } = options
+  const { generationRequirement, setGenerationRequirement, generationBusy, t, tx, generationStep, setGenerationStep, locale, generationCompletedCount, generationRequestedCount, generationElapsedSeconds, generationContextExpanded, setGenerationContextExpanded, generationRun, setGenerationRun, generationInstructions, setGenerationInstructions, projectComponents, generationComponentIds, setGenerationComponentIds, generationWiki, generationWikiIds, setGenerationWikiIds, generationQuestionAnswers, setGenerationQuestionAnswers, generationAcceptedAssumptions, setGenerationAcceptedAssumptions, generationCandidates, setAutoContinuePaused, estimateExplanationVisible, setEstimateExplanationVisible, preflightExcludedStories, selectedCandidateCount, expandedCandidateIndexes, setExpandedCandidateIndexes, setGenerationCandidates, updateGenerationCandidate, proposalQualityMeta, hasSimilarStory, proposalQuality, AcceptanceCriteriaEditor, estimateGeneration, generationHasActionableReview, confirmAssumptions, generationHasCriticalAssumptions, autoContinueRemaining, autoContinuePaused, recalculateGenerationScope, generationMaxStories, setGenerationMaxStories, generateCandidates, selectedCriticalCandidatesNeedDecision, applyCandidates } = options
   const currentStep = { context: 0, analysis: 1, configuration: 2, review: 3 }[generationStep] ?? 0
   const progress = generationBusy
     ? generationStep === "configuration" && generationRequestedCount > 0
@@ -89,6 +89,8 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
                 setGenerationWikiIds,
                 generationQuestionAnswers,
                 setGenerationQuestionAnswers,
+                generationAcceptedAssumptions,
+                setGenerationAcceptedAssumptions,
                 generationBusy,
                 generationCandidates,
                 setAutoContinuePaused,
@@ -158,7 +160,7 @@ export function TraceabilityGenerationModal({ options }: { options: any }) {
           {generationRun && generationCandidates.length === 0 && (
             generationRun.estado === "ESPERANDO_SUPUESTOS" && generationHasActionableReview ? (
               <div className="d-flex align-items-center gap-2 flex-wrap">
-                <Button disabled={generationBusy} onClick={() => void confirmAssumptions()}>
+                <Button disabled={generationBusy || (generationRun.analysis?.proposed_assumptions || []).some((item: any) => item.risk === 'CRITICAL' && !generationAcceptedAssumptions.includes(item.id))} onClick={() => void confirmAssumptions()}>
                   {generationBusy ? t('proyectos.saving') : t('proyectos.continueWithAssumptions')}
                 </Button>
                 {generationHasCriticalAssumptions ? (

@@ -32,6 +32,25 @@ export function GenerationSemanticReview({ review, criteria = [] }: { review: an
           {!!item.step_numbers?.length && <div>{t('proyectos.generationCoverageSteps', { steps: item.step_numbers.join(', ') })}</div>}
         </div>
       ))}
+      {(review.scenario_coverage || []).map((item: any, index: number) => (
+        <div className="mb-2" key={`${item.scenario_id}-${index}`}>
+          <strong>{t('proyectos.generationScenarioCoverage', { scenario: item.scenario_id })}</strong>: {t(`proyectos.generationCoverage${item.status}`)}
+          <div>{item.reason}</div>
+          {!!item.step_numbers?.length && <div>{t('proyectos.generationCoverageSteps', { steps: item.step_numbers.join(', ') })}</div>}
+        </div>
+      ))}
+      {(review.findings || []).length > 0 && (
+        <ul className="mb-0 mt-2 ps-3" aria-label={t('proyectos.generationReviewFindings')}>
+          {review.findings.map((finding: any, index: number) => (
+            <li key={`${finding.scope || 'CASE'}-${finding.criterion_id || 'general'}-${index}`}
+              className={finding.severity === 'FAIL' ? 'text-danger' : 'text-warning-emphasis'}>
+              <strong>{t(`proyectos.generationReviewScope${finding.scope || 'CASE'}`)}:</strong>{' '}
+              {finding.review_consistency === 'SCENARIO_COVERAGE_CONFLICT' && <><strong>{t('proyectos.generationReviewConsistencyConflict')}:</strong>{' '}</>}
+              {finding.message}
+            </li>
+          ))}
+        </ul>
+      )}
     </details>
   )
 }

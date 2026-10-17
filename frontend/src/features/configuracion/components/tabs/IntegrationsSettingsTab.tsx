@@ -7,6 +7,7 @@ import { featureEnabled, type FeatureLookup } from '../../../premium/featureAcce
 import { ExtensionInstanceDetails } from './ExtensionInstanceDetails'
 import { ExtensionInstallTargetSelect } from './ExtensionInstallTargetSelect'
 import { useI18n } from '../../../../i18n'
+import { useOfficialPluginStore, type OfficialStoreItem } from './useOfficialPluginStore'
 
 export type ExtensionKind = 'integration' | 'plugin'
 
@@ -39,15 +40,6 @@ export type ExtensionItem = {
   installed: boolean
   instance?: ExtensionInstance | null
   instances?: ExtensionInstance[]
-}
-
-type OfficialStoreItem = {
-  release_id?: string
-  plugin_id: string
-  version: string
-  status: string
-  changelog?: string
-  manifest?: { name?: string, publisher?: string, compatibility?: { treseko_min?: string, treseko_max?: string }, permissions?: string[] }
 }
 
 type Props = {
@@ -118,13 +110,14 @@ export function IntegrationsSettingsTab({
   const [saving, setSaving] = useState(false)
   const [configDraft, setConfigDraft] = useState({ url: '', project_key: '', notes: '' })
   const [secretDraft, setSecretDraft] = useState('')
-  const [storeItems, setStoreItems] = useState<OfficialStoreItem[]>([])
-  const [storeVisible, setStoreVisible] = useState(false)
-  const [storeLoading, setStoreLoading] = useState(false)
-  const [storePaired, setStorePaired] = useState(false)
-  const [storeAudit, setStoreAudit] = useState<Array<{ id: string, accion: string, usuario_email?: string, fecha?: string, detalles?: Record<string, any> }>>([])
   const [installTarget, setInstallTarget] = useState(currentProjectId ? `project:${currentProjectId}` : '')
   const isGlobalAdmin = String(loggedUser?.role || '').toUpperCase() === 'ADMIN'
+  const store = useOfficialPluginStore({
+    fetchWithAuth,
+    canConfigure: canAccessCapability('plugins.configurar', 'edit'),
+    showFeedback,
+    t,
+  })
 
   useEffect(() => {
     if (currentProjectId) {
@@ -163,27 +156,9 @@ export function IntegrationsSettingsTab({
     }
   }
 
-  const loadOfficialStore = async () => {
-    setStoreLoading(true)
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/plugins/store/catalog`)
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationStoreLoadError'))
-      setStoreItems(Array.isArray(data.items) ? data.items : [])
-      if (canAccessCapability('plugins.configurar', 'edit')) {
-        const connection = await fetchWithAuth(`${API_BASE}/plugins/store/connection`)
-        const connectionData = await connection.json().catch(() => ({}))
-        if (connection.ok) setStorePaired(Boolean(connectionData.paired))
-      }
-    } catch (err: any) {
-      showFeedback(t('configuracion.integrationStoreTitle'), err?.message || t('configuracion.integrationStoreUnavailable'), 'warning')
-    } finally {
-      setStoreLoading(false)
-    }
-  }
-
   useEffect(() => {
     loadCatalog()
+    store.load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -195,7 +170,7 @@ export function IntegrationsSettingsTab({
       notes: config.notes || '',
     })
     setSecretDraft('')
-    setStoreAudit([])
+    store.setAudit([])
   }, [selected?.id, selected?.instance?.id])
 
   const request = async (url: string, options?: any) => {
@@ -206,21 +181,6 @@ export function IntegrationsSettingsTab({
       if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationActionError'))
       await loadCatalog()
       return data
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const pairOfficialStore = async () => {
-    try {
-      setSaving(true)
-      const response = await fetchWithAuth(`${API_BASE}/plugins/store/register`, { method: 'POST' })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationPairError'))
-      setStorePaired(true)
-      showFeedback(t('configuracion.integrationPairSuccessTitle'), t('configuracion.integrationPairSuccess'), 'success')
-    } catch (err: any) {
-      showFeedback(t('configuracion.integrationPairFailedTitle'), err?.message || t('configuracion.integrationStoreCheck'), 'danger')
     } finally {
       setSaving(false)
     }
@@ -255,7 +215,7 @@ export function IntegrationsSettingsTab({
       const response = await fetchWithAuth(`${API_BASE}/plugins/store/${selected.instance.id}/audit`)
       const data = await response.json().catch(() => ([]))
       if (!response.ok) throw new Error(data?.detail || t('configuracion.integrationAuditQueryError'))
-      setStoreAudit(Array.isArray(data) ? data : [])
+      store.setAudit(Array.isArray(data) ? data : [])
     } catch (err: any) {
       showFeedback(t('configuracion.integrationAuditTitle'), err?.message || t('configuracion.integrationAuditLoadError'), 'danger')
     } finally { setSaving(false) }
@@ -270,7 +230,7 @@ export function IntegrationsSettingsTab({
         const data = await response.json().catch(() => ({}))
         throw new Error(data?.detail || t('configuracion.integrationUninstallError'))
       }
-      setStoreAudit([])
+      store.setAudit([])
       await loadCatalog()
       showFeedback(t('configuracion.integrationUninstallSuccessTitle'), t('configuracion.integrationUninstallSuccess'), 'success')
     } catch (err: any) {
@@ -345,9 +305,9 @@ export function IntegrationsSettingsTab({
           <Button variant="outline-secondary" size="sm" className="fw-bold rounded-pill" onClick={loadCatalog} disabled={loading}>
             <RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}
           </Button>
-          <Button variant="primary" size="sm" className="fw-bold rounded-pill" onClick={() => { setStoreVisible(value => !value); if (!storeVisible) loadOfficialStore() }}>
+          {store.available && <Button variant="primary" size="sm" className="fw-bold rounded-pill" onClick={() => { store.setVisible(value => !value); if (!store.visible) store.load() }}>
             <Store size={14} className="me-1" /> {t('configuracion.integrationStoreShort')}
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -362,7 +322,7 @@ export function IntegrationsSettingsTab({
         />
       )}
 
-      {storeVisible && (
+      {store.visible && store.available && (
         <Card className="border-0 shadow-sm rounded-4 mb-3">
           <Card.Body className="p-4">
             <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
@@ -371,32 +331,35 @@ export function IntegrationsSettingsTab({
                 <div className="small text-muted">{t('configuracion.integrationStoreDescription')}</div>
               </div>
               <div className="d-flex gap-2">
-                {canAccessCapability('plugins.configurar', 'edit') && <Button variant={storePaired ? 'outline-success' : 'outline-primary'} size="sm" onClick={pairOfficialStore} disabled={saving || storePaired}>
-                  <ShieldCheck size={14} className="me-1" /> {storePaired ? t('configuracion.integrationStorePaired') : t('configuracion.integrationStorePair')}
+                {store.available && canAccessCapability('plugins.configurar', 'edit') && <Button variant={store.paired ? 'outline-success' : 'outline-primary'} size="sm" onClick={store.pair} disabled={saving || store.loading || store.paired}>
+                  <ShieldCheck size={14} className="me-1" /> {store.paired ? t('configuracion.integrationStorePaired') : t('configuracion.integrationStorePair')}
                 </Button>}
-                <Button variant="outline-secondary" size="sm" onClick={loadOfficialStore} disabled={storeLoading}><RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}</Button>
+                <Button variant="outline-secondary" size="sm" onClick={store.load} disabled={store.loading}><RefreshCw size={14} className="me-1" /> {t('configuracion.refresh')}</Button>
               </div>
             </div>
+            {store.loading ? <div className="py-3 text-center"><Spinner size="sm" /></div> : !store.available ? (
+              <div className="small text-muted py-2">{t('configuracion.integrationStoreUnavailable')}</div>
+            ) : <>
             <ExtensionInstallTargetSelect value={installTarget} onChange={setInstallTarget} projects={projectsList} organizations={organizations} allowGlobal={isGlobalAdmin} />
-            {storeLoading ? <div className="py-3 text-center"><Spinner size="sm" /></div> : storeItems.length === 0 ? (
+            {store.items.length === 0 ? (
               <div className="small text-muted py-2">{t('configuracion.integrationNoReleases')}</div>
             ) : (
               <Row className="g-3">
-                {storeItems.map(item => <Col md={6} key={item.release_id || item.plugin_id}>
+                {store.items.map(item => <Col md={6} key={item.release_id || item.plugin_id}>
                   <div className="border rounded-3 p-3 h-100">
                     <div className="d-flex justify-content-between gap-2"><strong>{item.manifest?.name || item.plugin_id}</strong><Badge bg="success">v{item.version}</Badge></div>
                     <div className="small text-muted mt-1">{item.manifest?.publisher || 'Treseko'} · {t('configuracion.integrationCompatibleWith')} {item.manifest?.compatibility?.treseko_min || '?'} {t('configuracion.integrationTo')} {item.manifest?.compatibility?.treseko_max || '?'}</div>
                     {item.changelog && <div className="small mt-2">{item.changelog}</div>}
                     <div className="d-flex flex-wrap gap-2 mt-3">
-                      <Button size="sm" variant="primary" onClick={() => installStoreRelease(item)} disabled={saving || !storePaired || !installTarget || !canAccessCapability('plugins.instalar', 'edit')}>
+                      <Button size="sm" variant="primary" onClick={() => installStoreRelease(item)} disabled={saving || !store.paired || !installTarget || !canAccessCapability('plugins.instalar', 'edit')}>
                         {t('configuracion.integrationInstall')}
                       </Button>
-                      {!storePaired && <span className="small text-muted align-self-center">{t('configuracion.integrationPairBeforeInstall')}</span>}
+                      {!store.paired && <span className="small text-muted align-self-center">{t('configuracion.integrationPairBeforeInstall')}</span>}
                     </div>
                   </div>
                 </Col>)}
               </Row>
-            )}
+            )}</>}
           </Card.Body>
         </Card>
       )}
@@ -477,7 +440,7 @@ export function IntegrationsSettingsTab({
                   setConfigDraft={setConfigDraft}
                   secretDraft={secretDraft}
                   setSecretDraft={setSecretDraft}
-                  storeAudit={storeAudit}
+                  storeAudit={store.audit}
                   saving={saving}
                   canConfigure={canConfigureSelected}
                   canManageSecrets={canManageSecrets}

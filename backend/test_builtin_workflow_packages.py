@@ -110,6 +110,12 @@ def test_builtin_workflow_graph_preserves_purpose_topology_and_editability(slug)
     assert builtin.decision_policy_json["catalog_key"] == slug
 
 
+def test_story_and_case_generation_nodes_allow_the_default_provider_timeout():
+    for slug in ("story-generation", "test-case-generation"):
+        graph = build_builtin_workflow_package(slug)["graph"]
+        assert all(node.get("timeout_sec", 0) >= 300 for node in graph["nodes"])
+
+
 def test_portable_graph_rejects_missing_purpose():
     graph = build_builtin_workflow_package("story-generation")["graph"]
     graph["workflow"]["workflow_purpose"] = ""

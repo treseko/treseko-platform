@@ -30,12 +30,23 @@ class UpdateError(RuntimeError):
 
 
 _IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
+_TRANSACTION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SERVICE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 _INFRASTRUCTURE_SERVICES = {"db", "redis", "migrator"}
 _VERSION_PROBES = {"backend", "frontend", "engine", "automation-worker", "plugin-runner"}
 _RELEASE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
-_RELEASE_CACHE_DIRS = {".venv", "venv", "node_modules", "__pycache__", ".pytest_cache",
-                       ".mypy_cache", ".ruff_cache"}
+_RELEASE_CACHE_DIRS = {".venv", "venv", "node_modules", "dist", "__pycache__",
+                       ".pytest_cache", ".mypy_cache", ".ruff_cache", "coverage",
+                       "test-results", "playwright-report"}
+_RELEASE_LOCAL_DIRS = {".git", ".treseko", ".treseko-local"}
+_RELEASE_ENV_EXAMPLES = {
+    ".env.production.example",
+    "automation-worker/.env.example",
+    "automation-worker/.env.production.example",
+    "backend/.env.production.example",
+    "engine/.env.production.example",
+    "frontend/.env.example",
+}
 _SAFE_FAILURE_LINES = (
     re.compile(r"\b(?:error|failed|failure|unhealthy|unable|cannot|no such|not found|denied|"
                r"exit code|timed out|failed to solve)\b", re.IGNORECASE),
@@ -70,12 +81,16 @@ def _redact_known_text(output: str, secrets: list[str]) -> str:
 
 class AtomicComposeUpdate:
     def __init__(self, *, docker: str, project: str, candidate_root: Path,
-                 install_root: Path, env_file: Path, expected_version: str):
+                 install_root: Path, env_file: Path, expected_version: str,
+                 transaction_id: str | None = None,
+                 expected_project_root: Path | None = None):
         self.docker = str(Path(docker).resolve())
         self.project = project
         self.candidate_root = candidate_root.resolve()
         self.install_root = install_root.resolve()
         self.env_file = env_file.resolve()
+        self.expected_project_root = (expected_project_root.resolve()
+                                      if expected_project_root is not None else None)
         self.expected_version = expected_version
         if not _RELEASE_VERSION.fullmatch(expected_version):
             raise UpdateError("Invalid release version for immutable project deployment")
@@ -92,7 +107,10 @@ class AtomicComposeUpdate:
         self.journal_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.release_root = self.install_root / ".treseko-local" / "releases"
         self.active_release_path = self.install_root / ".treseko-local" / "active-release.json"
-        self.transaction = time.strftime("%Y%m%d%H%M%S", time.gmtime()) + "-" + os.urandom(4).hex()
+        if transaction_id is not None and not _TRANSACTION.fullmatch(transaction_id):
+            raise UpdateError("Invalid update transaction identifier")
+        self.transaction = (transaction_id or
+                            time.strftime("%Y%m%d%H%M%S", time.gmtime()) + "-" + os.urandom(4).hex())
         self.journal_path = self.journal_root / f"{self.transaction}.json"
         self.candidate_override = self.journal_root / f"{self.transaction}-atomic-candidate.compose.yml"
         self.candidate_override.write_text(
@@ -110,15 +128,30 @@ class AtomicComposeUpdate:
         self.state: dict[str, Any] = {}
 
     def _release_ignored(self, directory: str, names: list[str]) -> set[str]:
-        """Exclude only VCS and mutable installation state from release code."""
-        ignored = {name for name in names if name == ".git" or name == ".treseko-local"
-                   or name == ".treseko-release.json" or name in _RELEASE_CACHE_DIRS
-                   or name == ".DS_Store" or name.startswith("._")}
-        # The installed secret/environment files are outside the candidate in
-        # normal package use. If someone updates from the installation root,
-        # keep those mutable files out of the immutable application snapshot.
-        if Path(directory).resolve() == self.candidate_root.resolve() and "compose.production.env" in names:
+        """Match the source-package exclusions for direct local installations."""
+        current = Path(directory).resolve()
+        candidate = self.candidate_root.resolve()
+        ignored: set[str] = set()
+        for name in names:
+            path = current / name
+            try:
+                relative = path.relative_to(candidate).as_posix()
+            except ValueError:
+                relative = ""
+            if (name in _RELEASE_LOCAL_DIRS or name in _RELEASE_CACHE_DIRS
+                    or name in {".treseko-release.json", ".gitignore", ".runner-token",
+                                ".worker-instance-id", ".runner-token.pairing",
+                                ".maintenance", ".DS_Store"}
+                    or name.startswith(("._", ".treseko-update-"))
+                    or (name.startswith(".env") and relative not in _RELEASE_ENV_EXAMPLES)
+                    or (not path.is_dir() and Path(name).suffix in {".pyc", ".pyo", ".log", ".jsonl"})):
+                ignored.add(name)
+        if current == candidate and "public-release" in names:
+            ignored.add("public-release")
+        if current == candidate and "compose.production.env" in names:
             ignored.add("compose.production.env")
+        if current == candidate / "backend" / "app" and "static" in names:
+            ignored.add("static")
         return ignored
 
     @staticmethod
@@ -126,13 +159,26 @@ class AtomicComposeUpdate:
         files: list[Path] = []
         for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
             current_path = Path(current)
+            ignored_dirs = {name for name in dirs if name in _RELEASE_LOCAL_DIRS
+                            or name in _RELEASE_CACHE_DIRS or name.startswith(".env")
+                            or (current_path == root and name == "public-release")
+                            or (current_path == root / "backend" / "app" and name == "static")}
+            dirs[:] = [name for name in dirs if name not in ignored_dirs]
             if any((current_path / name).is_symlink() for name in dirs):
                 raise UpdateError("Candidate project contains a symbolic link; refusing a non-portable release snapshot")
-            dirs[:] = sorted(name for name in dirs if name not in {".git", ".treseko-local"}
-                             and name not in _RELEASE_CACHE_DIRS)
+            dirs[:] = sorted(dirs)
             for name in sorted(names):
-                if (name == ".treseko-release.json" or name == ".DS_Store" or name.startswith("._")
-                        or (current_path == root and name == "compose.production.env")):
+                try:
+                    relative = (current_path / name).relative_to(root).as_posix()
+                except ValueError:
+                    relative = ""
+                if (name in _RELEASE_LOCAL_DIRS or name in {
+                        ".treseko-release.json", ".gitignore", ".runner-token",
+                        ".worker-instance-id", ".runner-token.pairing", ".maintenance", ".DS_Store",
+                    } or (current_path == root and name == "compose.production.env")
+                        or name.startswith(("._", ".treseko-update-"))
+                        or (name.startswith(".env") and relative not in _RELEASE_ENV_EXAMPLES)
+                        or Path(name).suffix in {".pyc", ".pyo", ".log", ".jsonl"}):
                     continue
                 path = current_path / name
                 if path.is_symlink():
@@ -159,6 +205,73 @@ class AtomicComposeUpdate:
             digest.update(f"{file_mode:o}".encode("ascii"))
             digest.update(b"\0")
         return {"schema": 1, "version": version, "tree_sha256": digest.hexdigest(), "files": rows}
+
+    @staticmethod
+    def _release_version_key(value: str) -> tuple[Any, ...]:
+        match = re.fullmatch(
+            r"(\d+(?:\.\d+)*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?", value
+        )
+        if not match:
+            raise UpdateError("Active or candidate release version is not safely comparable")
+        core = tuple(int(part) for part in match.group(1).split("."))
+        core += (0,) * max(0, 4 - len(core))
+        prerelease = match.group(2)
+        identifiers: tuple[tuple[int, Any], ...] = ()
+        if prerelease:
+            identifiers = tuple(
+                (0, int(item)) if item.isdigit() else (1, item.lower())
+                for item in prerelease.split(".")
+            )
+        return core, 0 if prerelease else 1, identifiers
+
+    def _active_release_version(self) -> str | None:
+        """Read and verify the immutable release selected for this installation."""
+        pointer_path = self.active_release_path
+        if pointer_path.is_symlink():
+            raise UpdateError("Active-release pointer cannot be a symbolic link")
+        if not pointer_path.exists():
+            return None
+        try:
+            pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise UpdateError("Active-release pointer is unreadable") from exc
+        if (not isinstance(pointer, dict) or set(pointer) != {
+                "schema", "version", "release", "tree_sha256"}
+                or pointer.get("schema") != 1
+                or not isinstance(pointer.get("version"), str)
+                or not isinstance(pointer.get("release"), str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+_-]{0,100}", pointer["release"])
+                or not re.fullmatch(r"[0-9a-f]{64}", str(pointer.get("tree_sha256") or ""))):
+            raise UpdateError("Active-release pointer has an invalid contract")
+        release_root = self.release_root
+        if release_root.is_symlink():
+            raise UpdateError("Immutable release directory cannot be a symbolic link")
+        active_root = release_root / pointer["release"]
+        if active_root.is_symlink() or not active_root.is_dir():
+            raise UpdateError("Active immutable release directory is unavailable or unsafe")
+        try:
+            active_root.resolve(strict=True).relative_to(release_root.resolve(strict=True))
+            stored = json.loads((active_root / ".treseko-release.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise UpdateError("Active immutable release manifest is unreadable") from exc
+        version = pointer["version"]
+        if ((active_root / "VERSION").read_text(encoding="utf-8").strip() != version
+                or not isinstance(stored, dict)
+                or stored.get("version") != version
+                or stored.get("tree_sha256") != pointer["tree_sha256"]
+                or self._release_manifest(active_root, version) != stored):
+            raise UpdateError("Active immutable release failed its file-integrity check")
+        return version
+
+    def _assert_not_downgrade(self) -> None:
+        active_version = self._active_release_version()
+        if active_version is None or active_version == self.expected_version:
+            return
+        if self._release_version_key(self.expected_version) < self._release_version_key(active_version):
+            raise UpdateError(
+                f"Candidate Treseko {self.expected_version} is older than active release {active_version}; "
+                "download the current or a newer release before updating"
+            )
 
     @staticmethod
     def _write_atomic_json(path: Path, value: dict[str, Any]) -> None:
@@ -529,6 +642,28 @@ class AtomicComposeUpdate:
                     names.add(mount["Name"])
         return sorted(names)
 
+    def _stop_legacy_frontend(self, records: list[dict[str, Any]]) -> None:
+        """Use TERM for old nginx wrappers whose image stop signal is QUIT.
+
+        The 1.0.6 nginx image sends SIGQUIT to its shell entrypoint, which does
+        not forward that signal to nginx. Stop that legacy container with TERM
+        first; the existing entrypoint traps TERM and shuts down nginx. Newer
+        entrypoints forward either signal, while other services keep their
+        Compose-configured stop behavior.
+        """
+        frontend = next((record for record in records
+                         if record.get("Config", {}).get("Labels", {}).get(
+                             "com.docker.compose.service") == "frontend"), None)
+        if not frontend or not frontend.get("State", {}).get("Running"):
+            return
+        stop_signal = str(frontend.get("Config", {}).get("StopSignal") or "").upper()
+        if stop_signal not in {"SIGQUIT", "QUIT", "3"}:
+            return
+        container_id = frontend.get("Id")
+        if not isinstance(container_id, str) or not re.fullmatch(r"[a-f0-9]{12,64}", container_id):
+            raise UpdateError("Legacy frontend container identity is invalid")
+        self._docker("stop", "--signal", "SIGTERM", "--timeout", "15", container_id, timeout=30)
+
     def _snapshot_volumes(self, volumes: list[str], helper_image: str) -> dict[str, str]:
         backups: dict[str, str] = {}
         for index, source in enumerate(volumes):
@@ -858,43 +993,88 @@ class AtomicComposeUpdate:
         self.state["phase"] = "rolled_back"
         self._save()
 
-    def run(self) -> None:
-        with self._installation_lock():
-            self._run_locked()
+    def run(self, *, reconcile_only: bool = False) -> dict[str, Any]:
+        return self.run_mode(reconcile_only=reconcile_only)
 
-    def _run_locked(self) -> None:
-        self._recover_interrupted_transaction()
-        source_root = self.candidate_root
-        self.candidate_root = self._prepare_project_release()
+    def run_mode(self, *, reconcile_only: bool = False,
+                 validate_only: bool = False) -> dict[str, Any]:
+        if reconcile_only and validate_only:
+            raise UpdateError("Only one update inspection mode can be selected")
+        with self._installation_lock():
+            if reconcile_only:
+                self._recover_interrupted_transaction()
+                if self.journal_path.is_file():
+                    state = json.loads(self.journal_path.read_text(encoding="utf-8"))
+                    return {"transaction": state.get("transaction"), "phase": state.get("phase"),
+                            "version": state.get("version")}
+                return {"transaction": self.transaction, "phase": "not_started",
+                        "version": self.expected_version}
+            if validate_only:
+                self._assert_not_downgrade()
+                candidate = self._prepare_project_release()
+                self.candidate_root = candidate
+                inventory = self._validate_candidate()
+                return {"transaction": self.transaction, "phase": "prepared",
+                        "version": self.expected_version,
+                        "candidate_tree_sha256": self._release_manifest(
+                            candidate, self.expected_version)["tree_sha256"],
+                        "active_services": inventory["active_services"],
+                        "candidate_services": sorted(inventory["candidate_model"]["services"])}
+            self._run_locked()
+            return {"transaction": self.transaction, "phase": self.state.get("phase"),
+                    "version": self.expected_version}
+
+    def _validate_candidate(self) -> dict[str, Any]:
+        """Check the current project and candidate Compose without changing services."""
         records, profiles, old_workdir, old_files, old_model = self._running_inventory()
-        active_services = sorted(r["Config"]["Labels"]["com.docker.compose.service"] for r in records)
-        if not {"db", "redis", "backend", "engine", "frontend"} <= set(active_services):
+        if self.expected_project_root is not None and old_workdir.resolve() != self.expected_project_root:
+            raise UpdateError("Existing Compose project root differs from its private host binding")
+        active_services = sorted(
+            record["Config"]["Labels"]["com.docker.compose.service"] for record in records)
+        required_active = {"db", "redis", "backend", "engine", "frontend"}
+        if not required_active <= set(active_services):
             raise UpdateError("Installation is missing a required active service; refusing partial update")
         candidate_file = str(self.candidate_root / "docker-compose.prod.yml")
-        candidate_model = self._compose_model(self.candidate_root, [candidate_file], profiles, self.candidate_root)
-        if not {"db", "redis", "migrator", "backend", "engine", "frontend"} <= set(candidate_model["services"]):
+        candidate_model = self._compose_model(
+            self.candidate_root, [candidate_file], profiles, self.candidate_root)
+        required_candidate = {"db", "redis", "migrator", "backend", "engine", "frontend"}
+        if not required_candidate <= set(candidate_model["services"]):
             raise UpdateError("Candidate Compose release is missing a required project service")
-        candidate_services = set(candidate_model["services"])
-        omitted_existing = set(active_services) - candidate_services
-        if omitted_existing:
-            raise UpdateError(
-                "Candidate Compose release omits existing installation services: "
-                + ", ".join(sorted(omitted_existing))
-            )
         target_services = self._candidate_services_to_start(candidate_model, profiles)
-        omitted_active = set(active_services) - set(target_services)
+        omitted = sorted(set(active_services) - set(candidate_model["services"]))
+        if omitted:
+            raise UpdateError("Candidate Compose release omits existing installation services: "
+                              + ", ".join(omitted))
+        omitted_active = sorted(set(active_services) - set(target_services))
         if omitted_active:
-            raise UpdateError(
-                "Candidate Compose release would leave existing services stopped: "
-                + ", ".join(sorted(omitted_active))
-            )
+            raise UpdateError("Candidate Compose release would leave existing services stopped: "
+                              + ", ".join(omitted_active))
         nginx_config = self.candidate_root / "frontend" / "nginx.conf"
         if not nginx_config.is_file():
             raise UpdateError("Candidate frontend admission configuration is missing")
         nginx_text = nginx_config.read_text(encoding="utf-8")
         if ".maintenance" not in nginx_text or "__treseko_update_gate_probe__" not in nginx_text:
             raise UpdateError("Candidate frontend cannot fence every request during activation")
-        frontend_volume = self._frontend_volume(records)
+        return {"records": records, "profiles": profiles, "old_workdir": old_workdir,
+                "old_files": old_files, "old_model": old_model,
+                "active_services": active_services, "candidate_model": candidate_model,
+                "target_services": target_services,
+                "frontend_volume": self._frontend_volume(records)}
+
+    def _run_locked(self) -> None:
+        self._recover_interrupted_transaction()
+        self._assert_not_downgrade()
+        source_root = self.candidate_root
+        self.candidate_root = self._prepare_project_release()
+        inventory = self._validate_candidate()
+        records = inventory["records"]
+        profiles = inventory["profiles"]
+        old_workdir = inventory["old_workdir"]
+        old_files = inventory["old_files"]
+        old_model = inventory["old_model"]
+        active_services = inventory["active_services"]
+        target_services = inventory["target_services"]
+        frontend_volume = inventory["frontend_volume"]
         self.state = {"schema": 1, "transaction": self.transaction, "phase": "preparing",
                       "project": self.project, "version": self.expected_version,
                       "candidate_source_root": str(source_root),
@@ -942,6 +1122,7 @@ class AtomicComposeUpdate:
         self.state["phase"] = "stopping_old_project"
         self._save()
         try:
+            self._stop_legacy_frontend(records)
             self._compose(old_workdir, old_files, profiles, "stop", "--timeout", "120", timeout=300)
             backups = self._snapshot_volumes(self._named_volumes(records), db_record["Image"])
             self.state["volume_backups"] = backups
@@ -1026,15 +1207,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--install-root", type=Path, required=True)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--transaction")
+    parser.add_argument("--expected-project-root", type=Path)
+    parser.add_argument("--reconcile-only", action="store_true")
+    parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args(argv)
     try:
-        AtomicComposeUpdate(docker=args.docker, project=args.project,
-                            candidate_root=args.candidate_root, install_root=args.install_root,
-                            env_file=args.env_file, expected_version=args.version).run()
+        result = AtomicComposeUpdate(docker=args.docker, project=args.project,
+                                     candidate_root=args.candidate_root, install_root=args.install_root,
+                                     env_file=args.env_file, expected_version=args.version,
+                                     transaction_id=args.transaction,
+                                     expected_project_root=args.expected_project_root).run_mode(
+                                         reconcile_only=args.reconcile_only,
+                                         validate_only=args.validate_only)
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(f"Treseko {args.version} committed atomically. Recovery snapshots retained.")
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 

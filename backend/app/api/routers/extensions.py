@@ -15,7 +15,7 @@ from ...services.secret_crypto import encrypt_secret_value
 from ...services.plugins.installation import install_official_plugin
 from ...services.plugins.manifest import PluginManifestError, audit_manifest_snapshot, installation_scope_key
 from ...services.plugins.runner import PluginRunnerError, invoke_declarative_junit
-from ...services.plugins.store_client import PluginStoreClientError, fetch_official_catalog
+from ...services.plugins.store_client import PluginStoreClientError, fetch_official_catalog, official_store_enabled
 from ...services.plugins.pairing import download_paired_release, pair_installation, pairing_status
 from ...services.edition.entitlement_provider import get_entitlement_provider
 from ...repositories.scheduled_runs_audit import create_audit_log
@@ -119,6 +119,8 @@ async def install_paired_official_store_release(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.instalar", "edit")
+    if not official_store_enabled():
+        raise HTTPException(status_code=404, detail="La tienda oficial no está disponible en esta versión")
     await _require_installation_scope_access(
         db,
         current_user,
@@ -148,8 +150,10 @@ async def read_official_plugin_store_catalog(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.catalogo", "read")
+    if not official_store_enabled():
+        return {"available": False, "items": []}
     try:
-        return {"items": await fetch_official_catalog()}
+        return {"available": True, "items": await fetch_official_catalog()}
     except PluginStoreClientError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -160,6 +164,8 @@ async def register_official_plugin_store(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.configurar", "edit")
+    if not official_store_enabled():
+        raise HTTPException(status_code=404, detail="La tienda oficial no está disponible en esta versión")
     try:
         result = await pair_installation(db)
     except PluginStoreClientError as exc:
@@ -184,6 +190,8 @@ async def invoke_official_store_plugin(
     current_user: models.Usuario = Depends(auth.get_current_active_user),
 ):
     _assert_capability(current_user, "plugins.habilitar", "edit")
+    if not official_store_enabled():
+        raise HTTPException(status_code=404, detail="La tienda oficial no está disponible en esta versión")
     instance = await _load_instance(db, current_user, instance_id, "edit")
     manifest = ((instance.config_json or {}).get("_treseko_store") or {}).get("manifest") or {}
     if not instance.enabled or manifest.get("plugin_id") != "com.treseko.junit-importer":

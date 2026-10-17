@@ -1,6 +1,6 @@
 from .repository_context import *
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
-from sqlalchemy import update
+from sqlalchemy import and_, update
 from ..services.automation_payloads import freeze_worker_payload
 from ..services.automation_dispatch_scope import validate_worker_job_scope
 

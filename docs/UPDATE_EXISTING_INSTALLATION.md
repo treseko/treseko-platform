@@ -3,6 +3,14 @@
 Estado: **entregable de orquestación local; no es certificación de rollout ni
 readiness de producción**.
 
+Las releases cuyo manifest firmado declara `deployment.mode=complete-source`
+se rechazan antes del plan de componentes mientras el host bridge no tenga
+activada la transacción `atomic-compose`. No se debe interpretar una preparación
+de runtimes por componentes como instalación del Compose completo. Esta
+protección evita dejar la aplicación con versiones mezcladas; la actualización
+1.0.7 no está lista para distribución hasta integrar y probar esa ruta con
+Docker, preservación de datos y rollback.
+
 ## Flujo
 
 Usa la configuración privada combinada del controller (`participants`,

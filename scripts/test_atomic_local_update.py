@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,6 +11,23 @@ from scripts.atomic_local_update import AtomicComposeUpdate, UpdateError, _safe_
 
 
 class AtomicLocalUpdateTests(unittest.TestCase):
+    def test_release_snapshot_excludes_worker_identity_and_pairing_credentials(self):
+        runner = self._runner()
+        worker_identity = runner.candidate_root / "automation-worker" / ".worker-instance-id"
+        pairing_token = runner.candidate_root / "automation-worker" / ".runner-token.pairing"
+        worker_identity.parent.mkdir(parents=True, exist_ok=True)
+        worker_identity.write_text("local worker identity", encoding="utf-8")
+        pairing_token.write_text("local pairing credential", encoding="utf-8")
+
+        release_files = {path.relative_to(runner.candidate_root).as_posix()
+                         for path in runner._release_files(runner.candidate_root)}
+        ignored = runner._release_ignored(
+            str(worker_identity.parent), [worker_identity.name, pairing_token.name])
+
+        self.assertNotIn("automation-worker/.worker-instance-id", release_files)
+        self.assertNotIn("automation-worker/.runner-token.pairing", release_files)
+        self.assertEqual(ignored, {".worker-instance-id", ".runner-token.pairing"})
+
     def test_failure_summary_keeps_actionable_error_and_redacts_credentials(self):
         summary = _safe_failure_summary(
             "Container treseko-engine Error: healthcheck failed for token=verysecret "
@@ -89,6 +107,88 @@ class AtomicLocalUpdateTests(unittest.TestCase):
                 with second._installation_lock():
                     pass
 
+    def test_reconcile_only_does_not_start_a_new_transaction(self):
+        runner = self._runner()
+        result = runner.run(reconcile_only=True)
+
+        self.assertEqual(result["transaction"], runner.transaction)
+        self.assertEqual(result["phase"], "not_started")
+        self.assertEqual(self.commands, [])
+
+    def test_validate_only_prepares_immutable_candidate_without_service_mutation(self):
+        runner = self._runner()
+        staging = runner.candidate_root / "public-release"
+        staging.mkdir()
+        (staging / "stale-copy.py").write_text("not release source", encoding="utf-8")
+        static = runner.candidate_root / "backend" / "app" / "static"
+        static.mkdir(parents=True)
+        (static / "user-evidence.bin").write_bytes(b"persisted outside source")
+        secret = runner.candidate_root / "backend" / ".env.production"
+        secret.write_text("PRIVATE=must-not-package\n", encoding="utf-8")
+
+        result = runner.run_mode(validate_only=True)
+
+        self.assertEqual(result["phase"], "prepared")
+        self.assertEqual(result["version"], "1.0.4")
+        self.assertIn("backend", result["active_services"])
+        self.assertIn("frontend", result["candidate_services"])
+        self.assertEqual(self.commands, [])
+        self.assertTrue(runner.active_release_path.parent.joinpath("releases").is_dir())
+        self.assertFalse((runner.candidate_root / "public-release").exists())
+        self.assertFalse((runner.candidate_root / "backend" / "app" / "static").exists())
+        self.assertFalse((runner.candidate_root / "backend" / ".env.production").exists())
+
+    def test_validate_only_rejects_compose_root_outside_private_host_binding(self):
+        runner = self._runner()
+        runner.expected_project_root = self.root / "unexpected-root"
+
+        with self.assertRaisesRegex(UpdateError, "differs from its private host binding"):
+            runner.run_mode(validate_only=True)
+
+        self.assertEqual(self.commands, [])
+
+    def test_older_candidate_is_rejected_against_verified_active_release_before_docker(self):
+        runner = self._runner()
+        active = runner.release_root / "1.0.7-verified"
+        active.mkdir(parents=True)
+        for source in runner.candidate_root.iterdir():
+            if source.is_dir():
+                shutil.copytree(source, active / source.name)
+            else:
+                shutil.copy2(source, active / source.name)
+        (active / "VERSION").write_text("1.0.7\n", encoding="utf-8")
+        manifest = runner._release_manifest(active, "1.0.7")
+        runner._write_atomic_json(active / ".treseko-release.json", manifest)
+        runner._write_atomic_json(runner.active_release_path, {
+            "schema": 1, "version": "1.0.7", "release": active.name,
+            "tree_sha256": manifest["tree_sha256"],
+        })
+
+        with self.assertRaisesRegex(UpdateError, "older than active release 1.0.7"):
+            runner.run_mode(validate_only=True)
+
+        self.assertEqual(self.commands, [])
+
+    def test_release_version_comparison_handles_prereleases_and_patch_versions(self):
+        compare = AtomicComposeUpdate._release_version_key
+        self.assertLess(compare("1.0.6"), compare("1.0.7"))
+        self.assertLess(compare("1.0.7-rc.2"), compare("1.0.7-rc.10"))
+        self.assertLess(compare("1.0.7-rc.10"), compare("1.0.7"))
+
+    def test_reconcile_only_closes_pre_mutation_journal_without_docker(self):
+        runner = self._runner()
+        runner.state = {"schema": 1, "transaction": runner.transaction,
+                        "phase": "preparing", "candidate_root": str(runner.candidate_root),
+                        "version": runner.expected_version}
+        runner._save()
+
+        result = runner.run(reconcile_only=True)
+
+        self.assertEqual(result["phase"], "abandoned_before_mutation")
+        self.assertEqual(json.loads(runner.journal_path.read_text())["phase"],
+                         "abandoned_before_mutation")
+        self.assertEqual(self.commands, [])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="treseko-atomic-local-")
         self.addCleanup(self.temp.cleanup)
@@ -98,7 +198,8 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         self.candidate.mkdir()
         self.install.mkdir()
         (self.candidate / "VERSION").write_text("1.0.4\n", encoding="utf-8")
-        (self.candidate / "docker-compose.prod.yml").write_text("services: {}\n", encoding="utf-8")
+        (self.candidate / "docker-compose.prod.yml").write_text(
+            "services:\n  backend:\n    environment:\n      RELEASE_CONFIG: candidate\n", encoding="utf-8")
         (self.candidate / "frontend").mkdir()
         (self.candidate / "frontend" / "nginx.conf").write_text(
             "if (-f /usr/share/nginx/html/.maintenance) { return 503; }\n"
@@ -107,6 +208,8 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         (self.candidate / "backend" / "app" / "minor-release-change.py").write_text(
             "RELEASE_FEATURE = True\n", encoding="utf-8")
         (self.candidate / "compose.production.env").write_text("CANDIDATE_SECRET=must-not-copy\n", encoding="utf-8")
+        (self.candidate / ".env.production.example").write_text("PUBLIC_SAMPLE=value\n", encoding="utf-8")
+        (self.candidate / ".env.production").write_text("PRIVATE_VALUE=do-not-copy\n", encoding="utf-8")
         self.env = self.install / "compose.production.env"
         self.env.write_text("TRESEKO_COMPOSE_PROJECT_NAME=treseko-test\n", encoding="utf-8")
         self.old = self.root / "old-release"
@@ -114,11 +217,12 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         self.records = []
         for index, service in enumerate(("db", "redis", "backend", "engine", "frontend")):
             self.records.append({
-                "Id": f"container-{service}", "Image": f"sha256:{index + 1:064x}",
+                "Id": f"{index + 1:064x}", "Image": f"sha256:{index + 1:064x}",
                 "State": {"Running": True, "Health": {"Status": "healthy"}},
                 "Config": {"Labels": {"com.docker.compose.project": "treseko-test",
                                        "com.docker.compose.service": service,
-                                       "com.docker.compose.oneoff": "False"}},
+                                       "com.docker.compose.oneoff": "False"},
+                           "StopSignal": "SIGQUIT" if service == "frontend" else ""},
                 "Mounts": ([{"Type": "volume", "Name": "treseko-test_dbdata"}] if service == "db" else
                            ([{"Type": "volume", "Name": "treseko-test_frontend", "Destination": "/usr/share/nginx/html"}]
                             if service == "frontend" else [])),
@@ -204,10 +308,15 @@ class AtomicLocalUpdateTests(unittest.TestCase):
             runner.run()
         compose_commands = [item[2] for item in self.commands if item[0] == "compose"]
         stop = next(index for index, command in enumerate(compose_commands) if "stop" in command)
+        frontend_stop = next(index for index, item in enumerate(self.commands)
+                             if item[0] == "docker" and item[1][:3] == ("stop", "--signal", "SIGTERM"))
         migration = next(index for index, command in enumerate(compose_commands) if command[:3] == ("run", "--rm", "migrator"))
         app_start = next(index for index, command in enumerate(compose_commands)
                          if "--remove-orphans" in command)
         self.assertLess(stop, migration)
+        compose_stop_command_index = next(index for index, item in enumerate(self.commands)
+                                          if item[0] == "compose" and "stop" in item[2])
+        self.assertLess(frontend_stop, compose_stop_command_index)
         self.assertLess(migration, app_start)
         self.assertIn("--force-recreate", compose_commands[app_start])
         self.assertNotIn("automation-worker", compose_commands[app_start])
@@ -222,7 +331,11 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         active_root = self.install / ".treseko-local" / "releases" / active["release"]
         self.assertEqual(active["version"], "1.0.4")
         self.assertTrue((active_root / "backend/app/minor-release-change.py").is_file())
+        self.assertIn("RELEASE_CONFIG: candidate",
+                      (active_root / "docker-compose.prod.yml").read_text(encoding="utf-8"))
         self.assertFalse((active_root / "compose.production.env").exists())
+        self.assertEqual((active_root / ".env.production.example").read_text(), "PUBLIC_SAMPLE=value\n")
+        self.assertFalse((active_root / ".env.production").exists())
         self.assertEqual(json.loads((active_root / ".treseko-release.json").read_text())[
             "tree_sha256"], active["tree_sha256"])
 
@@ -286,6 +399,18 @@ class AtomicLocalUpdateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(UpdateError, "redis has no configured healthcheck"):
             runner._wait_candidate_services_healthy(["redis"], timeout=1)
+
+    def test_candidate_plugin_runner_without_healthcheck_is_rejected(self):
+        runner = self._runner()
+        del runner._wait_candidate_services_healthy
+        record = {
+            "Config": {"Labels": {"com.docker.compose.service": "plugin-runner"}},
+            "State": {"Running": True, "Status": "running"},
+        }
+        runner._docker = lambda *args, **kwargs: "container-id" if args[0] == "ps" else json.dumps([record])
+
+        with self.assertRaisesRegex(UpdateError, "plugin-runner has no configured healthcheck"):
+            runner._wait_candidate_services_healthy(["plugin-runner"], timeout=1)
 
     def test_candidate_service_without_version_probe_is_rejected_before_mutation(self):
         model = {"services": {
