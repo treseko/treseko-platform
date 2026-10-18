@@ -23,12 +23,17 @@ done
 printf '%s' "$image" | grep -Eq '^(sha256:[0-9a-f]{64}|[^@[:space:]]+@sha256:[0-9a-f]{64})$' || usage
 
 safe_path() {
+    allow_root=false
+    [ "${2-}" = allow-root ] && allow_root=true
     case "$1" in
         /*) ;;
         *) echo "path must be absolute" >&2; exit 2 ;;
     esac
     case "$1" in
-        /|/root|/home|/Users|/workspace|/workspaces|*"/../"*|*/..|*","*|*"|"*)
+        /)
+            [ "$allow_root" = true ] || { echo "unsafe path" >&2; exit 2; }
+            ;;
+        /root|/home|/Users|/workspace|/workspaces|*"/../"*|*/..|*","*|*"|"*)
             echo "unsafe path" >&2; exit 2 ;;
     esac
     current=$1
@@ -42,7 +47,7 @@ safe_path() {
 safe_path "$docker"
 safe_path "$socket"
 safe_path "$config"
-safe_path "$root_prefix"
+safe_path "$root_prefix" allow-root
 case "$network" in ""|*[!A-Za-z0-9_.-]*) echo "invalid network" >&2; exit 2 ;; esac
 [ -x "$docker" ] && [ -S "$socket" ] && [ -f "$config" ] && [ -d "$root_prefix" ] || {
     echo "Docker paths or private config are unavailable" >&2; exit 2;

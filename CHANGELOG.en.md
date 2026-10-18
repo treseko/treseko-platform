@@ -7,6 +7,7 @@
 - Fixes verification of older immutable releases when file filters change between versions. The updater validates hashes recorded by the original manifest while continuing to reject modified or unexpected files.
 - Allows existing 1.0.6 installations to be verified and updated without misclassifying historical files excluded from the current source tree.
 - Validates the spool, bridge, and controller configuration chain and its mounts before installing the coordinated update helper.
+- Accepts the `/` prefix documented for real installations while continuing to reject other broad paths.
 
 
 ## Fixes and Premium update
