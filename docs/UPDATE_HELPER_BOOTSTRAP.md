@@ -39,6 +39,34 @@ El operador debe proporcionar un JSON privado con este contrato:
 mismo conjunto. El cuarto wrapper usa la misma imagen Linux y ejecuta sólo
 `--once --spool`; no recibe argumentos de la solicitud.
 
+### Configuración privada del puente host
+
+`configs.host_bridge` apunta al archivo de spool que consume el wrapper, no al
+archivo del controlador. El spool referencia el puente; el puente referencia
+el controlador:
+
+```json
+{
+  "schema": 1,
+  "bridge_config": "/etc/treseko/host-bridge-config.json",
+  "request_inbox": "/var/lib/treseko-update/spool/inbox",
+  "spool_dir": "/var/lib/treseko-update/spool/state"
+}
+```
+
+El archivo referenciado por `bridge_config` declara `controller_config`,
+`inbox`, `state_dir`, `report_dir`, `request_uid` y `request_gid`. El controlador
+declara su propio `directory` y `atomic_compose`, con `project_root` y
+`env_file` para el Compose activo. No reutilices un archivo de una capa como si
+perteneciera a otra.
+
+En `launcher.mounts.host_bridge`, los tres JSON (spool, puente y controlador) y
+`project_root` se montan `ro`. Cada directorio de estado se monta `rw` por su
+ruta dedicada: `request_inbox`, `spool_dir`, `inbox`, `state_dir`, `report_dir`
+y el `directory` del controlador. Las rutas de estado deben estar separadas;
+el launcher rechaza mounts solapados. La validación del instalador sigue esta
+cadena completa antes de publicar el wrapper.
+
 `python` es una ruta absoluta ejecutable del entorno operador. `cache`,
 `manifest`, `bin_dir`, `state_dir` y las configuraciones se resuelven dentro del
 `--root-prefix`. En pruebas se usa un prefijo temporal dedicado; para las rutas

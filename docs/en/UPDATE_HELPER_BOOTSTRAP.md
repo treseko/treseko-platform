@@ -42,6 +42,34 @@ The operator must provide a private JSON file with this contract:
 fourth wrapper uses the same Linux image and runs only `--once --spool`; it
 does not receive request arguments.
 
+### Private host bridge configuration
+
+`configs.host_bridge` points to the spool file consumed by the wrapper, not to
+the controller file. The spool references the bridge; the bridge references
+the controller:
+
+```json
+{
+  "schema": 1,
+  "bridge_config": "/etc/treseko/host-bridge-config.json",
+  "request_inbox": "/var/lib/treseko-update/spool/inbox",
+  "spool_dir": "/var/lib/treseko-update/spool/state"
+}
+```
+
+The file referenced by `bridge_config` declares `controller_config`, `inbox`,
+`state_dir`, `report_dir`, `request_uid`, and `request_gid`. The controller
+declares its own `directory` and `atomic_compose`, including `project_root` and
+`env_file` for the active Compose project. Do not reuse a file from one layer
+as if it belonged to another.
+
+In `launcher.mounts.host_bridge`, mount all three JSON files (spool, bridge,
+and controller) and `project_root` as `ro`. Mount each state directory `rw`
+using its dedicated path: `request_inbox`, `spool_dir`, `inbox`, `state_dir`,
+`report_dir`, and the controller's `directory`. Keep state paths separate; the
+launcher rejects overlapping mounts. The installer validates this full chain
+before publishing the wrapper.
+
 `python` is an absolute executable path in the operator environment. `cache`,
 `manifest`, `bin_dir`, `state_dir`, and the configurations are resolved within
 `--root-prefix`. Tests use a dedicated temporary prefix; for the operational
