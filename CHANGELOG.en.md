@@ -8,6 +8,7 @@
 - Allows existing 1.0.6 installations to be verified and updated without misclassifying historical files excluded from the current source tree.
 - Validates the spool, bridge, and controller configuration chain and its mounts before installing the coordinated update helper.
 - Accepts the `/` prefix documented for real installations while continuing to reject other broad paths.
+- Mounts the dedicated control directory inside the coordinated backend so its admission fence works during updates.
 
 
 ## Fixes and Premium update

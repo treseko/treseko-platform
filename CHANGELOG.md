@@ -8,6 +8,7 @@
 - Permite verificar y actualizar instalaciones existentes desde 1.0.6 sin confundir los archivos históricos excluidos por el árbol actual.
 - Valida la cadena de configuración spool, puente y controlador, junto con sus mounts, antes de instalar el helper de actualización coordinada.
 - Acepta el prefijo `/` que la guía documenta para instalaciones reales, manteniendo bloqueadas las demás rutas amplias.
+- Monta el directorio de control dedicado dentro del backend coordinado para que la barrera de admisión funcione durante actualizaciones.
 
 
 ## Correcciones y actualización Premium

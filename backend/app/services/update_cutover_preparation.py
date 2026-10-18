@@ -194,7 +194,8 @@ def _render(value: Mapping[str, Any]) -> dict[str, str]:
            "TRESEKO_INSTALLATION_BINDING_FILE": container_binding}
     env_lines = "".join(f"      {json.dumps(key)}: {json.dumps(value)}\n" for key, value in env.items())
     mounts = ((fixed["request_inbox"], "rw"), (fixed["package_inbox"], "rw"),
-              (fixed["report_dir"], "ro"), (fixed["binding_path"], "ro"))
+              (fixed["report_dir"], "ro"), (fixed["control_dir"], "rw"),
+              (fixed["binding_path"], "ro"))
     mount_lines = ""
     for source, mode in mounts:
         target = container_binding if source == fixed["binding_path"] else source
