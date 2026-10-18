@@ -6,6 +6,7 @@
 - Fija `jsonschema` en 4.26.0 para que reconstruir el backend durante una actualización Premium no seleccione una dependencia 4.x diferente.
 - Corrige la verificación de releases inmutables anteriores cuando cambia el filtro de archivos entre versiones. El updater valida los hashes registrados por el manifiesto original y sigue rechazando cambios o archivos inesperados.
 - Permite verificar y actualizar instalaciones existentes desde 1.0.6 sin confundir los archivos históricos excluidos por el árbol actual.
+- Valida la cadena de configuración spool, puente y controlador, junto con sus mounts, antes de instalar el helper de actualización coordinada.
 
 
 ## Correcciones y actualización Premium

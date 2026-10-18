@@ -6,6 +6,7 @@
 - Pins `jsonschema` to 4.26.0 so rebuilding the backend during a Premium update does not select a different 4.x dependency.
 - Fixes verification of older immutable releases when file filters change between versions. The updater validates hashes recorded by the original manifest while continuing to reject modified or unexpected files.
 - Allows existing 1.0.6 installations to be verified and updated without misclassifying historical files excluded from the current source tree.
+- Validates the spool, bridge, and controller configuration chain and its mounts before installing the coordinated update helper.
 
 
 ## Fixes and Premium update
