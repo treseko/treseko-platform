@@ -15,10 +15,15 @@ técnicas de menor alcance y nunca pegues tokens en casos o evidencia.
 
 ## plugin-runner
 
-El profile `plugins` agrega el Plugin Runner aislado. En 1.0.4 solo acepta la
+El perfil `plugins` agrega el Plugin Runner aislado. En Community 1.0.7 solo acepta la
 invocación declarativa `junit_xml.import_results`; no ejecuta código arbitrario,
 WASM ni plugins de terceros. Se mantiene en una red dedicada, sin DB, Redis,
 secretos ni socket Docker.
+
+Al habilitar el perfil manualmente, pasa `TRESEKO_RELEASE_VERSION` con la
+versión de `VERSION` al comando `docker compose` para que la imagen registre
+la release correcta. El actualizador atómico establece ese valor al reconstruir
+servicios activos.
 
 ## Portabilidad
 

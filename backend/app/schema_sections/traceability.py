@@ -217,7 +217,8 @@ class HistoriaGeneracionEstimateRequest(BaseModel):
 
 class QuestionAnswer(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
-    answer: str = Field(..., min_length=1, max_length=16000)
+    answer: str = Field(default="", max_length=16000)
+    scope_decision: Literal["IN_SCOPE", "OUT_OF_SCOPE"] = "IN_SCOPE"
 
 
 class AssumptionConfirmation(BaseModel):

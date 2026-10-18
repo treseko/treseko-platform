@@ -22,6 +22,7 @@ from ..services.edition.entitlement_service import check_limit
 
 from .generation_guards import lock_generation, require_current_sources, checked_answers, check_assumptions, case_quality, case_readiness
 from .generation_semantic_review import effective_audit_runtime, stamp_semantic_review, reviews_for_application
+from .ai_generation_engine_errors import engine_generation_error_message
 
 CASE_NODES = ["CaseScopeAnalyzer", "TestDesignPlanner", "TestCaseAuthor", "QaCaseCritic", "CoverageTraceabilityAuditor"]
 _DUPLICATE_STOPWORDS = {"a", "al", "con", "de", "del", "el", "en", "la", "las", "los", "para", "por", "que", "se", "un", "una", "y"}
@@ -243,7 +244,7 @@ async def _call_engine(db, workflow, phase, context, instructions, max_cases=Non
         try:
             body = response.json()
             if isinstance(body, dict):
-                detail = str(body.get("error") or body.get("detail") or body.get("message") or body)
+                detail = engine_generation_error_message(body) or str(body.get("detail") or body.get("message") or "")
             else:
                 detail = str(body)
         except Exception:

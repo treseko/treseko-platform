@@ -4,8 +4,8 @@ Este documento define el contrato Premium para que runners externos, como
 Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al
 sistema. Confirmá que la licencia incluya la API externa antes de integrarla.
 
-El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink, pero
-adaptado a la jerarquía y los formatos disponibles en Treseko 1.0.4:
+El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink,
+adaptado a la jerarquía y los formatos que soporta la API externa de Treseko:
 
 ```mermaid
 flowchart LR

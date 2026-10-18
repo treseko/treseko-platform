@@ -1,6 +1,6 @@
 # Arquitectura de Treseko
 
-Guía técnica de Treseko Community 1.0.4 para una instalación self-hosted. La
+Guía técnica de la candidata Treseko Community 1.0.7 para una instalación self-hosted. La
 interfaz no escribe directamente en la base de datos.
 
 ## Componentes

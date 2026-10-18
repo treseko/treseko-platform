@@ -12,14 +12,17 @@ Treseko separa dos decisiones que no deben confundirse:
 | `CLASICA` | Pasos con acción, datos y resultado esperado. | Pasos, observaciones, capturas y adjuntos. |
 | `API` | Request declarativo, variables y aserciones. | Request, response, aserciones y variables permitidas. |
 | `CONVERSACIONAL` | Flujo específico de UI/API; no disponible para MCP. | Transcripción, evaluación, métricas y trazas disponibles. |
-| `PERFORMANCE` | Formato reservado. | En 1.0.4 no tiene un executor de carga certificado. |
+| `PERFORMANCE` | Formato reservado. | No tiene un ejecutor de carga disponible en esta versión. |
 
 ## MCP
 
-MCP está disponible únicamente para importaciones gobernadas de formatos
-`CLASICA` y `API`. `PERFORMANCE` permanece reservado y se rechaza porque no
-existe un executor seguro. `CONVERSACIONAL` no está disponible para MCP; sus
-casos deben gestionarse mediante los flujos específicos de UI/API.
+MCP permite descubrir herramientas y operar proyectos, requisitos, historias,
+casos, ejecuciones y resultados según los scopes y permisos de la credencial.
+También permite explorar sitios web autorizados y registrar resultados
+manuales observados. La importación de casos requiere preview y confirmación.
+Los casos creados o importados por MCP admiten los formatos `CLASICA` y `API`;
+`CONVERSACIONAL` y `PERFORMANCE` no tienen ejecución MCP. `PERFORMANCE`
+permanece reservado porque no existe un ejecutor de carga seguro.
 
 ## Modalidades
 
@@ -33,7 +36,7 @@ Un caso conversacional no es automáticamente una ejecución con IA. Del mismo
 modo, un caso API no necesita un worker diferente: cuando es automatizado usa
 el Automation Worker existente con la capacidad `treseko-api/declarative`.
 
-## Matriz operativa de 1.0.4
+## Matriz operativa de Community 1.0.7 (candidata)
 
 | Combinación | Alcance público |
 |---|---|
@@ -61,7 +64,7 @@ el Automation Worker existente con la capacidad `treseko-api/declarative`.
 - Los nombres, códigos y datos técnicos permanecen intactos aunque cambie el
   idioma de la interfaz.
 
-## Capacidades API incluidas en 1.0.4
+## Capacidades de pruebas API
 
 - El runner declarativo admite variables dinámicas compatibles con Postman,
   incluidas `{{$randomUUID}}`, `{{$timestamp}}`, `{{$randomEmail}}` y

@@ -145,6 +145,9 @@ def controller_config(config: Mapping[str, Any]) -> dict[str, Any]:
     """Remove the wrapper-only topology before calling the generic controller."""
     result = dict(config)
     result.pop("installation_topology", None)
+    # This wrapper-only host path is consumed by the complete-source updater,
+    # never by participant/controller operations.
+    result.pop("atomic_compose", None)
     return result
 
 

@@ -1,13 +1,24 @@
 import { traceEntry, traceRequestId } from '../test-trace.ts'
 import { generateWithProvider, ProviderRequestError } from './provider-adapters.ts'
 
-export async function sendWithRetry<T>(context: any, messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text'): Promise<any> {
+export function effectiveRequestTimeoutMs(configured: unknown, override?: unknown): number {
+  const configuredMs = Number(configured);
+  const overrideMs = Number(override);
+  const ceiling = Number.isFinite(configuredMs) && configuredMs > 0 ? configuredMs : 900_000;
+  return Number.isFinite(overrideMs) && overrideMs > 0 ? Math.max(1, Math.min(ceiling, overrideMs)) : ceiling;
+}
+
+export async function sendWithRetry<T>(context: any, messages: any[], temperature?: number, maxCompletionTokens?: number, responseFormat?: 'json_schema' | 'json_object' | 'text', timeoutOverrideMs?: number, outputSchema?: Record<string, any>): Promise<any> {
   let attempts = 0
   let fallbackIndex = 0
   const start = Date.now()
+  const requestTimeoutMs = effectiveRequestTimeoutMs(context.requestTimeoutMs, timeoutOverrideMs)
+  const deadline = Date.now() + requestTimeoutMs
 
   while (attempts < context.maxRetries) {
     try {
+      const remainingMs = deadline - Date.now()
+      if (remainingMs <= 0) throw new ProviderRequestError('Se agotó el tiempo máximo del nodo del workflow', 'timeout')
       if (context.abortSignal?.aborted) throw new ProviderRequestError('Solicitud IA cancelada', 'cancelled');
       const requestId = traceRequestId('engine-ai')
       const aiPayload = {
@@ -33,7 +44,7 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
         provider: context.provider,
         endpoint: context.endpoint,
         apiKey: context.apiKey,
-        timeoutMs: context.requestTimeoutMs,
+        timeoutMs: Math.max(1, Math.min(requestTimeoutMs, remainingMs)),
         signal: context.abortSignal,
       }, {
         model: context.model,
@@ -42,6 +53,7 @@ export async function sendWithRetry<T>(context: any, messages: any[], temperatur
         maxTokens: aiPayload.max_tokens,
         disableThinking: context.disableThinking,
         responseFormat,
+        outputSchema,
       })
       traceEntry('ai_response', {
         request_id: requestId,
@@ -98,13 +110,14 @@ Por favor, RE-GENERA el objeto JSON completo desde cero, asegurándote de:
         error: {
           message: error?.message || String(error),
           code: error?.code,
-          timeout_ms: context.requestTimeoutMs,
+          timeout_ms: Math.max(1, Math.min(requestTimeoutMs, deadline - Date.now())),
           status: error?.response?.status,
           response_body: error?.response?.data,
           stack: error?.stack,
         },
       })
       if ((error instanceof ProviderRequestError && ['provider_unavailable', 'rate_limited', 'timeout', 'network_error'].includes(error.category)) || error.response?.status === 500 || error.code === 'ECONNRESET') {
+        if (Date.now() >= deadline) throw error;
         messages = messages.map((message: any) => {
           if (Array.isArray(message.content)) {
             const textPart = message.content.find((part: any) => part.type === 'text')

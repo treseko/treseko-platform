@@ -92,11 +92,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENGINE_URL: http://engine:3010
       TRESEKO_PLUGIN_RUNNER_URL: http://plugin-runner:3020
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_URL: redis://redis:6379/0
       TRESEKO_MCP_ENABLED: ${TRESEKO_MCP_ENABLED:-false}
       TRESEKO_MCP_TOOLS: ${TRESEKO_MCP_TOOLS:-}
       TRESEKO_MCP_DEPLOYMENT_TOPOLOGY: ${TRESEKO_MCP_DEPLOYMENT_TOPOLOGY:-single_process}
       TRESEKO_ENABLE_INSTALLATION_PING: ${TRESEKO_ENABLE_INSTALLATION_PING:-false}
+      TRESEKO_PLUGIN_STORE_ENABLED: ${TRESEKO_PLUGIN_STORE_ENABLED:-false}
       TRESEKO_DISABLE_INSTALLATION_PING: ${TRESEKO_DISABLE_INSTALLATION_PING:-false}
       UPDATES_DIR: /data/updates
       BACKUPS_DIR: /data/backups
@@ -130,6 +131,12 @@ services:
       - treseko_secret_key
       - treseko_ai_credentials_key
       - treseko_ai_engine_internal_token
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     depends_on:
       migrator:
         condition: service_completed_successfully
@@ -144,14 +151,6 @@ services:
       context: engine
       dockerfile: Dockerfile
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      # First boot may sync persistent Engine dependencies and initialize the
-      # browser runtime. Allow slow Windows Docker hosts to finish startup.
-      start_period: 240s
     # Permite usar un proveedor LLM local del host (Ollama/LM Studio) desde
     # el contenedor sin confundir localhost con el propio contenedor.
     extra_hosts:
@@ -166,9 +165,9 @@ services:
       AI_API_ENDPOINT: ${AI_API_ENDPOINT:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_ENGINE_INTERNAL_TOKEN_FILE: /run/secrets/treseko_ai_engine_internal_token
-      MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS: ${MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS:-http://backend:8000}
       MCP_RUNTIME_RESOLVER_URL: http://backend:8000/mcp/internal/runtime-credential
       MCP_RUNTIME_RESOLVER_ALLOWED_ORIGINS: http://backend:8000
+      MCP_RUNTIME_RESOLVER_TRUSTED_PRIVATE_ORIGINS: http://backend:8000
       MCP_RUNTIME_RESOLVER_ALLOW_INSECURE_HTTP: "true"
       AI_VIDEO_DIR: /engine/videos
       AI_DRY_RUN_VIDEO_TTL_HOURS: ${AI_DRY_RUN_VIDEO_TTL_HOURS:-24}
@@ -178,6 +177,12 @@ services:
       QA_TEST_TRACE_ENABLED: ${QA_TEST_TRACE_ENABLED:-false}
     mem_limit: ${ENGINE_MEM_LIMIT:-2g}
     pids_limit: ${ENGINE_PIDS_LIMIT:-256}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 240s
+      retries: 3
     tmpfs:
       - /tmp:rw,nosuid,size=512m
     secrets:
@@ -246,9 +251,15 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${TRESEKO_BIND_ADDRESS:-0.0.0.0}:${TRESEKO_HTTP_PORT:-9095}:80"
+      - "${TRESEKO_HTTP_PORT:-9095}:80"
     volumes:
       - treseko_frontend_html:/usr/share/nginx/html
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /var/run/nginx.pid && kill -0 \"$(cat /var/run/nginx.pid)\" && nginx -t >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     depends_on:
       backend:
         condition: service_healthy

@@ -181,3 +181,41 @@ explicitly receive their private configuration and validate actual imports of
 the three modules with the operator's Python. This delivery covers the local
 bootstrap and an actual installation of the indicated tree, but it does not
 certify legacy services or production.
+
+## Migrate the host updater before upgrading app 1.0.6
+
+The 1.0.6 host bridge is a separately installed, versioned helper. Updating the
+application backend volume does not replace it, and the 1.0.6 bridge ignores
+the complete-source deployment descriptor. An operator must install the 1.0.7
+helper first, before allowing that installation to apply the 1.0.7 application
+package. This is a host-level prerequisite; the 1.0.6 in-app updater cannot
+perform it by itself.
+
+1. Obtain the signed 1.0.7 package and manifest through the approved operator
+   release process. Preserve their signature and checksum. Place the manifest
+   at the path configured in `helper-installation.json` and the archive at
+   `<configured-cache>/<checksum_sha256>.tar.gz`. Keep both files private and
+   root-owned.
+2. From the reviewed 1.0.7 public source checkout, build the trusted image with
+   `scripts/build_trusted_update_helper_image.sh`. It stages a temporary context
+   containing only allowlisted sources and prints the immutable local image ID.
+   Review and record the base-image IDs and resulting image ID in the operator's
+   private deployment record.
+3. Confirm there is no pending bridge transaction. Run
+   `scripts/bootstrap_update_helpers_docker.sh` with that image ID, the current
+   private helper-installation config, Docker CLI, socket, dedicated network,
+   and configured root prefix. The installer verifies the package signature,
+   transactionally installs the versioned backend and wrappers, records a
+   receipt, and retains rollback data.
+4. Verify the receipt reports version `1.0.7`. While idle, restart the
+   operator's host-bridge service so it loads the new versioned helper. If
+   installation fails, run the same bootstrap command with `--rollback` and
+   the saved private config.
+5. Only then run the normal application update. The compatible helper can now
+   validate and transactionally replace the complete Compose project.
+
+Do not enable the package for 1.0.6 origins until this procedure passes on a
+Linux staging host with Docker, including helper rollback and full Compose
+rollback. The builder rejects that origin unless `complete-source` mode and
+bootstrap verification are both explicitly enabled. That variable is a
+release attestation; it does not run this migration on customer hosts.

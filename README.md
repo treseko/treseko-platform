@@ -12,7 +12,7 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Novedades de 1.0.7
+### Cambios del árbol fuente 1.0.7 (actualización Premium)
 
 - MCP permite a asistentes descubrir herramientas y operar los flujos QA con permisos, confirmaciones y evidencia persistida.
 - La generación de historias y casos conserva aclaraciones, criterios de aceptación y revisión antes de crear registros.
@@ -21,7 +21,8 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 - El ping de instalación queda desactivado por defecto; el administrador puede activarlo de forma explícita.
 
 La secuencia de releases Community publicada incluye 1.0.1, 1.0.2 y 1.0.6.
-La versión preparada a continuación es 1.0.7;
+El árbol fuente 1.0.7 corresponde a la actualización Premium. Community sigue
+en 1.0.6; esta versión no se distribuye por el canal Community.
 1.0.3, 1.0.4 y 1.0.5 no se publicaron como releases Community. Consultá el
 [historial de releases](https://github.com/treseko/treseko-platform/releases)
 para verificar las versiones y archivos disponibles.
@@ -89,7 +90,7 @@ Muchas organizaciones terminan combinando planillas, Jira, carpetas de evidencia
 
 ## Flujo De Trabajo
 
-Flujo funcional de Treseko Community 1.0.7:
+Flujo funcional de Treseko Community:
 
 ```mermaid
 flowchart TB
@@ -149,7 +150,7 @@ Cada tipo de reporte responde una pregunta distinta:
 
 ## Arquitectura
 
-Arquitectura operativa de Treseko Community 1.0.7:
+Arquitectura operativa de Treseko Community:
 
 ```mermaid
 flowchart TB
@@ -396,7 +397,7 @@ Este arbol publico excluye intencionalmente:
 
 Versión Community más reciente publicada: `1.0.6`
 
-Versión preparada para la próxima release: `1.0.7`
+Árbol fuente incluido en la actualización Premium: `1.0.7` (Community publicada: `1.0.6`)
 
 Esta es la versión estable de Community para uso productivo. Consultá el
 [changelog](CHANGELOG.md) y los [releases publicados](https://github.com/treseko/treseko-platform/releases)

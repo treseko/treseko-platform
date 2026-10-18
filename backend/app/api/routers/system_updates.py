@@ -30,6 +30,7 @@ from ...services.edition.license_manager import (
 )
 from ...services.premium_runtime.verification_client import (
     PremiumVerificationError,
+    PremiumUpdateUnavailable,
     activate_license_online,
     fetch_latest_premium_update_manifest,
     heartbeat_license_online,
@@ -265,29 +266,22 @@ async def sync_system_premium_update_manifest(
         )(license_data, current_version=PRODUCT_VERSION)
         validation = _system_dependency("validate_update_manifest", validate_update_manifest)(manifest, state)
     except PremiumVerificationError as exc:
-        if "No hay version Premium posterior aplicable" in str(exc):
-            cache[cache_key] = {
-                "status": "no_update",
-                "checked_at": checked_at,
-                "error": None,
-                "license_id": license_data.get("license_id"),
-                "channel": channel,
-            }
-            await _write_update_manifest_cache(db, cache)
+        no_update = isinstance(exc, PremiumUpdateUnavailable)
+        cache[cache_key] = {
+            "status": "no_update" if no_update else "error",
+            "checked_at": checked_at,
+            "error": None if no_update else str(exc),
+            "license_id": license_data.get("license_id"),
+            "channel": channel,
+        }
+        await _write_update_manifest_cache(db, cache)
+        if no_update:
             return _latest_update_response_from_manifest(
                 state=state,
                 manifest=None,
                 last_checked_at=checked_at,
                 reason="No hay una version Premium posterior aplicable para este canal.",
             )
-        cache[cache_key] = {
-            "status": "error",
-            "checked_at": checked_at,
-            "error": str(exc),
-            "license_id": license_data.get("license_id"),
-            "channel": channel,
-        }
-        await _write_update_manifest_cache(db, cache)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except (PremiumVerificationError, UpdateManifestError) as exc:
         cache[cache_key] = {
@@ -415,6 +409,15 @@ async def apply_system_update(
     download_manifest = original_manifest
     if payload.confirmation != "APPLY_UPDATE":
         raise HTTPException(status_code=400, detail="Confirma la actualizacion con APPLY_UPDATE.")
+    if channel not in COMMUNITY_UPDATE_CHANNELS | PREMIUM_UPDATE_CHANNELS:
+        raise HTTPException(status_code=400, detail="Canal de actualizacion no soportado.")
+    # Both editions apply the same signed release transaction. The component-only
+    # legacy lane cannot replace the installed Compose tree and would leave a
+    # mixed release after a complete-source package was selected.
+    try:
+        require_atomic_update_coordinator()
+    except InstallationModeError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
     if channel in COMMUNITY_UPDATE_CHANNELS and manifest is None:
         check_result = await _system_dependency("get_update_service", get_update_service)().check_community_update(channel)
         if not check_result.get("available"):
@@ -422,13 +425,6 @@ async def apply_system_update(
         manifest = check_result.get("manifest") or check_result
         original_manifest = dict(manifest)
     if channel in PREMIUM_UPDATE_CHANNELS:
-        # Reject unsupported legacy installations before consuming a one-use
-        # DownloadGrant. The coordinator is the only supported Premium apply
-        # path and this check has no external side effects.
-        try:
-            require_atomic_update_coordinator()
-        except InstallationModeError as exc:
-            raise HTTPException(status_code=409, detail=exc.code) from exc
         state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
         if manifest is None:
             entry = await _cached_latest_premium_manifest(db, state)
@@ -466,8 +462,6 @@ async def apply_system_update(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    elif channel not in COMMUNITY_UPDATE_CHANNELS:
-        raise HTTPException(status_code=400, detail="Canal de actualizacion no soportado.")
     try:
         task_id = await _system_dependency("get_update_service", get_update_service)().apply_update(
             channel=channel,

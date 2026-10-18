@@ -112,6 +112,14 @@ def test_governed_story_generation_estimate_generate_review_and_apply_http_lifec
         assert generated.status_code == 200, generated.text
         assert generated.json()["estado"] == "LISTA_PARA_REVISION"
         proposal = generated.json()["propuestas"][0]
+        reviewed = client.post(
+            f"/generaciones-historias/{generation_id}/revisar",
+            headers=headers,
+            json={"propuestas": [{**proposal, "selected": True}]},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        proposal = reviewed.json()["propuestas"][0]
+        assert proposal["quality"]["semantic_review"]["verdict"] == "PASS"
         applied = client.post(
             f"/generaciones-historias/{generation_id}/aplicar",
             headers=headers,
@@ -171,9 +179,9 @@ def test_pending_story_questions_require_answers_before_continuing_http(monkeypa
     async def question_engine(_db, _workflow, phase, context, *_args, **_kwargs):
         calls.append(context)
         assert phase == "analyze"
-        ready = bool(context.get("respuestas_usuario"))
-        return {"analysis": {"readiness": "READY" if ready else "NEEDS_CLARIFICATION",
-                "questions": [] if ready else [question], "proposed_assumptions": []},
+        # Reproduce a model that repeats a question after receiving its exact answer.
+        return {"analysis": {"readiness": "NEEDS_CLARIFICATION",
+                "questions": [question], "proposed_assumptions": []},
                 "estimacion": {"cantidad_recomendada": 1, "rango_min": 1, "rango_max": 1},
                 "workflow_traces": []}
 
@@ -207,12 +215,13 @@ def test_pending_story_questions_require_answers_before_continuing_http(monkeypa
         assert unanswered.json()["detail"] == "Responde todas las preguntas pendientes antes de continuar."
         assert len(calls) == 1
         answers = [{"question": question, "answer": "El mensaje observado es Acceso rechazado."}]
+        recorded_answers = [{**answers[0], "scope_decision": "IN_SCOPE"}]
         answered = client.post(f"/generaciones-historias/{generation_id}/supuestos", headers=headers,
             json={"assumption_ids": [], "question_answers": answers, "continuation_mode": "MANUAL"})
         assert answered.status_code == 200, answered.text
         assert answered.json()["estado"] == "ANALIZADA"
-        assert len(calls) == 2 and calls[-1]["respuestas_usuario"] == answers
+        assert len(calls) == 2 and calls[-1]["respuestas_usuario"] == recorded_answers
         persisted = client.get(f"/generaciones-historias/{generation_id}", headers=headers)
         assert persisted.status_code == 200, persisted.text
-        assert persisted.json()["fuente_snapshot"]["respuestas_usuario"] == answers
+        assert persisted.json()["fuente_snapshot"]["respuestas_usuario"] == recorded_answers
         client.portal.call(engine.dispose)

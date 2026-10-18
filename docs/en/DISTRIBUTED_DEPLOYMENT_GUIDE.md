@@ -26,7 +26,7 @@ flowchart LR
 | C | AI Engine | Private. |
 | D | One or more Automation Workers and their browsers | Private; each requires pairing. |
 | L | Authorized LLM provider | Controlled outbound access according to its configuration. |
-| P | Optional `plugins` profile; only the declarative `junit_xml.import_results` entrypoint is accepted in 1.0.4. | Private dedicated network; no DB, Redis, secrets or Docker socket. |
+| P | Isolated Plugin Runner, enabled with the optional `plugins` profile; accepts `junit_xml.import_results`. | Private dedicated network; no DB, Redis, secrets or Docker socket. |
 
 The worker processes classic automation and declarative API automation.
 Community supports one worker. Adding workers requires the Premium

@@ -1,7 +1,6 @@
 """Worker-only bounded transport for full automation evidence."""
 import json
 import os
-from pathlib import Path
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -10,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from ... import models, schemas, auth
 from ...database import get_db
 from ...services.worker_result_uploads import ResultUploadStore
+from ...services.worker_result_storage import result_upload_root
 from .automation import get_current_automation_runner, report_automation_job_result
 from .automation_helpers import _require_automation_job_access
 
@@ -17,7 +17,7 @@ router=APIRouter(tags=['Worker result evidence'])
 
 
 def store():
-    return ResultUploadStore(os.getenv('AUTOMATION_RESULT_UPLOAD_DIR', str(Path(__file__).resolve().parents[3]/'.treseko'/'worker-results')))
+    return ResultUploadStore(result_upload_root())
 
 
 class UploadStart(BaseModel):

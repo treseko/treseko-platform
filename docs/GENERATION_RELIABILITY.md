@@ -114,4 +114,35 @@ El análisis de casos conserva hasta 20 escenarios cuando todavía no se eligió
 
 La espera total de generación respeta timeout_seconds entre 30 y 7200 segundos, igual que la configuración de la pantalla/API. Ese presupuesto es distinto de request_timeout_seconds del perfil, que limita cada llamada al proveedor a un máximo de 900 segundos. Aumentar la espera no garantiza calidad ni evita límites de los proxies del despliegue.
 
+La autoría de casos divide los escenarios en lotes según el presupuesto de
+salida configurado. Antes de aceptar una respuesta, comprueba si el proveedor
+indicó que alcanzó el límite de salida; en ese caso vuelve a dividir el lote y
+lo procesa otra vez. Nunca conserva propuestas cortadas. Si la respuesta de un
+solo escenario también alcanza el límite, devuelve un diagnóstico para aumentar
+el presupuesto o reducir el detalle de salida.
+
+Cada caso generado conserva la asignación al escenario que recibió. Antes de
+revisarlo, el motor comprueba que sus referencias coincidan exactamente con las
+del escenario; el revisor recibe ese escenario y evalúa el objetivo de esa unidad
+de prueba y el conjunto completo de escenarios hermanos. No exige que un caso aislado cubra todos los resultados del criterio
+padre. El informe distingue `coverage` del criterio padre, que puede ser parcial
+en un caso atómico, de `scenario_coverage`, que debe confirmar que ese caso
+verifica su escenario asignado. Los fallos del caso se determinan con este
+segundo alcance; la cobertura obligatoria global se valida sobre el conjunto de
+casos antes de aplicar la generación. La vinculación persistida con criterios
+sigue vigente. Las observaciones del revisor indican su alcance:
+`PARENT_CRITERION` se muestra como información y no bloquea un caso atómico;
+las observaciones del escenario asignado o de calidad del caso siguen siendo
+accionables.
+Si el revisor marca un hallazgo `SCENARIO` como fallo pero declara ese mismo
+escenario `COVERED`, el motor conserva la observación como advertencia de
+inconsistencia y exige revisión humana; no elige silenciosamente una de las dos
+conclusiones. Los hallazgos idénticos emitidos por etapas de revisión distintas
+se muestran una sola vez. El estado final de testabilidad refleja esta revisión
+estructurada; la autoevaluación del modelo generador no puede dejar un fallo
+obsoleto después de que la revisión haya resuelto la contradicción. Una cita
+literal inválida o un supuesto no aceptado provoca un único reintento del
+contrato de trazabilidad; si vuelve a fallar, el hallazgo permanece como fallo
+y la evidencia inválida no se conserva.
+
 Los fallos de espera muestran un diagnóstico legible. Una excepción sin mensaje no debe dejar vacíos el detalle persistido ni la respuesta de error del flujo de casos.

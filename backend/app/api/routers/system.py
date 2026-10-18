@@ -214,6 +214,7 @@ async def complete_system_first_run(
         "completed_at": utc_now().isoformat(),
         "completed_by_user_id": str(current_user.id),
         "completion_source": "first_run_survey",
+        "onboarding_required": False,
         "survey": payload.survey,
         "terms_accepted": True,
         "terms_version": payload.terms_version,

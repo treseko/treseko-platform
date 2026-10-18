@@ -1,18 +1,64 @@
 # Treseko 1.0.7
 
-- MCP: amplía el flujo gobernado para que asistentes puedan descubrir las funciones disponibles, recorrer sitios públicos autorizados y registrar cambios y resultados con evidencia persistida.
-- Historias y casos: conserva aclaraciones, criterios, trazabilidad y revisión antes de aplicar propuestas.
-- Suites, historial, ejecución y reportes: mejora guardados recuperables, paginación, evidencia por formato y cálculo de resultados.
-- Instalación: los instaladores gráficos de escritorio se retiran temporalmente del paquete; se mantienen los scripts Bash y PowerShell.
-- Privacidad: el ping de instalación es opcional y permanece desactivado salvo activación explícita del administrador.
+## Integridad y actualización segura
+
+- La consulta del canal Premium informa correctamente que la instalación está actualizada, sin mostrarlo como un error.
+- Fija `jsonschema` en 4.26.0 para que reconstruir el backend durante una actualización Premium no seleccione una dependencia 4.x diferente.
+- Corrige la verificación de releases inmutables anteriores cuando cambia el filtro de archivos entre versiones. El updater valida los hashes registrados por el manifiesto original y sigue rechazando cambios o archivos inesperados.
+- Permite verificar y actualizar instalaciones existentes desde 1.0.6 sin confundir los archivos históricos excluidos por el árbol actual.
+
+
+## Correcciones y actualización Premium
+
+- La actualización Premium `1.0.7` se distribuye por `premium-stable` para instalaciones `1.0.6`; Community continúa en `1.0.6`.
+- Historias y casos: conserva alcance, aclaraciones y reglas al reintentar; mejora la revisión de supuestos y propuestas antes de aplicarlas y evita perder escenarios por límites implícitos.
+- Actualizaciones Compose: incorpora la aplicación atómica del árbol completo, con preservación de configuración y volúmenes, comprobación de servicios y recuperación transaccional.
+- Worker y Motor IA: conserva las rutas persistentes de ejecución y la compatibilidad con instalaciones anteriores durante la actualización.
+- MCP: mantiene la resolución compatible durante la transición para no interrumpir a los asistentes conectados.
+
+
+## Corrección de mantenimiento
+
+- Corrige el contador de mantenimiento y conserva el tiempo límite cuando vence aunque el servidor siga reiniciando.
+
+## Asistentes y MCP
+
+- El catálogo MCP reúne 65 herramientas para consultar y gestionar flujos de QA. Cada herramienta sigue su alcance, los permisos del usuario y las confirmaciones requeridas.
+- Los asistentes pueden explorar sitios públicos accesibles y registrar requisitos, historias, casos y resultados manuales observados. Los casos automatizados compatibles se ejecutan mediante el worker de Treseko.
+
+## Historias, casos y suites
+
+- La generación conserva el alcance, las aclaraciones y los criterios de aceptación; agrega trazabilidad y revisión antes de aplicar propuestas.
+- Mejora la recuperación ante respuestas incompletas y errores del proveedor, y conserva las preguntas pendientes al continuar una generación.
+- Las suites protegen los cambios, facilitan restaurar y ordenar carpetas, copian solo versiones vigentes y respetan las builds activas al archivar casos.
+
+## Ejecución, seguimiento e informes
+
+- El guardado de ejecuciones recupera avances y evita duplicados. El historial mejora paginación, filtros y consulta de evidencias para formatos API y conversacional.
+- Bug Tracker y Centro de Incidencias mejoran filtros, borradores, permisos y vínculos entre bugs duplicados. Proyectos e inventario conservan mejor el contexto y las relaciones de sus datos.
+- Los informes distinguen ejecuciones en curso de resultados finales, conservan el contexto al actualizar y corrigen métricas y exportaciones.
+
+## Motor IA
+
+- La programación resiste errores temporales y envíos duplicados, y conserva las tareas al proteger una build.
+- La evaluación de IA exige evidencia para afirmar estados, incluido un carrito vacío, y comprueba el objetivo y el efecto tras recuperar un clic. Las puntuaciones de confianza se identifican como internas y no calibradas.
+
+## Instalación, seguridad y privacidad
+
+- El Plugin Runner conserva la versión de la release al reconstruirse durante una actualización atómica.
+- Mantiene la compatibilidad con instalaciones Docker 1.0.6 durante la actualización del runtime: conserva el resolver MCP anterior y guarda temporalmente la evidencia en volúmenes persistentes ya existentes.
+- El actualizador local atómico aplica el Compose completo de la release con respaldos de volúmenes y rollback. En Premium 1.0.6, primero se instala el bridge 1.0.7 según la guía de actualización; después Configuración → Actualizaciones aplica la release completa.
+- El manifest principal marca el árbol Compose completo; el helper 1.0.6 rechaza ese flujo antes de cambiar servicios. Se genera un paquete de bootstrap por componentes, con checksum y firma propios, para instalar primero el bridge 1.0.7.
+- El paquete completo conserva las seis plantillas `.env*.example` de la release y excluye las configuraciones `.env` locales, para que la actualización no omita ejemplos ni copie secretos.
+- El coordinador exige que Plugin Runner pase su healthcheck antes de activar una release Compose completa.
+- El coordinador de actualización verifica la release activa y rechaza candidatas más antiguas antes de modificar servicios o datos.
+- Corrige los permisos de lectura de recursos estáticos al instalar paquetes extraídos con permisos restrictivos.
+- El coordinador detiene con `SIGTERM` el frontend heredado de 1.0.6 y el frontend actual reenvía `SIGQUIT` a Nginx para cerrar limpiamente al detener el Compose.
+- Retira temporalmente los instaladores gráficos. Se mantienen los scripts de instalación para Bash y PowerShell.
+- Actualiza Handlebars del worker a 4.7.10, que incluye una corrección de seguridad para versiones anteriores.
+- El ping de instalación es opcional y permanece desactivado por defecto.
 
 # Treseko 1.0.6
-
-- La exportación PDF mantiene las tablas dentro de la página. Las funciones de prueba Playwright conservan capturas finales y vídeos, y la evidencia excluye archivos internos del worker. La comprobación de perfiles IA distingue disponibilidad, JSON y visión.
-
-- Reportes y Métricas: errores Chatbot consistentes, predecesor cronológico real, filtros de evidencia completos, navegación de todo el detalle, historial con recuperación y protección de contexto, expectativas exportables y tiempos con muestras explícitas.
-
-- Ejecución: guardado de avance manual, protección ante respuestas tardías, restauración parcial, errores de historial visibles, contexto Chatbot congelado y cifrado, aprobación con todos los turnos, métricas corregidas y monitor API secuencial.
 
 Esta versión reúne las mejoras acumuladas desde Treseko 1.0.2. Al actualizar,
 encontrarás nuevas formas de probar, organizar y compartir el trabajo de QA, con
@@ -20,15 +66,6 @@ controles más claros para administrar el equipo y mantener la instalación.
 
 ## Nuevas herramientas de prueba
 
-- La generación de historias y casos respeta la espera total configurada hasta dos horas, sin recortarla a quince minutos; cada llamada conserva el límite del perfil.
-
-- La planificación de casos conserva hasta 20 escenarios antes de elegir cuántos generar, evitando perder el sexto escenario por un límite implícito de cinco.
-
-- La continuación automática exige supuestos LOW completos y sin preguntas. La generación respeta los límites del perfil activo y cancela solicitudes al proveedor cuando el backend se desconecta.
-
-- Los reintentos de generación de historias y casos conservan el alcance, las aclaraciones y las reglas originales. Los supuestos de riesgo medio o incompletos no se aceptan automáticamente como de bajo riesgo. La pantalla indica que las preguntas pendientes deben responderse antes de continuar. El analizador distingue hechos confirmados, dudas necesarias y capacidades fuera de alcance.
-
-- Generación de historias y casos más confiable: conserva aclaraciones, comprueba fuentes vigentes y protege el guardado y la revisión de propuestas.
 - Creá y ejecutá pruebas de API con variables, validaciones y resultados
   registrados junto con la evidencia.
 - Prepará pruebas conversacionales con varios turnos y revisá sus respuestas,
@@ -38,56 +75,6 @@ controles más claros para administrar el equipo y mantener la instalación.
 - Configurá perfiles de IA y elegí modelos y flujos de trabajo según la tarea.
 
 ## Organización y seguimiento
-
-- Los editores API y conversacional, el resumen de workflows y el explorador de suites se adaptan al ancho disponible del panel para evitar controles o textos recortados.
-
-- El editor de pasos adapta columnas al ancho del panel y muestra botones solo con iconos cuando falta espacio, conservando sus descripciones accesibles.
-
-- Suites: restauración que conserva estados anteriores, destinos y permisos más claros, guardado protegido y ordenamiento de carpetas.
-
-- El historial distingue el estado de cada caso del resultado global del run,
-  muestra las pruebas IA en curso, las capturas por URL y los tiempos por
-  solicitud API. Los filtros aplicados quedan visibles y crear bugs desde
-  informes respeta los permisos del usuario y del proyecto.
-
-- El guardado de casos conserva la prueba al reintentar vínculos fallidos y evita
-  creaciones duplicadas. Las referencias se reemplazan por paso sin perder
-  evidencias previas, las copias de suites incluyen solo versiones vigentes y
-  el archivado respeta las builds activas en todas las rutas.
-
-- El Historial de Ejecuciones incorpora páginas y totales, conserva los filtros
-  al actualizar y muestra observaciones y evidencia API o conversacional.
-  Los errores permiten reintentar y la vista móvil facilita abrir el detalle.
-
-- El Centro de Incidencias conserva borradores entre pestañas, recupera los
-  comentarios y accesos relacionados, y muestra acciones según los permisos.
-- La solución del bug y la resolución de pantalla se guardan por separado.
-  La bandeja permite priorizar y filtrar desde los indicadores, también en móvil.
-
-
-- La creación de proyectos conserva el formulario ante errores y evita envíos
-  simultáneos. Las organizaciones vacías mantienen su selección y las respuestas
-  antiguas de casos o suites no reemplazan el contexto del proyecto actual.
-- Los componentes con contenido y las builds con ejecuciones no se eliminan;
-  el historial conserva sus referencias. Las builds se pueden ocultar.
-
-- El Bug Tracker permite recorrer todos los bugs, ordenar por prioridad o
-  antigüedad y consultar indicadores que respetan los filtros seleccionados.
-- La edición conserva los cambios pendientes al comentar o cambiar de estado,
-  muestra el historial y permite vincular duplicados al bug principal según
-  los permisos y la edición disponibles.
-- El listado de bugs ofrece filtros desplegables y filas legibles en móvil.
-
-- Los proyectos pueden compartir nombre entre soluciones distintas; se validan
-  los nombres vacíos y los duplicados dentro de una misma solución.
-- Los listados de proyectos, componentes y builds cargan todos los registros,
-  y los cambios rápidos de proyecto conservan la selección correcta.
-- Se refuerzan los límites al crear, importar, reactivar o trasladar proyectos,
-  y las notificaciones de cierre y reapertura.
-- El inventario conserva categorías por proyecto, guarda los activos y sus
-  endpoints juntos y permite consultar sus detalles con permiso de lectura.
-- Se evita que cambios rápidos de proyecto mezclen listados de inventario y
-  que las relaciones entre activos formen ciclos.
 
 - Consultá reportes ejecutivos y de equipo que conservan una vista compartible
   de los resultados, con opciones para revocar o dejar vencer el acceso.
@@ -110,9 +97,6 @@ controles más claros para administrar el equipo y mantener la instalación.
 
 ## Actualizaciones y seguridad
 
-- Se corrigió la instalación desde una base vacía y la conexión inicial de los
-  workers cuando el servidor tarda en responder.
-
 - Las actualizaciones preparan y verifican los componentes antes de activarse;
   si una actualización falla durante el proceso, se conserva una ruta de
   recuperación con respaldo.
@@ -122,19 +106,3 @@ controles más claros para administrar el equipo y mantener la instalación.
   la administración de credenciales y permisos.
 - Los resultados desconocidos de automatización ya no se presentan como pruebas
   aprobadas.
-
-### AI engine evidence guards / Guardas de evidencia del motor IA
-
-- Claims and empty carts require cited evidence; coordinate recovery refreshes and checks its target and outcome. Internal scores show provenance and remain uncalibrated until reviewed samples are available.
-- Afirmaciones y carritos vacios requieren evidencia citada; la recuperacion por coordenadas actualiza y comprueba objetivo y resultado. Las puntuaciones internas registran origen y permanecen sin calibrar hasta disponer de muestras revisadas.
-
-### Programación IA / AI scheduling
-
-- Reintento de fallos temporales, conservación de programaciones al proteger la build, prevención de doble envío y cancelación resistente a respuestas antiguas. Las tareas de mantenimiento ya no bloquean el scheduler ante un fallo aislado.
-- Temporary failures retry; build protection preserves schedules; double submission and stale cancellation responses are guarded. Independent maintenance failures no longer block scheduling.
-
-### Correcciones de reportes y métricas
-
-- Los reportes conservan el proyecto y la build seleccionados al recibir respuestas tardías, y permiten reintentar errores de carga.
-- La cobertura distingue resultados finales de ejecuciones en curso; se conservan métricas de versiones anteriores y se corrige el P95 de respuesta.
-- Las exportaciones PDF y Excel evitan repetir datos de casos fuera de la tabla.

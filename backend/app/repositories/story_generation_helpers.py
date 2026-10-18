@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -18,6 +20,7 @@ from .ai_provider_profiles import workflow_provider_payload
 from .traceability_records import _next_code, _story_payload
 from .story_authoring_rules import find_title_similarities, validate_proposal
 from .generation_semantic_review import effective_audit_runtime
+from .ai_generation_engine_errors import engine_error_code, engine_generation_error_message, engine_contract_issues
 
 
 def _generation_payload(item):
@@ -141,7 +144,7 @@ async def _call_engine(
     if response.status_code >= 400:
         try:
             error_payload = response.json() or {}
-            error_code = str(error_payload.get("code") or "")
+            error_code = engine_error_code(error_payload)
         except Exception:
             error_payload = {}
             error_code = ""
@@ -152,9 +155,12 @@ async def _call_engine(
         if error_code == "GENERATION_SOURCE_EXTRACTION_INCOMPLETE":
             raise ValueError("La extracción de reglas quedó incompleta o sin citas verificables. Reintenta o selecciona menos fuentes antes de continuar.")
         if error_code == "STORY_GENERATION_CONTRACT_INVALID":
-            issues = [str(item).strip() for item in (error_payload.get("contract_issues") or []) if str(item).strip()]
+            issues = engine_contract_issues(error_payload)
             detail = f" Detalle: {' '.join(issues[:3])}" if issues else ""
             raise ValueError(f"El modelo devolvió un borrador incompleto después de un intento de reparación.{detail}")
+        provider_error = engine_generation_error_message(error_payload)
+        if provider_error:
+            raise ValueError(provider_error)
         raise ValueError("El Motor IA no pudo generar historias. Revisa su disponibilidad y configuración.")
     data = response.json()
     if not isinstance(data, dict):
@@ -242,6 +248,83 @@ def _analysis_readiness(analysis):
     return readiness
 
 
+def _resolve_answered_analysis_questions(analysis, user_answers):
+    """Remove only questions that have an explicit, exact user answer."""
+    if not isinstance(analysis, dict) or not isinstance(analysis.get("questions"), list):
+        return 0
+    answered = {
+        str(item.get("question") or "").strip()
+        for item in (user_answers or [])
+        if isinstance(item, dict) and str(item.get("answer") or "").strip()
+    }
+    if not answered:
+        return 0
+    questions = [str(item).strip() for item in analysis["questions"] if str(item).strip()]
+    resolved = [question for question in questions if question in answered]
+    if not resolved:
+        return 0
+    remaining = [question for question in questions if question not in answered]
+    analysis["questions"] = remaining
+    if not remaining and not analysis.get("proposed_assumptions"):
+        analysis["readiness"] = "READY"
+    return len(resolved)
+
+
+def _analysis_after_answered_question_update(previous_analysis, user_answers):
+    """Keep a usable analysis when the model fails during reanalysis."""
+    if not isinstance(previous_analysis, dict) or not previous_analysis:
+        return None
+    restored = dict(previous_analysis)
+    restored["questions"] = list(previous_analysis.get("questions") or [])
+    _resolve_answered_analysis_questions(restored, user_answers)
+    return restored
+
+
+def _preserve_reanalysis_after_error(run, previous_analysis, previous_estimate):
+    """Retain a valid prior analysis and its retryable state after model failure."""
+    restored = _analysis_after_answered_question_update(
+        previous_analysis, (run.fuente_snapshot or {}).get("respuestas_usuario", []),
+    )
+    if not restored:
+        return False
+    readiness = _analysis_readiness(restored)
+    run.analysis_json = restored
+    run.estimacion = {**previous_estimate, "readiness": readiness}
+    readiness = _auto_accept_low_risk_assumptions(run, readiness)
+    run.estimacion["readiness"] = readiness
+    run.estado = "ANALIZADA" if readiness == "READY" else "ESPERANDO_SUPUESTOS"
+    return True
+
+
+async def _finalize_interrupted_story_generation(db, run, candidates, failures, traces, requested):
+    """Persist partial drafts and a retryable state when the client disconnects."""
+    for candidate in candidates:
+        candidate.setdefault("similarity_check", {
+            "mode": "TITLE_FALLBACK", "status": "INTERRUPTED",
+            "message": "La comparación semántica final no terminó.",
+        })
+    decisions = dict(run.decisiones_json or {})
+    progress = dict(decisions.get("generation_progress") or {})
+    progress.update({
+        "requested": requested,
+        "completed": len(candidates),
+        "failed": list(failures),
+        "status": "INTERRUPTED",
+        "interrupted": True,
+    })
+    decisions["generation_progress"] = progress
+    run.decisiones_json = decisions
+    run.propuestas_originales_json = candidates
+    run.propuestas_finales_json = candidates
+    run.propuestas = candidates
+    run.workflow_traces_json = traces
+    run.warnings_json = [finding for item in candidates for finding in item.get("rule_findings", [])]
+    run.estado = "LISTA_PARA_REVISION" if candidates else "LISTA_PARA_GENERAR"
+    run.error_detalle = "La solicitud se interrumpió. Las propuestas guardadas se pueden revisar y la generación se puede reintentar."
+    run.sanitized_error = run.error_detalle
+    await db.commit()
+
+
 def _auto_accept_low_risk_assumptions(run, readiness):
     """Low-risk defaults reduce friction while preserving the audit trail."""
     if readiness != "NEEDS_CLARIFICATION":
@@ -315,6 +398,43 @@ async def _compare_story_intentions(db, workflow, run, candidates, existing_stor
     return matches_by_proposal, result.get("workflow_traces") or []
 
 
+def _explicit_user_story_statements(description):
+    """Read formal user-story statements without deriving intent from keywords."""
+    statements = []
+    for raw_line in str(description or "").splitlines():
+        line = re.sub(r"^\s*(?:[-*]\s*)?(?:\*\*)?", "", raw_line).strip()
+        line = re.sub(r"(?:\*\*)?\s*$", "", line).strip()
+        match = re.match(r"^Como\s+(.+?)\s*,?\s+quiero\s+(.+?)\.?$", line, re.IGNORECASE)
+        if not match:
+            continue
+        actor = match.group(1).strip(" ,.")
+        action_and_benefit = match.group(2).strip()
+        parts = re.split(r"\s+para\s+", action_and_benefit, maxsplit=1, flags=re.IGNORECASE)
+        goal = parts[0].strip(" .")
+        benefit = parts[1].strip(" .") if len(parts) > 1 else ""
+        if actor and goal:
+            statements.append({
+                "title": goal[:1].upper() + goal[1:],
+                "actor": actor,
+                "goal": goal,
+                "benefit": benefit,
+                "reason": line,
+                "source_kind": "explicit_user_story",
+            })
+    return statements
+
+
+def _canonicalize_explicit_story_fields(proposal, planned_story):
+    """Keep the persisted actor and intent faithful to a source user story."""
+    if not isinstance(proposal, dict) or planned_story.get("source_kind") != "explicit_user_story":
+        return proposal
+    for field in ("title", "actor", "goal", "benefit"):
+        value = str(planned_story.get(field) or "").strip()
+        if value:
+            proposal[field] = value
+    return proposal
+
+
 def _outline_candidates(run, max_stories):
     """Turn the analyzed scope into the bounded authoring plan.
 
@@ -323,6 +443,26 @@ def _outline_candidates(run, max_stories):
     *before* asking a slow local model for full drafts.
     """
     outline = (run.analysis_json or {}).get("story_outline") or []
+    requirement = (getattr(run, "fuente_snapshot", None) or {}).get("requisito") or {}
+    description = str(requirement.get("descripcion_markdown") or "")
+    explicit_stories = _explicit_user_story_statements(description)
+    if explicit_stories:
+        source_text = " ".join(description.casefold().split())
+        outline_is_requirement_grounded = all(
+            isinstance(item, dict)
+            and str(item.get("reason") or "").strip()
+            and " ".join(str(item.get("reason")).casefold().split()) in source_text
+            for item in outline
+        )
+        # When the analyzer only restates literal rules from the same formal
+        # user story as separate stories, those rules are criteria of that
+        # capability. Keep unrelated or paraphrased outlines on the analyzed
+        # path for review instead of silently merging them.
+        if not outline or outline_is_requirement_grounded:
+            return [
+                {"local_id": f"PLAN-{index:03d}", **item}
+                for index, item in enumerate(explicit_stories[:max_stories], start=1)
+            ]
     candidates = []
     for index, item in enumerate(outline[:max_stories], start=1):
         if not isinstance(item, dict):

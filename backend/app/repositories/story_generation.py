@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-import hashlib
-import json
+import asyncio
 from datetime import datetime, timezone
 
 import httpx
@@ -16,8 +14,7 @@ from .ai_workflow_serialization import _workflow_definition
 from .ai_workflows import get_ai_workflow
 from .ai_provider_profiles import workflow_provider_payload
 from .traceability_records import _next_code, _story_payload
-from .story_authoring_rules import find_title_similarities, validate_proposal
-
+from .story_authoring_rules import find_title_similarities, has_normalized_duplicate, validate_proposal
 
 from . import story_generation_helpers as _story_generation_helpers
 from .story_generation_helpers import (
@@ -27,18 +24,21 @@ from .story_generation_helpers import (
     _compare_story_intentions,
     _ensure_story_generation_workflow,
     _filter_planned_stories,
+    _finalize_interrupted_story_generation,
     _generation_payload,
     _hash,
     _json_safe,
     _normalize_candidates,
+    _canonicalize_explicit_story_fields,
     _outline_candidates,
     _persist_engine_audit,
+    _preserve_reanalysis_after_error,
+    _resolve_answered_analysis_questions,
     _repair_traceability_refs,
     _safe_error,
     _story_generation_workflow,
     )
-
-
+from .story_generation_review import remap_semantic_criterion_ids
 from .story_generation_rendering import _story_markdown, _criteria_markdown
 from .generation_semantic_review import stamp_semantic_review, reviews_for_application
 from .generation_guards import lock_generation, require_current_sources, checked_answers, require_story_provenance, _record_question_answers, check_assumptions
@@ -47,6 +47,7 @@ from .generation_guards import lock_generation, require_current_sources, checked
 async def _call_engine(*args, **kwargs):
     """Facade wrapper preserving the historical patch point for AI tests."""
     return await _story_generation_helpers._call_engine(*args, **kwargs)
+
 async def estimate_story_generation(db, requirement, payload, user_id):
     workflow = await _story_generation_workflow(db)
     context = await _build_context(db, requirement, payload.wiki_page_ids, payload.componente_ids)
@@ -200,6 +201,7 @@ async def generate_story_candidates(db, run, payload):
                     (run.fuente_snapshot or {}).get("requisito", {}).get("codigo"),
                 )
                 candidate = generated[0]
+                candidate = _canonicalize_explicit_story_fields(candidate, planned_story)
                 # Each Engine invocation asks for one proposal. Local models
                 # commonly restart identifiers at PROP-001, so make IDs stable
                 # across the persisted generation rather than letting later
@@ -215,21 +217,16 @@ async def generate_story_candidates(db, run, payload):
                     )
                     criterion_id_map[previous_criterion_id] = criterion["local_id"]
                 semantic = candidate.get("quality", {}).get("semantic_review", {})
-                for section in ("grounding", "coverage", "findings"):
-                    for finding in semantic.get(section, []):
-                        if finding.get("criterion_id") in criterion_id_map:
-                            finding["criterion_id"] = criterion_id_map[finding["criterion_id"]]
-                # Compare with persisted stories and proposals already processed,
-                # never with the candidate currently being evaluated.
-                validate_proposal(
-                    candidate,
-                    accepted,
-                    existing_data + candidates,
-                    require_v2_fields=int(workflow.version or 1) >= 2,
-                )
+                remap_semantic_criterion_ids(semantic, criterion_id_map)
+                rule_findings = validate_proposal(candidate, accepted, existing_data + candidates, require_v2_fields=int(workflow.version or 1) >= 2)
+                if has_normalized_duplicate(rule_findings):
+                    failures.append({
+                        "position": proposal_index,
+                        "code": "STORY_DUPLICATE_NORMALIZED",
+                        "message": "La propuesta duplica una historia por actor, objetivo y título.",
+                    })
+                    continue
                 stamp_semantic_review(candidate)
-                # This is intentionally an advisory check. A similar title may
-                # still represent a different scope, so QA makes the decision.
                 candidate["similar_stories"] = find_title_similarities(
                     candidate.get("title", ""), existing_title_index,
                 )
@@ -300,6 +297,9 @@ async def generate_story_candidates(db, run, payload):
         run.propuestas = candidates
         run.warnings_json = [finding for item in candidates for finding in item.get("rule_findings", [])]
         run.estado = "LISTA_PARA_REVISION"; run.error_detalle = None; run.sanitized_error = None
+    except asyncio.CancelledError:
+        await _finalize_interrupted_story_generation(db, run, candidates, failures, all_traces, payload.max_historias)
+        raise
     except Exception as exc:
         run.estado = "BLOQUEADA"; run.error_detalle = _safe_error(exc); run.sanitized_error = _safe_error(exc)
     await db.commit()
@@ -351,11 +351,13 @@ async def reanalyze_story_generation(db, run, question_answers):
     if run.workflow_id != workflow.id or run.workflow_version != workflow.version:
         raise ValueError("El workflow de generación cambió; solicita un nuevo análisis.")
     _record_question_answers(run, question_answers)
+    previous_analysis, previous_estimate = dict(run.analysis_json or {}), dict(run.estimacion or {})
     try:
         result = await _call_engine(db, workflow, "analyze", run.fuente_snapshot or {}, run.instrucciones)
         config = await get_ai_engine_config(db)
         _persist_engine_audit(run, workflow, result, config)
         analysis = result.get("analysis") if isinstance(result.get("analysis"), dict) else {}
+        _resolve_answered_analysis_questions(analysis, (run.fuente_snapshot or {}).get("respuestas_usuario", []))
         readiness = _analysis_readiness(analysis)
         run.analysis_json = analysis
         readiness = _auto_accept_low_risk_assumptions(run, readiness)
@@ -374,9 +376,10 @@ async def reanalyze_story_generation(db, run, question_answers):
         run.estado = "ANALIZADA" if readiness == "READY" else "ESPERANDO_SUPUESTOS"
         run.error_detalle = None; run.sanitized_error = None
     except Exception as exc:
-        run.estado = "BLOQUEADA"; run.error_detalle = _safe_error(exc); run.sanitized_error = _safe_error(exc)
-    await db.commit()
-    await db.refresh(run)
+        if not _preserve_reanalysis_after_error(run, previous_analysis, previous_estimate):
+            run.estado = "BLOQUEADA"
+        run.error_detalle = _safe_error(exc); run.sanitized_error = _safe_error(exc)
+    await db.commit(); await db.refresh(run)
     return _generation_payload(run)
 
 

@@ -24,6 +24,31 @@ test('health rejects a 200 provider response that is not JSON', async () => {
   }
 });
 
+test('runWorkflowAgent sends its output contract as LM Studio constrained JSON Schema', async () => {
+  let receivedSchema: any;
+  const server = http.createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    receivedSchema = JSON.parse(body).response_format?.json_schema?.schema;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ verdict: 'PASS', findings: [] }) } }] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const client = new AIClient({ provider: 'lm-studio', endpoint: `http://127.0.0.1:${(address as any).port}/v1`, model: 'workflow-test', maxRetries: 1 });
+  try {
+    const result = await client.runWorkflowAgent({ outputMode: 'schema', nodeName: 'reviewer',
+      outputSchema: { verdict: 'PASS|WARN|FAIL', findings: [{ message: 'string' }] },
+      promptTemplate: 'Devuelve la revisión.', input: {}, responseFormat: 'json_schema' });
+    assert.equal(result.data.verdict, 'PASS');
+    assert.deepEqual(receivedSchema.required, ['verdict', 'findings']);
+    assert.equal(receivedSchema.additionalProperties, false);
+    assert.deepEqual(receivedSchema.properties.verdict.enum, ['PASS', 'WARN', 'FAIL']);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test('vision probe verifies two different image answers', async () => {
   let requestCount = 0;
   const responseFormats: string[] = [];
@@ -157,6 +182,10 @@ for (const phase of ['analyze', 'generate']) {
           assert.ok(prompt.includes('Una capacidad expresamente fuera de alcance no es información faltante'));
           assert.ok(prompt.includes('Un hecho confirmado por las fuentes o respuestas no es un supuesto'));
           assert.ok(prompt.includes('Mantén las dudas reales sobre resultados, permisos o seguridad de ese alcance'));
+          assert.ok(prompt.includes('No eleves el detalle solicitado: si el requisito pide mostrar un estado, no preguntes también por el motivo'));
+          assert.ok(prompt.includes('no preguntes si también hay que verificar la existencia real del dato'));
+          assert.ok(prompt.includes('no preguntes por el botón, etiqueta o secuencia exactos'));
+          assert.ok(prompt.includes('No incluyas esos detalles de presentación como missing_information'));
         }
       } else assert.ok(prompts[1].includes('Genera UNA sola historia'));
     } finally {
@@ -261,6 +290,7 @@ for (const phase of ['analyze', 'generate']) {
     const {default: express} = await import('express');
     const {registerGenerationRoutes} = await import('../generation-routes.ts');
     const prompts: string[] = [];
+    const publicErrors: any[] = [];
     const provider = http.createServer(async (request, response) => {
       let body = ''; for await (const chunk of request) body += chunk;
       const payload = JSON.parse(body); prompts.push(payload.messages.find((message: any) => message.role === 'user').content);
@@ -274,7 +304,7 @@ for (const phase of ['analyze', 'generate']) {
     const app = express(); app.use(express.json());
     registerGenerationRoutes(app, {
       protectedStoryEndpoint: () => true, allowedEndpoint: () => true, allowedFallbacks: () => true,
-      sendPublicError: (_req: any, res: any, status: number) => res.status(status).json({error:true}),
+      sendPublicError: (_req: any, res: any, status: number, _message: string, code: string, extra: any = {}) => { publicErrors.push({code, ...extra}); return res.status(status).json({error:true, code, ...extra}); },
       sendProviderFailure: (_req: any, res: any) => res.status(502).json({error:true}),
     });
     const engine = app.listen(0, '127.0.0.1');
@@ -291,7 +321,12 @@ for (const phase of ['analyze', 'generate']) {
       });
       assert.equal(response.status, phase === 'analyze' ? 200 : 422);
       assert.equal(prompts.length, phase === 'analyze' ? 3 : 2);
-      if (phase === 'generate') assert.ok(prompts[1].includes('invalid_proposals'), 'missing local_id must reach contract repair before semantic review');
+      if (phase === 'generate') {
+        assert.ok(prompts[1].includes('invalid_proposals'), 'missing local_id must reach contract repair before semantic review');
+        assert.ok(prompts[1].includes('PROPOSAL_1:LOCAL_ID_REQUIRED'), 'repair must receive concrete validator diagnostics');
+        assert.ok(prompts[1].includes('local_id único'), 'repair must receive the required proposal identifier contract');
+        assert.deepEqual(publicErrors[0]?.contract_issues, ['PROPOSAL_1:LOCAL_ID_REQUIRED']);
+      }
       for (const prompt of prompts) assert.ok(!prompt.includes('\"decision\": {}'), 'native authoring or repair received the generic envelope');
       for (const prompt of prompts.slice(0,2)) {
         assert.ok(prompt.includes(instructions));

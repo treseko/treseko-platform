@@ -5,6 +5,15 @@
 Status: **local orchestration deliverable; it is not rollout certification or
 production readiness**.
 
+Releases whose signed manifest declares `deployment.mode=complete-source` are
+rejected before component planning while the host bridge does not have the
+`atomic-compose` transaction enabled. Component runtime preparation must not be
+treated as installation of the full Compose project. This guard prevents a
+mixed-version application. Local Compose installations without that coordinator
+must use the target release's atomic installer; the in-app updater cannot access
+the host Compose project. This document describes the contract and does not
+certify a production rollout.
+
 ## Flow
 
 It uses the controller's combined private configuration (`participants`,

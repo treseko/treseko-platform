@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { API_BASE } from '../../app/constants'
 import { useI18n } from '../../i18n'
 import { canAutoConfirmStoryAnalysis } from './useTraceabilityGenerationState'
+import { buildGenerationQuestionAnswers } from './generationQuestionAnswers'
 
 export function useTraceabilityGenerationActions(options: any) {
   const { t } = useI18n()
@@ -9,7 +10,9 @@ export function useTraceabilityGenerationActions(options: any) {
     projectId, fetchWithAuth, readJson, showFeedback, tx, hasSimilarStory,
     generationRequirement, setGenerationRequirement, generationStep, setGenerationStep,
     generationRun, setGenerationRun, generationInstructions, generationWikiIds,
-    generationComponentIds, generationQuestionAnswers, generationMaxStories, setGenerationMaxStories,
+    generationAcceptedAssumptions, setGenerationAcceptedAssumptions,
+    generationComponentIds, generationQuestionAnswers, generationQuestionScopeDecisions, generationMaxStories, setGenerationMaxStories,
+    setGenerationQuestionScopeDecisions,
     setGenerationWiki, setGenerationCandidates, setGenerationBusy: setGenerationBusyState, setGenerationContextExpanded,
     setGenerationComponentIds, setEstimateExplanationVisible, setGenerationWikiIds, setGenerationInstructions, setGenerationQuestionAnswers,
     setExpandedCandidateIndexes,
@@ -19,6 +22,26 @@ export function useTraceabilityGenerationActions(options: any) {
 
   const busyRef = useRef(false)
   const setGenerationBusy = (value: boolean) => { busyRef.current = value; setGenerationBusyState(value) }
+  const questionAnswersPayload = () => buildGenerationQuestionAnswers(
+    generationQuestionAnswers, generationQuestionScopeDecisions,
+  )
+  const reloadGenerationAfterRequestFailure = async (generationId: string) => {
+    try {
+      const current = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationId}`))
+      setGenerationRun(current)
+      if (current.estado === 'LISTA_PARA_REVISION') {
+        const candidates = (current.propuestas || []).map((item: any) => ({ ...item, selected: item.quality?.testability === 'PASS' && !hasSimilarStory(item) }))
+        setGenerationCandidates(candidates)
+        setExpandedCandidateIndexes(new Set(candidates.length ? [0] : []))
+        setGenerationStep('review')
+      } else {
+        setGenerationStep(['ANALIZADA', 'LISTA_PARA_GENERAR'].includes(current.estado) ? 'configuration' : 'analysis')
+      }
+      return current
+    } catch {
+      return null
+    }
+  }
   const openGeneration = async (requirement: any) => {
     if (busyRef.current) return
     setGenerationRequirement(requirement)
@@ -30,6 +53,8 @@ export function useTraceabilityGenerationActions(options: any) {
     setGenerationCandidates([])
     setGenerationMaxStories(1)
     setGenerationQuestionAnswers({})
+    setGenerationQuestionScopeDecisions({})
+    setGenerationAcceptedAssumptions([])
     setGenerationContextExpanded(true)
     setExpandedCandidateIndexes(new Set())
     setEstimateExplanationVisible(false)
@@ -50,6 +75,7 @@ export function useTraceabilityGenerationActions(options: any) {
         method: 'POST', body: JSON.stringify({ wiki_page_ids: generationWikiIds, componente_ids: generationComponentIds, instrucciones: generationInstructions }),
       }))
       setGenerationRun(run)
+      setGenerationAcceptedAssumptions([])
       if (run.estado === 'BLOQUEADA') throw new Error(run.error_detalle || tx('analysisUpdateFailed'))
       setGenerationMaxStories(run.estimacion?.cantidad_recomendada || 1)
       setGenerationStep(run.estado === 'ANALIZADA' ? 'configuration' : 'analysis')
@@ -65,7 +91,7 @@ export function useTraceabilityGenerationActions(options: any) {
     setGenerationBusy(true)
     try {
       const run = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationRun.id}/generar`, {
-        method: 'POST', body: JSON.stringify({ max_historias: generationMaxStories, question_answers: Object.entries(generationQuestionAnswers).filter(([, answer]: [string, any]) => answer.trim()).map(([question, answer]: [string, any]) => ({ question, answer: answer.trim() })) }),
+        method: 'POST', body: JSON.stringify({ max_historias: generationMaxStories, question_answers: questionAnswersPayload() }),
       }))
       if (run.estado === 'BLOQUEADA') throw new Error(run.error_detalle || 'La generación fue bloqueada.')
       setGenerationRun(run)
@@ -73,7 +99,8 @@ export function useTraceabilityGenerationActions(options: any) {
       setGenerationStep('review')
       setExpandedCandidateIndexes(new Set([0]))
     } catch (error: any) {
-      showFeedback(tx('generationTitle'), error.message || tx('proposalsGenerationFailed'), 'danger')
+      const recovered = await reloadGenerationAfterRequestFailure(generationRun.id)
+      showFeedback(tx('generationTitle'), recovered?.error_detalle || error.message || tx('proposalsGenerationFailed'), recovered?.estado === 'LISTA_PARA_REVISION' ? 'warning' : 'danger')
     } finally { setGenerationBusy(false) }
   }
   const recalculateGenerationScope = async (generationId = generationRun?.id, usePersistedAnswers = false) => {
@@ -82,29 +109,40 @@ export function useTraceabilityGenerationActions(options: any) {
     setGenerationBusy(true)
     try {
       const run = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationId}/reanalizar`, {
-        method: 'POST', body: JSON.stringify({ max_historias: 1, question_answers: usePersistedAnswers ? [] : Object.entries(generationQuestionAnswers).filter(([, answer]: [string, any]) => answer.trim()).map(([question, answer]: [string, any]) => ({ question, answer: answer.trim() })) }),
+        method: 'POST', body: JSON.stringify({ max_historias: 1, question_answers: usePersistedAnswers ? [] : questionAnswersPayload() }),
       }))
       if (run.estado === 'BLOQUEADA') throw new Error(run.error_detalle || tx('analysisUpdateFailed'))
       setGenerationRun(run)
+      setGenerationAcceptedAssumptions([])
       setGenerationQuestionAnswers({})
+      setGenerationQuestionScopeDecisions({})
       setGenerationMaxStories(run.estimacion?.cantidad_recomendada || 1)
       setGenerationStep(run.estado === 'ANALIZADA' ? 'configuration' : 'analysis')
     } catch (error: any) {
-      showFeedback(tx('analysisTitle'), error.message || tx('scopeUpdateFailed'), 'danger')
+      const recovered = await reloadGenerationAfterRequestFailure(generationId)
+      setGenerationQuestionAnswers({})
+      setGenerationQuestionScopeDecisions({})
+      showFeedback(tx('analysisTitle'), recovered?.error_detalle || error.message || tx('scopeUpdateFailed'), 'danger')
     } finally { setGenerationBusy(false) }
   }
   const confirmAssumptions = async (continuationMode: 'MANUAL' | 'AUTO_TIMEOUT' = 'MANUAL') => {
     if (busyRef.current) return
     if (!generationRun) return
     const assumptions = generationRun.analysis?.proposed_assumptions || []
+    const assumptionIds = continuationMode === 'AUTO_TIMEOUT' ? assumptions.map((item: any) => item.id) : generationAcceptedAssumptions
     setGenerationBusy(true)
     try {
-      const run = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationRun.id}/supuestos`, { method: 'POST', body: JSON.stringify({ assumption_ids: assumptions.map((item: any) => item.id), question_answers: Object.entries(generationQuestionAnswers).filter(([, answer]: [string, any]) => answer.trim()).map(([question, answer]: [string, any]) => ({ question, answer: answer.trim() })), continuation_mode: continuationMode }) }))
+      const run = await readJson(await fetchWithAuth(`${API_BASE}/generaciones-historias/${generationRun.id}/supuestos`, { method: 'POST', body: JSON.stringify({ assumption_ids: assumptionIds, question_answers: questionAnswersPayload(), continuation_mode: continuationMode }) }))
       setGenerationRun(run)
+      setGenerationAcceptedAssumptions([])
       setGenerationQuestionAnswers({})
+      setGenerationQuestionScopeDecisions({})
       setGenerationStep(['ANALIZADA', 'LISTA_PARA_GENERAR'].includes(run.estado) ? 'configuration' : 'analysis')
     } catch (error: any) {
-      showFeedback(tx('pendingAssumptionsTitle'), error.message || tx('assumptionsConfirmFailed'), 'danger')
+      const recovered = await reloadGenerationAfterRequestFailure(generationRun.id)
+      setGenerationQuestionAnswers({})
+      setGenerationQuestionScopeDecisions({})
+      showFeedback(tx('pendingAssumptionsTitle'), recovered?.error_detalle || error.message || tx('assumptionsConfirmFailed'), 'danger')
     } finally { setGenerationBusy(false) }
   }
   const canAutoContinue = Boolean(generationRun && generationStep === 'analysis' && generationRun.estado === 'ESPERANDO_SUPUESTOS' && canAutoConfirmStoryAnalysis(generationRun.analysis) && !generationBusy && !autoContinuePaused)

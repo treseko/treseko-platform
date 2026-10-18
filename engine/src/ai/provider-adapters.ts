@@ -9,6 +9,7 @@ export type ProviderGenerateRequest = {
   maxTokens: number;
   disableThinking?: boolean;
   responseFormat?: 'json_schema' | 'json_object' | 'text';
+  outputSchema?: Record<string, any>;
 };
 
 export type NormalizedProviderResult = {
@@ -86,6 +87,47 @@ function geminiParts(content: any): any[] {
   });
 }
 
+/** Convert Treseko's compact workflow schema notation to JSON Schema for
+ * providers that support constrained decoding. Existing JSON Schema nodes
+ * are preserved, while shorthand leaf descriptions become typed fields. */
+export function workflowOutputJsonSchema(value: any): Record<string, any> {
+  const schemaTypes = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
+  const schemaKeys = new Set(['type', 'properties', 'items', 'required', 'additionalProperties', 'enum', 'const', 'minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'pattern', 'description']);
+  const convert = (node: any): any => {
+    if (Array.isArray(node)) return { type: 'array', items: convert(node[0] ?? 'string') };
+    if (typeof node === 'boolean') return { type: 'boolean' };
+    if (typeof node === 'number') return { type: Number.isInteger(node) ? 'integer' : 'number' };
+    if (node && typeof node === 'object') {
+      if (schemaTypes.has(String(node.type || '').toLowerCase()) && Object.keys(node).every(key => schemaKeys.has(key))) {
+        const result: Record<string, any> = { ...node };
+        if (result.properties && typeof result.properties === 'object') {
+          result.properties = Object.fromEntries(Object.entries(result.properties).map(([key, child]) => [key, convert(child)]));
+          result.required = Array.isArray(result.required) ? result.required : Object.keys(result.properties);
+          result.additionalProperties = false;
+        }
+        if (result.items !== undefined) result.items = convert(result.items);
+        return result;
+      }
+      const properties = Object.fromEntries(Object.entries(node).map(([key, child]) => [key, convert(child)]));
+      return { type: 'object', properties, required: Object.keys(properties), additionalProperties: false };
+    }
+    const description = String(node ?? 'string').trim();
+    const alternatives = description.split('|').map(item => item.trim()).filter(Boolean);
+    if (alternatives.length > 1) return { type: 'string', enum: alternatives };
+    if (/^(?:\[\]|array)$/i.test(description)) return { type: 'array', items: { type: 'string' } };
+    const numeric = description.match(/^(number|integer)(?:\s+(-?\d+(?:\.\d+)?)\.\.(-?\d+(?:\.\d+)?))?$/i);
+    if (numeric) return {
+      type: numeric[1].toLowerCase(),
+      ...(numeric[2] !== undefined ? { minimum: Number(numeric[2]), maximum: Number(numeric[3]) } : {}),
+    };
+    if (/^boolean$/i.test(description)) return { type: 'boolean' };
+    return { type: 'string' };
+  };
+  const schema = convert(value);
+  if (schema.type !== 'object') return { type: 'object', properties: { result: schema }, required: ['result'], additionalProperties: false };
+  return schema;
+}
+
 export function normalizeProvider(provider: string): string {
   const value = String(provider || 'openai-compatible').toLowerCase().replace(/_/g, '-');
   if (value === 'lmstudio') return 'lm-studio';
@@ -156,7 +198,7 @@ export function providerRequest(config: ProviderAdapterConfig, request: Provider
       json_schema: {
         name: 'treseko_workflow_response',
         strict: false,
-        schema: {
+        schema: request.outputSchema ? workflowOutputJsonSchema(request.outputSchema) : {
           type: 'object',
           properties: {
             action: { type: 'string' },
@@ -211,7 +253,7 @@ export function normalizeProviderResponse(kind: string, data: any, headers: any 
 
 export function normalizeProviderError(error: any): ProviderRequestError {
   const status = Number(error?.response?.status || 0) || undefined;
-  const category = status === 401 ? 'authentication_failed' : status === 403 ? 'permission_denied' : status === 402 ? 'payment_required' : status === 429 ? 'rate_limited' : status && status >= 500 ? 'provider_unavailable' : error?.code === 'ECONNABORTED' ? 'timeout' : error?.code ? 'network_error' : 'invalid_response';
+  const category = status === 401 ? 'authentication_failed' : status === 403 ? 'permission_denied' : status === 402 ? 'payment_required' : status === 429 ? 'rate_limited' : status && status >= 500 ? 'provider_unavailable' : status && status >= 400 ? 'invalid_request' : error?.code === 'ECONNABORTED' ? 'timeout' : error?.code ? 'network_error' : 'invalid_response';
   const retryAfter = Number(error?.response?.headers?.['retry-after'] || 0);
   return new ProviderRequestError(`Proveedor IA: ${category}`, category, status, retryAfter > 0 ? retryAfter * 1000 : undefined, error?.response?.data);
 }

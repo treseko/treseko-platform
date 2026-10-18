@@ -77,13 +77,16 @@ executed. They are not interchangeable categories:
 
 To create and run cases, start with [Create and maintain test cases](TEST_CASES_GUIDE.md), [Run tests](TEST_EXECUTION_GUIDE.md) and [External automation](API_USAGE_GUIDE.md).
 
-## Distributed version
+## Version
 
-The stable distributed version is `1.0.4`. It includes API and conversational
-formats, unified worker execution, format-specific evidence, bugs, report
-snapshots, traceability, automation, AI and administration.
+Latest published Community version: `1.0.6`
 
-See the [changelog](../../CHANGELOG.md) for the included changes.
+Version prepared for the next release: `1.0.7`, only for `premium-stable`;
+Community remains on `1.0.6`.
+
+This is the stable Community version for production use. See the
+[changelog](../../CHANGELOG.en.md) and [published releases](https://github.com/treseko/treseko-platform/releases)
+for its scope and available artifacts.
 
 ## Official links
 

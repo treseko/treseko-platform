@@ -29,6 +29,7 @@
     "qs": "6.16.0",
     "basic-ftp": "6.2.1",
     "uuid": "11.1.1",
+    "handlebars": "4.7.10",
     "node-forge": "$node-forge",
     "@faker-js/faker": "$@faker-js/faker"
   }

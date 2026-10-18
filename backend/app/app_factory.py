@@ -441,6 +441,17 @@ def create_app():
         from .services.mcp_execution_queue import stop as stop_mcp_dispatch
         app.on_event("shutdown")(stop_mcp_dispatch)
         _mount_router_flat(api_router)
+        # Releases up to 1.0.6 shipped Docker Compose with this resolver URL.
+        # Keep the authenticated internal endpoint available while installations
+        # upgrade their application code without replacing the host Compose file.
+        from .api.routers.mcp import resolve_engine_runtime_credential
+        app.add_api_route(
+            "/api/mcp/internal/runtime-credential",
+            resolve_engine_runtime_credential,
+            methods=["POST"],
+            include_in_schema=False,
+            name="legacy_mcp_runtime_credential_resolver",
+        )
         _register_legacy_routes()
         _configured = True
     return app

@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from app.services.edition.catalog import COMMUNITY_LIMITS, all_feature_ids, community_feature_ids, normalize_feature_ids
 from app.services.edition.license_manager import evaluate_license
+from .errors import PremiumUpdateUnavailable, PremiumVerificationError
 
 
 ONLINE_PREMIUM_STATES = {"active", "past_due", "grace_period", "offline_grace"}
@@ -27,10 +28,6 @@ EMBEDDED_SERVER_RESPONSE_PUBLIC_KEYS: tuple[str, ...] = ("4J76WRigKKrKfp1C0rPvOA
 INSTANCE_ID_ENV = "TRESEKO_INSTANCE_ID"
 INSTANCE_ID_FILE_ENV = "TRESEKO_INSTANCE_ID_FILE"
 DISABLE_ONLINE_LICENSE_CHECKS_ENV = "TRESEKO_DISABLE_ONLINE_LICENSE_CHECKS"
-
-
-class PremiumVerificationError(RuntimeError):
-    pass
 
 
 def _ensure_online_license_checks_enabled() -> None:
@@ -483,7 +480,7 @@ async def fetch_latest_premium_update_manifest(
         raise PremiumVerificationError(f"No se pudo contactar el Update Server Premium: {exc}") from exc
     manifest = payload.get("manifest") if isinstance(payload, dict) else None
     if isinstance(payload, dict) and payload.get("available") is False:
-        raise PremiumVerificationError(str(payload.get("reason") or "No hay version Premium posterior aplicable"))
+        raise PremiumUpdateUnavailable(str(payload.get("reason") or "No hay version Premium posterior aplicable"))
     if not isinstance(manifest, dict):
         raise PremiumVerificationError("El Update Server no devolvio un manifest Premium valido")
     return manifest

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import stat
 from typing import Any
@@ -41,8 +42,8 @@ def _validate_mount(entry: Any, strict: bool) -> tuple[str, str, str, str]:
 def validate(args: list[str]) -> list[tuple[str, str, str, str]]:
     launcher, image, docker, socket, network, action, config, manifest, package, strict = args
     payload = load_private_json(Path(launcher))
-    required = {"type", "docker", "image", "socket", "network", "mounts"}
-    if set(payload) != required or payload["type"] != "docker":
+    required = {"schema", "type", "docker", "image", "socket", "network", "mounts"}
+    if set(payload) != required or payload["schema"] != 1 or payload["type"] != "docker":
         _fail("invalid launcher config")
     if payload["docker"] != docker or payload["image"] != image or payload["socket"] != socket:
         _fail("launcher binding mismatch")
@@ -65,6 +66,41 @@ def validate(args: list[str]) -> list[tuple[str, str, str, str]]:
             _fail(f"missing {purpose} mount")
     if not {"state", "cache"}.issubset(purposes):
         _fail("state and cache mounts are required")
+    controller_config = load_private_json(Path(config))
+    manifest_value = {}
+    if action != "status":
+        try:
+            raw_manifest = Path(manifest).read_bytes()
+            if len(raw_manifest) > 1024 * 1024:
+                _fail("manifest exceeds limit")
+            manifest_value = json.loads(raw_manifest)
+        except (OSError, ValueError, UnicodeError):
+            _fail("invalid manifest")
+    deployment = manifest_value.get("deployment") if isinstance(manifest_value, dict) else None
+    if deployment is not None:
+        expected = {"mode": "complete-source", "path": "source-release",
+                    "compose_file": "docker-compose.prod.yml", "activation": "atomic-compose"}
+        atomic = controller_config.get("atomic_compose")
+        if (deployment != expected or not isinstance(atomic, dict) or set(atomic) != {
+                "schema", "project", "project_root", "env_file"}
+                or type(atomic.get("schema")) is not int or atomic.get("schema") != 1):
+            _fail("complete-source host configuration is required")
+        project_root = _path(atomic["project_root"], "atomic Compose project root")
+        env_file = _path(atomic["env_file"], "atomic Compose environment file")
+        project_mount = (str(project_root), str(project_root), "ro", "atomic-project")
+        if project_mount not in mounts:
+            _fail("atomic Compose project root must be mounted readonly")
+        env_mounted = any(source == str(env_file) and mode == "ro"
+                          for source, _, mode, _ in mounts)
+        env_in_project = env_file == project_root or project_root in env_file.parents
+        if not env_mounted and not env_in_project:
+            _fail("atomic Compose environment file must be mounted readonly")
+        state_root = Path(controller_config["directory"])
+        if not any((Path(source) == state_root or Path(source) in state_root.parents) and mode == "rw"
+                   for source, _, mode, _ in mounts):
+            _fail("controller state directory must be mounted writable")
+        if not Path("/usr/bin/docker").is_file() or not os.access("/usr/bin/docker", os.X_OK):
+            _fail("trusted helper image has no Docker CLI")
     paths = [(Path(source), mode) for source, _, mode, _ in mounts]
     for index, (current, mode) in enumerate(paths):
         for other, other_mode in paths[index + 1:]:

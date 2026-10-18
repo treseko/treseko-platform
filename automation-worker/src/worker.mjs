@@ -26,6 +26,7 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { createWorkerCapabilities } from "./worker-capabilities.mjs";
+import { resultSpoolDirectory } from "./runtime-paths.mjs";
 const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
@@ -61,8 +62,7 @@ const WORKER_VERSION = readWorkerVersion({
   packagePath: path.join(ROOT_DIR, "package.json"),
   fallback: "0.0.0-dev",
 });
-const RESULT_SPOOL_DIR = process.env.QA_RESULT_SPOOL_DIR
-  || path.join(os.homedir(), ".treseko", "automation-worker", "result-spool");
+const RESULT_SPOOL_DIR = resultSpoolDirectory({ env: process.env, rootDir: ROOT_DIR });
 const RESULT_RETRY_ATTEMPTS = Number(process.env.QA_RESULT_RETRY_ATTEMPTS || 3);
 const RESULT_RETRY_BASE_MS = Number(process.env.QA_RESULT_RETRY_BASE_MS || 1000);
 const RESULT_RETRY_MAX_MS = Number(process.env.QA_RESULT_RETRY_MAX_MS || 30_000);

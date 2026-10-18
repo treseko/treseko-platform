@@ -1,7 +1,10 @@
 {
   "name": "treseko-plugin-runner",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.7",
   "type": "module",
-  "scripts": { "start": "node src/server.mjs", "test": "node --test test/*.test.mjs" }
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
 }
