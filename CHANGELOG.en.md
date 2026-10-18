@@ -9,6 +9,7 @@
 - Validates the spool, bridge, and controller configuration chain and its mounts before installing the coordinated update helper.
 - Accepts the `/` prefix documented for real installations while continuing to reject other broad paths.
 - Mounts the dedicated control directory inside the coordinated backend so its admission fence works during updates.
+- Includes all host bridge Python dependencies in the trusted helper image so its build and startup are reproducible.
 
 
 ## Fixes and Premium update

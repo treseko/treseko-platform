@@ -9,6 +9,7 @@
 - Valida la cadena de configuración spool, puente y controlador, junto con sus mounts, antes de instalar el helper de actualización coordinada.
 - Acepta el prefijo `/` que la guía documenta para instalaciones reales, manteniendo bloqueadas las demás rutas amplias.
 - Monta el directorio de control dedicado dentro del backend coordinado para que la barrera de admisión funcione durante actualizaciones.
+- Incluye todas las dependencias Python del host bridge en la imagen de helpers confiables para que su build y arranque sean reproducibles.
 
 
 ## Correcciones y actualización Premium

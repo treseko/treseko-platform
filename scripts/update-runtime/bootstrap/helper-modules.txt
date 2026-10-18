@@ -23,6 +23,7 @@ backend/app/services/update_docker_service.py
 backend/app/services/update_durable_ingress.py
 backend/app/services/update_engine_control.py
 backend/app/services/update_existing_installation.py
+backend/app/services/update_existing_installation_errors.py
 backend/app/services/update_complete_source.py
 backend/app/services/update_existing_installation_docker_preflight.py
 backend/app/services/update_helper_installation.py
