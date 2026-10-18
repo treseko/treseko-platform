@@ -50,6 +50,7 @@
 - El actualizador local atómico aplica el Compose completo de la release con respaldos de volúmenes y rollback. En Premium 1.0.6, primero se instala el bridge 1.0.7 según la guía de actualización; después Configuración → Actualizaciones aplica la release completa.
 - El manifest principal marca el árbol Compose completo; el helper 1.0.6 rechaza ese flujo antes de cambiar servicios. Se genera un paquete de bootstrap por componentes, con checksum y firma propios, para instalar primero el bridge 1.0.7.
 - El paquete completo conserva las seis plantillas `.env*.example` de la release y excluye las configuraciones `.env` locales, para que la actualización no omita ejemplos ni copie secretos.
+- El staging del bridge conserva las plantillas `.env*.example` dentro del árbol público y sigue rechazando archivos `.env` locales y marcadores de identidad.
 - El coordinador exige que Plugin Runner pase su healthcheck antes de activar una release Compose completa.
 - El coordinador de actualización verifica la release activa y rechaza candidatas más antiguas antes de modificar servicios o datos.
 - Corrige los permisos de lectura de recursos estáticos al instalar paquetes extraídos con permisos restrictivos.

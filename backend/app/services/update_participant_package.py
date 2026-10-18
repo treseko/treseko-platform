@@ -195,8 +195,16 @@ def stage_verified_package(archive: Path, manifest: dict, destination: Path,
                 path = PurePosixPath(member.name)
                 if path.is_absolute() or ".." in path.parts or "\\" in member.name:
                     raise ValueError("Release contains unsafe path")
+                allowed_source_env_example = (
+                    len(path.parts) >= 2
+                    and path.parts[0] == "source-release"
+                    and path.name.startswith(".env")
+                    and path.name.endswith(".example")
+                )
                 if any(part in {".maintenance", ".runner-token", ".env"}
-                       or part.startswith((".treseko-update-", ".env.")) for part in path.parts):
+                       or part.startswith(".treseko-update-")
+                       or (part.startswith(".env.") and not (allowed_source_env_example and part == path.name))
+                       for part in path.parts):
                     raise ValueError("Release cannot contain local identity or update control files")
                 if not (member.isdir() or member.isfile()):
                     raise ValueError("Release contains link or special file")

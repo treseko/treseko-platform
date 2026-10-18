@@ -50,6 +50,7 @@
 - The local atomic installer applies the full release Compose file with volume backups and rollback. For Premium 1.0.6, install bridge 1.0.7 using the upgrade guide first; then Settings → Updates applies the complete release.
 - The main manifest marks the complete Compose tree; the 1.0.6 helper rejects that path before changing services. A component-only bootstrap package with its own checksum and signature installs bridge 1.0.7 first.
 - The complete package preserves all six `.env*.example` templates while excluding local `.env` configuration, so upgrades include current examples without copying secrets.
+- Bridge staging now preserves `.env*.example` templates inside the public source tree while continuing to reject local `.env` files and identity markers.
 - The coordinator requires Plugin Runner to pass its healthcheck before activating a complete Compose release.
 - The update coordinator verifies the active release and rejects older candidates before changing services or data.
 - The in-app updater requires the atomic coordinator before accepting an update; local Compose installations without that coordinator must use the full release installer.
