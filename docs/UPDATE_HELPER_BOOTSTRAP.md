@@ -60,8 +60,9 @@ declara su propio `directory` y `atomic_compose`, con `project_root` y
 `env_file` para el Compose activo. No reutilices un archivo de una capa como si
 perteneciera a otra.
 
-En `launcher.mounts.host_bridge`, los tres JSON (spool, puente y controlador) y
-`project_root` se montan `ro`. Cada directorio de estado se monta `rw` por su
+El wrapper monta el JSON de spool indicado por `configs.host_bridge` como `ro`;
+no lo repitas en `launcher.mounts.host_bridge`. Allí, los JSON de puente y
+controlador y `project_root` se montan `ro`. Cada directorio de estado se monta `rw` por su
 ruta dedicada: `request_inbox`, `spool_dir`, `inbox`, `state_dir`, `report_dir`
 y el `directory` del controlador. Las rutas de estado deben estar separadas;
 el launcher rechaza mounts solapados. La validación del instalador sigue esta

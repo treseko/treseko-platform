@@ -10,6 +10,7 @@
 - Accepts the `/` prefix documented for real installations while continuing to reject other broad paths.
 - Mounts the dedicated control directory inside the coordinated backend so its admission fence works during updates.
 - Includes all host bridge Python dependencies in the trusted helper image so its build and startup are reproducible.
+- Avoids mounting the host bridge spool file twice; the wrapper already mounts it as read-only configuration.
 
 
 ## Fixes and Premium update

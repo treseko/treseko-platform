@@ -24,8 +24,11 @@ def validate_complete_source_mounts(bridge_config_path, root, launcher_config):
     if (set(spool) != {"schema", "bridge_config", "request_inbox", "spool_dir"}
             or spool.get("schema") != 1):
         raise ValueError("Invalid private host bridge spool configuration")
+    # The generated wrapper mounts its --config file read-only automatically.
+    # Repeating it in launcher.mounts would duplicate the Docker mount.
     spool_path = Path(bridge_config_path).resolve()
-    require_mount(spool_path, "ro", "spool configuration")
+    if any(item.get("source") == str(spool_path) for item in mounts):
+        raise ValueError("Host bridge spool configuration is mounted automatically; do not repeat it")
 
     bridge_path = _under(root, _absolute(spool["bridge_config"], "bridge config"))
     _reject_symlink_components(root, bridge_path)

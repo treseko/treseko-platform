@@ -48,7 +48,7 @@ def _four_config(root: Path):
         configs[name] = f"/etc/{name}.json"
     host_mounts = [
         {"source": str(path), "target": str(path), "mode": "ro"}
-        for path in (config_dir / "host_bridge.json", bridge, controller, project)
+        for path in (bridge, controller, project)
     ] + [
         {"source": str(root / name), "target": str(root / name), "mode": "rw"}
         for name in ("spool-inbox", "spool-state", "bridge-inbox", "bridge-state",
@@ -139,7 +139,7 @@ def test_complete_source_requires_readonly_project_and_writable_transaction_stat
     spool.write_text(json.dumps({"schema": 1, "bridge_config": "/etc/host_bridge.json",
                                  "request_inbox": "/spool-inbox", "spool_dir": "/spool-state"}))
     spool.chmod(0o600)
-    readonly = [root / "etc" / "spool.json", bridge, controller]
+    readonly = [bridge, controller]
     readonly.extend([root / "project"])
     writable = [root / name for name in paths]
     mounts = [{"source": str(path), "target": str(path), "mode": mode}
@@ -148,6 +148,15 @@ def test_complete_source_requires_readonly_project_and_writable_transaction_stat
 
     complete_source_module.validate_complete_source_mounts(
         spool, root, {"mounts": {"host_bridge": mounts}})
+
+    with_spool_duplicate = mounts + [{"source": str(spool), "target": str(spool), "mode": "ro"}]
+    try:
+        complete_source_module.validate_complete_source_mounts(
+            spool, root, {"mounts": {"host_bridge": with_spool_duplicate}})
+    except ValueError as exc:
+        assert "mounted automatically" in str(exc)
+    else:
+        raise AssertionError("duplicate wrapper config mount was accepted")
 
     try:
         complete_source_module.validate_complete_source_mounts(

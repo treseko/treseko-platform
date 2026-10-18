@@ -63,9 +63,10 @@ declares its own `directory` and `atomic_compose`, including `project_root` and
 `env_file` for the active Compose project. Do not reuse a file from one layer
 as if it belonged to another.
 
-In `launcher.mounts.host_bridge`, mount all three JSON files (spool, bridge,
-and controller) and `project_root` as `ro`. Mount each state directory `rw`
-using its dedicated path: `request_inbox`, `spool_dir`, `inbox`, `state_dir`,
+The wrapper mounts the spool JSON from `configs.host_bridge` read-only; do not
+repeat it in `launcher.mounts.host_bridge`. There, mount the bridge and
+controller JSON files and `project_root` as `ro`. Mount each state directory
+`rw` using its dedicated path: `request_inbox`, `spool_dir`, `inbox`, `state_dir`,
 `report_dir`, and the controller's `directory`. Keep state paths separate; the
 launcher rejects overlapping mounts. The installer validates this full chain
 before publishing the wrapper.
