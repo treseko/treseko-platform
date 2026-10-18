@@ -12,7 +12,7 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
-### Cambios del árbol fuente 1.0.7 (actualización Premium)
+### Novedades de Treseko 1.0.7
 
 - MCP permite a asistentes descubrir herramientas y operar los flujos QA con permisos, confirmaciones y evidencia persistida.
 - La generación de historias y casos conserva aclaraciones, criterios de aceptación y revisión antes de crear registros.
@@ -20,12 +20,9 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 - La instalación de escritorio queda temporalmente fuera del paquete; se mantienen los scripts Bash y PowerShell.
 - El ping de instalación queda desactivado por defecto; el administrador puede activarlo de forma explícita.
 
-La secuencia de releases Community publicada incluye 1.0.1, 1.0.2 y 1.0.6.
-El árbol fuente 1.0.7 corresponde a la actualización Premium. Community sigue
-en 1.0.6; esta versión no se distribuye por el canal Community.
-1.0.3, 1.0.4 y 1.0.5 no se publicaron como releases Community. Consultá el
-[historial de releases](https://github.com/treseko/treseko-platform/releases)
-para verificar las versiones y archivos disponibles.
+Treseko 1.0.7 incorpora mejoras en generación, ejecución, suites, MCP,
+actualizaciones e instalación. Consultá el [changelog](CHANGELOG.md) para ver
+el detalle.
 
 ### Novedades de 1.0.2
 
@@ -395,13 +392,10 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión Community más reciente publicada: `1.0.6`
+Versión de la aplicación: `1.0.7`
 
-Árbol fuente incluido en la actualización Premium: `1.0.7` (Community publicada: `1.0.6`)
-
-Esta es la versión estable de Community para uso productivo. Consultá el
-[changelog](CHANGELOG.md) y los [releases publicados](https://github.com/treseko/treseko-platform/releases)
-para conocer su alcance y los artefactos disponibles.
+Consultá el [changelog](CHANGELOG.md) para conocer las novedades de esta
+versión.
 
 ## Licencia Del Repositorio
 

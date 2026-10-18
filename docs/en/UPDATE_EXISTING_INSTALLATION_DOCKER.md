@@ -73,6 +73,14 @@ The private binding uses this shape:
 }
 ```
 
-For coordinated Premium installations, the 1.0.6 transition uses its existing helper installer. Place the same signed complete package in the private HelperInstallation cache and manifest paths, then run `scripts/bootstrap_update_helpers_docker.sh` with the immutable 1.0.6 helper image and its already-bound configuration. The installer verifies the package and publishes the 1.0.7 helper backend in its own versioned directory; it does not restart Treseko services or apply Compose. Verify the 1.0.7 receipt includes `treseko-update-host-bridge` and that the private `atomic_compose` mounts are valid, then apply the same package from Settings -> Updates. The Premium 1.0.6 application already sends coordinated transactions to the host helper.
+Installations that use a coordinated helper must prepare and verify a compatible
+helper before applying a `complete-source` package. Bootstrap installs the
+versioned helper without restarting Treseko services or replacing Compose.
+Settings -> Updates then applies the complete package. Legacy installations
+without a coordinator must migrate to the coordinator or use the local Compose
+installer with `--update` / `-Update`.
 
-Linux bootstrap QA uses the real 1.0.6 helper-installation code with a temporary prefix; it does not install host wrappers or simulate a UI session. Publication also requires Settings -> Updates validation on an isolated Premium instance. This path does not cover legacy installations without a coordinator; migrate them to the coordinator or use the local Compose installer with `--update` / `-Update`.
+Linux bootstrap QA uses the real helper-installation code with a temporary
+prefix; it does not install host wrappers or simulate a UI session. Publication
+validation also requires checking Settings -> Updates on an isolated
+installation.

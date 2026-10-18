@@ -66,21 +66,14 @@ La ruta `complete-source` admite únicamente una instalación concentrada en un
 host Docker local. Si la instalación está distribuida entre hosts, el plan se
 rechaza; se necesita un adaptador transaccional propio para esa topología.
 
-Para Premium coordinado, la transición desde 1.0.6 usa el instalador de helpers
-que ya incluye esa versión. Preparar el mismo paquete firmado completo en el
-cache/manifest privados de HelperInstallation y ejecutar
-`scripts/bootstrap_update_helpers_docker.sh` con la imagen helper 1.0.6
-inmutable y su configuración ya vinculada. El instalador verifica el paquete y
-publica el backend helper 1.0.7 en su propio directorio versionado; no reinicia
-los servicios Treseko ni aplica Compose. Verificar el receipt 1.0.7 y que
-incluya `treseko-update-host-bridge`, junto con los mounts privados de
-`atomic_compose`; luego aplicar el mismo paquete desde Configuración →
-Actualizaciones. La app Premium 1.0.6 ya envía las transacciones coordinadas al
-helper host.
+Las instalaciones que utilizan un helper coordinado deben preparar y verificar
+el helper compatible antes de aplicar un paquete `complete-source`. El bootstrap
+instala el helper de forma versionada sin reiniciar los servicios Treseko ni
+reemplazar el Compose. Después, Configuración → Actualizaciones aplica el
+paquete completo. Las instalaciones legacy sin coordinador deben migrarse al
+coordinador o usar el instalador Compose local con `--update` / `-Update`.
 
-La prueba Linux de bootstrap usa el código real de instalación de helpers
-1.0.6, pero un prefijo efímero; no instala wrappers en el host ni simula una
-sesión UI. La publicación requiere validar también Configuración →
-Actualizaciones en una instancia Premium aislada. Este camino no cubre
-instalaciones legacy sin coordinador: deben migrarse al coordinador o usar el
-instalador Compose local con `--update` / `-Update`.
+La prueba Linux de bootstrap usa el código real de instalación de helpers en un
+prefijo efímero; no instala wrappers en el host ni simula una sesión UI. La
+validación de publicación también requiere comprobar Configuración →
+Actualizaciones en una instalación aislada.

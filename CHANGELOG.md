@@ -2,10 +2,10 @@
 
 ## Integridad y actualización segura
 
-- La consulta del canal Premium informa correctamente que la instalación está actualizada, sin mostrarlo como un error.
-- Fija `jsonschema` en 4.26.0 para que reconstruir el backend durante una actualización Premium no seleccione una dependencia 4.x diferente.
+- La consulta de actualizaciones informa correctamente cuando la instalación está al día.
+- Fija `jsonschema` en 4.26.0 para que reconstruir el backend durante una actualización no seleccione una dependencia 4.x diferente.
 - Corrige la verificación de releases inmutables anteriores cuando cambia el filtro de archivos entre versiones. El updater valida los hashes registrados por el manifiesto original y sigue rechazando cambios o archivos inesperados.
-- Permite verificar y actualizar instalaciones existentes desde 1.0.6 sin confundir los archivos históricos excluidos por el árbol actual.
+- Permite verificar y actualizar instalaciones existentes sin confundir los archivos históricos excluidos por el árbol actual.
 - Valida la cadena de configuración spool, puente y controlador, junto con sus mounts, antes de instalar el helper de actualización coordinada.
 - Acepta el prefijo `/` que la guía documenta para instalaciones reales, manteniendo bloqueadas las demás rutas amplias.
 - Monta el directorio de control dedicado dentro del backend coordinado para que la barrera de admisión funcione durante actualizaciones.
@@ -15,9 +15,8 @@
 - Conserva los overrides Compose propios de la instalación y omite archivos de rollback o candidatos generados por transacciones anteriores.
 
 
-## Correcciones y actualización Premium
+## Mejoras y correcciones
 
-- La actualización Premium `1.0.7` se distribuye por `premium-stable` para instalaciones `1.0.6`; Community continúa en `1.0.6`.
 - Historias y casos: conserva alcance, aclaraciones y reglas al reintentar; mejora la revisión de supuestos y propuestas antes de aplicarlas y evita perder escenarios por límites implícitos.
 - Actualizaciones Compose: incorpora la aplicación atómica del árbol completo, con preservación de configuración y volúmenes, comprobación de servicios y recuperación transaccional.
 - Worker y Motor IA: conserva las rutas persistentes de ejecución y la compatibilidad con instalaciones anteriores durante la actualización.
@@ -53,15 +52,14 @@
 ## Instalación, seguridad y privacidad
 
 - El Plugin Runner conserva la versión de la release al reconstruirse durante una actualización atómica.
-- Mantiene la compatibilidad con instalaciones Docker 1.0.6 durante la actualización del runtime: conserva el resolver MCP anterior y guarda temporalmente la evidencia en volúmenes persistentes ya existentes.
-- El actualizador local atómico aplica el Compose completo de la release con respaldos de volúmenes y rollback. En Premium 1.0.6, primero se instala el bridge 1.0.7 según la guía de actualización; después Configuración → Actualizaciones aplica la release completa.
-- El manifest principal marca el árbol Compose completo; el helper 1.0.6 rechaza ese flujo antes de cambiar servicios. Se genera un paquete de bootstrap por componentes, con checksum y firma propios, para instalar primero el bridge 1.0.7.
+- Mantiene la compatibilidad con instalaciones Docker existentes durante la actualización del runtime: conserva el resolver MCP y guarda temporalmente la evidencia en volúmenes persistentes.
+- El actualizador local aplica el Compose completo de forma atómica, con respaldos de volúmenes, comprobaciones de servicios y rollback.
 - El paquete completo conserva las seis plantillas `.env*.example` de la release y excluye las configuraciones `.env` locales, para que la actualización no omita ejemplos ni copie secretos.
 - El staging del bridge conserva las plantillas `.env*.example` dentro del árbol público y sigue rechazando archivos `.env` locales y marcadores de identidad.
 - El coordinador exige que Plugin Runner pase su healthcheck antes de activar una release Compose completa.
 - El coordinador de actualización verifica la release activa y rechaza candidatas más antiguas antes de modificar servicios o datos.
 - Corrige los permisos de lectura de recursos estáticos al instalar paquetes extraídos con permisos restrictivos.
-- El coordinador detiene con `SIGTERM` el frontend heredado de 1.0.6 y el frontend actual reenvía `SIGQUIT` a Nginx para cerrar limpiamente al detener el Compose.
+- El coordinador detiene con `SIGTERM` el frontend heredado y el frontend actual reenvía `SIGQUIT` a Nginx para cerrar limpiamente al detener el Compose.
 - Usa `docker kill --signal` y espera el cierre del frontend heredado; el Docker CLI del helper 20.10 no admite `docker stop --signal`.
 - Conserva los archivos Compose de cada instalación al activar el árbol versionado, incluidos los ajustes del coordinador de actualizaciones y sus mounts persistentes.
 - Retira temporalmente los instaladores gráficos. Se mantienen los scripts de instalación para Bash y PowerShell.

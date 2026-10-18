@@ -102,7 +102,7 @@ Actualizaciones.
 componentes, pero no `deployment.mode=complete-source`. La instalación de
 helpers de 1.0.6 sí puede validar el paquete firmado y copiar su backend a una
 nueva versión aislada. El paquete completo 1.0.7 contiene el bridge compatible,
-por lo que la transición soportada para Premium coordinado es:
+por lo que la transición soportada para instalaciones coordinadas es:
 
 1. Preparar el artefacto y manifest de bootstrap desde
    `packages/1.0.7/bootstrap/` en las rutas privadas
@@ -119,7 +119,7 @@ por lo que la transición soportada para Premium coordinado es:
    privado con la configuración `atomic_compose`.
 4. Aplicar el manifest principal (con `components.source-release=true`) desde
    Configuración → Actualizaciones. El backend
-   1.0.6 Premium ya delega la transacción coordinada al helper; el bridge 1.0.7
+   1.0.6 ya delega la transacción coordinada al helper; el bridge 1.0.7
    prepara y aplica el árbol completo con el instalador Compose atómico.
 
 La QA Linux ejecuta el instalador helper real 1.0.6 con el artefacto de
@@ -132,7 +132,7 @@ solas la publicación. La actualización Compose
 local 1.0.6 → 1.0.7 también pasó con rollback inducido, reintento, migración,
 centinela de base de datos, servicios, Plugin Runner y login.
 
-Esta secuencia aplica a instalaciones Premium que ya operan en modo coordinado
+Esta secuencia aplica a instalaciones que ya operan en modo coordinado
 y tienen el helper host configurado. Una instalación legacy sin coordinador no
 puede reemplazar su Compose desde el updater embebido; para ella se requiere
 migración administrada al coordinador o ejecutar el instalador Compose local
@@ -145,7 +145,7 @@ manifest firmado registra esa atestación. El publicador vuelve a comprobarla y
 rechaza los artefactos por componentes o sin dicha marca. La prueba del
 instalador Compose por sí sola no basta: validar por separado el bootstrap del
 helper 1.0.6 y el flujo Configuración → Actualizaciones con el bridge instalado
-en una instancia Premium aislada, y comprobar que quedó activo el árbol
+en una instalación aislada, y comprobar que quedó activo el árbol
 completo.
 
 Los hooks son opcionales. Si no existen, el bootstrap usa las operaciones

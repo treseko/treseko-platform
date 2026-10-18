@@ -79,14 +79,10 @@ To create and run cases, start with [Create and maintain test cases](TEST_CASES_
 
 ## Version
 
-Latest published Community version: `1.0.6`
+Application version: `1.0.7`.
 
-Version prepared for the next release: `1.0.7`, only for `premium-stable`;
-Community remains on `1.0.6`.
-
-This is the stable Community version for production use. See the
-[changelog](../../CHANGELOG.en.md) and [published releases](https://github.com/treseko/treseko-platform/releases)
-for its scope and available artifacts.
+This documentation describes Treseko `1.0.7`. See the
+[changelog](../../CHANGELOG.en.md) for the included changes.
 
 ## Official links
 

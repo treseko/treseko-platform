@@ -103,7 +103,7 @@ and login. This validates the Compose installer, not Settings -> Updates.
 not `deployment.mode=complete-source`. The 1.0.6 helper installer can validate
 a signed package and copy its backend into a new isolated version. The full
 1.0.7 package therefore carries the compatible bridge, and the supported
-transition for coordinated Premium installations is:
+transition for coordinated installations is:
 
 1. Place the bootstrap archive and its manifest from
    `packages/1.0.7/bootstrap/` at the private
@@ -119,7 +119,7 @@ transition for coordinated Premium installations is:
    `treseko-update-host-bridge`; validate the project and private-state mounts
    against `atomic_compose`.
 4. Apply the main manifest (with `components.source-release=true`) from
-   Settings -> Updates. The 1.0.6 Premium backend
+   Settings -> Updates. The 1.0.6 backend
    already delegates coordinated transactions to the helper; bridge 1.0.7
    prepares and applies the complete tree with the atomic Compose installer.
 
@@ -133,7 +133,7 @@ Compose 1.0.6 -> 1.0.7 upgrade also passed with injected
 rollback, retry, migration, a persisted database sentinel, service checks,
 Plugin Runner, and login.
 
-This sequence applies to Premium installations already using coordinated mode
+This sequence applies to installations already using coordinated mode
 and configured with the host helper. A legacy installation without a
 coordinator cannot replace its Compose through the embedded updater; it needs
 an operator-managed migration to the coordinator or the local Compose
@@ -146,7 +146,7 @@ signed manifest records that attestation. The publisher checks it again and
 rejects component-only artifacts or packages without the mark. The Compose
 installer test alone is insufficient: separately validate the 1.0.6 helper
 bootstrap and Settings -> Updates with the bridge installed on an isolated
-Premium instance, then verify the complete tree is active.
+instance, then verify the complete tree is active.
 
 Hooks are optional. If none are present, the bootstrap uses the product's
 standard operations.

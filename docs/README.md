@@ -75,13 +75,12 @@ ejecuta. No son categorías intercambiables:
 
 Para crear y ejecutar casos, empezá por [Crear y mantener casos de prueba](TEST_CASES_GUIDE.md), [Ejecutar pruebas](TEST_EXECUTION_GUIDE.md) y [Automatización externa](API_USAGE_GUIDE.md).
 
-## Versión distribuida
+## Versión
 
-La última versión Community publicada es `1.0.6`. La versión preparada para la
-próxima publicación es `1.0.7`, únicamente para `premium-stable`; Community
-continúa en `1.0.6`.
+Versión de la aplicación: `1.0.7`.
 
-Consultá el [changelog](../CHANGELOG.md) para conocer las novedades incluidas.
+Esta documentación corresponde a Treseko `1.0.7`. Consultá el
+[changelog](../CHANGELOG.md) para conocer las novedades incluidas.
 
 ## Enlaces oficiales
 
