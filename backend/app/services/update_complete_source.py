@@ -187,7 +187,7 @@ def _load_or_stage_complete_source(config: Mapping[str, Any], manifest: Mapping[
             saved = json.loads(marker.read_text(encoding="utf-8"))
             package_digest = _file_digest(package)
             package_size = package.stat().st_size
-            candidate = destination / "payload" / "source-release"
+            candidate = destination / "source-release"
             tree_digest = _source_tree_digest(candidate)
         except (OSError, ValueError, UnicodeError, ExistingInstallationError) as exc:
             raise ExistingInstallationError("Existing complete-source stage is invalid") from exc
@@ -199,7 +199,7 @@ def _load_or_stage_complete_source(config: Mapping[str, Any], manifest: Mapping[
             raise ExistingInstallationError("Existing complete-source stage does not match the signed package")
         return candidate, tree_digest
     staged = stage_verified_package(package, dict(manifest), destination)
-    candidate = staged / "payload" / "source-release"
+    candidate = staged / "source-release"
     tree_digest = _source_tree_digest(candidate)
     save_json(marker, {"schema": 1, "transaction": transaction,
                        "checksum_sha256": checksum,

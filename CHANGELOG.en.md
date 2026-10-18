@@ -11,6 +11,7 @@
 - Mounts the dedicated control directory inside the coordinated backend so its admission fence works during updates.
 - Includes all host bridge Python dependencies in the trusted helper image so its build and startup are reproducible.
 - Avoids mounting the host bridge spool file twice; the wrapper already mounts it as read-only configuration.
+- Fixes the verified source tree root so Compose preparation finds the extracted package and can resume.
 
 
 ## Fixes and Premium update

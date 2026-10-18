@@ -11,6 +11,7 @@
 - Monta el directorio de control dedicado dentro del backend coordinado para que la barrera de admisión funcione durante actualizaciones.
 - Incluye todas las dependencias Python del host bridge en la imagen de helpers confiables para que su build y arranque sean reproducibles.
 - Evita montar dos veces el archivo spool del host bridge: el wrapper ya lo monta como configuración de solo lectura.
+- Corrige la ruta raíz del árbol fuente verificado para que la preparación Compose encuentre el paquete extraído y pueda reanudarse.
 
 
 ## Correcciones y actualización Premium
