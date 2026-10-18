@@ -12,6 +12,7 @@
 - Incluye todas las dependencias Python del host bridge en la imagen de helpers confiables para que su build y arranque sean reproducibles.
 - Evita montar dos veces el archivo spool del host bridge: el wrapper ya lo monta como configuración de solo lectura.
 - Corrige la ruta raíz del árbol fuente verificado para que la preparación Compose encuentre el paquete extraído y pueda reanudarse.
+- Conserva los overrides Compose propios de la instalación y omite archivos de rollback o candidatos generados por transacciones anteriores.
 
 
 ## Correcciones y actualización Premium
@@ -61,6 +62,8 @@
 - El coordinador de actualización verifica la release activa y rechaza candidatas más antiguas antes de modificar servicios o datos.
 - Corrige los permisos de lectura de recursos estáticos al instalar paquetes extraídos con permisos restrictivos.
 - El coordinador detiene con `SIGTERM` el frontend heredado de 1.0.6 y el frontend actual reenvía `SIGQUIT` a Nginx para cerrar limpiamente al detener el Compose.
+- Usa `docker kill --signal` y espera el cierre del frontend heredado; el Docker CLI del helper 20.10 no admite `docker stop --signal`.
+- Conserva los archivos Compose de cada instalación al activar el árbol versionado, incluidos los ajustes del coordinador de actualizaciones y sus mounts persistentes.
 - Retira temporalmente los instaladores gráficos. Se mantienen los scripts de instalación para Bash y PowerShell.
 - Actualiza Handlebars del worker a 4.7.10, que incluye una corrección de seguridad para versiones anteriores.
 - El ping de instalación es opcional y permanece desactivado por defecto.

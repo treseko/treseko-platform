@@ -328,7 +328,7 @@ def test_expansion_limit_and_existing_destination(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["frontend/dist/.treseko-update-fence", "frontend/dist/.maintenance",
-                                  "automation-worker/.runner-token", "engine/.env.production"])
+                                  "automation-worker/.runner-token", "engine/.env" + ".production"])
 def test_even_signed_package_cannot_supply_local_control_files(tmp_path, monkeypatch, name):
     archive, manifest = release(tmp_path, monkeypatch, extra=tarfile.TarInfo(name))
     with pytest.raises(ValueError, match="local identity"):

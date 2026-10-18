@@ -115,6 +115,7 @@ class AtomicComposeUpdate:
                             time.strftime("%Y%m%d%H%M%S", time.gmtime()) + "-" + os.urandom(4).hex())
         self.journal_path = self.journal_root / f"{self.transaction}.json"
         self.candidate_override = self.journal_root / f"{self.transaction}-atomic-candidate.compose.yml"
+        self.preserved_compose_overrides: list[str] = []
         self.candidate_override.write_text(
             "services:\n"
             "  backend:\n    command: [\"atomic-serve\"]\n"
@@ -164,8 +165,43 @@ class AtomicComposeUpdate:
             raise UpdateError("Could not prepare the Plugin Runner healthcheck override") from exc
         return self._compose_model(
             self.candidate_root,
-            [str(self.candidate_root / "docker-compose.prod.yml"), str(self.candidate_override)],
+            self._candidate_compose_files(),
             self.state.get("profiles", []), self.candidate_root)
+
+    def _candidate_compose_files(self) -> list[str]:
+        """Replace the release Compose file while retaining host-owned overrides."""
+        return [str(self.candidate_root / "docker-compose.prod.yml"),
+                *self.preserved_compose_overrides, str(self.candidate_override)]
+
+    @staticmethod
+    def _host_compose_overrides(old_workdir: Path, old_files: list[str]) -> list[str]:
+        """Keep installation-specific Compose files after moving to an immutable release tree."""
+        if not old_files:
+            raise UpdateError("Existing installation has no Compose configuration files")
+        old_base = Path(old_files[0]).resolve()
+        if old_base.parent != old_workdir.resolve():
+            raise UpdateError("Existing Compose base file is outside its project root")
+        overrides: list[str] = []
+        for raw_path in old_files[1:]:
+            path = Path(raw_path)
+            path_parts = path.parts
+            is_transaction_artifact = any(
+                path_parts[index:index + 2] == (".treseko-local", "update-transactions")
+                for index in range(max(0, len(path_parts) - 1))
+            ) and path.name.endswith(("-rollback.compose.yml", "-atomic-candidate.compose.yml"))
+            if is_transaction_artifact:
+                # These files are transaction artifacts, not host configuration.
+                # Carrying them into a later update can pin services to old rollback
+                # image tags and break the next candidate deployment.
+                continue
+            try:
+                resolved = path.resolve(strict=True)
+            except OSError as exc:
+                raise UpdateError("A host-owned Compose override is missing") from exc
+            if not resolved.is_file():
+                raise UpdateError("A host-owned Compose override is not a regular file")
+            overrides.append(str(resolved))
+        return overrides
 
     def _release_ignored(self, directory: str, names: list[str]) -> set[str]:
         """Match the source-package exclusions for direct local installations."""
@@ -784,7 +820,13 @@ class AtomicComposeUpdate:
         container_id = frontend.get("Id")
         if not isinstance(container_id, str) or not re.fullmatch(r"[a-f0-9]{12,64}", container_id):
             raise UpdateError("Legacy frontend container identity is invalid")
-        self._docker("stop", "--signal", "SIGTERM", "--timeout", "15", container_id, timeout=30)
+        # `docker stop --signal` is not available in the Docker CLI shipped by
+        # the trusted helper image (Docker 20.10). Send TERM through `docker
+        # kill`, which supports an explicit signal in that CLI, then wait for
+        # the legacy entrypoint to finish before Compose applies its default
+        # stop signal.
+        self._docker("kill", "--signal", "SIGTERM", container_id, timeout=30)
+        self._docker("wait", container_id, timeout=30)
 
     def _snapshot_volumes(self, volumes: list[str], helper_image: str) -> dict[str, str]:
         backups: dict[str, str] = {}
@@ -1042,9 +1084,7 @@ class AtomicComposeUpdate:
             time.sleep(2)
 
     def _compose_candidate(self, *args: str, timeout: int = 1800) -> str:
-        return self._compose(self.candidate_root,
-                             [str(self.candidate_root / "docker-compose.prod.yml"),
-                              str(self.candidate_override)],
+        return self._compose(self.candidate_root, self._candidate_compose_files(),
                              self.state["profiles"], *args, project_directory=self.candidate_root,
                              timeout=timeout)
 
@@ -1163,14 +1203,14 @@ class AtomicComposeUpdate:
         records, profiles, old_workdir, old_files, old_model = self._running_inventory()
         if self.expected_project_root is not None and old_workdir.resolve() != self.expected_project_root:
             raise UpdateError("Existing Compose project root differs from its private host binding")
+        self.preserved_compose_overrides = self._host_compose_overrides(old_workdir, old_files)
         active_services = sorted(
             record["Config"]["Labels"]["com.docker.compose.service"] for record in records)
         required_active = {"db", "redis", "backend", "engine", "frontend"}
         if not required_active <= set(active_services):
             raise UpdateError("Installation is missing a required active service; refusing partial update")
-        candidate_file = str(self.candidate_root / "docker-compose.prod.yml")
         candidate_model = self._compose_model(
-            self.candidate_root, [candidate_file], profiles, self.candidate_root)
+            self.candidate_root, self._candidate_compose_files(), profiles, self.candidate_root)
         required_candidate = {"db", "redis", "migrator", "backend", "engine", "frontend"}
         if not required_candidate <= set(candidate_model["services"]):
             raise UpdateError("Candidate Compose release is missing a required project service")

@@ -271,7 +271,10 @@ async def get_update_status(self, task_id: str | None = None) -> dict[str, Any]:
             if report:
                 if report.get("status") == "complete":
                     state.status, state.stage, state.progress_pct = "done", "applied", 100
+                    state.error = None
+                    state.message = "Actualizacion coordinada reconciliada tras el reinicio."
                     state.completed_at = state.completed_at or _utc_iso()
+                    self._persist_history()
                 elif report.get("status") in {"prepared", "prepare_pending", "apply_pending", "apply_uncertain"}:
                     state.status, state.stage = "in_progress", report["status"]
                     state.progress_pct = 100 if report["status"] == "prepared" else min(state.progress_pct, 99)

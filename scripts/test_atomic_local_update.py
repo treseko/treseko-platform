@@ -77,6 +77,49 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(UpdateError, "HTTP health probe failed"):
             runner._verify_plugin_runner_baseline({"Id": "plugin-container"}, "")
 
+    def test_candidate_compose_retains_host_owned_overrides(self):
+        runner = self._runner()
+        host_override = self.old / "qa-coordinated-worker.override.json"
+        host_override.write_text(
+            '{"services":{"backend":{"environment":{"TRESEKO_UPDATE_MODE":"coordinated"}}}}',
+            encoding="utf-8",
+        )
+        old_model = {"services": {name: {} for name in
+                     ("db", "redis", "migrator", "backend", "engine", "frontend")}}
+        runner._running_inventory = lambda: (
+            self.records, [], self.old, [str(self.old / "compose.yml"), str(host_override)], old_model,
+        )
+
+        runner._validate_candidate()
+
+        self.assertEqual(runner.preserved_compose_overrides, [str(host_override.resolve())])
+        self.assertEqual(runner._candidate_compose_files(), [
+            str(runner.candidate_root / "docker-compose.prod.yml"),
+            str(host_override.resolve()),
+            str(runner.candidate_override),
+        ])
+
+    def test_candidate_compose_ignores_generated_transaction_overrides(self):
+        runner = self._runner()
+        host_override = self.old / "qa-coordinated-worker.override.json"
+        host_override.write_text("{}", encoding="utf-8")
+        # The host coordinator may store journals outside the installation root.
+        transaction_dir = self.root / "coordinator-state" / ".treseko-local" / "update-transactions"
+        transaction_dir.mkdir(parents=True)
+        generated = [
+            transaction_dir / "txn-1-rollback.compose.yml",
+            transaction_dir / "txn-2-atomic-candidate.compose.yml",
+        ]
+        for path in generated:
+            path.write_text("{}", encoding="utf-8")
+        old_files = [str(self.old / "docker-compose.prod.yml"), str(host_override),
+                     *(str(path) for path in generated)]
+
+        self.assertEqual(
+            runner._host_compose_overrides(self.old, old_files),
+            [str(host_override.resolve())],
+        )
+
     def test_database_must_match_every_candidate_migration_head(self):
         runner = self._runner()
         outputs = iter(("20260924_0067 (head)\n", "20260924_0067 (head)\n"))
@@ -386,7 +429,7 @@ class AtomicLocalUpdateTests(unittest.TestCase):
 
         def compose_model(root, files, profiles, project_directory):
             compose_calls.append((files, profiles))
-            return effective if len(files) > 1 else candidate
+            return effective if len(compose_calls) > 1 else candidate
 
         runner._compose_model = compose_model
         runner._running_inventory = lambda: (
@@ -412,7 +455,9 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         compose_commands = [item[2] for item in self.commands if item[0] == "compose"]
         stop = next(index for index, command in enumerate(compose_commands) if "stop" in command)
         frontend_stop = next(index for index, item in enumerate(self.commands)
-                             if item[0] == "docker" and item[1][:3] == ("stop", "--signal", "SIGTERM"))
+                             if item[0] == "docker" and item[1][:3] == ("kill", "--signal", "SIGTERM"))
+        frontend_wait = next(index for index, item in enumerate(self.commands)
+                             if item[0] == "docker" and item[1][:1] == ("wait",))
         migration = next(index for index, command in enumerate(compose_commands) if command[:3] == ("run", "--rm", "migrator"))
         app_start = next(index for index, command in enumerate(compose_commands)
                          if "--remove-orphans" in command)
@@ -420,6 +465,8 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         compose_stop_command_index = next(index for index, item in enumerate(self.commands)
                                           if item[0] == "compose" and "stop" in item[2])
         self.assertLess(frontend_stop, compose_stop_command_index)
+        self.assertLess(frontend_stop, frontend_wait)
+        self.assertLess(frontend_wait, compose_stop_command_index)
         self.assertLess(migration, app_start)
         self.assertIn("--force-recreate", compose_commands[app_start])
         self.assertNotIn("automation-worker", compose_commands[app_start])
