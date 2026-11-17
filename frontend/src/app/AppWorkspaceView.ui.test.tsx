@@ -33,6 +33,7 @@ describe('AppWorkspaceView', () => {
     render(<AppWorkspaceView options={{
       activeTab: 'proyectos',
       canAccessModule: vi.fn(() => true),
+      canAccessCapability: vi.fn(() => true),
       canRenderActiveModule: true,
       handleComponentChange,
       showWorkspaceAccessGate: false,
@@ -51,6 +52,7 @@ describe('AppWorkspaceView', () => {
     render(<AppWorkspaceView options={{
       activeTab: 'anadir',
       canAccessModule: vi.fn(() => true),
+      canAccessCapability: vi.fn(() => true),
       canRenderActiveModule: true,
       newTestApiConfig: apiConfig,
       newTestChatbotConfig: chatbotConfig,
@@ -75,6 +77,7 @@ describe('AppWorkspaceView', () => {
     render(<AppWorkspaceView options={{
       activeTab: 'proyectos',
       canAccessModule: vi.fn(() => true),
+      canAccessCapability: vi.fn(() => true),
       canRenderActiveModule: true,
       currentProjectId: 'project-1',
       currentCompId: 'component-1',

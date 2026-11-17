@@ -326,6 +326,9 @@ class SystemPremiumUpdateCheckResponse(BaseModel):
     checksum_sha256: Optional[str] = None
     download_grant_required: bool = True
     update_server_path: Optional[str] = None
+    apply_supported: bool = False
+    installation_mode: Optional[str] = None
+    update_block_reason: Optional[str] = None
     changelog: Optional[Any] = None
     published_at: Optional[str] = None
     requires_migration: bool = False
@@ -340,6 +343,9 @@ class SystemLatestUpdateResponse(BaseModel):
     current_version: str
     updates_enabled: bool = False
     available: bool = False
+    apply_supported: bool = False
+    installation_mode: Optional[str] = None
+    update_block_reason: Optional[str] = None
     latest_version: Optional[str] = None
     version: Optional[str] = None
     channel: Optional[str] = None
@@ -387,6 +393,9 @@ class SystemCommunityUpdateCheckResponse(BaseModel):
     min_backend_version: Optional[str] = None
     manifest: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    apply_supported: bool = False
+    installation_mode: Optional[str] = None
+    update_block_reason: Optional[str] = None
 
 
 class SystemUpdateApplyRequest(BaseModel):

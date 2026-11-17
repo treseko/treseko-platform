@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorkerCapabilities } from "./worker-capabilities.mjs";
 
-function fixture(active = { jobs: 0, id: "" }) {
+function fixture(active = { jobs: 0, id: "" }, { platform = "test-platform", env = { QA_SELENIUM_VERSION: "selenium-test" }, availability } = {}) {
   const os = {
     totalmem: () => 8 * 1024 * 1024 * 1024,
     freemem: () => 6 * 1024 * 1024 * 1024,
@@ -13,11 +13,11 @@ function fixture(active = { jobs: 0, id: "" }) {
     hostname: () => "worker-test",
   };
   const process = {
-    platform: "test-platform",
+    platform,
     arch: "test-arch",
     pid: 42,
     version: "v-test",
-    env: { QA_SELENIUM_VERSION: "selenium-test" },
+    env,
   };
   const versions = {
     playwright: "pw-test", puppeteer: "puppet-test", cypress: "cypress-test",
@@ -40,6 +40,7 @@ function fixture(active = { jobs: 0, id: "" }) {
       getSeleniumVersion: () => process.env.QA_SELENIUM_VERSION || "python",
       getActiveJobs: () => active.jobs,
       getActiveJobId: () => active.id,
+      getRuntimeAvailability: () => availability,
     }),
   };
 }
@@ -73,6 +74,7 @@ test("capabilities conserva payload y consulta las versiones mediante getters", 
     local_ips: ["192.0.2.10"], pid: 42, api_base: "http://api.test",
     started_at: "2026-09-09T00:00:00.000Z", node_version: "v-test", tags: ["local", "v1"],
     max_parallel_jobs: 2, active_jobs: 0, current_job_id: null,
+    interactive_playwright_recorder: false,
   });
 });
 
@@ -97,4 +99,31 @@ test("resources conserva memoria, disco y carga dinámica", () => {
     disk_free_mb: 4000,
     loadavg: [1, 2, 3],
   });
+});
+
+test("interactive recorder is advertised only after explicit desktop opt-in", () => {
+  const fixtureData = fixture();
+  assert.equal(fixtureData.capabilities().interactive_playwright_recorder, false);
+  const enabled = fixture(undefined, {
+    platform: "darwin",
+    env: { QA_ENABLE_PLAYWRIGHT_RECORDER: "true", QA_HEADLESS: "false" },
+  });
+  assert.equal(enabled.capabilities().interactive_playwright_recorder, true);
+  const headless = fixture(undefined, {
+    platform: "darwin",
+    env: { QA_ENABLE_PLAYWRIGHT_RECORDER: "true", QA_HEADLESS: "true" },
+  });
+  assert.equal(headless.capabilities().interactive_playwright_recorder, false);
+  const unavailableBrowser = fixture(undefined, {
+    platform: "darwin",
+    env: { QA_ENABLE_PLAYWRIGHT_RECORDER: "true", QA_HEADLESS: "false" },
+    availability: { frameworks: ["treseko-api"], browsers: [], playwright_recorder_available: false },
+  });
+  assert.equal(unavailableBrowser.capabilities().interactive_playwright_recorder, false);
+  const isolatedButRecorderReady = fixture(undefined, {
+    platform: "darwin",
+    env: { QA_ENABLE_PLAYWRIGHT_RECORDER: "true", QA_HEADLESS: "false" },
+    availability: { frameworks: ["treseko-api"], browsers: [], playwright_recorder_available: true },
+  });
+  assert.equal(isolatedButRecorderReady.capabilities().interactive_playwright_recorder, true);
 });

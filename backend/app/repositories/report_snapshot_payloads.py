@@ -36,17 +36,27 @@ def _shared_report_metadata(snapshot: models.SharedReportSnapshot) -> Dict[str, 
     return metadata if isinstance(metadata, dict) else {}
 
 def _shared_report_group_id(snapshot: models.SharedReportSnapshot) -> str:
+    indexed_group_id = getattr(snapshot, "snapshot_group_id", None)
+    if indexed_group_id:
+        return str(indexed_group_id)
     metadata = _shared_report_metadata(snapshot)
     return str(metadata.get("snapshot_group_id") or f"legacy:{snapshot.id}")
 
 def _shared_report_type(snapshot: models.SharedReportSnapshot) -> str:
+    indexed_type = getattr(snapshot, "report_type", None)
+    if indexed_type:
+        normalized = str(indexed_type).lower()
+        return normalized if normalized in set(REPORT_BUNDLE_TYPES) else "executive"
     metadata = _shared_report_metadata(snapshot)
     report_type = str(metadata.get("report_type") or "executive").lower()
     return report_type if report_type in set(REPORT_BUNDLE_TYPES) else "executive"
 
 def _derive_report_payload(base_payload: Dict[str, Any], report_type: str) -> Dict[str, Any]:
-    derived = json.loads(json.dumps(base_payload, sort_keys=True, default=str, ensure_ascii=False))
-    metadata = derived.setdefault("metadata", {})
+    # Nested report data is immutable while a bundle is assembled. Copy only
+    # containers modified by a view; snapshots are serialized independently.
+    derived = dict(base_payload)
+    metadata = dict(derived.get("metadata") or {})
+    derived["metadata"] = metadata
     metadata["report_type"] = report_type
     if report_type == "executive":
         derived["development"] = {}

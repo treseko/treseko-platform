@@ -306,10 +306,15 @@ export function AutomationVariablesModal({
     const datasetVars = defaultDataset?.variables || {}
     const caseVars = parseKeyValueText(localCaseDataText)
     const rows: Array<{ key: string, value: string, source: string, token: string }> = []
-    Object.entries(envVars).forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.environment'), token: `{{${key}}}` }))
-    Object.entries(componentVars).forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.component'), token: `{{COMPONENT.${key}}}` }))
-    Object.entries(datasetVars).forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.dataset'), token: `{{DATASET.${key}}}` }))
-    Object.entries(caseVars).forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.case'), token: `{{${key}}}` }))
+    const baseUrlSource = Object.prototype.hasOwnProperty.call(caseVars, 'base_url') ? t('common.case')
+      : Object.prototype.hasOwnProperty.call(datasetVars, 'base_url') ? t('casos.dataset')
+        : Object.prototype.hasOwnProperty.call(envVars, 'base_url') ? t('common.environment') : t('common.environment')
+    const baseUrlValue = caseVars.base_url ?? datasetVars.base_url ?? envVars.base_url ?? selectedEnv?.url
+    Object.entries(envVars).filter(([key]) => key !== 'base_url').forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.environment'), token: `{{${key}}}` }))
+    Object.entries(componentVars).filter(([key]) => key !== 'base_url').forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.component'), token: `{{COMPONENT.${key}}}` }))
+    Object.entries(datasetVars).filter(([key]) => key !== 'base_url').forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.dataset'), token: `{{DATASET.${key}}}` }))
+    Object.entries(caseVars).filter(([key]) => key !== 'base_url').forEach(([key, value]) => rows.push({ key, value: String(value), source: t('common.case'), token: `{{${key}}}` }))
+    if (baseUrlValue) rows.unshift({ key: 'base_url', value: String(baseUrlValue), source: baseUrlSource, token: 'variables.base_url' })
     return rows
   }, [selectedEnvId, environments, componentVariablesText, localCaseDataText, t])
 
@@ -339,7 +344,11 @@ export function AutomationVariablesModal({
                 <Form.Select name="a11y-automationvariablesmodaltsx-265" aria-label={t('common.environment')} value={selectedEnv?.id || ''} onChange={e => setSelectedEnvId(e.target.value)}>
                   {projectEnvironments.map((env: any) => <option key={env.id} value={env.id}>{env.name}</option>)}
                 </Form.Select>
-                {selectedEnv && <div className="small text-muted mt-2 font-monospace">{selectedEnv.url}</div>}
+                {selectedEnv && <>
+                  <div className="small text-muted mt-2">{t('casos.baseUrlVariableLabel')}</div>
+                  <div className="small font-monospace text-break">{selectedEnv.url || '—'}</div>
+                  <div className="small text-muted mt-1">{t('casos.baseUrlVariableHelp')}</div>
+                </>}
               </Col>
               <Col md={8}>
                 <div className="border rounded-3 p-3 bg-light">

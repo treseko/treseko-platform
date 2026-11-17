@@ -6,6 +6,7 @@ reexport_modules(globals(), [
     "app.repositories.automation_preparation",
     "app.repositories.api_automation_jobs",
     "app.repositories.automation_jobs",
+    "app.repositories.playwright_recordings",
     "app.repositories.automation_job_results",
     "app.repositories.automation_functions",
     "app.repositories.script_validation",

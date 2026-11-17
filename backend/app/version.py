@@ -5,7 +5,7 @@ from pathlib import Path
 
 PRODUCT_NAME = "Treseko Platform"
 PRODUCT_EDITION_BASE = "community"
-RELEASE_CHANNEL = "rc"
+RELEASE_CHANNEL = "stable"
 RELEASE_TAG_PREFIX = "treseko-community"
 
 

@@ -35,7 +35,7 @@ def _manifest(package: Path):
 
 def _stage_fixture(package, manifest, destination):
     destination.mkdir(parents=True, mode=0o700)
-    source = destination / "payload" / "source-release"
+    source = destination / "source-release"
     (source / "scripts").mkdir(parents=True)
     (source / "scripts" / "atomic_local_update.py").write_text("# fixture\n")
     (source / "VERSION").write_text("1.0.7\n")

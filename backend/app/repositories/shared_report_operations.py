@@ -1,4 +1,5 @@
 from .repository_context import *
+from sqlalchemy.orm import aliased
 from ..services.shared_report_revocation import hydrate_legacy_revocation_actor
 from ..services.edition.entitlement_provider import get_entitlement_provider
 from ..version import PRODUCT_VERSION
@@ -9,6 +10,36 @@ from ..services.development_report import (
 from .report_bug_loading import (
     load_and_freeze_development_bug_labels,
     list_all_project_bugs,
+)
+from .project_metrics import get_project_metrics
+from .report_fingerprints import (
+    REPORT_BUNDLE_TYPES,
+    REPORT_SNAPSHOT_BUNDLE_VERSION,
+    _legacy_report_metrics_fingerprint,
+    _report_bundle_fingerprint,
+    _report_metrics_fingerprint,
+    _short_report_token,
+    normalize_project_report_settings,
+)
+from .report_snapshot_payloads import (
+    _derive_report_payload,
+    _find_active_shared_report_bundle,
+    _flatten_report_suite_cases,
+    _shared_report_group_id,
+    _shared_report_metadata,
+    _shared_report_thumbnail_svg,
+    _shared_report_type,
+)
+from .report_bug_payloads import (
+    _bug_issue_snapshot_dict,
+    _enrich_conversational_bug_snapshots,
+    _report_bug_tracking,
+    _report_bugs_digest,
+    _report_development_bug_snapshots,
+    _report_development_case,
+    _report_merge_bug_snapshot,
+    _report_quality_summary,
+    _report_regressions,
 )
 
 
@@ -29,8 +60,12 @@ async def _build_shared_report_base_payload(
     snapshot_group_id: str,
     metrics_hash: str,
     created_by: Optional[UUID] = None,
+    *,
+    metrics: Optional[Dict[str, Any]] = None,
+    bug_items: Optional[List[Any]] = None,
+    branding: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    metrics = await get_project_metrics(db, payload.proyecto_id, payload.build_id)
+    metrics = metrics if metrics is not None else await get_project_metrics(db, payload.proyecto_id, payload.build_id)
     project = (await db.execute(select(models.Proyecto).filter(models.Proyecto.id == payload.proyecto_id))).scalar_one_or_none()
     if not project:
         return None
@@ -51,7 +86,7 @@ async def _build_shared_report_base_payload(
     if responsible_id:
         responsible = (await db.execute(select(models.Usuario).filter(models.Usuario.id == responsible_id))).scalar_one_or_none()
     responsible_display = (responsible.nombre_completo or responsible.email) if responsible else None
-    branding = await _shared_report_branding(db)
+    branding = branding if branding is not None else await _shared_report_branding(db)
     stats = metrics.get("stats") or {}
     build_context = metrics.get("build_context") or {}
     definition_at = utc_now()
@@ -94,7 +129,7 @@ async def _build_shared_report_base_payload(
             "logo_url": branding["effective_logo_url"],
         },
     }
-    all_bug_items = await list_all_project_bugs(db, payload.proyecto_id)
+    all_bug_items = list(bug_items) if bug_items is not None else await list_all_project_bugs(db, payload.proyecto_id)
     if component:
         all_bug_items = [bug for bug in all_bug_items if not bug.componente_id or bug.componente_id == component.id]
     current_bug_items = list(all_bug_items)
@@ -215,23 +250,6 @@ async def _build_shared_report_base_payload(
         },
     }
 
-async def _current_shared_report_bundle_hash(
-    db: AsyncSession,
-    proyecto_id: UUID,
-    build_id: Optional[UUID],
-    componente_id: Optional[UUID],
-    *,
-    metrics: Optional[Dict[str, Any]] = None,
-) -> str:
-    metrics = metrics if metrics is not None else await get_project_metrics(db, proyecto_id, build_id)
-    project = (await db.execute(select(models.Proyecto).filter(models.Proyecto.id == proyecto_id))).scalar_one_or_none()
-    report_settings = normalize_project_report_settings((project.report_settings if project else {}) or {})
-    bug_items = await list_all_project_bugs(db, proyecto_id)
-    if componente_id:
-        bug_items = [bug for bug in bug_items if not bug.componente_id or bug.componente_id == componente_id]
-    branding = await _shared_report_branding(db)
-    return _report_bundle_fingerprint(metrics, _report_bugs_digest(bug_items), report_settings, branding)
-
 async def create_shared_report_bundle(
     db: AsyncSession,
     payload: schemas.SharedReportSnapshotCreate,
@@ -272,7 +290,16 @@ async def create_shared_report_bundle(
         return {"snapshots": existing, "reused": True, "metrics_hash": metrics_hash, "snapshot_group_id": _shared_report_group_id(existing[0])}
 
     snapshot_group_id = str(uuid.uuid4())
-    base = await _build_shared_report_base_payload(db, payload, snapshot_group_id, metrics_hash, created_by)
+    base = await _build_shared_report_base_payload(
+        db,
+        payload,
+        snapshot_group_id,
+        metrics_hash,
+        created_by,
+        metrics=metrics,
+        bug_items=bug_items,
+        branding=branding,
+    )
     if not base:
         return None
     project = base["project"]
@@ -308,6 +335,17 @@ async def create_shared_report_bundle(
             proyecto_id=payload.proyecto_id,
             build_id=build.id if build else None,
             componente_id=component.id if component else None,
+            snapshot_group_id=snapshot_group_id,
+            report_type=report_type,
+            history_metadata={
+                key: frozen_payload.get("metadata", {}).get(key)
+                for key in (
+                    "organizacion", "proyecto", "componente", "build", "build_code",
+                    "requested_report_type", "build_definition", "qa_comment",
+                    "definition_responsible_id", "definition_responsible_display", "definition_at",
+                    "snapshot_hash", "snapshot_bundle_version",
+                )
+            },
             title=title,
             description=description,
             payload=frozen_payload,
@@ -333,6 +371,34 @@ async def create_shared_report_bundle(
         metadata["bundle_tokens"] = bundle_tokens
         metadata["bundle_paths"] = {key: value for key, value in bundle_paths.items() if value}
         snapshot.payload = frozen_payload
+    canonical_payload = base["payload"]
+    canonical_metadata = canonical_payload.setdefault("metadata", {})
+    canonical_metadata["bundle_tokens"] = bundle_tokens
+    canonical_metadata["bundle_paths"] = {key: value for key, value in bundle_paths.items() if value}
+    db.add(models.SharedReportPayload(snapshot_group_id=snapshot_group_id, payload=canonical_payload))
+    summary_metadata_keys = (
+        "organizacion", "proyecto", "componente", "build", "build_code", "branding",
+        "snapshot_at", "snapshot_hash", "snapshot_created_for_build", "snapshot_bundle_version",
+        "snapshot_group_id", "report_type", "requested_report_type", "build_definition", "qa_comment",
+        "definition_responsible_id", "definition_responsible_display", "definition_at",
+        "bundle_tokens", "bundle_paths",
+    )
+    for snapshot in snapshots:
+        metadata = (snapshot.payload or {}).get("metadata") or {}
+        snapshot.history_metadata = {
+            key: metadata.get(key)
+            for key in (
+                "organizacion", "proyecto", "componente", "build", "build_code",
+                "requested_report_type", "build_definition", "qa_comment",
+                "definition_responsible_id", "definition_responsible_display", "definition_at",
+                "snapshot_hash", "snapshot_bundle_version",
+            )
+        }
+        snapshot.payload = {
+            "metadata": {key: metadata.get(key) for key in summary_metadata_keys},
+            "stats": stats,
+            "qa_summary": qa_summary,
+        }
     await db.commit()
     for snapshot in snapshots:
         await db.refresh(snapshot)
@@ -358,98 +424,17 @@ async def get_shared_report_by_token(db: AsyncSession, token: str):
         .filter(models.SharedReportSnapshot.token == token)
     )
     snapshot = result.scalar_one_or_none()
+    if snapshot and snapshot.snapshot_group_id:
+        shared_payload_result = await db.execute(
+            select(models.SharedReportPayload).filter(
+                models.SharedReportPayload.snapshot_group_id == snapshot.snapshot_group_id
+            )
+        )
+        shared_payload = shared_payload_result.scalar_one_or_none()
+        if shared_payload:
+            snapshot.payload = _derive_report_payload(shared_payload.payload or {}, _shared_report_type(snapshot))
     await hydrate_legacy_revocation_actor(db, snapshot)
     return snapshot
-
-async def shared_report_has_new_values(
-    db: AsyncSession,
-    snapshot: models.SharedReportSnapshot,
-    *,
-    metrics: Optional[Dict[str, Any]] = None,
-    current_hash: Optional[str] = None,
-) -> bool:
-    # Reuse request-scoped calculations while keeping frozen snapshots immutable.
-    metrics = metrics if metrics is not None else await get_project_metrics(db, snapshot.proyecto_id, snapshot.build_id)
-    payload = snapshot.payload or {}
-    metadata = payload.get("metadata") or {}
-    if metadata.get("snapshot_bundle_version") and metadata.get("snapshot_bundle_version") != REPORT_SNAPSHOT_BUNDLE_VERSION:
-        return True
-    if metadata.get("snapshot_bundle_version") == REPORT_SNAPSHOT_BUNDLE_VERSION:
-        current_hash = current_hash if current_hash is not None else await _current_shared_report_bundle_hash(db, snapshot.proyecto_id, snapshot.build_id, snapshot.componente_id, metrics=metrics)
-        frozen_hash = _shared_report_payload_bundle_hash(payload)
-        if current_hash in {metadata.get("snapshot_hash"), snapshot.metrics_hash, frozen_hash}:
-            return False
-        latest = await get_latest_equivalent_shared_report(db, snapshot)
-        if latest:
-            return True
-        current_data_at = _latest_shared_report_data_at(metrics)
-        snapshot_at = _shared_report_snapshot_at(snapshot)
-        return bool(current_data_at and snapshot_at and current_data_at > snapshot_at + timedelta(seconds=2))
-    if "report_type" not in metadata:
-        return _legacy_report_metrics_fingerprint(metrics) != snapshot.metrics_hash
-    report_type = str(metadata.get("report_type") or "executive").lower()
-    bug_items = await list_all_project_bugs(db, snapshot.proyecto_id)
-    if snapshot.componente_id:
-        bug_items = [bug for bug in bug_items if not bug.componente_id or bug.componente_id == snapshot.componente_id]
-    if snapshot.build_id:
-        bug_items = [bug for bug in bug_items if not bug.build_id or bug.build_id == snapshot.build_id]
-    return _report_metrics_fingerprint(metrics, report_type, _report_bugs_digest(bug_items)) != snapshot.metrics_hash
-
-def _shared_report_datetime(value: Any) -> Optional[datetime]:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return ensure_utc(value)
-    try:
-        text = str(value).strip()
-        if not text:
-            return None
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        return ensure_utc(parsed)
-    except (TypeError, ValueError):
-        return None
-
-def _shared_report_snapshot_at(snapshot: models.SharedReportSnapshot) -> Optional[datetime]:
-    metadata = _shared_report_metadata(snapshot)
-    return _shared_report_datetime(metadata.get("snapshot_at")) or _shared_report_datetime(snapshot.created_at)
-
-def _latest_shared_report_data_at(metrics: Dict[str, Any]) -> Optional[datetime]:
-    build_context = metrics.get("build_context") if isinstance(metrics.get("build_context"), dict) else {}
-    candidates = [
-        build_context.get("last_execution_at"),
-        build_context.get("execution_started_at"),
-        build_context.get("build_created_at"),
-    ]
-    parsed = [item for item in (_shared_report_datetime(value) for value in candidates) if item]
-    return max(parsed) if parsed else None
-
-async def get_latest_equivalent_shared_report(db: AsyncSession, snapshot: models.SharedReportSnapshot):
-    report_type = _shared_report_type(snapshot)
-    snapshot_group_id = _shared_report_group_id(snapshot)
-    query = (
-        select(models.SharedReportSnapshot)
-        .filter(models.SharedReportSnapshot.proyecto_id == snapshot.proyecto_id)
-        .filter(models.SharedReportSnapshot.build_id == snapshot.build_id)
-        .filter(models.SharedReportSnapshot.componente_id == snapshot.componente_id)
-        .filter(models.SharedReportSnapshot.activo == True)  # noqa: E712
-        .order_by(models.SharedReportSnapshot.created_at.desc())
-    )
-    result = await db.execute(query)
-    for candidate in result.scalars().all():
-        if candidate.id == snapshot.id:
-            continue
-        if _shared_report_group_id(candidate) == snapshot_group_id:
-            continue
-        if candidate.created_at <= snapshot.created_at:
-            continue
-        if _shared_report_type(candidate) == report_type:
-            return candidate
-    return None
-
-def shared_report_is_expired(snapshot: models.SharedReportSnapshot) -> bool:
-    if not snapshot.expires_at:
-        return False
-    return ensure_utc(snapshot.expires_at) < utc_now()
 
 async def revoke_shared_report(db: AsyncSession, token: str, revoked_by_id: Optional[UUID] = None):
     snapshot = await get_shared_report_by_token(db, token)
@@ -458,8 +443,12 @@ async def revoke_shared_report(db: AsyncSession, token: str, revoked_by_id: Opti
     group_id = _shared_report_group_id(snapshot)
     now = utc_now()
     if not group_id.startswith("legacy:"):
-        result = await db.execute(select(models.SharedReportSnapshot).filter(models.SharedReportSnapshot.proyecto_id == snapshot.proyecto_id))
-        targets = [item for item in result.scalars().all() if _shared_report_group_id(item) == group_id]
+        result = await db.execute(
+            select(models.SharedReportSnapshot)
+            .filter(models.SharedReportSnapshot.proyecto_id == snapshot.proyecto_id)
+            .filter(models.SharedReportSnapshot.snapshot_group_id == group_id)
+        )
+        targets = result.scalars().all()
     else:
         targets = [snapshot]
     for target in targets:
@@ -470,104 +459,15 @@ async def revoke_shared_report(db: AsyncSession, token: str, revoked_by_id: Opti
     await db.refresh(snapshot)
     return snapshot
 
-async def list_shared_report_bundle_history(
-    db: AsyncSession,
-    proyecto_id: UUID,
-    build_id: Optional[UUID] = None,
-    componente_id: Optional[UUID] = None,
-) -> List[Dict[str, Any]]:
-    query = (
-        select(models.SharedReportSnapshot)
-        .options(selectinload(models.SharedReportSnapshot.revoker))
-        .filter(models.SharedReportSnapshot.proyecto_id == proyecto_id)
-        .order_by(models.SharedReportSnapshot.created_at.desc())
-    )
-    if build_id is not None:
-        query = query.filter(models.SharedReportSnapshot.build_id == build_id)
-    if componente_id is not None:
-        query = query.filter(models.SharedReportSnapshot.componente_id == componente_id)
-    result = await db.execute(query)
-    all_snapshots = result.scalars().all()
-    creator_ids = {snapshot.created_by for snapshot in all_snapshots if snapshot.created_by}
-    creators: Dict[UUID, str] = {}
-    if creator_ids:
-        creator_result = await db.execute(select(models.Usuario).filter(models.Usuario.id.in_(creator_ids)))
-        creators = {
-            user.id: (user.nombre_completo or user.email or str(user.id))
-            for user in creator_result.scalars().all()
-        }
-    grouped: Dict[str, List[models.SharedReportSnapshot]] = {}
-    for snapshot in all_snapshots:
-        grouped.setdefault(_shared_report_group_id(snapshot), []).append(snapshot)
-    items: List[Dict[str, Any]] = []
-    sorted_groups = sorted(
-        grouped.values(),
-        key=lambda group: max((snapshot.created_at for snapshot in group if snapshot.created_at), default=datetime.min.replace(tzinfo=timezone.utc)),
-        reverse=True,
-    )
-    latest_hash = None
-    metrics_cache: Dict[tuple[str, str, str], Dict[str, Any]] = {}
-    current_hash_cache: Dict[tuple[str, str, str], str] = {}
-    for group_snapshots in sorted_groups:
-        first = sorted(group_snapshots, key=lambda item: item.created_at or datetime.min.replace(tzinfo=timezone.utc))[0]
-        metadata = _shared_report_metadata(first)
-        group_hash = metadata.get("snapshot_hash") or first.metrics_hash
-        if latest_hash is None:
-            latest_hash = group_hash
-        cache_key = (str(first.proyecto_id), str(first.build_id or ""), str(first.componente_id or ""))
-        group_metrics = metrics_cache.get(cache_key)
-        if group_metrics is None:
-            group_metrics = await get_project_metrics(db, first.proyecto_id, first.build_id)
-            metrics_cache[cache_key] = group_metrics
-        group_current_hash = current_hash_cache.get(cache_key)
-        if group_current_hash is None:
-            group_current_hash = await _current_shared_report_bundle_hash(
-                db,
-                first.proyecto_id,
-                first.build_id,
-                first.componente_id,
-                metrics=group_metrics,
-            )
-            current_hash_cache[cache_key] = group_current_hash
-        has_new_values = await shared_report_has_new_values(
-            db,
-            first,
-            metrics=group_metrics,
-            current_hash=group_current_hash,
-        )
-        items.append({
-            "snapshot_group_id": _shared_report_group_id(first),
-            "metrics_hash": group_hash,
-            "build_id": first.build_id,
-            "componente_id": first.componente_id,
-            "created_at": first.created_at,
-            "created_by": first.created_by,
-            "created_by_display": creators.get(first.created_by) if first.created_by else None,
-            "activo": any(snapshot.activo for snapshot in group_snapshots),
-            "revoked_at": max((snapshot.revoked_at for snapshot in group_snapshots if snapshot.revoked_at), default=None),
-            "revoked_by": next((snapshot.revoked_by for snapshot in group_snapshots if snapshot.revoked_by), None),
-            "revoked_by_display": next(
-                (
-                    (snapshot.revoker.nombre_completo or snapshot.revoker.email)
-                    for snapshot in group_snapshots
-                    if snapshot.revoker
-                ),
-                None,
-            ),
-            "has_new_values": has_new_values,
-            "is_latest": group_hash == latest_hash,
-            "snapshots": sorted(group_snapshots, key=lambda item: _shared_report_type(item)),
-            "report_types": sorted({_shared_report_type(snapshot) for snapshot in group_snapshots}),
-            "build": metadata.get("build"),
-            "componente": metadata.get("componente"),
-            "requested_report_type": metadata.get("requested_report_type"),
-            "build_definition": metadata.get("build_definition"),
-            "qa_comment": metadata.get("qa_comment"),
-            "definition_responsible_id": metadata.get("definition_responsible_id"),
-            "definition_responsible_display": metadata.get("definition_responsible_display"),
-            "definition_at": metadata.get("definition_at"),
-        })
-    return sorted(items, key=lambda item: item["created_at"], reverse=True)
+
+# Keep report freshness helpers available through the established repository
+# module API while their implementation remains isolated from payload writes.
+from .shared_report_freshness import (  # noqa: E402
+    _current_shared_report_bundle_hash,
+    get_latest_equivalent_shared_report,
+    shared_report_has_new_values,
+    shared_report_is_expired,
+)
 
 BUG_OPEN_STATES = {"ABIERTO", "TRIAGE", "ASIGNADO", "EN_PROGRESO", "LISTO_PARA_RETEST", "EN_RETEST", "REABIERTO", "BLOQUEADO"}
 BUG_CLOSED_STATES = {"RESUELTO", "CERRADO", "DUPLICADO", "NO_REPRODUCIBLE", "NO_CORRESPONDE"}

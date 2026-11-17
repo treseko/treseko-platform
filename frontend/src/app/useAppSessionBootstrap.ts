@@ -19,11 +19,17 @@ export function useAppSessionBootstrap(options: any) {
 
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'qa_session_active' && e.newValue !== 'true') setIsAuthenticated(false)
+      if (e.key === 'qa_session_active' && e.newValue !== 'true') {
+        setIsAuthenticated(false)
+      }
+      if (e.key === 'qa_access_token') {
+        if (!e.newValue) setIsAuthenticated(false)
+        else if (e.newValue !== e.oldValue) void syncSessionFromBackend()
+      }
     }
     window.addEventListener('storage', handleStorage)
     return () => window.removeEventListener('storage', handleStorage)
-  }, [setIsAuthenticated])
+  }, [setIsAuthenticated, syncSessionFromBackend])
 
   useLiveRefresh({
     enabled: isAuthenticated && projectsSource === 'backend',

@@ -87,8 +87,8 @@ function localWorkerSupports(framework, language) {
   return Array.isArray(matrix[framework]) && matrix[framework].includes(language);
 }
 
-function getPuppeteerExecutablePath(){
-  return process.env.PUPPETEER_EXECUTABLE_PATH || require("puppeteer").executablePath();
+async function getPuppeteerExecutablePath(){
+  return process.env.PUPPETEER_EXECUTABLE_PATH || await require("puppeteer").executablePath();
 }
 
 function getPlaywrightCliPath() {
@@ -105,8 +105,39 @@ function getPlaywrightTestRequirePath() {
   return JSON.stringify(require.resolve("playwright/test"));
 }
 
+function preferRecordedPlaywrightBaseUrl(script) {
+  return String(script || '').replace(
+    /(\b(?:const|let|var)\s+baseUrl\s*=\s*)variables\.base_url\s*\|\|\s*variables\.BASE_URL\s*\|\|\s*(["'])(https?:\/\/[^"'\\\s]+)\2/g,
+    (match, declaration, _quote, recordedUrl) => {
+      try {
+        return `${declaration}${JSON.stringify(new URL(recordedUrl).origin)}`;
+      } catch {
+        return match;
+      }
+    },
+  );
+}
+
 function preparePlaywrightTestSource(script, variables) {
-  let source = String(script || "").trim();
+  // Older Treseko Flow scripts let environment variables replace the URL
+  // captured in the script. Keep that recorded origin authoritative even when
+  // the case was saved before the editor-side import fix.
+  let source = preferRecordedPlaywrightBaseUrl(script).trim();
+  // Older Flow exports treated a card's combined title and description as one
+  // exact text locator. If that exact text does not exist, try the card's link
+  // title while keeping the normal uniqueness/visibility checks below.
+  source = source.replace(
+    /else if \(candidate\.kind === 'role'\) locator = page\.getByRole\(candidate\.role, \{ name: candidate\.name, exact: true \}\);/g,
+    `else if (candidate.kind === 'role') { locator = page.getByRole(candidate.role, { name: candidate.name, exact: true }); const matchCount = await locator.count(); if (matchCount > 1 && candidate.matchCount === matchCount && Number.isInteger(candidate.matchIndex) && candidate.matchIndex >= 0 && candidate.matchIndex < matchCount) locator = locator.nth(candidate.matchIndex); }`
+  );
+  source = source.replace(
+    /const (target\d+) = await resolve\((page\d*), \[(\{"kind":"text","value":"[^"\n]*Skip to content[^"\n]*"\})\]\);\s*\n(\s*)await \1\.hover\(\);/g,
+    (_match, target, page, _candidate, indent) => `const ${target} = ${page}.locator('body');\n${indent}await ${target}.hover();`,
+  );
+  source = source.replace(
+    /else if \(candidate\.kind === 'text'\) locator = page\.getByText\(candidate\.value, \{ exact: true \}\);/g,
+    `else if (candidate.kind === 'text') { locator = page.getByText(candidate.value, { exact: true }); if (await locator.count() !== 1) { const selectMatches = await page.locator('select').evaluateAll((selects, value) => selects.map((element, index) => ({ index, options: Array.from(element.options).map(option => (option.textContent || '').trim()).filter(Boolean).join(' ') })).filter(item => item.options === String(value).trim()).map(item => item.index), candidate.value); if (selectMatches.length === 1) locator = page.locator('select').nth(selectMatches[0]); } if (await locator.count() !== 1) { const partialText = page.getByText(candidate.value); if (await partialText.count() === 1) locator = partialText; } if (await locator.count() !== 1 && String(candidate.value).includes(' - ')) { const linkName = String(candidate.value).split(' - ', 1)[0].trim(); if (linkName) { const link = page.getByRole('link', { name: linkName, exact: true }); if (await link.count() === 1) locator = link; } } }`
+  );
   const playwrightTestRequirePath = getPlaywrightTestRequirePath();
   source = source.replace(
     /import\s+\{([^}]+)\}\s+from\s+['"]@playwright\/test['"];?/g,
@@ -123,12 +154,27 @@ function preparePlaywrightTestSource(script, variables) {
   if (!/(?:@playwright\/test|playwright\/test)/.test(source)) {
     source = `const { test, expect } = require(${playwrightTestRequirePath});\n` + source;
   }
-  const serializedVariables = JSON.stringify(variables || {}, null, 2);
+  const serializedVariables = JSON.stringify(variables || {});
   return [
     `const variables = ${serializedVariables};`,
     "const dataset = variables;",
     source,
   ].join("\n\n");
+}
+
+function playwrightTestScriptLineOffset(script) {
+  const source = preferRecordedPlaywrightBaseUrl(script).trim();
+  const hasPlaywrightImport = /(?:@playwright\/test|playwright\/test)/.test(source);
+  const leadingLines = String(script || '').match(/^\s*\n+/)?.[0].split('\n').length - 1 || 0;
+  return 4 + (hasPlaywrightImport ? 0 : 1) - leadingLines;
+}
+
+function preparedScriptLineOffset(preparedSource, script) {
+  const authored = String(script || '').trim();
+  if (!authored) return 0;
+  const index = String(preparedSource || '').lastIndexOf(authored);
+  if (index < 0) return 0;
+  return String(preparedSource).slice(0, index).split('\n').length - 1;
 }
 
 function runCommand(command, args, options = {}) {
@@ -202,7 +248,7 @@ function prepareSeleniumPythonSource(script, variables, job) {
     getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
     playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
     getPlaywrightCliPath, getPuppeteerExecutablePath, getPackageBinPath, getPlaywrightTestRequirePath,
-    preparePlaywrightTestSource, runCommand, sanitizeChildEnv, executableScriptFile, scriptFileForJob,
+    preferRecordedPlaywrightBaseUrl, preparePlaywrightTestSource, playwrightTestScriptLineOffset, preparedScriptLineOffset, runCommand, sanitizeChildEnv, executableScriptFile, scriptFileForJob,
     serializeJsonForSource, prepareNodeScriptSource, prepareSeleniumPythonSource,
   };
 }

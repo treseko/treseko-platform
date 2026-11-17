@@ -1,8 +1,9 @@
 from .repository_context import *
 from ..services.edition.usage_limits import enforce_weekly_automated_execution_limit
-from sqlalchemy import and_, update
+from sqlalchemy import and_, case, update
 from ..services.automation_payloads import freeze_worker_payload
 from ..services.automation_dispatch_scope import validate_worker_job_scope
+from .playwright_recordings import expire_stale_playwright_recordings
 
 
 async def create_automation_job_for_execution(
@@ -237,6 +238,7 @@ async def get_automation_job(db: AsyncSession, job_id: UUID):
     result = await db.execute(select(models.AutomationJob).filter(models.AutomationJob.id == job_id))
     return result.scalar_one_or_none()
 
+
 async def list_automation_jobs(
     db: AsyncSession,
     limit: int = 20,
@@ -256,7 +258,7 @@ async def list_automation_jobs(
         .outerjoin(models.CasoPrueba, models.CasoPrueba.id == models.AutomationJob.caso_id)
     )
     if not include_dry_runs:
-        query = query.filter(models.AutomationJob.job_type.notin_(("DRY_RUN", "AI_EXECUTION")))
+        query = query.filter(models.AutomationJob.job_type.notin_(("DRY_RUN", "AI_EXECUTION", "PLAYWRIGHT_RECORDING")))
     if runner_id:
         query = query.filter(models.AutomationJob.runner_id == runner_id)
     if status:
@@ -274,6 +276,7 @@ async def list_automation_jobs(
         if not accessible_project_ids:
             return []
         access_filters = [
+            models.AutomationJob.proyecto_id.in_(accessible_project_ids),
             models.TestRun.proyecto_id.in_(accessible_project_ids),
             models.Build.proyecto_id.in_(accessible_project_ids),
             models.CasoPrueba.proyecto_id.in_(accessible_project_ids),
@@ -410,6 +413,7 @@ async def recover_stale_automation_jobs(
 
 async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRunner):
     await recover_stale_automation_jobs(db)
+    await expire_stale_playwright_recordings(db)
     result = await db.execute(
         select(models.AutomationJob)
         .filter(
@@ -417,7 +421,10 @@ async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRun
             models.AutomationJob.job_type != "AI_EXECUTION",
             models.AutomationJob.organizacion_id == runner.organizacion_id,
         )
-        .order_by(models.AutomationJob.fecha_creacion)
+        .order_by(
+            case((models.AutomationJob.job_type == "PLAYWRIGHT_RECORDING", 1), else_=0),
+            models.AutomationJob.fecha_creacion,
+        )
     )
     jobs = result.scalars().all()
     for job in jobs:

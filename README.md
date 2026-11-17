@@ -1,6 +1,6 @@
 # Treseko Platform
 
-[![Version](https://img.shields.io/badge/version-1.0.7-0057ff?style=for-the-badge)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.8-0057ff?style=for-the-badge)](VERSION)
 [![Edition](https://img.shields.io/badge/edition-Community-00a36c?style=for-the-badge)](#ediciones)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=for-the-badge)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=for-the-badge)](backend/)
@@ -12,6 +12,16 @@
 
 La edición Community está pensada para equipos de QA, desarrollo y producto que buscan una instalación limpia, auditable y lista para crecer hacia capacidades Premium cuando corresponda.
 
+### Novedades de Treseko 1.0.8
+
+- El seguimiento de ejecuciones automatizadas muestra el resultado y permite revisar el detalle del error y la ubicación de la línea del script.
+- Las ejecuciones Playwright pueden conservar una traza consultable para investigar interacciones y fallos.
+- La ubicación del error se relaciona con el script original en los formatos compatibles.
+- El editor recibe scripts grabados con la extensión Treseko Flow para revisarlos y guardarlos como casos.
+- La pantalla de actualizaciones identifica instalaciones sin coordinador atómico y evita aplicar un paquete incompatible; indica usar el instalador de actualización en el equipo host.
+
+Treseko 1.0.8 mejora el diagnóstico de ejecuciones automatizadas y la consulta de evidencia. Consultá el [changelog](CHANGELOG.md) para ver el detalle.
+
 ### Novedades de Treseko 1.0.7
 
 - MCP permite a asistentes descubrir herramientas y operar los flujos QA con permisos, confirmaciones y evidencia persistida.
@@ -19,10 +29,6 @@ La edición Community está pensada para equipos de QA, desarrollo y producto qu
 - Suites, ejecución, historial y reportes guardan avances recuperables y conservan resultados y evidencias según el formato de prueba.
 - La instalación de escritorio queda temporalmente fuera del paquete; se mantienen los scripts Bash y PowerShell.
 - El ping de instalación queda desactivado por defecto; el administrador puede activarlo de forma explícita.
-
-Treseko 1.0.7 incorpora mejoras en generación, ejecución, suites, MCP,
-actualizaciones e instalación. Consultá el [changelog](CHANGELOG.md) para ver
-el detalle.
 
 ### Novedades de 1.0.2
 
@@ -359,6 +365,7 @@ La ejecucion y los datos sensibles siguen gobernados por el backend, RBAC y conf
 Empieza por aqui:
 
 - [Instalacion rapida](docs/INSTALLATION.md)
+- [Skill para asistentes de IA: instalación y validación](skills/treseko-installation/SKILL.md)
 - [Guia Docker](docs/DOCKER_GUIDE.md)
 - [Desarrollo local en Linux (solo contribución)](docs/LINUX_SETUP.md)
 - [Guías de uso de la plataforma](docs/README.md#usar-treseko)
@@ -392,7 +399,7 @@ Este arbol publico excluye intencionalmente:
 
 ## Versión
 
-Versión de la aplicación: `1.0.7`
+Versión de la aplicación: `1.0.8`
 
 Consultá el [changelog](CHANGELOG.md) para conocer las novedades de esta
 versión.

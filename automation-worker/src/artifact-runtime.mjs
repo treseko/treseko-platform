@@ -74,6 +74,8 @@ function collectArtifacts(rootDir, { workerWorkspace = false } = {}) {
         const ext = path.extname(entry.name).toLowerCase();
         const artifactType = [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext)
           ? "screenshot"
+          : ext === ".zip" && /^trace(?:[-_.]|$)/i.test(entry.name)
+            ? "trace"
           : ext === ".json" && entry.name.toLowerCase().includes("report")
             ? "report"
             : "evidence";

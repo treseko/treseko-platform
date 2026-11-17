@@ -12,6 +12,7 @@ export function registerMcpBrowserRoutes(app: express.Express, protectedEndpoint
       let result;
       switch (req.params.operation) {
         case 'open': result = await openMcpBrowserSession(owner, projectId, String(body.url || '')); break;
+        case 'record-open': result = await openMcpBrowserSession(owner, projectId, String(body.url || ''), true); break;
         case 'inspect': result = await inspectMcpBrowserSession(owner, projectId, String(body.browser_id || '')); break;
         case 'act': result = await actMcpBrowserSession(owner, projectId, body); break;
         case 'close': result = await closeMcpBrowserSession(owner, projectId, String(body.browser_id || '')); break;

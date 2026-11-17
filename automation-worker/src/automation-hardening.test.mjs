@@ -12,6 +12,36 @@ import {createArtifactRuntime} from './artifact-runtime.mjs';
 import {createLeaseHeartbeat} from './lease-manager.mjs';
 const require=createRequire(import.meta.url);
 const runtime=createScriptRuntime({require,path,spawn,process,capabilities:()=>({})});
+test('legacy Flow Playwright scripts keep the captured origin over environment base_url',()=>{
+ const source=runtime.preparePlaywrightTestSource(
+  'const baseUrl = variables.base_url || variables.BASE_URL || "https://the-internet.herokuapp.com";\nelse if (candidate.kind === \'role\') locator = page.getByRole(candidate.role, { name: candidate.name, exact: true });\nelse if (candidate.kind === \'text\') locator = page.getByText(candidate.value, { exact: true });\nawait page.goto(new URL("/", baseUrl).toString());',
+  {base_url:'http://127.0.0.1:18080'},
+ );
+ assert.match(source,/const baseUrl = "https:\/\/the-internet\.herokuapp\.com";/);
+ assert.match(source,/await page\.goto\(new URL\("\/", baseUrl\)\.toString\(\)\);/);
+ assert.match(source,/const selectMatches = await page\.locator\('select'\)\.evaluateAll/);
+ assert.match(source,/candidate\.matchCount === matchCount/);
+ assert.match(source,/locator = locator\.nth\(candidate\.matchIndex\)/);
+ assert.match(source,/const partialText = page\.getByText\(candidate\.value\);/);
+ assert.match(source,/String\(candidate\.value\)\.split\(' - ', 1\)/);
+ assert.match(source,/"base_url":"http:\/\/127\.0\.0\.1:18080"/);
+ assert.doesNotMatch(source,/const baseUrl = variables\.base_url/);
+ const legacyHover=runtime.preparePlaywrightTestSource('const target17 = await resolve(page, [{"kind":"text","value":"Skip to content A/B Test Control plus description"}]);\n  await target17.hover();',{});
+ assert.match(legacyHover,/const target17 = page\.locator\('body'\);\s+await target17\.hover\(\);/);
+ assert.doesNotMatch(legacyHover,/const target17 = await resolve/);
+});
+test('Playwright scripts with an explicitly variable-driven baseUrl stay unchanged',()=>{
+ const script='const baseUrl = variables.base_url; await page.goto(baseUrl);';
+ assert.equal(runtime.preferRecordedPlaywrightBaseUrl(script),script);
+});
+test('generated worker source reports offsets back to authored script lines',()=>{
+ assert.equal(runtime.playwrightTestScriptLineOffset('test("case", async ({page}) => {});'),5);
+ assert.equal(runtime.playwrightTestScriptLineOffset('import {test} from "@playwright/test";\ntest("case", async ({page}) => {});'),4);
+ const python=runtime.prepareSeleniumPythonSource('assert True\nraise RuntimeError("x")',{},{});
+ assert.equal(runtime.preparedScriptLineOffset(python,'assert True\nraise RuntimeError("x")'),15);
+ const node=runtime.prepareNodeScriptSource('await page.goto("https://example.com");\nthrow new Error("x")',{}, {},'puppeteer');
+ assert.equal(runtime.preparedScriptLineOffset(node,'await page.goto("https://example.com");\nthrow new Error("x")'),node.slice(0,node.lastIndexOf('await page.goto')).split('\n').length-1);
+});
 test('TypeScript function definitions preserve all supplied data',async()=>{
  const fn=runtime.compileScript('async (context: {variables: any}) => ({status:"PASSED", observations: context.variables.password})');
  assert.equal((await fn({variables:{password:'synthetic-password'}})).observations,'synthetic-password');
@@ -55,14 +85,56 @@ test('isolated worker function enforces timeout and keeps coordinator credential
  assert.equal(result.status,'TIMEOUT');assert.ok(result.duration_seconds<4);
  process.env.QA_RUNNER_TOKEN='synthetic-coordinator-token';
  try{
-  const passed=await executor({id:'private-function',timeout_seconds:10,lease_token:'synthetic-lease',payload_congelado:{record_video:false,script:'async ({variables,job}: any) => { if(process.env.QA_RUNNER_TOKEN || job.lease_token) throw new Error("Coordinator credential reached script"); return {status:"PASSED",observations:variables.password}; }',variables:{password:'synthetic-password'}}});
-  assert.equal(passed.status,'PASSED',passed.error_message);assert.equal(passed.observations,'synthetic-password');
+  const passed=await executor({id:'private-function',timeout_seconds:30,lease_token:'synthetic-lease',payload_congelado:{record_video:false,script:'async ({variables,job}: any) => { if(process.env.QA_RUNNER_TOKEN || job.lease_token) throw new Error("Coordinator credential reached script"); return {status:"PASSED",observations:variables.password}; }',variables:{password:'synthetic-password'}}});
+  assert.equal(passed.status,'PASSED',JSON.stringify(passed));assert.equal(passed.observations,'synthetic-password');
  }finally{delete process.env.QA_RUNNER_TOKEN;}
 });
 test('availability excludes runtimes whose binaries are missing',async()=>{
  const {probeRuntimeAvailability}=await import('./runtime-availability.mjs');
- const availability=probeRuntimeAvailability({require:()=>{throw new Error('missing');},fs:{existsSync:()=>false},path,spawnSync:()=>({status:1}),python:'missing'});
- assert.deepEqual(availability.frameworks,['treseko-api']);assert.deepEqual(availability.browsers,[]);
+ const availability=await probeRuntimeAvailability({require:()=>{throw new Error('missing');},fs:{existsSync:()=>false},path,spawnSync:()=>({status:1}),python:'missing'});
+ assert.deepEqual(availability.frameworks,['treseko-api']);assert.deepEqual(availability.browsers,[]);assert.equal(availability.playwright_recorder_available,false);
+});
+test('Playwright Codegen can be available when native script execution remains isolated',async()=>{
+ const {probeRuntimeAvailability}=await import('./runtime-availability.mjs');
+ const availability=await probeRuntimeAvailability({
+  require:(name)=>name==='playwright'?{chromium:{executablePath:()=>'/worker/chromium'},firefox:{executablePath:()=>'/worker/firefox'},webkit:{executablePath:()=>'/worker/webkit'}}:(()=>{throw new Error('missing')})(),
+  fs:{existsSync:(candidate)=>candidate==='/worker/chromium'},path,spawnSync:()=>({status:1}),python:'missing',env:{},
+ });
+ assert.deepEqual(availability.frameworks,['treseko-api','playwright']);assert.deepEqual(availability.browsers,['chromium']);
+ assert.equal(availability.playwright_recorder_available,true);
+});
+test('Puppeteer async executablePath is awaited before runtime availability is advertised',async()=>{
+ const {probeRuntimeAvailability}=await import('./runtime-availability.mjs');
+ const availability=await probeRuntimeAvailability({
+  require:(name)=>name==='puppeteer'?{executablePath:async()=>'/worker/chrome'}:(()=>{throw new Error('missing')})(),
+  fs:{existsSync:(candidate)=>candidate==='/worker/chrome'},path,spawnSync:()=>({status:1}),python:'missing',env:{},
+ });
+ assert.ok(availability.frameworks.includes('puppeteer'));assert.deepEqual(availability.browsers,['chrome (puppeteer)']);
+});
+test('Puppeteer async executablePath resolves to a string for child process environments',async()=>{
+ const runtime=createScriptRuntime({require:()=>({executablePath:async()=>'/worker/chrome'}),path,spawn,process:{env:{}},capabilities:()=>({})});
+ assert.equal(await runtime.getPuppeteerExecutablePath(),'/worker/chrome');
+});
+test('Puppeteer executor passes the resolved executable path to its child process',async()=>{
+ const {createJobExecutor}=await import('./job-executor.mjs');
+ let childEnv,workspace;
+ const executor=createJobExecutor({
+  RUNNER_NAME:'puppeteer-regression',ROOT_DIR:process.cwd(),setActiveCorrelationId:()=>{},
+  scriptFileForJob:()=> 'job.js',shouldRunHeadless:()=>true,
+  getPuppeteerExecutablePath:async()=>'/worker/chrome',
+  runCommand:async(_command,_args,options)=>{childEnv=options.env;return {code:0,stdout:'',stderr:'',timedOut:false,cancelled:false};},
+  processResultPayload:({framework})=>({status:'PASSED',framework}),
+  prepareNodeScriptSource:()=> 'module.exports = {};',getPackageBinPath:()=> '/worker/node_modules/tsx/dist/cli.mjs',
+  collectArtifacts:(directory)=>{workspace=directory;return [];},withCorrelation:(result)=>result,
+  normalizeDataset:()=>({}),normalizeJobStatus:(value)=>value,normalizeStepResult:(value)=>value,
+  replacePlaceholders:(value)=>value,frameworkKey:()=> 'puppeteer',languageKey:()=> 'javascript',localWorkerSupports:()=>true,
+ });
+ try{
+  const result=await executor({id:'puppeteer-async-path',timeout_seconds:5,payload_congelado:{framework:'puppeteer',script:'async () => ({status:"PASSED"})'}});
+  assert.equal(result.status,'PASSED');
+  assert.equal(childEnv.PUPPETEER_EXECUTABLE_PATH,'/worker/chrome');
+  assert.equal(typeof childEnv.PUPPETEER_EXECUTABLE_PATH,'string');
+ }finally{if(workspace)fs.rmSync(workspace,{recursive:true,force:true});}
 });
 test('large result transfer resumes and delivers exact bytes without data replacement',async()=>{
  const {createResultTransport}=await import('./result-transport.mjs');

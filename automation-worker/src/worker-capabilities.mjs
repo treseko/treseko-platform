@@ -20,6 +20,9 @@ export function createWorkerCapabilities({
   getActiveJobs,
   getActiveJobId,
 }) {
+  const recorderDesktopOptIn = String(process.env.QA_ENABLE_PLAYWRIGHT_RECORDER || "").toLowerCase() === "true"
+    && String(process.env.QA_HEADLESS || "true").toLowerCase() === "false"
+    && (process.platform === "win32" || process.platform === "darwin" || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY));
   function resources() {
     const memoryUsedMb = Math.round((os.totalmem() - os.freemem()) / 1024 / 1024);
     let diskFreeMb = null;
@@ -58,6 +61,8 @@ export function createWorkerCapabilities({
       selenium: getSeleniumVersion(),
     };
     const availability = getRuntimeAvailability?.();
+    const interactivePlaywrightRecorder = recorderDesktopOptIn
+      && (!availability || availability.playwright_recorder_available === true);
     if (availability) for (const name of Object.keys(frameworkLanguages)) if (!availability.frameworks.includes(name)) delete frameworkLanguages[name];
     const activeJobs = getActiveJobs();
     const activeJobId = getActiveJobId();
@@ -98,6 +103,7 @@ export function createWorkerCapabilities({
       max_parallel_jobs: maxParallelJobs,
       active_jobs: activeJobs,
       current_job_id: activeJobId || null,
+      interactive_playwright_recorder: interactivePlaywrightRecorder === true,
       uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
     };
     if (availability) for (const name of Object.keys(payload.language_status)) if (!availability.frameworks.includes(name)) delete payload.language_status[name];

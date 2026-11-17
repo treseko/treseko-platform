@@ -622,26 +622,6 @@ async def create_shared_report(
     )
     return _shared_report_bundle_response(bundle, request)
 
-@router.get("/reports/share/history", response_model=List[schemas.SharedReportBundleHistoryItem])
-async def read_shared_report_history(
-    request: Request,
-    proyecto_id: UUID = Query(...),
-    build_id: Optional[UUID] = Query(None),
-    componente_id: Optional[UUID] = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("reportes.compartir", "read")),
-    _premium_snapshots: None = Depends(require_feature("reports.snapshots")),
-):
-    await access_control.require_project_access(db, current_user, proyecto_id, "read")
-    history = await crud.list_shared_report_bundle_history(db, proyecto_id, build_id, componente_id)
-    items = []
-    for item in history:
-        snapshots = item.pop("snapshots", [])
-        links = {_snapshot_report_type(snapshot): _snapshot_url(snapshot, request) for snapshot in snapshots}
-        tokens = {_snapshot_report_type(snapshot): snapshot.token for snapshot in snapshots}
-        items.append({**item, "links": links, "tokens": tokens})
-    return items
-
 @router.get("/reports/share/{token}/status", response_model=schemas.SharedReportStatus)
 async def read_shared_report_status(
     request: Request,
@@ -723,6 +703,7 @@ async def delete_shared_report(
 
 from .reports_public import router as reports_public_router
 from .reports_public import (
+    read_shared_report_history,
     public_shared_report_markdown,
     pretty_public_shared_report_markdown,
     public_shared_report_csv,

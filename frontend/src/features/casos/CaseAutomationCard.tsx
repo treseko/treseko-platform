@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Badge, Button, Card, Form } from "react-bootstrap";
+import { Alert, Badge, Button, Card, Form } from "react-bootstrap";
 import { ChevronDown, ChevronRight, Code, PlayCircle, RefreshCw, Terminal } from "lucide-react";
 import { ScriptEditor } from "../../ScriptEditor";
 import { API_BASE } from "../../app/constants";
 import { VariableReferenceHints } from "./VariableReferenceHints";
+import { TresekoFlowScriptImport } from "./TresekoFlowScriptImport";
 
 type Props = { context: any };
 
 export function CaseAutomationCard({ context }: Props) {
   const [recordVideo, setRecordVideo] = useState(true);
+
   const {
     t, newTestType, canEditScripts, collapsedSections, setCollapsedSections,
     newTestFramework, setNewTestFramework, newTestLanguage, setNewTestLanguage,
@@ -16,10 +18,11 @@ export function CaseAutomationCard({ context }: Props) {
     setNewTestScript, currentProjectId, newTestSuite, confirmAction, workerSupportsSelectedLanguage,
     selectedLanguageLabel, setShowFunctionsModal, setShowVariablesModal, projectEnvironments,
     selectedDryRunEnvironment, setDryRunEnvironmentId, setDryRunDatasetId, dryRunDatasets,
-    selectedDryRunDataset, dryRunDebugMode, setDryRunDebugMode, scriptTestResult, scriptTesting,
+    selectedDryRunDataset, scriptTestResult, scriptTesting,
     setScriptTesting, setScriptTestResult, fetchWithAuth, newTestTitle, newTestData, newTestComponent,
     newTestSteps, setScriptValidationDetails, onRunSavedAutomatedCase, uuidOrNull, componentsList,
   } = context;
+
   return (
     <>
     {newTestType === 'Automatizada' && canEditScripts && (
@@ -85,6 +88,9 @@ export function CaseAutomationCard({ context }: Props) {
               <strong>{t('automatizacion.scriptRequired')}</strong>
             </div>
           )}
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <TresekoFlowScriptImport context={context} />
+          </div>
           <Form.Check id="worker-dry-run-record-video" type="switch" label={t('motorIa.recordVideo')} checked={recordVideo} onChange={e => setRecordVideo(e.target.checked)} className="mb-2" />
             <ScriptEditor
             value={newTestScript}
@@ -112,6 +118,29 @@ export function CaseAutomationCard({ context }: Props) {
           )}
           <div className="d-flex justify-content-between align-items-center mt-3">
             <div className="d-flex gap-2">
+              <Form.Select
+                size="sm"
+                value={selectedDryRunEnvironment?.id || ''}
+                onChange={event => { setDryRunEnvironmentId(event.target.value); setDryRunDatasetId('') }}
+                aria-label={t('automatizacion.dryRunEnvironment')}
+                title={t('automatizacion.dryRunEnvironmentTitle')}
+                className="w-auto"
+              >
+                <option value="">{t('automatizacion.noEnvironment')}</option>
+                {projectEnvironments.map((environment: any) => <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>)}
+              </Form.Select>
+              <Form.Select
+                size="sm"
+                value={selectedDryRunDataset?.id || ''}
+                onChange={event => setDryRunDatasetId(event.target.value)}
+                aria-label={t('automatizacion.dryRunDataset')}
+                title={t('automatizacion.dryRunDatasetTitle')}
+                className="w-auto"
+                disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}
+              >
+                <option value="">{t('automatizacion.noDataset')}</option>
+                {dryRunDatasets.map((dataset: any) => <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>)}
+              </Form.Select>
               <Button
                 variant="outline-primary"
                 size="sm"
@@ -130,45 +159,6 @@ export function CaseAutomationCard({ context }: Props) {
               </Button>
             </div>
             <div className="d-flex align-items-center gap-2">
-              <Form.Select
-                size="sm"
-                value={selectedDryRunEnvironment?.id || ''}
-                onChange={event => {
-                  setDryRunEnvironmentId(event.target.value)
-                  setDryRunDatasetId('')
-                }}
-                aria-label={t('automatizacion.dryRunEnvironment')}
-                title={t('automatizacion.dryRunEnvironmentTitle')}
-                className="w-auto"
-              >
-                <option value="">{t('automatizacion.noEnvironment')}</option>
-                {projectEnvironments.map((environment: any) => (
-                  <option key={environment.id} value={environment.id}>{environment.name || environment.nombre}</option>
-                ))}
-              </Form.Select>
-              <Form.Select
-                size="sm"
-                value={selectedDryRunDataset?.id || ''}
-                onChange={event => setDryRunDatasetId(event.target.value)}
-                aria-label={t('automatizacion.dryRunDataset')}
-                title={t('automatizacion.dryRunDatasetTitle')}
-                className="w-auto"
-                disabled={!selectedDryRunEnvironment || !dryRunDatasets.length}
-              >
-                <option value="">{t('automatizacion.noDataset')}</option>
-                {dryRunDatasets.map((dataset: any) => (
-                  <option key={dataset.id} value={dataset.id}>{dataset.nombre || dataset.name}</option>
-                ))}
-              </Form.Select>
-              <Form.Check name="a11y-caseautomationcardtsx-142" aria-label={t('automatizacion.showBrowser')}
-                type="switch"
-                id="dry-run-debug-mode"
-                checked={dryRunDebugMode}
-                onChange={event => setDryRunDebugMode(event.target.checked)}
-                label={t('automatizacion.showBrowser')}
-                className="small text-muted"
-                title={t('automatizacion.showBrowserTitle')}
-              />
               {scriptTestResult && (
                 <Badge bg={scriptTestResult === 'success' ? 'success' : 'danger'} className="x-small">
                   {scriptTestResult === 'success' ? t('automatizacion.scriptValid') : t('automatizacion.scriptError')}
@@ -253,7 +243,7 @@ export function CaseAutomationCard({ context }: Props) {
                     datos_caso: newTestData || '',
                     entorno_id: uuidOrNull(selectedDryRunEnvironment?.id),
                     dataset_id: uuidOrNull(selectedDryRunDataset?.id),
-                    debug_mode: dryRunDebugMode,
+                    debug_mode: false,
                     record_video: recordVideo,
                     pasos: newTestSteps.map((step: any, index: number) => ({
                       numero_paso: index + 1,
@@ -272,6 +262,7 @@ export function CaseAutomationCard({ context }: Props) {
         )}
       </Card>
     )}
+
     </>
   );
 }

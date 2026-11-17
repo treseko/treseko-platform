@@ -8,7 +8,8 @@ import { useRef } from "react";
 export function useAppActionServices(options: any): any {
   const projectsLoadVersionRef = useRef(0);
   const projectCreateInFlightRef = useRef(false);
-  const project = createProyectosActions({ ...options, projectsLoadVersionRef, projectCreateInFlightRef });
+  const componentMutationInFlightRef = useRef(false);
+  const project = createProyectosActions({ ...options, projectsLoadVersionRef, projectCreateInFlightRef, componentMutationInFlightRef });
   const iaMissionSubmissionRef = useRef(false);
   const ia = createIaMissionActions({ ...options, iaMissionSubmissionRef });
   const navigation = createNavigationActions(options);

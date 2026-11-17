@@ -122,12 +122,14 @@ porque no ofrece la misma transacción atómica. La integración operativa del
 coordinador de host para esa opción sigue pendiente y no debe confundirse con
 la actualización local atómica.
 
-Para actualizar Treseko 1.0.6 a 1.0.7 en una instalación Compose local, descargá
-el paquete completo de la versión destino y ejecutá su instalador con
-`--update` (o `-Update` en PowerShell). La actualización desde **Configuración →
-Actualizaciones** solo aplica cuando el coordinador del host ya está instalado
-y enlazado; el servicio de aplicación no tiene acceso al Compose del host para
-reemplazarlo por sí mismo.
+Para actualizar Treseko 1.0.7 a 1.0.8 en una instalación Compose local,
+descargá el paquete completo 1.0.8 y ejecutá su instalador con `--update` (o
+`-Update` en PowerShell) desde el host. Es una actualización in-place: conserva
+la configuración y los datos existentes; no hace falta desinstalar ni borrar
+volúmenes. El preflight se detiene antes del corte si no puede demostrar que la
+instalación admite la transacción. **Configuración → Actualizaciones** solo
+aplica cuando el coordinador del host está instalado y enlazado; el servicio de
+la aplicación no tiene acceso al Compose del host para reemplazarlo por sí mismo.
 
 ### Desinstalación conservadora
 

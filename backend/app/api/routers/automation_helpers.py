@@ -73,6 +73,8 @@ async def _automation_job_context(db: AsyncSession, job: models.AutomationJob):
         row = result.first()
         if row:
             return row.proyecto_id, None, row.componente_id
+    if job.proyecto_id:
+        return job.proyecto_id, job.build_id, None
     return None, job.build_id, None
 
 

@@ -24,6 +24,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
   const { t, loading, load, checkingCommunity, syncCommunity, checkingPremium, syncPremium, canApplyUpdates, latestUpdate, isPremiumUpdateMode, applyLatestUpdate, applyConfirmation, setApplyConfirmation, confirmApplyUpdate, status, activeTask, updateEvents, isPrepared, restartingPrepared, restartPreparedUpdate, rollingBack, rollbackPendingUpdate, reportingFailure, reportFailure, componentRows, findComponent, workers, primaryWorker, onlineWorkers, systemVersion, frontendVersion, history, statusVariant, channels, premiumUpdatesAllowed, applyingPremium, confirmationChannel, confirmationVersion } = options
   const workerVersion = (worker: any) => worker?.version || worker?.capabilities?.component_version || worker?.capabilities?.worker_version || t('configuracion.updateWorkerNotActive')
   const availableVersion = latestUpdate?.latest_version || latestUpdate?.version
+  const updateBlocked = latestUpdate?.available && latestUpdate?.apply_supported === false
   const releaseNotes = parseLatestReleaseNotes(latestUpdate?.changelog, availableVersion)
   return (
     <div className="animate__animated animate__fadeIn">
@@ -170,17 +171,18 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
-                    <Badge bg={latestUpdate?.available ? 'primary' : latestUpdate?.error ? 'warning' : 'success'}>
-                      {latestUpdate?.available ? t('configuracion.available') : latestUpdate?.error ? t('configuracion.review') : t('configuracion.current')}
+                    <Badge bg={updateBlocked ? 'warning' : latestUpdate?.available ? 'primary' : latestUpdate?.error ? 'warning' : 'success'}>
+                      {updateBlocked ? t('configuracion.updateRequiresInstaller') : latestUpdate?.available ? t('configuracion.available') : latestUpdate?.error ? t('configuracion.review') : t('configuracion.current')}
                     </Badge>
                   </div>
+                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">{t('configuracion.atomicUpdateRequiresInstaller')}</Alert>}
                 </div>
 
                 {latestUpdate?.available && (
                   <Button
                     variant="primary"
                     className="fw-bold"
-                    disabled={!canApplyUpdates || applyingPremium || isPrepared}
+                    disabled={!canApplyUpdates || applyingPremium || isPrepared || updateBlocked}
                     onClick={() => setApplyConfirmation(true)}
                   >
                     {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}
@@ -342,17 +344,18 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
-                    <Badge bg={latestUpdate?.available ? 'primary' : 'success'}>
-                      {latestUpdate?.available ? t('configuracion.available') : t('configuracion.current')}
+                    <Badge bg={updateBlocked ? 'warning' : latestUpdate?.available ? 'primary' : 'success'}>
+                      {updateBlocked ? t('configuracion.updateRequiresInstaller') : latestUpdate?.available ? t('configuracion.available') : t('configuracion.current')}
                     </Badge>
                   </div>
+                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">{t('configuracion.atomicUpdateRequiresInstaller')}</Alert>}
                 </div>
 
                 {latestUpdate?.available && (
                   <Button
                     variant="primary"
                     className="fw-bold"
-                    disabled={!canApplyUpdates || applyingPremium || isPrepared}
+                    disabled={!canApplyUpdates || applyingPremium || isPrepared || updateBlocked}
                     onClick={() => setApplyConfirmation(true)}
                   >
                     {applyingPremium ? <Spinner size="sm" className="me-2" /> : <UploadCloud size={16} className="me-2" />}

@@ -9,6 +9,7 @@ from ..services.api_evidence_policy import public_test_data_evidence_enabled
 from ..services.api_test_runner import sanitize_api_config
 from ..services.api_dynamic_variables import DynamicVariableContext, safe_dynamic_values
 from .api_automation_jobs import decrypt_api_worker_payload
+from .playwright_recordings import complete_playwright_recording_job
 
 
 def _api_execution_status(result_status: str) -> models.EstadoResultado:
@@ -373,6 +374,9 @@ async def complete_automation_job(
         except Exception:
             await db.rollback()
             raise
+
+    if (job.job_type or "EXECUTION") == "PLAYWRIGHT_RECORDING":
+        return await complete_playwright_recording_job(db, job, payload, now)
 
     job.estado = payload.status
     job.logs = payload.logs

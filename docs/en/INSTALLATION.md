@@ -123,11 +123,14 @@ not provide the same atomic transaction. Operational host-coordinator
 integration for that option is still pending and must not be confused with the
 atomic local update.
 
-To update Treseko 1.0.6 to 1.0.7 on a local Compose installation, download
-the complete target release package and run its installer with `--update` (or
-`-Update` in PowerShell). **Settings → Updates** can apply the release only
-after the host coordinator has been installed and bound; the application
-service cannot access the host Compose file to replace it on its own.
+To update Treseko 1.0.7 to 1.0.8 on a local Compose installation, download the
+complete 1.0.8 package and run its installer with `--update` (or `-Update` in
+PowerShell) on the host. This is an in-place update that preserves existing
+configuration and data; you do not need to uninstall Treseko or delete its
+volumes. Preflight stops before cutover if it cannot prove the installation
+supports the transaction. **Settings → Updates** applies only after the host
+coordinator is installed and bound; the application service cannot access the
+host Compose file to replace it on its own.
 
 ### Conservative uninstall
 

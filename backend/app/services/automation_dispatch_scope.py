@@ -11,9 +11,11 @@ async def validate_worker_job_scope(db, job):
     user = (await db.execute(select(models.Usuario).options(selectinload(models.Usuario.rol_personalizado)).where(models.Usuario.id == job.creado_por))).scalar_one_or_none()
     if not user or not user.activo:
         raise ValueError('El usuario que creó el job ya no está activo')
-    capability = 'crear_pruebas.scripts' if job.job_type == 'DRY_RUN' else 'ejecutar.automatizada'
+    capability = 'crear_pruebas.scripts' if job.job_type in {'DRY_RUN', 'PLAYWRIGHT_RECORDING'} else 'ejecutar.automatizada'
     if not auth.has_capability_permission(user, capability, 'edit') or not auth.has_module_permission(user, 'automatizacion', 'read'):
         raise ValueError('El usuario ya no tiene permiso para ejecutar este job')
+    if job.job_type == 'PLAYWRIGHT_RECORDING' and not auth.has_capability_permission(user, 'automatizacion.workers', 'read'):
+        raise ValueError('El usuario ya no tiene permiso para usar Workers en la grabación')
     try:
         await access_control.require_project_access(db, user, job.proyecto_id, 'edit')
     except HTTPException as exc:
@@ -21,6 +23,13 @@ async def validate_worker_job_scope(db, job):
     project = await db.get(models.Proyecto, job.proyecto_id)
     if not project or project.organizacion_id != job.organizacion_id:
         raise ValueError('El proyecto del job no corresponde a su solución')
+    if job.job_type == 'PLAYWRIGHT_RECORDING':
+        payload = worker_payload(job)
+        environment_id = payload.get('entorno_id')
+        environment = await db.get(models.Entorno, environment_id) if environment_id else None
+        if not environment or not environment.activo or str(environment.proyecto_id) != str(job.proyecto_id):
+            raise ValueError('El ambiente de grabación ya no está disponible para este proyecto')
+        return user
     if job.job_type != 'DRY_RUN':
         build = await db.get(models.Build, job.build_id)
         if not build or build.proyecto_id != job.proyecto_id or not access_control.is_build_active(build):

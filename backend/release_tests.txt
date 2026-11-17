@@ -24,6 +24,12 @@ test_system_http_flow.py
 test_system_updates_http_flow.py
 test_installation_telemetry.py
 test_update_legacy_premium_download.py
+test_update_installation_status.py
+test_update_installation_mode.py
+test_update_existing_installation_contract.py
+test_update_participant_package.py
+test_update_helper_installation_host_bridge.py
+test_update_transaction.py
 test_updater_history.py
 test_story_generation_http_flow.py
 test_case_generation_http_flow.py

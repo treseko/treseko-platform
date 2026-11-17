@@ -38,6 +38,7 @@ type CreateComponentActionsParams = {
   showFeedback: (title: string, message: string, variant?: FeedbackVariant) => void
   confirmAction: ConfirmAction
   t: Translate
+  componentMutationInFlightRef?: { current: boolean }
   readOnlyBuild?: boolean
 }
 
@@ -59,10 +60,12 @@ export function createComponentActions({
   showFeedback,
   confirmAction,
   t,
+  componentMutationInFlightRef = { current: false },
   readOnlyBuild = false
 }: CreateComponentActionsParams) {
   const handleCreateComponent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (componentMutationInFlightRef.current) return
     if (!canEditCurrentProject) {
       showFeedback(t('proyectos.insufficientPermission'), t('proyectos.componentCreatePermission'), 'warning')
       return
@@ -75,59 +78,65 @@ export function createComponentActions({
     const formData = new FormData(target)
     const name = String(formData.get('componentName') || '').trim()
     if (!name || !managingProjectId) return
+    componentMutationInFlightRef.current = true
 
-    const createLocalComponent = () => {
-      const newComponent = {
-        id: `c${componentsList.length + 1}`,
-        projectId: managingProjectId,
-        name,
-        description: '',
-        techStack: '',
-        variables: {}
-      }
-      setComponentsList([...componentsList, newComponent])
-      setCurrentCompId(newComponent.id)
-      setNewTestComponent(newComponent.id)
-      setCurrentBuildId('')
-      setProjectSyncMessage(t('proyectos.componentCreatedLocal'))
-    }
-
-    if (projectsSource === 'backend') {
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/componentes/`, {
-          method: 'POST',
-          body: JSON.stringify({
-            proyecto_id: managingProjectId,
-            nombre: name,
-            descripcion: '',
-            variables: {}
-          })
-        })
-
-        if (!response.ok) {
-          const error = await response.json().catch(() => null)
-          throw new Error(error?.detail || `Backend respondió ${response.status}`)
+    try {
+      const createLocalComponent = () => {
+        const newComponent = {
+          id: `c${componentsList.length + 1}`,
+          projectId: managingProjectId,
+          name,
+          description: '',
+          techStack: '',
+          variables: {}
         }
-
-        const component = await response.json()
-        const mapped = mapBackendComponentToItem(component)
-        setComponentsList([...componentsList, mapped])
-        setCurrentCompId(mapped.id)
-        setNewTestComponent(mapped.id)
+        setComponentsList([...componentsList, newComponent])
+        setCurrentCompId(newComponent.id)
+        setNewTestComponent(newComponent.id)
         setCurrentBuildId('')
-        setProjectSyncMessage(t('proyectos.componentCreatedBackend'))
-      } catch (error: any) {
-        setProjectSyncMessage(`${t('proyectos.componentPersistError')}: ${error.message}.`)
+        setProjectSyncMessage(t('proyectos.componentCreatedLocal'))
       }
-    } else {
-      createLocalComponent()
-    }
 
-    target.reset()
+      if (projectsSource === 'backend') {
+        try {
+          const response = await fetchWithAuth(`${API_BASE}/componentes/`, {
+            method: 'POST',
+            body: JSON.stringify({
+              proyecto_id: managingProjectId,
+              nombre: name,
+              descripcion: '',
+              variables: {}
+            })
+          })
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => null)
+            throw new Error(error?.detail || `Backend respondió ${response.status}`)
+          }
+
+          const component = await response.json()
+          const mapped = mapBackendComponentToItem(component)
+          setComponentsList([...componentsList, mapped])
+          setCurrentCompId(mapped.id)
+          setNewTestComponent(mapped.id)
+          setCurrentBuildId('')
+          setProjectSyncMessage(t('proyectos.componentCreatedBackend'))
+        } catch (error: any) {
+          setProjectSyncMessage(`${t('proyectos.componentPersistError')}: ${error.message}.`)
+        }
+      } else {
+        createLocalComponent()
+      }
+
+      target.reset()
+    } finally {
+      componentMutationInFlightRef.current = false
+    }
   }
 
   const handleSaveComponentForm = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (componentMutationInFlightRef.current) return
     if (readOnlyBuild) {
       showFeedback(t('proyectos.insufficientPermission'), 'La build histórica está en modo consulta y no admite modificaciones.', 'warning')
       return
@@ -142,12 +151,14 @@ export function createComponentActions({
     const techStack = componentForm.techStack.trim()
     const variables = parseKeyValueText(componentForm.variablesText || '')
     if (!name || !projectId) return
+    componentMutationInFlightRef.current = true
 
     const closeModal = () => {
       setShowComponentModal(false)
       setComponentForm({ id: '', name: '', description: '', techStack: '', variablesText: '' })
     }
 
+    try {
     if (componentForm.id) {
       if (projectsSource === 'backend' && isValidUUID(componentForm.id)) {
         try {
@@ -231,6 +242,9 @@ export function createComponentActions({
     setCurrentBuildId('')
     setProjectSyncMessage(t('proyectos.componentCreatedLocal'))
     closeModal()
+    } finally {
+      componentMutationInFlightRef.current = false
+    }
   }
 
   const handleDeleteComponent = async (componentId: string) => {

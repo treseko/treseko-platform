@@ -184,7 +184,6 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
   }, [caseEditorOpen])
   const [scriptValidationDetails, setScriptValidationDetails] = useState<ScriptValidationDetails | null>(null)
   const [automationRunners, setAutomationRunners] = useState<any[]>([])
-  const [dryRunDebugMode, setDryRunDebugMode] = useState(false)
   const [dryRunEnvironmentId, setDryRunEnvironmentId] = useState('')
   const [dryRunDatasetId, setDryRunDatasetId] = useState('')
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(true)
@@ -399,7 +398,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     ...props, t, editingCaseCode, canEditSuites, canEditCases, canEditTraceability,
     canEditSteps, canEditAttachments, canEditScripts, canUseIaDryRun, projectEnvironments,
     fallbackDryRunEnvironment, selectedDryRunEnvironment, dryRunDatasets, fallbackDryRunDataset,
-    selectedDryRunDataset, workerSupportsSelectedLanguage, selectedLanguageLabel, currentSuiteId,
+    selectedDryRunDataset, workerSupportsSelectedLanguage, automationRunners, selectedLanguageLabel, currentSuiteId,
     currentSuiteBreadcrumb, canSaveCurrentCase, cloneDestinationSuites, cloneTargetSuiteValid,
     moveCaseDestinationSuites, moveTargetSuiteValid, cloneSuiteIds, cloneSuiteDestinationSuites,
     cloneSuiteCasesCount, cloneSuiteName, setCloneSuiteName, cloneSuiteParentId, setCloneSuiteParentId,
@@ -414,7 +413,7 @@ export function AnadirPruebasPage(props: AnadirPruebasPageProps) {
     openMoveCaseModal, confirmCloneCase, confirmMoveCase, openCloneSuiteModal, confirmCloneSuite,
     uuidOrNull, mobileExplorerOpen, setMobileExplorerOpen,
     setShowFunctionsModal, setShowVariablesModal, setDryRunEnvironmentId, setDryRunDatasetId,
-    setDryRunDebugMode, setScriptTesting, setScriptTestResult, setScriptValidationDetails,
+    setScriptTesting, setScriptTestResult, setScriptValidationDetails,
     languageOptionsByFramework, defaultLanguageForFramework, languageLabel,
   }
 

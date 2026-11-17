@@ -10,6 +10,8 @@ frontend/node_modules/
 !**/.env.production.example
 compose.production.env
 .treseko-local/
+.treseko/
+/public-release/
 backend/.env
 frontend/.env
 opencode.json

@@ -1,3 +1,21 @@
+# Treseko 1.0.8
+
+## Improvements
+
+- Automated run monitoring shows the result and lets users inspect failure details and the script location.
+- Playwright runs can retain a trace for reviewing actions and error context.
+- For supported formats, errors map back to the authored script instead of only showing a generated temporary file.
+- Updates: the settings screen detects installations without the atomic coordinator and blocks unsafe in-app application; it directs users to run the in-place update installer on the host.
+
+## New features
+
+- The run monitor can open the Playwright trace when the execution includes that artifact.
+- The editor can receive journeys recorded with the Treseko Flow extension for review and saving as test cases.
+
+## Fixes
+
+- Worker errors and available evidence are presented more clearly when diagnosing a failed run.
+
 # Treseko 1.0.7
 
 ## Integrity and safe updates

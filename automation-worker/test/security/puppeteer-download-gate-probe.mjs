@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import fs from "node:fs";
+import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { downloadBrowsers } = require("../../node_modules/puppeteer/lib/cjs/puppeteer/node/install.js");
-const { getConfiguration } = require("../../node_modules/puppeteer/lib/cjs/puppeteer/getConfiguration.js");
+const puppeteerDir = path.dirname(require.resolve("puppeteer"));
+const { downloadBrowsers } = require(path.join(puppeteerDir, "node/install.js"));
+const { getConfiguration } = require(path.join(puppeteerDir, "getConfiguration.js"));
 const dockerfile = fs.readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
 const entrypoint = fs.readFileSync(new URL("../../entrypoint.sh", import.meta.url), "utf8");
 assert.match(dockerfile, /PUPPETEER_SKIP_DOWNLOAD=1[^\n]*npm ci/);
@@ -24,7 +26,7 @@ async function withEnv(name, value, callback) {
 export async function productionInstallSkipsPuppeteerDownload(index) {
   return withEnv("PUPPETEER_SKIP_DOWNLOAD", ["1", "true", "yes", "on"][index % 4], () =>
     withEnv("npm_config_loglevel", "silent", async () => {
-      assert.equal(getConfiguration().skipDownload, true);
+      assert.equal((await getConfiguration()).skipDownload, true);
       await downloadBrowsers();
       return true;
     }));
@@ -32,7 +34,7 @@ export async function productionInstallSkipsPuppeteerDownload(index) {
 
 export function unguardedInstallWouldDownload(index) {
   return withEnv("PUPPETEER_SKIP_DOWNLOAD", [undefined, "0", "false", "off"][index % 4], async () => {
-    assert.equal(Boolean(getConfiguration().skipDownload), false);
+    assert.equal(Boolean((await getConfiguration()).skipDownload), false);
     return true;
   });
 }

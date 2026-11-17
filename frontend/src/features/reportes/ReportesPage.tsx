@@ -205,7 +205,7 @@ export function ReportesPage({
     t,
   })
   const {
-    sharedHistoryError, sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal,
+    sharedHistoryError, sharedHistoryHasMore, sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal,
     shareAcknowledged, setShareAcknowledged, sharedReportHistory, setSharedReportHistory,
     sharedReportHistoryBuildId, setSharedReportHistoryBuildId, loadingSharedHistory,
     showFullSharedHistory, setShowFullSharedHistory, buildDefinition, setBuildDefinition, qaComment, setQaComment,
@@ -494,7 +494,7 @@ export function ReportesPage({
             executionModeMax, hasExecutionModeData, caseTypeData,
           })}
           {SharedReportHistory({
-            sharedHistoryError, canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
+            sharedHistoryError, sharedHistoryHasMore, canViewSharedReports, isSectionVisible, t, sharedReportHistory, setShowFullSharedHistory,
             showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
             visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
             openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,

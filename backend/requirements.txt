@@ -21,5 +21,8 @@ gherkin-official
 openpyxl
 xlrd
 ldap3
+certifi>=2026.10.18
+opentelemetry-api>=1.45.1
+pyasn1>=0.6.5
 
 jsonschema==4.26.0

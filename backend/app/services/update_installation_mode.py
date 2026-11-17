@@ -133,3 +133,14 @@ def require_atomic_update_coordinator() -> str:
     if mode != "coordinated":
         raise InstallationModeError("atomic_update_coordinator_required")
     return mode
+
+
+def update_installation_status() -> dict[str, Any]:
+    """Describe whether this installation can safely apply an in-app update."""
+    try:
+        mode = resolve("status")
+        supported = mode == "coordinated"
+        reason = None if supported else "atomic_update_coordinator_required"
+    except InstallationModeError as exc:
+        mode, supported, reason = "invalid", False, exc.code
+    return {"apply_supported": supported, "installation_mode": mode, "update_block_reason": reason}

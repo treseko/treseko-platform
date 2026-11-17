@@ -1,5 +1,10 @@
 export default {
   historyLoadError: "History could not be refreshed. The last available data is preserved.",
+  scriptFailureTitle: "Where the script failed",
+  scriptLine: "Script line",
+  workerLocation: "Executed file location",
+  executionVideo: "Execution video",
+  viewExecutionVideo: "View execution video",
   saveProgress: "Save progress",
   progressSaved: "Progress saved",
   progressSavedDescription: "You can resume this execution without finishing the case.",
@@ -62,6 +67,7 @@ export default {
   viewWorkers: 'View workers',
   viewHistory: 'View history',
   download: 'Download', defaultEvidenceFilename: 'evidence.png',
+  openTraceViewer: 'View sequence', downloadTrace: 'Download trace', traceViewerHelp: 'Review the captured screenshots and recorded actions.', traceViewerTitle: 'Playwright sequence', traceViewerPrivacy: 'The trace is processed in your browser; the viewer does not send it to external servers.', traceLoading: 'Loading trace…', traceLoadFailed: 'Could not load the trace. Check that you have access to this evidence.',
   noPreviousExecution: 'No previous execution',
   filterPass: 'PASS',
   filterFail: 'FAIL',

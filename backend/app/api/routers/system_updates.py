@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from ...database import get_db
 from ... import access_control, auth, crud, models, schemas
-from ...services.update_installation_mode import InstallationModeError, require_atomic_update_coordinator
+from ...services.update_installation_mode import InstallationModeError, require_atomic_update_coordinator, update_installation_status
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...content_type_validation import content_matches_declared_type
@@ -149,6 +149,7 @@ def _latest_update_response_from_manifest(
         "current_version": PRODUCT_VERSION,
         "updates_enabled": _premium_updates_enabled(state),
         "available": bool(latest_version and version_gt(latest_version, PRODUCT_VERSION)),
+        **update_installation_status(),
         "latest_version": latest_version or None,
         "version": latest_version or None,
         "channel": (validation or {}).get("channel") or (manifest or {}).get("channel"),
@@ -215,6 +216,7 @@ async def _latest_community_update_response(state: dict) -> dict:
         "min_backend_version": result.get("min_backend_version") or (manifest or {}).get("min_backend_version"),
         "manifest": manifest or result.get("manifest"),
         "error": result.get("error"),
+        **update_installation_status(),
     }
 
 
@@ -348,13 +350,15 @@ async def check_system_community_update(
     current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
 ):
     try:
-        return await _system_dependency("get_update_service", get_update_service)().check_community_update(force_refresh=force)
+        result = await _system_dependency("get_update_service", get_update_service)().check_community_update(force_refresh=force)
+        return {**result, **update_installation_status()}
     except Exception as exc:
         return {
             "available": False,
             "current_version": PRODUCT_VERSION,
             "latest_version": None,
             "error": str(exc),
+            **update_installation_status(),
         }
 
 
@@ -386,6 +390,7 @@ async def check_system_premium_update(
         "checksum_sha256": result.get("checksum_sha256"),
         "download_grant_required": True,
         "update_server_path": result.get("update_server_path"),
+        **update_installation_status(),
         "changelog": manifest.get("changelog"),
         "published_at": manifest.get("published_at") or manifest.get("released_at"),
         "requires_migration": bool(manifest.get("requires_migration")),

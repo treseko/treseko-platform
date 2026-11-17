@@ -23,6 +23,14 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
             )
             return
 
+        deployment = normalized_manifest.get("deployment")
+        if isinstance(deployment, dict) and deployment.get("mode") == "complete-source":
+            # The legacy entrypoint can replace runtime components, but it
+            # cannot atomically activate the signed Compose/source tree. Stop
+            # before download, backup, or update-ready so callers that bypass
+            # the API admission gate still cannot create a mixed release.
+            raise CoordinatedBridgeError("atomic_update_coordinator_required")
+
         self._update_state(state, "preflight", 8, "Validando preflight de espacio, version origen y backups.")
         await self._with_step_timeout(
             self._preflight_update(normalized_manifest, task_id),

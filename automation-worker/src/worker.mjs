@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { createWorkerCapabilities } from "./worker-capabilities.mjs";
 import { resultSpoolDirectory } from "./runtime-paths.mjs";
+import { createPlaywrightRecorder } from "./playwright-recorder.mjs";
 const require = createRequire(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
@@ -169,6 +170,7 @@ function getPackageVersion(packageName) {
 }
 
 const getRuntimeAvailability = createRuntimeAvailabilityCache(require);
+await getRuntimeAvailability.refresh();
 const { capabilities, resources } = createWorkerCapabilities({
   os, fs, process, rootDir: ROOT_DIR, workerVersion: WORKER_VERSION,
   apiBase: API_BASE, runnerName: RUNNER_NAME, tags: TAGS,
@@ -209,11 +211,12 @@ const updateMarker = createUpdateMarker({ directory: ROOT_DIR, getActiveJobs: ()
 const {
   getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
   playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
-  getPlaywrightCliPath, getPuppeteerExecutablePath, getPackageBinPath, preparePlaywrightTestSource, runCommand,
+  getPlaywrightCliPath, getPuppeteerExecutablePath, getPackageBinPath, preparePlaywrightTestSource, playwrightTestScriptLineOffset, preparedScriptLineOffset, runCommand,
   sanitizeChildEnv,
   scriptFileForJob, serializeJsonForSource, prepareNodeScriptSource,
   prepareSeleniumPythonSource,
 } = createScriptRuntime({ capabilities, require, path, spawn, process });
+const recordPlaywright = createPlaywrightRecorder({ fs, spawn, cliPath: getPlaywrightCliPath, api, sleep });
 
 const {
   classifyProcessFailure, processResultPayload, redact, withCorrelation: withCorrelationRuntime, isAssertionLike,
@@ -239,11 +242,11 @@ function withCorrelation(result) {
 const executeJob = createJobExecutor({
   RUNNER_NAME, ROOT_DIR, state: { get activeCorrelationId() { return activeCorrelationId; } },
   setActiveCorrelationId: (value) => { activeCorrelationId = value; },
-  playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource, shouldRunHeadless,
+  playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource, playwrightTestScriptLineOffset, shouldRunHeadless,
   getPlaywrightCliPath, getPuppeteerExecutablePath, runCommand, parsePlaywrightJsonReport, summarizePlaywrightReport,
   classifyPlaywrightFailure, withCorrelation, collectArtifacts, playwrightReportArtifact,
   getPlaywrightVersion, isDebugMode, processResultPayload, prepareNodeScriptSource,
-  getPackageBinPath, serializeJsonForSource, prepareSeleniumPythonSource, getPythonCommand,
+  getPackageBinPath, serializeJsonForSource, prepareSeleniumPythonSource, preparedScriptLineOffset, getPythonCommand,
   compileScript, normalizeDataset, normalizeStepResult, normalizeJobStatus, isAssertionLike,
   artifactFromBuffer, formatLogArg, formatErrorDetail, redact, replacePlaceholders,
   frameworkKey, languageKey, localWorkerSupports, detectScriptFormat, compactPlaywrightMetadata,
@@ -410,7 +413,7 @@ async function loop() {
       console.log(`${isDryRun ? "Ejecutando prueba temporal del editor" : "Ejecutando job"} ${claimed.id} (${jobLabel})`);
       traceEntry("job_event", { message: "job_execution_started", job_id: claimed.id, job_label: jobLabel, dry_run: isDryRun });
       activeAbortController = new AbortController();
-      const result = await executeJob(claimed, {signal:activeAbortController.signal});
+      const result = claimed.job_type === "PLAYWRIGHT_RECORDING" ? await recordPlaywright(claimed, {signal:activeAbortController.signal}) : await executeJob(claimed, {signal:activeAbortController.signal});
       console.log(`Resultado local del job ${claimed.id}: ${result.status}`);
       traceEntry("job_event", {
         message: "job_execution_finished",

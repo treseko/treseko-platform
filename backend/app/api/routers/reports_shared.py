@@ -3,6 +3,9 @@ import re
 import os
 import shutil
 import tempfile
+import hashlib
+from collections import OrderedDict
+from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, Path
@@ -63,6 +66,13 @@ REPORT_MARKDOWN_SECURITY_HEADERS = {
 }
 
 public_shared_report_rate_limiter = auth.LoginRateLimiter(max_attempts=120, window_minutes=1)
+_shared_report_pdf_semaphore = asyncio.Semaphore(2)
+_shared_report_pdf_cache: OrderedDict[str, bytes] = OrderedDict()
+_shared_report_pdf_cache_bytes = 0
+_shared_report_pdf_cache_lock = Lock()
+_SHARED_REPORT_PDF_CACHE_MAX_BYTES = 16 * 1024 * 1024
+_SHARED_REPORT_PDF_CACHE_MAX_ITEM_BYTES = 6 * 1024 * 1024
+_SHARED_REPORT_PDF_CACHE_MAX_ITEMS = 12
 
 
 def _request_ip(request: Request | None) -> str:
@@ -173,40 +183,76 @@ async def _shared_report_pdf_response(
     if not chrome:
         raise HTTPException(status_code=503, detail="Exportacion PDF no disponible en este entorno")
     html_content = _shared_report_html(snapshot, request, has_new_values, latest_url, branding)
+    cache_key = hashlib.sha256(html_content.encode("utf-8")).hexdigest()
+    with _shared_report_pdf_cache_lock:
+        cached_pdf = _shared_report_pdf_cache.get(cache_key)
+        if cached_pdf is not None:
+            _shared_report_pdf_cache.move_to_end(cache_key)
+    if cached_pdf is not None:
+        return Response(content=cached_pdf, media_type="application/pdf", headers={
+            **REPORT_MARKDOWN_SECURITY_HEADERS,
+            "Content-Disposition": f'attachment; filename="{_safe_report_download_filename(snapshot.title or snapshot.token, "pdf")}"',
+        })
     safe_filename = _safe_report_download_filename(snapshot.title or snapshot.token, "pdf")
-    with tempfile.TemporaryDirectory(prefix="treseko-report-") as tmp_dir:
-        html_path = os.path.join(tmp_dir, "report.html")
-        pdf_path = os.path.join(tmp_dir, "report.pdf")
-        with open(html_path, "w", encoding="utf-8") as handle:
-            handle.write(html_content)
-        command = [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--no-pdf-header-footer",
-            "--print-to-pdf-no-header",
-            f"--print-to-pdf={pdf_path}",
-            f"file://{html_path}",
-        ]
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
-            if process.returncode != 0:
-                raise RuntimeError((stderr or stdout or b"").decode("utf-8", errors="replace")[:1000])
-            with open(pdf_path, "rb") as handle:
-                content = handle.read()
-        except asyncio.TimeoutError as exc:
-            process.kill()
-            await process.wait()
-            raise HTTPException(status_code=504, detail="La generacion del PDF demoro demasiado") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail="No se pudo generar el PDF") from exc
+    async with _shared_report_pdf_semaphore:
+        # Another request may have completed while this one waited for a slot.
+        with _shared_report_pdf_cache_lock:
+            cached_pdf = _shared_report_pdf_cache.get(cache_key)
+            if cached_pdf is not None:
+                _shared_report_pdf_cache.move_to_end(cache_key)
+        if cached_pdf is None:
+            with tempfile.TemporaryDirectory(prefix="treseko-report-") as tmp_dir:
+                html_path = os.path.join(tmp_dir, "report.html")
+                pdf_path = os.path.join(tmp_dir, "report.pdf")
+                with open(html_path, "w", encoding="utf-8") as handle:
+                    handle.write(html_content)
+                command = [
+                    chrome,
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--no-pdf-header-footer",
+                    "--print-to-pdf-no-header",
+                    f"--print-to-pdf={pdf_path}",
+                    f"file://{html_path}",
+                ]
+                process = None
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *command,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+                    if process.returncode != 0:
+                        raise RuntimeError((stderr or stdout or b"").decode("utf-8", errors="replace")[:1000])
+                    with open(pdf_path, "rb") as handle:
+                        content = handle.read()
+                except asyncio.TimeoutError as exc:
+                    if process is not None and process.returncode is None:
+                        process.kill()
+                        await process.wait()
+                    raise HTTPException(status_code=504, detail="La generacion del PDF demoro demasiado") from exc
+                except Exception as exc:
+                    raise HTTPException(status_code=500, detail="No se pudo generar el PDF") from exc
+            if len(content) <= _SHARED_REPORT_PDF_CACHE_MAX_ITEM_BYTES:
+                global _shared_report_pdf_cache_bytes
+                with _shared_report_pdf_cache_lock:
+                    previous = _shared_report_pdf_cache.pop(cache_key, None)
+                    if previous is not None:
+                        _shared_report_pdf_cache_bytes -= len(previous)
+                    _shared_report_pdf_cache[cache_key] = content
+                    _shared_report_pdf_cache_bytes += len(content)
+                    while (
+                        _shared_report_pdf_cache
+                        and (_shared_report_pdf_cache_bytes > _SHARED_REPORT_PDF_CACHE_MAX_BYTES
+                             or len(_shared_report_pdf_cache) > _SHARED_REPORT_PDF_CACHE_MAX_ITEMS)
+                    ):
+                        _, removed = _shared_report_pdf_cache.popitem(last=False)
+                        _shared_report_pdf_cache_bytes -= len(removed)
+        else:
+            content = cached_pdf
     headers = {
         **REPORT_MARKDOWN_SECURITY_HEADERS,
         "Content-Disposition": f'attachment; filename="{safe_filename}"',

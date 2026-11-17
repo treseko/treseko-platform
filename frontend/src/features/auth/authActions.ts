@@ -60,6 +60,8 @@ export function createAuthActions({
     event.preventDefault()
     setLoginError('')
     setLoginLoading(true)
+    localStorage.removeItem('qa_session_active')
+    localStorage.removeItem('qa_session_user')
     localStorage.removeItem('qa_access_token')
     localStorage.removeItem('qa_session_expires_at')
     clearWorkspaceContext()

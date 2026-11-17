@@ -59,6 +59,7 @@ export function createProyectosActions(params: any) {
     showFeedback: params.showFeedback,
     confirmAction: params.confirmAction,
     t: params.t,
+    componentMutationInFlightRef: params.componentMutationInFlightRef,
     readOnlyBuild: params.readOnlyBuild,
   })
 

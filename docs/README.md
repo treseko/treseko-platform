@@ -15,10 +15,11 @@ usarla y qué revisar si algo no sale como esperás.
 ## Empezar
 
 1. [Instalación rápida](INSTALLATION.md): instalá Treseko con Docker o desde tu equipo por SSH.
-2. [Guía Docker](DOCKER_GUIDE.md): configurá una instalación persistente.
-3. [Acceso, usuarios y permisos](AUTH_RBAC_GUIDE.md): creá los primeros usuarios y roles.
-4. [Portabilidad de suites y casos](CASE_PORTABILITY.md): importá o exportá tus casos.
-5. [Instalación en Linux](LINUX_SETUP.md): prepará una instalación Linux paso a paso.
+2. [Instalación guiada por IA](../skills/treseko-installation/SKILL.md): cloná un commit de GitHub, instalá en un entorno aislado y verificá la aplicación sin exponer secretos.
+3. [Guía Docker](DOCKER_GUIDE.md): configurá una instalación persistente.
+4. [Acceso, usuarios y permisos](AUTH_RBAC_GUIDE.md): creá los primeros usuarios y roles.
+5. [Portabilidad de suites y casos](CASE_PORTABILITY.md): importá o exportá tus casos.
+6. [Instalación en Linux](LINUX_SETUP.md): prepará una instalación Linux paso a paso.
 
 ## Usar Treseko
 
@@ -77,9 +78,9 @@ Para crear y ejecutar casos, empezá por [Crear y mantener casos de prueba](TEST
 
 ## Versión
 
-Versión de la aplicación: `1.0.7`.
+Versión de la aplicación: `1.0.8`.
 
-Esta documentación corresponde a Treseko `1.0.7`. Consultá el
+Esta documentación corresponde a Treseko `1.0.8`. Consultá el
 [changelog](../CHANGELOG.md) para conocer las novedades incluidas.
 
 ## Enlaces oficiales

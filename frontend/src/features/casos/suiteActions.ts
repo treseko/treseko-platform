@@ -9,6 +9,7 @@ type ConfirmAction = (options: { title: string; message: string; variant?: 'dang
 type CreateSuiteActionsParams = {
   contextHydrationVersionRef?: { current: number }
   suitesLoadVersionRef?: { current: number }
+  suiteMoveInFlightRef?: { current: boolean }
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   currentCompId: string
@@ -61,6 +62,7 @@ const reserveRequest = (action: string, payload: any) => {
 export function createSuiteActions({
   contextHydrationVersionRef = { current: 0 },
   suitesLoadVersionRef = { current: 0 },
+  suiteMoveInFlightRef = { current: false },
   t,
   projectsSource,
   currentCompId,
@@ -362,6 +364,8 @@ export function createSuiteActions({
       showFeedback(t('casos.invalidProject'), t('casos.selectValidProject'), 'warning')
       return
     }
+    if (suiteMoveInFlightRef.current) return false
+    suiteMoveInFlightRef.current = true
 
     try {
       const response = await fetchWithAuth(`${API_BASE}/suites/${movingSuiteId}/move`, {
@@ -385,6 +389,8 @@ export function createSuiteActions({
     } catch (error: any) {
       if (!isCurrentContext()) return false
       setProjectSyncMessage(`Error al mover suite: ${error.message}`)
+    } finally {
+      suiteMoveInFlightRef.current = false
     }
   }
 

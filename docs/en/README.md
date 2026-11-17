@@ -17,10 +17,11 @@ check when something does not behave as expected.
 ## Getting started
 
 1. [Quick installation](INSTALLATION.md): install Treseko with Docker or from your computer over SSH.
-2. [Docker guide](DOCKER_GUIDE.md): configure a persistent installation.
-3. [Access, users and permissions](AUTH_RBAC_GUIDE.md): create the first users and roles.
-4. [Suite and case portability](CASE_PORTABILITY.md): import or export your cases.
-5. [Linux installation](LINUX_SETUP.md): prepare a Linux installation step by step.
+2. [AI-guided installation](../../skills/treseko-installation/SKILL.md): clone a GitHub commit, install in an isolated environment and verify the app without exposing secrets.
+3. [Docker guide](DOCKER_GUIDE.md): configure a persistent installation.
+4. [Access, users and permissions](AUTH_RBAC_GUIDE.md): create the first users and roles.
+5. [Suite and case portability](CASE_PORTABILITY.md): import or export your cases.
+6. [Linux installation](LINUX_SETUP.md): prepare a Linux installation step by step.
 
 ## Using Treseko
 
@@ -79,9 +80,9 @@ To create and run cases, start with [Create and maintain test cases](TEST_CASES_
 
 ## Version
 
-Application version: `1.0.7`.
+Application version: `1.0.8`.
 
-This documentation describes Treseko `1.0.7`. See the
+This documentation describes Treseko `1.0.8`. See the
 [changelog](../../CHANGELOG.en.md) for the included changes.
 
 ## Official links

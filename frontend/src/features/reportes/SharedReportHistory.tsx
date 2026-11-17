@@ -3,7 +3,7 @@ import { RefreshCw, Share2, Copy } from 'lucide-react'
 
 export function SharedReportHistory(options: any) {
   const {
-    sharedHistoryError, canViewSharedReports, t, sharedReportHistory, setShowFullSharedHistory,
+    sharedHistoryError, sharedHistoryHasMore, canViewSharedReports, t, sharedReportHistory, setShowFullSharedHistory,
     showFullSharedHistory, loadSharedReportHistory, loadingSharedHistory, isColumnVisible,
     visibleColumnCount, displayedSharedHistory, formatDateTime, projectMetrics,
     openSharedReport, copyLink, canShareReports, revokeSharedBundle, renderReportesWidget,
@@ -28,7 +28,7 @@ export function SharedReportHistory(options: any) {
       </div>
       <div className="d-flex gap-2">
         {sharedReportHistory.length > 5 && (
-          <Button variant="outline-secondary" size="sm" onClick={() => setShowFullSharedHistory((value) => !value)}>
+          <Button variant="outline-secondary" size="sm" onClick={() => setShowFullSharedHistory((value) => { if (!value) void loadSharedReportHistory(true); return !value })}>
             {showFullSharedHistory ? 'Ver ultimos 5' : 'Ver historial completo'}
           </Button>
         )}
@@ -128,6 +128,13 @@ export function SharedReportHistory(options: any) {
         ))}
       </tbody>
     </Table>
+    {showFullSharedHistory && sharedHistoryHasMore && (
+      <div className="d-flex justify-content-center mt-3">
+        <Button variant="outline-primary" size="sm" onClick={() => void loadSharedReportHistory(true)} disabled={loadingSharedHistory}>
+          {loadingSharedHistory ? t('reportes.sharedHistoryLoading') : t('reportes.sharedHistoryLoadMore')}
+        </Button>
+      </div>
+    )}
   </Card>
   )
   return renderReportesWidget

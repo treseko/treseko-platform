@@ -395,7 +395,7 @@ async def report_automation_job_result(
     try:
         updated = await crud.complete_automation_job(db, job, payload, runner=runner)
         await persist_worker_result_evidence(db, updated, evidence_url)
-        event_map = {
+        event_map = {} if updated.job_type == "PLAYWRIGHT_RECORDING" else {
             models.AutomationJobStatus.PASSED: "automation.job.completed",
             models.AutomationJobStatus.FAILED: "automation.job.failed",
             models.AutomationJobStatus.ERROR: "automation.job.failed",
@@ -459,6 +459,7 @@ async def report_automation_job_result(
         if any(word in detail.lower() for word in ("lease", "resultado distinto", "ya tiene un resultado")):
             raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
+
 
 @router.get("/automation-jobs/", response_model=List[schemas.AutomationJob])
 async def list_automation_jobs(

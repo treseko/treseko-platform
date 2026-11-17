@@ -5,7 +5,7 @@ from typing import Iterable
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import models
@@ -55,6 +55,18 @@ async def get_weekly_execution_usage(
 ) -> tuple[int, datetime | None]:
     mode_values = list(modes)
     since = utc_now() - timedelta(days=WEEKLY_USAGE_WINDOW_DAYS)
+    active_job_exists = exists(
+        select(models.AutomationJob.id).where(
+            models.AutomationJob.ejecucion_id == models.EjecucionCaso.id,
+            models.AutomationJob.estado.in_(
+                (
+                    models.AutomationJobStatus.PENDING,
+                    models.AutomationJobStatus.CLAIMED,
+                    models.AutomationJobStatus.RUNNING,
+                )
+            ),
+        )
+    )
     result = await db.execute(
         select(func.count(), func.min(models.EjecucionCaso.fecha_ejecucion))
         .select_from(models.EjecucionCaso)
@@ -64,6 +76,10 @@ async def get_weekly_execution_usage(
             models.Proyecto.organizacion_id == solution_id,
             models.EjecucionCaso.execution_mode.in_(mode_values),
             models.EjecucionCaso.fecha_ejecucion >= since,
+            or_(
+                models.EjecucionCaso.estado_resultado != models.EstadoResultado.SIN_CORRER,
+                active_job_exists,
+            ),
         )
     )
     count, oldest_execution = result.one()

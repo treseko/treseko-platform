@@ -402,6 +402,15 @@ class AutomationDryRunRequest(BaseModel):
     def validate_steps(cls, value: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return validate_automation_steps_payload(value) or []
 
+
+class PlaywrightRecordingStart(BaseModel):
+    proyecto_id: UUID
+    entorno_id: UUID
+
+
+class PlaywrightRecordingFinish(BaseModel):
+    cancel: bool = False
+
 class AutomationExecutionRequest(BaseModel):
     record_video: bool = True
     debug_mode: bool = False

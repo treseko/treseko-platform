@@ -90,6 +90,8 @@ export const normalizeExecutionHistoryPayload = (
 type CreateCaseActionsParams = {
   contextHydrationVersionRef?: { current: number }
   casesLoadVersionRef?: { current: number }
+  caseCloneInFlightRef?: { current: boolean }
+  caseMoveInFlightRef?: { current: boolean }
   t: (key: TranslationKey, params?: Record<string, string | number>) => string
   projectsSource: 'local' | 'backend'
   managingProjectId: string | null
@@ -126,6 +128,8 @@ type CreateCaseActionsParams = {
 export function createCaseActions({
   contextHydrationVersionRef = { current: 0 },
   casesLoadVersionRef = { current: 0 },
+  caseCloneInFlightRef = { current: false },
+  caseMoveInFlightRef = { current: false },
   t,
   projectsSource,
   managingProjectId,
@@ -374,6 +378,8 @@ export function createCaseActions({
     if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId)) return
+    if (caseCloneInFlightRef.current) return false
+    caseCloneInFlightRef.current = true
     try {
       const params = suiteId && isValidUUID(suiteId) ? `?suite_id=${suiteId}` : ''
       const response = await fetchWithAuth(`${API_BASE}/casos/${casoId}/clone${params}`, {
@@ -392,6 +398,8 @@ export function createCaseActions({
       setProjectSyncMessage(`Error al copiar caso: ${error.message}`)
       showFeedback(t('casos.copyCaseError'), error.message || t('casos.copyCaseError'), 'danger')
       return false
+    } finally {
+      caseCloneInFlightRef.current = false
     }
   }
 
@@ -399,6 +407,8 @@ export function createCaseActions({
     if (rejectReadOnlyWrite()) return null
     const projectId = managingProjectId || currentProjectId
     if (!projectId || !isValidUUID(projectId) || !isValidUUID(suiteId)) return false
+    if (caseMoveInFlightRef.current) return false
+    caseMoveInFlightRef.current = true
     try {
       const response = await fetchWithAuth(`${API_BASE}/casos/${casoId}/move`, {
         method: 'PATCH',
@@ -417,6 +427,8 @@ export function createCaseActions({
       setProjectSyncMessage(`Error al mover caso: ${error.message}`)
       showFeedback(t('casos.moveCaseError'), error.message || t('casos.moveCaseError'), 'danger')
       return false
+    } finally {
+      caseMoveInFlightRef.current = false
     }
   }
 

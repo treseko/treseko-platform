@@ -1,5 +1,10 @@
 export default {
   historyLoadError: "Não foi possível atualizar o histórico. Os últimos dados disponíveis foram mantidos.",
+  scriptFailureTitle: "Onde o script falhou",
+  scriptLine: "Linha do script",
+  workerLocation: "Localização do arquivo executado",
+  executionVideo: "Vídeo da execução",
+  viewExecutionVideo: "Ver vídeo da execução",
   saveProgress: "Salvar progresso",
   progressSaved: "Progresso salvo",
   progressSavedDescription: "Você pode retomar esta execução sem finalizar o caso.",
@@ -58,6 +63,7 @@ export default {
   viewWorkers: 'Ver workers',
   viewHistory: 'Ver histórico',
   download: 'Descarga', defaultEvidenceFilename: 'evidência.png',
+  openTraceViewer: 'Ver sequência', downloadTrace: 'Baixar trace', traceViewerHelp: 'Revise as capturas de tela e ações registradas.', traceViewerTitle: 'Sequência do Playwright', traceViewerPrivacy: 'O trace é processado no seu navegador; o visualizador não o envia para servidores externos.', traceLoading: 'Carregando trace…', traceLoadFailed: 'Não foi possível carregar o trace. Verifique seu acesso a esta evidência.',
   noPreviousExecution: 'Sem execução previa',
   filterPass: 'PASO',
   filterFail: 'FALLO',

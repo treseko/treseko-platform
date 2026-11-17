@@ -22,9 +22,12 @@ export function useSharedReportState(options: any) {
   const captureContext = useReportContextGuard(context)
   const historySequence = useRef(0)
   const [sharedHistoryError, setSharedHistoryError] = useState('')
+  const [sharedHistoryCursor, setSharedHistoryCursor] = useState<string | null>(null)
+  const [sharedHistoryHasMore, setSharedHistoryHasMore] = useState(false)
+  const sharedHistoryCursorRef = useRef<string | null>(null)
   useEffect(() => {
     historySequence.current += 1
-    setSharedReportHistory([]); setSharedReportHistoryBuildId(null); setSharedHistoryError('')
+    setSharedReportHistory([]); setSharedReportHistoryBuildId(null); setSharedHistoryError(''); setSharedHistoryCursor(null); setSharedHistoryHasMore(false); setShowFullSharedHistory(false); sharedHistoryCursorRef.current = null
     setSharedReport(null); setShowShareModal(false); setShareAcknowledged(false); setSharingReport(false)
     setLoadingSharedHistory(false); setBuildDefinition(''); setQaComment(''); setSnapshotBugLinks({})
   }, [context])
@@ -57,7 +60,7 @@ export function useSharedReportState(options: any) {
     }
   }
   const normalizeSharedReportFromHistory = (item: any) => ({ ...item, reused: true, reusedFromHistory: true, links: item.links || {}, tokens: item.tokens || {}, snapshots: item.snapshots || [] })
-  const loadSharedReportHistory = useCallback(async () => {
+  const loadSharedReportHistory = useCallback(async (append = false) => {
     const contextIsCurrent = captureContext()
     const sequence = ++historySequence.current
     const isCurrent = () => contextIsCurrent() && sequence === historySequence.current
@@ -66,12 +69,15 @@ export function useSharedReportState(options: any) {
     setLoadingSharedHistory(true)
     const buildId = currentBuildId || projectMetrics?.build_id || null
     try {
-      const params = new URLSearchParams({ proyecto_id: currentProjectId }); if (buildId) params.set('build_id', buildId)
+      const params = new URLSearchParams({ proyecto_id: currentProjectId, limit: '50' }); if (buildId) params.set('build_id', buildId)
+      if (append && sharedHistoryCursorRef.current) params.set('cursor', sharedHistoryCursorRef.current)
       const response = await fetchWithAuth(`${API_BASE}/reports/share/history?${params.toString()}`)
       if (!response.ok) throw new Error(humanizePremiumError(await response.text()))
       const items = await response.json()
       if (!isCurrent()) return emptyResult
-      setSharedReportHistory(items); setSharedReportHistoryBuildId(buildId); setSharedHistoryError('')
+      const nextCursor = response.headers.get('X-Next-Cursor')
+      setSharedReportHistory((previous: any[]) => append ? [...previous, ...items.filter((item: any) => !previous.some((existing) => existing.snapshot_group_id === item.snapshot_group_id))] : items)
+      setSharedReportHistoryBuildId(buildId); setSharedHistoryError(''); setSharedHistoryCursor(nextCursor); sharedHistoryCursorRef.current = nextCursor; setSharedHistoryHasMore(Boolean(nextCursor))
       return { items, buildId, error: false }
     } catch (reason: any) {
       if (isCurrent()) setSharedHistoryError(reason?.message || t('reportes.sharedHistoryLoadError'))
@@ -124,5 +130,5 @@ export function useSharedReportState(options: any) {
       showFeedback(t('reportes.packageRevokedTitle'), t('reportes.packageRevoked'), 'success'); loadSharedReportHistory()
     } catch (error: any) { if (isCurrent()) showFeedback(t('reportes.revokeError'), humanizePremiumError(error?.message) || t('reportes.checkUserPermissions'), 'danger') }
   }
-  return { sharedHistoryError, sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal, shareAcknowledged, setShareAcknowledged, sharedReportHistory, setSharedReportHistory, sharedReportHistoryBuildId, setSharedReportHistoryBuildId, loadingSharedHistory, showFullSharedHistory, setShowFullSharedHistory, buildDefinition, setBuildDefinition, qaComment, setQaComment, snapshotBugLinks, setSnapshotBugLinks, creatingSnapshotBugId, setCreatingSnapshotBugId, currentReportBuildId, findReusableSharedReport, isCurrentSharedReportReusable, reusableSharedReport, hasOutdatedSharedReport, buildDefinitionRequiresComment, normalizeSharedReportFromHistory, openShareModal, loadSharedReportHistory, shareReport, revokeSharedBundle }
+  return { sharedHistoryError, sharedHistoryHasMore, sharingReport, setSharingReport, sharedReport, setSharedReport, showShareModal, setShowShareModal, shareAcknowledged, setShareAcknowledged, sharedReportHistory, setSharedReportHistory, sharedReportHistoryBuildId, setSharedReportHistoryBuildId, loadingSharedHistory, showFullSharedHistory, setShowFullSharedHistory, buildDefinition, setBuildDefinition, qaComment, setQaComment, snapshotBugLinks, setSnapshotBugLinks, creatingSnapshotBugId, setCreatingSnapshotBugId, currentReportBuildId, findReusableSharedReport, isCurrentSharedReportReusable, reusableSharedReport, hasOutdatedSharedReport, buildDefinitionRequiresComment, normalizeSharedReportFromHistory, openShareModal, loadSharedReportHistory, shareReport, revokeSharedBundle }
 }

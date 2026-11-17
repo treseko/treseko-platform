@@ -15,6 +15,7 @@ from .routers import (
     attachments,
     automation_functions,
     automation,
+    automation_recordings,
     bugs,
     builds,
     cases,
@@ -64,6 +65,7 @@ api_router.include_router(auth_ad.router)
 api_router.include_router(attachments.router)
 api_router.include_router(automation_functions.router)
 api_router.include_router(automation.router)
+api_router.include_router(automation_recordings.router)
 api_router.include_router(bugs.router)
 api_router.include_router(builds.router)
 api_router.include_router(cases.router)

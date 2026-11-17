@@ -289,6 +289,17 @@ async def _create_artifact_attachment_no_commit(
 
 
 async def _project_context_for_automation_job(db: AsyncSession, job: models.AutomationJob):
+    # Dry-run jobs do not have a TestRun, Build, or necessarily a persisted
+    # case. Their project is stored directly on AutomationJob and must be used
+    # when persisting temporary videos or other evidence.
+    if job.proyecto_id:
+        result = await db.execute(
+            select(models.Proyecto.id, models.Proyecto.organizacion_id)
+            .filter(models.Proyecto.id == job.proyecto_id)
+        )
+        row = result.first()
+        if row:
+            return row.id, row.organizacion_id
     if job.test_run_id:
         result = await db.execute(
             select(models.Proyecto.id, models.Proyecto.organizacion_id)

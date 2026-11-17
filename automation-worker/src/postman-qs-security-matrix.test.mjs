@@ -7,7 +7,7 @@ import {
 } from "../test/security/postman-qs-probe.mjs";
 
 test("Postman Request resolves the patched qs release", () => {
-  assert.equal(postmanRequestQsVersion, "6.16.0");
+  assert.equal(postmanRequestQsVersion, "6.17.1");
 });
 
 for (let i = 0; i < 250; i += 1) {

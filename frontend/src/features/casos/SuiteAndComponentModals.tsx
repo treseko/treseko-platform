@@ -1,5 +1,5 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Form, Modal } from 'react-bootstrap'
 import { Bug, Database, FileCheck2, FolderCheck, FolderPlus, Folders, Globe2, Layers, LockKeyhole, Save, Search, Settings, ShieldCheck, Smartphone, Zap } from 'lucide-react'
 import { useI18n } from '../../i18n'
@@ -78,6 +78,10 @@ export function SuiteAndComponentModals({
   handleSaveComponentForm
 }: SuiteAndComponentModalsProps) {
   const { t } = useI18n()
+  const [suiteMoving, setSuiteMoving] = useState(false)
+  const suiteMoveSubmissionRef = useRef(false)
+  const [componentSaving, setComponentSaving] = useState(false)
+  const componentSaveSubmissionRef = useRef(false)
   const resetSuiteModal = () => {
     setShowSuiteModal(false)
     setEditingSuiteId(null)
@@ -125,6 +129,30 @@ export function SuiteAndComponentModals({
     try {
       if (await handleCreateSuite(event)) setShowAddFolderModal(false)
     } finally { setSuiteSaving(false) }
+  }
+
+  const submitSuiteMove = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (suiteMoveSubmissionRef.current) return
+    suiteMoveSubmissionRef.current = true
+    setSuiteMoving(true)
+    try { await handleMoveSuite() }
+    finally {
+      suiteMoveSubmissionRef.current = false
+      setSuiteMoving(false)
+    }
+  }
+
+  const submitComponentForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (componentSaveSubmissionRef.current) return
+    componentSaveSubmissionRef.current = true
+    setComponentSaving(true)
+    try { await handleSaveComponentForm(event) }
+    finally {
+      componentSaveSubmissionRef.current = false
+      setComponentSaving(false)
+    }
   }
 
   const submitSuite = async (event: FormEvent<HTMLFormElement>) => {
@@ -299,14 +327,14 @@ export function SuiteAndComponentModals({
         </Form>
       </Modal>
 
-      <Modal show={showMoveSuiteModal} onHide={resetMoveSuiteModal} centered>
-        <Modal.Header closeButton className="border-0 pb-2">
+      <Modal show={showMoveSuiteModal} onHide={() => { if (!suiteMoving) resetMoveSuiteModal() }} centered>
+        <Modal.Header closeButton={!suiteMoving} className="border-0 pb-2">
           <Modal.Title className="fw-bold fs-5 d-flex align-items-center gap-2">
             <FolderCheck size={20} className="text-primary" />
             {t('casos.moveSuite')}
           </Modal.Title>
         </Modal.Header>
-        <Form onSubmit={(event) => { event.preventDefault(); handleMoveSuite() }}>
+        <Form onSubmit={submitSuiteMove}>
           <Modal.Body className="pt-0">
             <Form.Group>
               <Form.Label>{t('casos.newParentSuite')}</Form.Label>
@@ -322,24 +350,24 @@ export function SuiteAndComponentModals({
             </Form.Group>
           </Modal.Body>
           <Modal.Footer className="border-0 pt-0">
-            <Button variant="secondary" onClick={resetMoveSuiteModal}>
+            <Button variant="secondary" disabled={suiteMoving} onClick={resetMoveSuiteModal}>
               {t('common.cancel')}
             </Button>
-            <Button variant="primary" type="submit">
-              {t('common.move')}
+            <Button variant="primary" type="submit" disabled={suiteMoving} aria-busy={suiteMoving}>
+              {suiteMoving ? <><span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />{t('common.loading')}</> : t('common.move')}
             </Button>
           </Modal.Footer>
         </Form>
       </Modal>
 
-      <Modal show={showComponentModal} onHide={() => setShowComponentModal(false)} centered backdrop="static" dialogClassName="component-edit-modal">
-        <Modal.Header closeButton className="bg-light border-bottom text-dark">
+      <Modal show={showComponentModal} onHide={() => { if (!componentSaving) setShowComponentModal(false) }} centered backdrop="static" dialogClassName="component-edit-modal">
+        <Modal.Header closeButton={!componentSaving} className="bg-light border-bottom text-dark">
           <Modal.Title className="fw-bold fs-5 text-dark d-flex align-items-center gap-2">
             <Layers size={20} className="text-primary" />
             {componentForm.id ? t('casos.editComponent') : t('casos.newComponent')}
           </Modal.Title>
         </Modal.Header>
-        <Form onSubmit={handleSaveComponentForm}>
+        <Form onSubmit={submitComponentForm}>
           <Modal.Body className="p-4 text-start">
             <Form.Group className="mb-3">
               <Form.Label className="x-small fw-bold text-muted"><RequiredLabel required>{t('casos.componentName')}</RequiredLabel></Form.Label>
@@ -385,9 +413,9 @@ export function SuiteAndComponentModals({
             </Form.Group>
           </Modal.Body>
           <Modal.Footer className="bg-light border-top-0 pt-0 px-4 pb-4 component-edit-modal-footer">
-            <Button variant="outline-secondary" onClick={() => setShowComponentModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('common.cancel')}</Button>
-            <Button variant="primary" type="submit" className="fw-bold shadow-sm rounded-pill px-4">
-              <Save size={16} className="me-2" /> {t('casos.saveComponent')}
+            <Button variant="outline-secondary" disabled={componentSaving} onClick={() => setShowComponentModal(false)} className="fw-bold shadow-none rounded-pill px-4">{t('common.cancel')}</Button>
+            <Button variant="primary" type="submit" disabled={componentSaving} aria-busy={componentSaving} className="fw-bold shadow-sm rounded-pill px-4">
+              {componentSaving ? <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" /> : <Save size={16} className="me-2" />} {componentSaving ? t('common.loading') : t('casos.saveComponent')}
             </Button>
           </Modal.Footer>
         </Form>

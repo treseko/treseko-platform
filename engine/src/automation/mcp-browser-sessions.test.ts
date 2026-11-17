@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { chromium } from 'playwright';
-import { assertPublicWebUrl, openMcpBrowserSession } from './mcp-browser-sessions.ts';
+import { assertPublicWebUrl, clearFocusedMcpBrowserText, openMcpBrowserSession } from './mcp-browser-sessions.ts';
+
+test('clear focused browser text selects and removes the current field value', async () => {
+  const keys: string[] = [];
+  const page = {
+    evaluate: async (callback: () => unknown) => callback.toString().includes('navigator.platform') ? 'Control' : true,
+    keyboard: { press: async (key: string) => { keys.push(key); } },
+  };
+  await clearFocusedMcpBrowserText(page as never);
+  assert.deepEqual(keys, ['Control+A', 'Backspace']);
+});
+
+test('clear focused browser text refuses to act when focus is not in an editable field', async () => {
+  const keys: string[] = [];
+  const page = {
+    evaluate: async (callback: () => unknown) => callback.toString().includes('navigator.platform') ? 'Control' : false,
+    keyboard: { press: async (key: string) => { keys.push(key); } },
+  };
+  await assert.rejects(clearFocusedMcpBrowserText(page as never), /campo de texto/);
+  assert.deepEqual(keys, []);
+});
 
 test('MCP browser rejects loopback, RFC1918, link-local and metadata addresses', async () => {
   for (const address of ['127.0.0.1', '10.1.2.3', '172.20.1.2', '192.168.1.2', '169.254.169.254', '[::1]', '[fd00::1]', '[fe80::1]', '[::ffff:7f00:1]', '[::ffff:10.1.2.3]', '[2002:7f00:1::1]', '[2001:db8::1]']) {

@@ -1,8 +1,8 @@
 import asyncio
 from html import escape
 
-from fastapi import APIRouter, Path
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Path, Query
+from fastapi.responses import HTMLResponse, Response
 
 from ...main_context import *
 from .report_rendering import *
@@ -25,6 +25,35 @@ from .reports_shared import (
 )
 
 router = APIRouter(tags=["reports"])
+
+
+@router.get("/reports/share/history", response_model=List[schemas.SharedReportBundleHistoryItem])
+async def read_shared_report_history(
+    request: Request,
+    response: Response,
+    proyecto_id: UUID = Query(...),
+    build_id: Optional[UUID] = Query(None),
+    componente_id: Optional[UUID] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    cursor: Optional[str] = Query(None, max_length=512),
+    db: AsyncSession = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.check_capability("reportes.compartir", "read")),
+    _premium_snapshots: None = Depends(require_feature("reports.snapshots")),
+):
+    await access_control.require_project_access(db, current_user, proyecto_id, "read")
+    try:
+        history_page = await crud.list_shared_report_bundle_history(db, proyecto_id, build_id, componente_id, limit, cursor)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="Cursor de historial inválido") from exc
+    if history_page.get("next_cursor"):
+        response.headers["X-Next-Cursor"] = history_page["next_cursor"]
+    items = []
+    for item in history_page["items"]:
+        snapshots = item.pop("snapshots", [])
+        links = {_snapshot_report_type(snapshot): _snapshot_url(snapshot, request) for snapshot in snapshots}
+        tokens = {_snapshot_report_type(snapshot): snapshot.token for snapshot in snapshots}
+        items.append({**item, "links": links, "tokens": tokens})
+    return items
 
 
 def _revoked_public_report_response(snapshot, branding: dict | None = None) -> HTMLResponse:

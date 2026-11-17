@@ -9,15 +9,27 @@ export function isInvalidRunnerTokenError(error){
   return code==='UNAUTHORIZED' || code==='HTTP_401' || /runner token invalido/i.test(message);
 }
 export function createRuntimeAvailabilityCache(require){
-  let installed,checkedAt=0;
-  return ()=>{
-    if(!installed || Date.now()-checkedAt>60000){
-      installed=probeRuntimeAvailability({require,python:getPythonCommand()});checkedAt=Date.now();
-      if(!supportsScriptIsolation() && process.env.QA_ALLOW_TRUSTED_NATIVE_SCRIPTS!=='1'){
-        for(const framework of installed.frameworks.filter(x=>x!=='treseko-api'))installed.unavailable[framework]='Docker isolation required for script execution';
-        installed={...installed,frameworks:installed.frameworks.filter(x=>x==='treseko-api'),browsers:[]};
-      }
+  let installed,checkedAt=0,pending;
+  const applyIsolationPolicy=(availability)=>{
+    if(!supportsScriptIsolation() && process.env.QA_ALLOW_TRUSTED_NATIVE_SCRIPTS!=='1'){
+      for(const framework of availability.frameworks.filter(x=>x!=='treseko-api'))availability.unavailable[framework]='Docker isolation required for script execution';
+      return {...availability,frameworks:availability.frameworks.filter(x=>x==='treseko-api'),browsers:[]};
     }
+    return availability;
+  };
+  const getAvailability=()=>{
+    if((!installed || Date.now()-checkedAt>60000) && !pending) void getAvailability.refresh().catch(()=>{});
     return installed;
   };
+  getAvailability.refresh=async()=>{
+    if(installed && Date.now()-checkedAt<=60000)return installed;
+    if(pending)return pending;
+    pending=(async()=>{
+      installed=applyIsolationPolicy(await probeRuntimeAvailability({require,python:getPythonCommand()}));
+      checkedAt=Date.now();
+      return installed;
+    })();
+    try{return await pending;}finally{pending=undefined;}
+  };
+  return getAvailability;
 }

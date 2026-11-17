@@ -11,12 +11,12 @@ import { executeApiWorkerJob } from "./native-api-runtime.mjs";
 export function createJobExecutor(deps) {
   const {
     RUNNER_NAME, ROOT_DIR, state,
-    playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource,
+    playwrightBrowserForJob, scriptFileForJob, preparePlaywrightTestSource, playwrightTestScriptLineOffset = () => 0,
     shouldRunHeadless, getPlaywrightCliPath, getPuppeteerExecutablePath, runCommand, parsePlaywrightJsonReport,
     summarizePlaywrightReport, compactPlaywrightMetadata, classifyPlaywrightFailure, withCorrelation,
     collectArtifacts, playwrightReportArtifact, getPlaywrightVersion, isDebugMode,
     processResultPayload, prepareNodeScriptSource, getPackageBinPath,
-    serializeJsonForSource, prepareSeleniumPythonSource, getPythonCommand,
+    serializeJsonForSource, prepareSeleniumPythonSource, preparedScriptLineOffset = () => 0, getPythonCommand,
     compileScript, normalizeDataset, normalizeStepResult, normalizeJobStatus,
     isAssertionLike, artifactFromBuffer, formatLogArg, formatErrorDetail,
     redact, replacePlaceholders, frameworkKey, languageKey, localWorkerSupports,
@@ -40,7 +40,8 @@ async function executePlaywrightTestJob(job, script, variables, started, signal)
       `    browserName: ${JSON.stringify(browserName)},`,
       `    headless: ${shouldRunHeadless(job) ? "true" : "false"},`,
       "    screenshot: 'only-on-failure',",
-      `    video: ${payload.record_video === false ? "'off'" : "'on'"}`,
+      `    video: ${payload.record_video === false ? "'off'" : "'on'"},`,
+      `    trace: ${payload.dry_run ? "'on'" : "'retain-on-failure'"}`,
       "  }",
       "};",
     ].join("\n"), "utf8");
@@ -97,6 +98,7 @@ async function executePlaywrightTestJob(job, script, variables, started, signal)
         browser: browserName,
         framework_version: getPlaywrightVersion(),
         script_format: "playwright_test",
+        script_line_offset: playwrightTestScriptLineOffset(script),
         playwright_report: report ? compactPlaywrightMetadata(report, summary?.tests || []) : null,
         headless: shouldRunHeadless(job),
         debug_mode: isDebugMode(job),
@@ -120,15 +122,17 @@ async function executePuppeteerJob(job, script, variables, started, signal) {
   const scriptPath = path.join(workspace, scriptFile);
   const timeoutMs = Math.max(1, Number(job.timeout_seconds || payload.timeout_seconds || 300)) * 1000;
   try {
-    fs.writeFileSync(scriptPath, prepareNodeScriptSource(script, variables, job, "puppeteer"), "utf8");
+    const preparedSource = prepareNodeScriptSource(script, variables, job, "puppeteer");
+    fs.writeFileSync(scriptPath, preparedSource, "utf8");
     const tsxCli = getPackageBinPath("tsx", "dist/cli.mjs");
+    const puppeteerExecutablePath = await getPuppeteerExecutablePath?.() || process.env.PUPPETEER_EXECUTABLE_PATH;
     const result = await runCommand(process.execPath, [tsxCli, scriptPath], {
       cwd: workspace,
       timeoutMs, signal,
       env: {
         ...process.env,
         NODE_PATH: path.join(ROOT_DIR, "node_modules"),
-        PUPPETEER_EXECUTABLE_PATH: getPuppeteerExecutablePath?.() || process.env.PUPPETEER_EXECUTABLE_PATH,
+        PUPPETEER_EXECUTABLE_PATH: puppeteerExecutablePath,
         QA_WORKER_JOB_ID: job.id,
         QA_WORKER_DRY_RUN: payload.dry_run ? "true" : "false",
         QA_HEADLESS: shouldRunHeadless(job) ? "true" : "false",
@@ -142,7 +146,7 @@ async function executePuppeteerJob(job, script, variables, started, signal) {
       result,
       successObservation: "Puppeteer finalizo correctamente.",
       failureObservation: "Puppeteer finalizo con errores.",
-      metadata: { script_format: "node_script" },
+      metadata: { script_format: "node_script", script_line_offset: preparedScriptLineOffset(preparedSource, script) },
       artifacts: collectArtifacts(workspace,{workerWorkspace:true}),
     });
   } finally {
@@ -215,7 +219,8 @@ async function executeSeleniumPythonJob(job, script, variables, started, signal)
   const scriptPath = path.join(workspace, "job.py");
   const timeoutMs = Math.max(1, Number(job.timeout_seconds || payload.timeout_seconds || 300)) * 1000;
   try {
-    fs.writeFileSync(scriptPath, prepareSeleniumPythonSource(script, variables, job), "utf8");
+    const preparedSource = prepareSeleniumPythonSource(script, variables, job);
+    fs.writeFileSync(scriptPath, preparedSource, "utf8");
     const result = await runCommand(getPythonCommand(), [scriptPath], {
       cwd: workspace,
       timeoutMs, signal,
@@ -236,6 +241,7 @@ async function executeSeleniumPythonJob(job, script, variables, started, signal)
       failureObservation: "Selenium Python finalizo con errores.",
       metadata: {
         script_format: "python_script",
+        script_line_offset: preparedScriptLineOffset(preparedSource, script),
         language: "python",
         python_bin: getPythonCommand(),
       },

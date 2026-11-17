@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Card, Col, Row, Table } from 'react-bootstrap'
 import { Activity, CheckCircle2, Cpu, HardDrive, RefreshCw, Server, ShieldOff, XCircle } from 'lucide-react'
 import { useI18n } from '../../../i18n'
 import { isValidUUID } from '../../../app/validation'
+import { readBackendError } from '../../../app/errorMessages'
 import { formatDateTime } from '../../../shared/utils/dateTime'
 import { languageLabel } from '../../casos/caseUtils'
 import {
@@ -76,7 +77,7 @@ export function WorkersManager({
     if (!silent) setLoading(true)
     try {
       const response = await fetchWithAuth('/api/automation-runners/')
-      if (!response.ok) throw new Error(await response.text())
+      if (!response.ok) throw new Error(await readBackendError(response, t('automatizacion.loadWorkersError')))
       setRunners(await response.json())
     } catch (error: any) {
       showFeedback(t('automatizacion.loadWorkersErrorTitle'), error?.message || t('automatizacion.loadWorkersError'), 'danger')
@@ -101,7 +102,7 @@ export function WorkersManager({
       // A project/component switch can finish while this request is in flight.
       // Do not let the old response or its error overwrite the new context.
       if (jobsContextRef.current !== requestContextKey) return
-      if (!response.ok) throw new Error(await response.text())
+      if (!response.ok) throw new Error(await readBackendError(response, t('automatizacion.loadJobsError')))
       const nextJobs = await response.json()
       if (jobsContextRef.current !== requestContextKey) return
       setJobs(nextJobs)
@@ -123,7 +124,7 @@ export function WorkersManager({
     if (!canPairWorkers) return
     try {
       const response = await fetchWithAuth('/api/automation-runners/pairing-requests/')
-      if (!response.ok) throw new Error(await response.text())
+      if (!response.ok) throw new Error(await readBackendError(response, t('automatizacion.loadPairingRequestsError')))
       setPairingRequests(await response.json())
     } catch (error: any) {
       showFeedback(t('automatizacion.loadPairingRequestsErrorTitle'), error?.message || t('automatizacion.loadPairingRequestsError'), 'danger')

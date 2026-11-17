@@ -1,7 +1,7 @@
 {
   "name": "treseko-automation-worker",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD) { console.log('Skipping Playwright browser install'); process.exit(0) } process.exit(1)\" || playwright install chromium",
@@ -17,7 +17,7 @@
     "playwright": "^1.60.0",
     "postman-collection": "^5.1.0",
     "postman-runtime": "^7.56.1",
-    "puppeteer": "^23.11.1",
+    "puppeteer": "^25.16.0",
     "tsx": "^4.19.2",
     "yauzl": "^2.10.0",
     "extract-zip": "file:vendor/extract-zip",
@@ -26,7 +26,7 @@
   },
   "overrides": {
     "extract-zip": "$extract-zip",
-    "qs": "6.16.0",
+    "qs": "6.17.1",
     "basic-ftp": "6.2.1",
     "uuid": "11.1.1",
     "handlebars": "4.7.10",

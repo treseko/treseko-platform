@@ -15,7 +15,7 @@ técnicas de menor alcance y nunca pegues tokens en casos o evidencia.
 
 ## plugin-runner
 
-El perfil `plugins` agrega el Plugin Runner aislado. En Community 1.0.7 solo acepta la
+El perfil `plugins` agrega el Plugin Runner aislado. En Community 1.0.8 solo acepta la
 invocación declarativa `junit_xml.import_results`; no ejecuta código arbitrario,
 WASM ni plugins de terceros. Se mantiene en una red dedicada, sin DB, Redis,
 secretos ni socket Docker.

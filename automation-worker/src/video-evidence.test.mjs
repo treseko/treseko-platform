@@ -7,13 +7,14 @@ import path from 'node:path';
 import { createJobExecutor } from './job-executor.mjs';
 import { createArtifactRuntime } from './artifact-runtime.mjs';
 import { createScriptRuntime } from './script-runtime.mjs';
+import { confirmJobWorkspaces } from './workspace-retention.mjs';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parsePlaywrightJsonReport, compactPlaywrightMetadata } from './worker.mjs';
 
 const require=createRequire(import.meta.url);
 const processRuntime=createScriptRuntime({require,path,spawn,process,capabilities:()=>({})});
-const artifacts = createArtifactRuntime({fs,path,ARTIFACT_MAX_BYTES:10*1024*1024,ARTIFACT_EXTENSIONS:new Set(['.webm','.png'])});
+const artifacts = createArtifactRuntime({fs,path,ARTIFACT_MAX_BYTES:10*1024*1024,ARTIFACT_EXTENSIONS:new Set(['.webm','.png','.zip'])});
 const execute = createJobExecutor({
  RUNNER_NAME:'Video validation', runCommand:processRuntime.runCommand,
  playwrightBrowserForJob:()=> 'chromium', shouldRunHeadless:()=>true,
@@ -60,4 +61,32 @@ for (const record_video of [true,false]) test(`real Playwright Test video record
  const result=await runner({id:'playwright-video-check',timeout_seconds:15,payload_congelado:{script:'controlled',script_format:'playwright_test',record_video}});
  assert.equal(result.status,'PASSED',result.error_message);
  assert.equal(result.artifacts.filter(item=>item.content_type==='video/webm').length,record_video?1:0);
+});
+
+test('real Playwright Test dry-run preserves an interactive trace archive',async()=>{
+ const jobId='playwright-trace-validation';
+ const runner=createJobExecutor({
+  RUNNER_NAME:'Trace validation', normalizeDataset:()=>({}), playwrightBrowserForJob:()=> 'chromium', shouldRunHeadless:()=>true,
+  scriptFileForJob:()=> 'job.spec.js',
+  preparePlaywrightTestSource:()=> `const {test,expect}=require(${JSON.stringify(require.resolve('playwright/test'))});test('trace actions',async({page})=>{await page.setContent('<button>Continue</button><p>Waiting</p>');await page.getByRole('button',{name:'Continue'}).click();await expect(page.locator('p')).toHaveText('Waiting');});`,
+  getPlaywrightCliPath:()=> path.join(path.dirname(require.resolve('playwright/package.json')),'cli.js'),
+  runCommand:(command,args,options)=>new Promise((resolve,reject)=>{
+   const child=spawn(command,args,{cwd:options.cwd,env:options.env});let stdout='',stderr='';
+   child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);
+   child.once('error',reject);child.once('close',code=>resolve({code,stdout,stderr}));
+  }),
+  parsePlaywrightJsonReport, summarizePlaywrightReport:()=>({text:'Controlled Playwright Test trace',tests:[]}),compactPlaywrightMetadata,
+  classifyPlaywrightFailure:()=> 'ERROR',withCorrelation:value=>value,collectArtifacts:artifacts.collectArtifacts,
+  playwrightReportArtifact:()=>null,getPlaywrightVersion:()=> 'test',isDebugMode:()=>false,redact:value=>value,
+  replacePlaceholders:value=>value,frameworkKey:()=> 'playwright',languageKey:()=> 'javascript',localWorkerSupports:()=>true,
+  detectScriptFormat:()=> 'playwright_test',setActiveCorrelationId:()=>{},
+ });
+ try{
+  const result=await runner({id:jobId,timeout_seconds:30,payload_congelado:{script:'controlled',script_format:'playwright_test',dry_run:true,record_video:false}});
+  assert.equal(result.status,'PASSED',result.error_message);
+  const traces=result.artifacts.filter(item=>item.type==='trace');
+  assert.equal(traces.length,1);
+  assert.equal(traces[0].content_type,'application/zip');
+  assert.equal(Buffer.from(traces[0].base64,'base64').subarray(0,4).toString('hex'),'504b0304');
+ }finally{confirmJobWorkspaces(jobId);}
 });

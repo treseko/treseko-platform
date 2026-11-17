@@ -36,7 +36,7 @@ no safe load executor is available.
 
 A conversational case is not automatically an AI execution. Likewise, an API case does not need a different worker: when automated, it uses the existing Automation Worker with the `treseko-api/declarative` capability.
 
-## Community 1.0.7 operational matrix (candidate)
+## Community 1.0.8 operational matrix
 
 | Combination | Public scope |
 |---|---|

@@ -90,6 +90,17 @@ def _capability_languages_for_framework(capabilities: Dict[str, Any], framework:
 
 def _runner_supports_job(runner: models.AutomationRunner, job: models.AutomationJob) -> bool:
     capabilities = runner.capabilities or {}
+    if job.job_type == "PLAYWRIGHT_RECORDING":
+        # Recording uses Playwright Codegen to open the explicitly selected
+        # environment and capture user actions. It does not execute the
+        # resulting script, so it must remain available when the worker's
+        # general script runtimes are hidden by the native-script isolation
+        # policy. The worker advertises this opt-in only when Chromium is
+        # installed and a headed desktop session is available.
+        return (
+            capabilities.get("interactive_playwright_recorder") is True
+            and _job_required_language(job) == "javascript"
+        )
     framework = _normalize_framework(job.required_framework)
     frameworks = capabilities.get("frameworks") or capabilities.get("framework") or capabilities.get("supported_frameworks")
     if isinstance(frameworks, str):

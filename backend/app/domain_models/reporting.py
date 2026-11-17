@@ -9,6 +9,15 @@ from ..database import Base
 from ..time_utils import UTCDateTime
 from .enums import *
 
+class SharedReportPayload(Base):
+    """Single immutable evidence payload shared by the three report views."""
+    __tablename__ = "shared_report_payloads"
+
+    snapshot_group_id = Column(String(80), primary_key=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(UTCDateTime(), server_default=func.now())
+
+
 class SharedReportSnapshot(Base):
     __tablename__ = "shared_report_snapshots"
 
@@ -17,6 +26,10 @@ class SharedReportSnapshot(Base):
     proyecto_id = Column(UUID(as_uuid=True), ForeignKey("proyectos.id", ondelete="CASCADE"), nullable=False, index=True)
     build_id = Column(UUID(as_uuid=True), ForeignKey("builds.id", ondelete="SET NULL"), nullable=True, index=True)
     componente_id = Column(UUID(as_uuid=True), ForeignKey("componentes.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Indexed report identity avoids parsing the large immutable payload during history lookups.
+    snapshot_group_id = Column(String(80), nullable=True, index=True)
+    report_type = Column(String(24), nullable=True)
+    history_metadata = Column(JSON, nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text)
     payload = Column(JSON, default=dict, nullable=False)
@@ -28,6 +41,12 @@ class SharedReportSnapshot(Base):
     activo = Column(Boolean, default=True, nullable=False)
     revoked_at = Column(UTCDateTime(), nullable=True)
     revoked_by = Column(UUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_shared_report_scope_created", "proyecto_id", "build_id", "componente_id", "created_at"),
+        Index("ix_shared_report_group_scope", "proyecto_id", "snapshot_group_id"),
+        Index("ix_shared_report_scope_latest_type", "proyecto_id", "build_id", "componente_id", "report_type", "created_at"),
+    )
 
     proyecto = relationship("Proyecto")
     build = relationship("Build")

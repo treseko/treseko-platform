@@ -35,6 +35,20 @@ async def open_web_session(db, user, project, args):
     return await _call("open", user, project, {"url": args["url"]})
 
 
+async def open_recording_session(user, project, url):
+    return await _call("record-open", user, project, {"url": url})
+
+
+async def recording_session_action(user, project, browser_id, action=None):
+    if action is None:
+        return await _call("inspect", user, project, {"browser_id": browser_id})
+    return await _call("act", user, project, {"browser_id": browser_id, **action})
+
+
+async def close_recording_session(user, project, browser_id):
+    return await _call("close", user, project, {"browser_id": browser_id})
+
+
 async def inspect_web_session(db, user, project, args):
     del db
     return await _call("inspect", user, project, {"browser_id": args["browser_id"]})

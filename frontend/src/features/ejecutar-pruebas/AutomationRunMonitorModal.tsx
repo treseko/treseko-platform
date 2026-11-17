@@ -1,5 +1,5 @@
 import {downloadCompleteEvidence} from './downloadCompleteEvidence'
-import { FAILED_STATUSES, INFRA_STATUSES, statusVariant, statusLabel, failureCategoryLabel, friendlyStepDiagnosis, elapsedLabel } from './automationMonitorPresentation'
+import { FAILED_STATUSES, INFRA_STATUSES, statusVariant, statusLabel, failureCategoryLabel, friendlyStepDiagnosis, elapsedLabel, automationFailurePresentation } from './automationMonitorPresentation'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Modal, ProgressBar, Spinner, Table } from 'react-bootstrap'
 import { Activity, Clock, Download, ExternalLink, ServerCog } from 'lucide-react'
@@ -8,6 +8,9 @@ import { API_BASE } from '../../app/constants'
 import { formatTime } from '../../shared/utils/dateTime'
 import { languageLabel } from '../casos/caseUtils'
 import { AutomationArtifactModal } from './AutomationArtifactModal'
+import { PlaywrightTraceArtifact } from './PlaywrightTraceArtifact'
+import { PlaywrightTraceViewerModal } from './PlaywrightTraceViewerModal'
+import { ScriptFailureSummary } from './ScriptFailureSummary'
 import { RecordingEvidence } from '../motor-ia/RecordingEvidence'
 type MonitorJob = {
   jobId?: string
@@ -53,6 +56,7 @@ export function AutomationRunMonitorModal({
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
   const [selectedArtifact, setSelectedArtifact] = useState<{ href: string; label: string; filename?: string; contentType?: string } | null>(null)
+  const [selectedTrace, setSelectedTrace] = useState<{ blob: Blob; filename: string } | null>(null)
   const [aiLive, setAiLive] = useState<any>({ status: 'RUNNING', steps: [], artifacts: [], timeline: [], resolvedContext: [], provider: '-', model: '-', observations: '' })
   const settledNotificationKeyRef = useRef('')
   const isDryRun = mode === 'dry-run'
@@ -66,6 +70,7 @@ export function AutomationRunMonitorModal({
     setLastRefresh(null)
     setExpandedJobId(null)
     setSelectedArtifact(null)
+    setSelectedTrace(null)
     setDownloadError(null)
     setAiLive({ status: 'RUNNING', steps: [], artifacts: [], timeline: [], resolvedContext: [], provider: '-', model: '-', observations: '' })
   }, [jobIdsKey, run?.id, run?.nombre])
@@ -242,7 +247,7 @@ export function AutomationRunMonitorModal({
         {t('ejecutarPruebas.automatedProgress', { completed, total })}
       </button>
     )}
-    <Modal show={show && !selectedArtifact} onHide={onHide} centered size="xl" backdrop="static">
+    <Modal show={show && !selectedArtifact && !selectedTrace} onHide={onHide} centered size="xl" backdrop="static">
       <Modal.Header closeButton closeLabel={t('ejecutarPruebas.closeModal')} className="border-0 pb-0">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <Activity size={22} className="text-primary" />
@@ -296,6 +301,7 @@ export function AutomationRunMonitorModal({
                 const hasLog = Boolean(row.error || row.detail?.logs || row.log || row.observations || Object.keys(row.aiReport || {}).length || steps.length || artifacts.length || isAiDryRun)
                 const resultDetail = row.log || row.error || row.observations || (Object.keys(row.aiReport || {}).length ? JSON.stringify(row.aiReport, null, 2) : '') || t('ejecutarPruebas.noAiDetail')
                 const scriptFormat = row.detail?.metadata_resultado?.script_format || row.detail?.payload_congelado?.script_format
+                const failurePresentation = automationFailurePresentation(row, resultDetail, API_BASE)
                 const responseLabel = isAiDryRun
                   ? t('ejecutarPruebas.aiResult')
                   : scriptFormat === 'playwright_test'
@@ -353,6 +359,7 @@ export function AutomationRunMonitorModal({
                             </Alert>
                           )}
                           {row.error && <Alert variant="danger" className="small mb-2">{row.error}</Alert>}
+                          <ScriptFailureSummary failure={failurePresentation.failure} video={failurePresentation.video} onViewVideo={video => setSelectedArtifact({ ...video, label: t('ejecutarPruebas.executionVideo') })} t={t} />
                           {row.detail?.metadata_resultado?.complete_evidence_url && (
                             <Button variant="outline-secondary" size="sm" className="mb-2" disabled={downloadingJob === row.detail.id}
                               onClick={async () => {
@@ -391,25 +398,40 @@ export function AutomationRunMonitorModal({
                                         : ''
                                   if (!href) return null
                                   const label = `${artifact.type || t('ejecutarPruebas.evidenceItem')}${artifact.step_number ? ` ${t('ejecutarPruebas.stepSuffix', { step: artifact.step_number })}` : ''}`
+                                  const isPlaywrightTrace = artifact.type === 'trace'
+                                    || (artifact.content_type === 'application/zip' && /^trace(?:[-_.]|$)/i.test(String(artifact.filename || '')))
                                   return (
                                     <div key={`${rowKey}-artifact-${artifact.id || index}`} className="border rounded-3 p-2 bg-light" style={{ width: 190 }}>
                                       {String(artifact.content_type || '').startsWith('image/') && (
                                         <img src={href} alt={label} className="d-block w-100 rounded-2 mb-2" style={{ height: 100, objectFit: 'contain', background: '#fff' }} />
                                       )}
                                       <div className="small fw-semibold text-truncate mb-2" title={artifact.filename || label}>{artifact.filename || label}</div>
-                                      <div className="d-flex gap-1">
-                    <Button
-                      variant="outline-primary"
-                      size="sm"
-                      className="x-small flex-grow-1"
-                      onClick={() => setSelectedArtifact({ href, label, filename: artifact.filename || label, contentType: artifact.content_type })}
-                    >
-                      {t('ejecutarPruebas.view')}
-                    </Button>
-                                        <a href={href} download={artifact.filename || `${t('ejecutarPruebas.evidenceItem')}-${index + 1}`}                       className="btn btn-outline-secondary btn-sm x-small" title={t('ejecutarPruebas.download')} aria-label={t('ejecutarPruebas.download')}>
+                                      {isPlaywrightTrace ? <PlaywrightTraceArtifact
+                                        artifact={artifact}
+                                        href={href}
+                                        t={t}
+                                        fetchWithAuth={fetchWithAuth}
+                                        onOpen={setSelectedTrace}
+                                        onError={setDownloadError}
+                                      /> : <div className="d-flex gap-1">
+                                        <Button
+                                          variant="outline-primary"
+                                          size="sm"
+                                          className="x-small flex-grow-1"
+                                          onClick={() => setSelectedArtifact({ href, label, filename: artifact.filename || label, contentType: artifact.content_type })}
+                                        >
+                                          {t('ejecutarPruebas.view')}
+                                        </Button>
+                                        <a
+                                          href={href}
+                                          download={artifact.filename || `${t('ejecutarPruebas.evidenceItem')}-${index + 1}`}
+                                          className="btn btn-outline-secondary btn-sm x-small"
+                                          title={t('ejecutarPruebas.download')}
+                                          aria-label={t('ejecutarPruebas.download')}
+                                        >
                                           <Download size={13} aria-hidden="true" />
                                         </a>
-                                      </div>
+                                      </div>}
                                     </div>
                                   )
                                 })}
@@ -487,6 +509,7 @@ export function AutomationRunMonitorModal({
       </Modal.Footer>
     </Modal>
     <AutomationArtifactModal options={{ show, selectedArtifact, setSelectedArtifact, t }} />
+    <PlaywrightTraceViewerModal show={show} trace={selectedTrace} onHide={() => setSelectedTrace(null)} t={t} />
     </>
   )
 }

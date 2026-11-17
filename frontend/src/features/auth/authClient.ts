@@ -130,13 +130,17 @@ export function createAuthClient({
     { status: 503, headers: { 'Content-Type': 'application/json' } }
   )
 
-  const clearBackendSession = (message = t('auth.sessionExpired')) => {
+  const clearBackendSession = (message = t('auth.sessionExpired'), expectedToken?: string) => {
+    // An in-flight request from an older session must not erase a token that
+    // was issued by a login completed while that request was still running.
+    if (expectedToken && localStorage.getItem('qa_access_token') !== expectedToken) return false
     setLoginError(message)
     setIsAuthenticated(false)
     localStorage.removeItem('qa_session_active')
     localStorage.removeItem('qa_session_user')
     localStorage.removeItem('qa_access_token')
     localStorage.removeItem('qa_session_expires_at')
+    return true
   }
 
   const authHeaders = async () => {
@@ -151,7 +155,7 @@ export function createAuthClient({
   }
 
   const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-    let token = getStoredAccessToken()
+    const token = getStoredAccessToken()
     if (!token) {
       if (hasValidStoredSession()) {
         return responseTemporaryAuthUnavailable()
@@ -159,22 +163,31 @@ export function createAuthClient({
       clearBackendSession(t('auth.sessionExpired'))
       return responseWithoutToken()
     }
-    const mergedOptions = {
+    const requestWithToken = (requestToken: string) => fetch(url, {
       ...options,
-      headers: withAuthHeaders(token, options)
+      headers: withAuthHeaders(requestToken, options)
+    })
+
+    let response = await requestWithToken(token)
+    if (response.status !== 401) return response
+
+    const currentToken = localStorage.getItem('qa_access_token')
+    if (currentToken !== token) {
+      // A login may have completed while the old request was in flight. Retry
+      // once with that new session instead of logging it out with a stale 401.
+      if (!currentToken) return response
+      if (isJwtExpired(currentToken)) {
+        clearBackendSession(t('auth.sessionExpired'), currentToken)
+        return response
+      }
+      response = await requestWithToken(currentToken)
+      if (response.status === 401 && localStorage.getItem('qa_access_token') === currentToken) {
+        clearBackendSession(t('auth.sessionExpired'), currentToken)
+      }
+      return response
     }
 
-    let response = await fetch(url, mergedOptions)
-
-    if (response.status === 401) {
-      setLoginError('Sesión expirada. Por favor, inicia sesión nuevamente.')
-      setIsAuthenticated(false)
-      localStorage.removeItem('qa_session_active')
-      localStorage.removeItem('qa_session_user')
-      localStorage.removeItem('qa_access_token')
-      localStorage.removeItem('qa_session_expires_at')
-    }
-
+    clearBackendSession(t('auth.sessionExpired'), token)
     return response
   }
 
@@ -201,11 +214,13 @@ export function createAuthClient({
       const response = await fetch(`${API_BASE}/users/me/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
-      if (response.status === 401 || response.status === 403) {
-        clearBackendSession()
+      if (response.status === 401) {
+        clearBackendSession(t('auth.sessionExpired'), token)
         return
       }
       if (response.ok) {
+        // Do not hydrate user data returned for a token replaced mid-request.
+        if (localStorage.getItem('qa_access_token') !== token) return
         persistSession(mapBackendUserToSession(await response.json()))
       }
     } catch {

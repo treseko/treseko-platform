@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createArtifactRuntime} from './artifact-runtime.mjs';
-const runtime=createArtifactRuntime({fs,path,ARTIFACT_EXTENSIONS:new Set(['.json','.txt','.png'])});
+const runtime=createArtifactRuntime({fs,path,ARTIFACT_EXTENSIONS:new Set(['.json','.txt','.png','.zip'])});
 test('worker-owned runtime files are excluded while user evidence names are preserved',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'treseko-artifact-contract-'));
  try{
@@ -19,6 +19,18 @@ test('worker-owned runtime files are excluded while user evidence names are pres
   assert.equal(artifacts.find(x=>x.filename==='package.json').base64,Buffer.from('user business payload').toString('base64'));
   assert.equal(artifacts.find(x=>x.filename==='pkcs11.txt').base64,Buffer.from('user test evidence').toString('base64'));
   assert.equal(runtime.collectArtifacts(root).length,5,'generic collection has no reserved worker exclusions');
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('Playwright trace archives are exposed as trace evidence',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'treseko-trace-artifact-'));
+ try{
+  fs.mkdirSync(path.join(root,'test-results','case-1'),{recursive:true});
+  fs.writeFileSync(path.join(root,'test-results','case-1','trace.zip'),Buffer.from('PK\x03\x04trace'));
+  const [trace]=runtime.collectArtifacts(root,{workerWorkspace:true});
+  assert.equal(trace.type,'trace');
+  assert.equal(trace.filename,'trace.zip');
+  assert.equal(trace.content_type,'application/zip');
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 

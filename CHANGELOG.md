@@ -1,3 +1,21 @@
+# Treseko 1.0.8
+
+## Mejoras
+
+- El seguimiento de ejecuciones automatizadas presenta el resultado y permite consultar los detalles del fallo y su ubicación en el script.
+- Las ejecuciones Playwright pueden conservar una traza para revisar las acciones y el contexto del error.
+- Para los formatos compatibles, los errores se ubican respecto del script original y no solo del archivo temporal generado.
+- Actualizaciones: la pantalla detecta instalaciones sin coordinador atómico y bloquea la aplicación insegura desde la app; indica usar el instalador de actualización en el equipo host.
+
+## Nueva funcionalidad
+
+- El monitor permite abrir la traza Playwright cuando la ejecución incluye ese artefacto.
+- El editor recibe recorridos grabados desde la extensión Treseko Flow para revisarlos y guardarlos como casos.
+
+## Correcciones
+
+- Se muestran con mayor claridad los errores del worker y la evidencia disponible para diagnosticar una ejecución fallida.
+
 # Treseko 1.0.7
 
 ## Integridad y actualización segura

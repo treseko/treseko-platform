@@ -1,7 +1,7 @@
 {
   "name": "treseko-frontend",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,11 @@
     "recharts": "^3.8.1"
   },
   "overrides": {
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.1"
+    },
+    "monaco-editor": "0.57.0",
     "react-draggable": "4.5.0",
     "brace-expansion@^1.1.7": "1.1.21",
     "brace-expansion@^5.0.5": "5.0.12",

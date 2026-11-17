@@ -476,4 +476,5 @@ export default {
   importGuideCsvFieldId: 'Identificador único del caso de prueba.', importGuideCsvFieldPriority: 'HIGH, MEDIUM o LOW.', importGuideCsvFieldSeverity: 'CRITICAL, HIGH, MEDIUM o LOW.', importGuideCsvFieldType: 'MANUAL o AUTOMATED.', importGuideCsvFieldStatus: 'ACTIVE o ARCHIVED.',
   apiKeyLifecycleHint: 'Pause uma chave para mantê-la e reativá-la depois. Revogar é permanente.', apiKeyPaused: 'API key pausada', apiKeyResumed: 'API key ativada', updateApiKeyStateError: 'Não foi possível alterar o estado da API key.', pauseApiKeys: 'Pausar API keys', pauseApiKeysMessage: 'As API keys ativas serão pausadas e poderão ser reativadas.', pauseKeys: 'Pausar chaves',
   atomicUpdateRequiresInstaller: 'O coordenador de atualização atômica não está ativo nesta instalação. Use o instalador da versão de destino no computador host.',
+  updateRequiresInstaller: 'Migração do instalador necessária',
 } as const

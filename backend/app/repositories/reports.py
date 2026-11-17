@@ -7,6 +7,8 @@ reexport_modules(globals(), [
     "app.repositories.shared_report_payloads",
     "app.repositories.shared_reports_bugs_helpers",
     "app.repositories.shared_report_operations",
+    "app.repositories.shared_report_freshness",
+    "app.repositories.shared_report_history",
     "app.repositories.quality_intelligence",
     "app.repositories.release_risk_evaluations",
 ])

@@ -36,7 +36,7 @@ Un caso conversacional no es automáticamente una ejecución con IA. Del mismo
 modo, un caso API no necesita un worker diferente: cuando es automatizado usa
 el Automation Worker existente con la capacidad `treseko-api/declarative`.
 
-## Matriz operativa de Community 1.0.7 (candidata)
+## Matriz operativa de Community 1.0.8
 
 | Combinación | Alcance público |
 |---|---|
