@@ -42,12 +42,16 @@ worker. The database schema is prepared during installation. Compose declares a
 `plugins` profile, but this installation neither starts it nor offers it as a
 component.
 
-New installations are limited to this computer by default (`127.0.0.1`). The
-installer can enable access from the local network; in that mode, other devices
-connect through the host's local IP address and selected port. Do not publish
-the port directly to the Internet: use a VPN or HTTPS proxy and configure the
+New installations listen on all interfaces (`0.0.0.0`) so other devices can
+connect through the host's IP address and selected port. Use
+`--bind-address 127.0.0.1` to limit access to this computer. Do not publish the
+port directly to the Internet: use a VPN or HTTPS proxy and configure the
 firewall. Updates preserve the network access configured for the existing
 installation.
+
+Compose uses `TRESEKO_BIND_ADDRESS` to apply this choice. Its default is
+`0.0.0.0`; set it to `127.0.0.1` if Treseko should only be accessible from the
+host itself.
 
 ```bash
 scripts/install_local_treseko.sh --http-port 9095

@@ -10,7 +10,7 @@ Uso:
 
 Opciones:
   --http-port PUERTO   Puerto del frontend. Default: 9095
-  --bind-address IP    127.0.0.1 (solo este equipo) o 0.0.0.0 (red). Default: 127.0.0.1
+  --bind-address IP    127.0.0.1 (solo este equipo) o 0.0.0.0 (red). Default: 0.0.0.0
   --with-demo          Carga datos demo despues de crear el admin.
   --update             Actualiza una instalacion existente sin regenerar nada.
   --install-root RUTA  Reutiliza config/secretos de una instalacion ya existente.
@@ -28,7 +28,7 @@ USAGE
 }
 
 HTTP_PORT="9095"
-BIND_ADDRESS="127.0.0.1"
+BIND_ADDRESS="0.0.0.0"
 WITH_DEMO="false"
 RESET="false"
 UPDATE="false"

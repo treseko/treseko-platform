@@ -1,6 +1,6 @@
 param(
   [ValidateRange(1, 65535)][int]$HttpPort = 9095,
-  [ValidateSet("127.0.0.1", "0.0.0.0")][string]$BindAddress = "127.0.0.1",
+  [ValidateSet("127.0.0.1", "0.0.0.0")][string]$BindAddress = "0.0.0.0",
   [switch]$WithDemo,
   [switch]$Update,
   [switch]$Uninstall,

@@ -15,6 +15,7 @@
 ## Fixes
 
 - Worker errors and available evidence are presented more clearly when diagnosing a failed run.
+- Installation: the frontend binds to all interfaces (`0.0.0.0`) by default; configure the bind address as `127.0.0.1` to restrict access to the host.
 
 # Treseko 1.0.7
 

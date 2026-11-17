@@ -40,12 +40,16 @@ Community admite un worker. Durante la instalación también se prepara la
 estructura de la base de datos. El Compose declara un perfil `plugins`, pero
 esta instalación no lo inicia ni lo ofrece como componente.
 
-En instalaciones nuevas, el acceso queda limitado a esta computadora por
-defecto (`127.0.0.1`). El instalador permite habilitar el acceso desde la red
-local; en ese modo, otros equipos usan la IP local del host y el puerto elegido.
-No publiques el puerto directamente en Internet: usa una VPN o un proxy HTTPS
-y configura el firewall. Las actualizaciones conservan el acceso de red
-configurado en la instalación existente.
+En instalaciones nuevas, el frontend escucha en todas las interfaces
+(`0.0.0.0`) para que otros equipos puedan acceder mediante la IP del host y el
+puerto elegido. Usa `--bind-address 127.0.0.1` para limitar el acceso a esta
+computadora. No publiques el puerto directamente en Internet: usa una VPN o un
+proxy HTTPS y configura el firewall. Las actualizaciones conservan el acceso de
+red configurado en la instalación existente.
+
+El Compose usa `TRESEKO_BIND_ADDRESS` para aplicar esa elección. Su valor
+predeterminado es `0.0.0.0`; configúralo como `127.0.0.1` si Treseko solo debe
+ser accesible desde el propio equipo.
 
 ```bash
 scripts/install_local_treseko.sh --http-port 9095

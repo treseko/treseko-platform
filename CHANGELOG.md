@@ -15,6 +15,7 @@
 ## Correcciones
 
 - Se muestran con mayor claridad los errores del worker y la evidencia disponible para diagnosticar una ejecución fallida.
+- Instalación: el frontend se publica en todas las interfaces (`0.0.0.0`) por defecto; se puede limitar a `127.0.0.1` mediante la configuración de enlace.
 
 # Treseko 1.0.7
 
