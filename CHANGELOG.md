@@ -1,21 +1,43 @@
 # Treseko 1.0.8
 
-## Mejoras
+## Engine y actualizaciones remotas
 
-- El seguimiento de ejecuciones automatizadas presenta el resultado y permite consultar los detalles del fallo y su ubicación en el script.
-- Las ejecuciones Playwright pueden conservar una traza para revisar las acciones y el contexto del error.
-- Para los formatos compatibles, los errores se ubican respecto del script original y no solo del archivo temporal generado.
-- Actualizaciones: la pantalla detecta instalaciones sin coordinador atómico y bloquea la aplicación insegura desde la app; indica usar el instalador de actualización en el equipo host.
+- El paquete de actualización firmado incluye el agente de actualización del Engine y la API de entrega del backend. También incorpora herramientas de preparación inicial para instalaciones compatibles de Engine y Worker en Linux con systemd o Docker local; cada host remoto requiere su propia primera aplicación.
+- Corrige la ruta que usa el Engine para consultar y descargar su actualización desde el backend.
+- Incluye en el paquete Engine el módulo de trazas requerido para iniciar la nueva versión.
 
-## Nueva funcionalidad
 
-- El monitor permite abrir la traza Playwright cuando la ejecución incluye ese artefacto.
-- El editor recibe recorridos grabados desde la extensión Treseko Flow para revisarlos y guardarlos como casos.
+## Workers de automatización
 
-## Correcciones
+- Al reconectarse o revincularse, un Worker desactualizado recibe una actualización verificada antes de tomar nuevos trabajos.
+- La actualización conserva la identidad del Worker, la credencial renovada y los resultados pendientes; espera si hay trabajo activo.
+- En Linux, los Workers de navegador actualizados pueden recorrer su directorio privado de releases desde el usuario aislado del script, por lo que Playwright sigue ejecutándose sin permitir listar ni modificar el almacén.
 
-- Se muestran con mayor claridad los errores del worker y la evidencia disponible para diagnosticar una ejecución fallida.
-- Instalación: el frontend se publica en todas las interfaces (`0.0.0.0`) por defecto; se puede limitar a `127.0.0.1` mediante la configuración de enlace.
+
+## Automatización y evidencias
+
+- El monitor muestra resultados de ejecución, detalles del fallo y ubicación en el script.
+- Playwright conserva trazas cuando están disponibles; otros formatos de script muestran diagnóstico y evidencia propia del runner.
+- El editor importa recorridos guardados con Treseko Flow.
+
+## Actualizaciones
+
+- Mejora la actualización de instalaciones compatibles desde la versión 1.0.7, con validación, respaldo, activación y recuperación.
+- Reúne los componentes necesarios en un único paquete descargable y permite reintentar la migración después de una reversión segura.
+- Si Docker eliminó la imagen original de un contenedor todavía activo, conserva ese contenedor como imagen de rollback antes de continuar.
+- Corrige la aplicación de migraciones PostgreSQL durante la actualización.
+- La pantalla identifica rutas de instalación no compatibles y orienta al instalador adecuado.
+- En Windows/WSL2, acepta rutas de instalación dentro del filesystem Linux y comprueba acceso a Docker y al servicio systemd del usuario antes de instalar el coordinador.
+- Configuración puede proporcionar temporalmente el paquete completo cuando una instalación nativa necesita preparar su Worker.
+- El instalador para Linux verifica los recursos estáticos y el inicio del servicio.
+- Corrige el preflight Docker del actualizador existente: monta la configuración del controlador, el manifiesto y, al preparar, el paquete antes de validar la operación.
+
+## Otras mejoras
+
+- La API externa permite reportar resultados desde Community dentro de la cuota semanal compartida; Premium admite límites superiores según la licencia.
+- El worker conserva el token renovado y anuncia la versión activa al reiniciarse después de una revinculación o autoactualización.
+- La identidad persistente del worker se conserva al revincularlo; si no se puede leer o guardar, el proceso informa el error en vez de crear silenciosamente otro registro.
+- Mejoras de worker, reportes, permisos, privacidad y compatibilidad de instalaciones incluidas en esta entrega acumulativa.
 
 # Treseko 1.0.7
 

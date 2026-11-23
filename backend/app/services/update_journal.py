@@ -27,16 +27,17 @@ def save_json(path: Path, value: dict):
 
 
 @contextmanager
-def exclusive_lock(path: Path):
+def exclusive_lock(path: Path, *, allowed_owner_uids: set[int] | None = None):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     metadata = path.parent.stat()
-    if (path.parent.is_symlink() or metadata.st_uid not in {0, os.geteuid()}
+    allowed_owners = {0, os.geteuid(), *(allowed_owner_uids or set())}
+    if (path.parent.is_symlink() or metadata.st_uid not in allowed_owners
             or metadata.st_mode & 0o022):
         raise ValueError("Update journal directory must be operator-owned and not writable by others")
     descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, "a") as lock:
         metadata = os.fstat(lock.fileno())
-        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid not in {0, os.geteuid()}
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid not in allowed_owners
                 or metadata.st_mode & 0o022):
             raise ValueError("Unsafe update lock file")
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

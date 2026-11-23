@@ -5,6 +5,7 @@ It cannot replace the coordinator's ingress and workload-drain participants.
 """
 import os
 from pathlib import Path
+import re
 import stat
 
 
@@ -15,6 +16,12 @@ class UpdateAPIAdmission:
         explicit = os.getenv('TRESEKO_BACKEND_UPDATE_CONTROL_DIR')
         selected = directory if directory is not None else explicit
         self.required = True if required is None else required
+        raw_owner = os.getenv('TRESEKO_INSTALLATION_BINDING_OWNER_UID', '').strip()
+        if raw_owner and not re.fullmatch(r'[0-9]{1,10}', raw_owner):
+            raise ValueError('Configured update control owner UID must be numeric')
+        self.allowed_owners = {0, os.geteuid()}
+        if raw_owner:
+            self.allowed_owners.add(int(raw_owner))
         self.directory = None
         if selected is None:
             return  # Legacy startup unchanged until the controller installs this bridge.
@@ -29,7 +36,7 @@ class UpdateAPIAdmission:
             info = self.directory.lstat()
             if not stat.S_ISDIR(info.st_mode):
                 return True
-            if self.required and (info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o022):
+            if self.required and (info.st_uid not in self.allowed_owners or info.st_mode & 0o022):
                 return True
             for name in ('.maintenance', '.treseko-update-fence'):
                 try:

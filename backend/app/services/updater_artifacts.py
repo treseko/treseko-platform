@@ -109,6 +109,11 @@ async def _restore_database_backup(self, backup_path: Path, task_id: str) -> Non
 async def _restart_services(self) -> None:
     if self.settings.docker_mode:
         os._exit(0)
+    if os.getenv("TRESEKO_DEPLOY_MODE", "").strip().lower() == "systemd":
+        # The installed unit uses Restart=on-failure. Exiting with the
+        # documented restart code asks systemd to rerun the entrypoint without
+        # granting the application user permission to control system units.
+        os._exit(75)
     proc = await asyncio.create_subprocess_exec(
         self.settings.systemctl_path,
         "restart",

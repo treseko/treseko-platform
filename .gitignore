@@ -1,3 +1,7 @@
+# macOS metadata
+.DS_Store
+._*
+
 # Dependencies
 node_modules/
 frontend/node_modules/
@@ -39,6 +43,7 @@ backend/.venv/
 *.sqlite3
 *.db.backup
 *.backup
+dump.rdb
 backend/*.backup
 !backend/qa_platform.db
 backups/

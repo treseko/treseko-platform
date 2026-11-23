@@ -418,3 +418,96 @@ async def test_registration_and_pairing_credentials_are_single_use_under_race(mo
             await db.execute(delete(models.AutomationRunner).where(models.AutomationRunner.organizacion_id == organization_id))
             await db.execute(delete(models.Organizacion).where(models.Organizacion.id == organization_id))
             await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_revoked_worker_relink_reuses_identity_and_rotates_token(monkeypatch):
+    await engine.dispose(close=False)
+
+    async def allow_worker_limit(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(runner_repository, "_enforce_worker_limit_for_solution", allow_worker_limit)
+    organization_id = None
+    pairing_ids = []
+    worker_instance_id = f"relinked-worker-{uuid4()}"
+    try:
+        async with AsyncSessionLocal() as db:
+            organization = models.Organizacion(nombre=f"Worker relink {uuid4()}")
+            db.add(organization)
+            await db.commit()
+            await db.refresh(organization)
+            organization_id = organization.id
+
+        async def request_pairing(version):
+            async with AsyncSessionLocal() as db:
+                pairing, _pairing_token = await runner_repository.create_automation_runner_pairing_request(
+                    db,
+                    schemas.AutomationRunnerPairingRequestCreate(
+                        nombre="Worker de actualizacion",
+                        organizacion_id=organization_id,
+                        capabilities={
+                            "worker_instance_id": worker_instance_id,
+                            "component_version": version,
+                            "frameworks": ["playwright"],
+                        },
+                    ),
+                )
+                pairing_ids.append(pairing.id)
+                return pairing.code
+
+        first_code = await request_pairing("1.0.7")
+        async with AsyncSessionLocal() as db:
+            _first_request, original_runner, original_token = await runner_repository.approve_automation_runner_pairing_request(
+                db, first_code, uuid4()
+            )
+            original_id = original_runner.id
+            original_hash = original_runner.token_hash
+            original_runner.activo = False
+            original_runner.estado = "OFFLINE"
+            await db.commit()
+
+        second_code = await request_pairing("1.0.7")
+        async with AsyncSessionLocal() as db:
+            _second_request, relinked_runner, replacement_token = await runner_repository.approve_automation_runner_pairing_request(
+                db, second_code, uuid4()
+            )
+            assert relinked_runner.id == original_id
+            assert relinked_runner.token_hash != original_hash
+            assert replacement_token and replacement_token != original_token
+            assert relinked_runner.activo is True
+            assert relinked_runner.capabilities["worker_instance_id"] == worker_instance_id
+            assert relinked_runner.capabilities["component_version"] == "1.0.7"
+            rows = (await db.execute(
+                select(models.AutomationRunner).where(
+                    models.AutomationRunner.organizacion_id == organization_id,
+                    models.AutomationRunner.capabilities["worker_instance_id"].as_string() == worker_instance_id,
+                )
+            )).scalars().all()
+            assert len(rows) == 1
+
+        duplicate_active_code = await request_pairing("1.0.7")
+        async with AsyncSessionLocal() as db:
+            with pytest.raises(ValueError, match="identidad de este Worker ya esta vinculada"):
+                await runner_repository.approve_automation_runner_pairing_request(
+                    db, duplicate_active_code, uuid4()
+                )
+            rows = (await db.execute(
+                select(models.AutomationRunner).where(
+                    models.AutomationRunner.organizacion_id == organization_id,
+                    models.AutomationRunner.capabilities["worker_instance_id"].as_string() == worker_instance_id,
+                )
+            )).scalars().all()
+            assert len(rows) == 1
+    finally:
+        if organization_id:
+            async with AsyncSessionLocal() as db:
+                if pairing_ids:
+                    await db.execute(delete(models.AutomationRunnerPairingRequest).where(
+                        models.AutomationRunnerPairingRequest.id.in_(pairing_ids)
+                    ))
+                await db.execute(delete(models.AutomationRunner).where(
+                    models.AutomationRunner.organizacion_id == organization_id
+                ))
+                await db.execute(delete(models.Organizacion).where(models.Organizacion.id == organization_id))
+                await db.commit()

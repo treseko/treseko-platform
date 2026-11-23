@@ -23,12 +23,16 @@ usarla y qué revisar si algo no sale como esperás.
 
 ## Usar Treseko
 
+- [Dashboard](DASHBOARD_GUIDE.md): interpretar salud, resultados y prioridades del proyecto.
+- [Proyectos, componentes y builds](PROJECTS_GUIDE.md): organizar el espacio de QA y su trazabilidad.
+- [Inventario](INVENTORY_GUIDE.md): registrar activos y endpoints sin confundirlos con ambientes o datasets.
 - [Crear y mantener casos de prueba](TEST_CASES_GUIDE.md)
 - [Ejecutar pruebas](TEST_EXECUTION_GUIDE.md)
 - [Tipos y modalidades de pruebas](TEST_TYPES_AND_EXECUTION.md)
 - [Pruebas API](API_TESTING_GUIDE.md)
 - [Pruebas conversacionales](CONVERSATIONAL_TESTING_GUIDE.md)
 - [Compatibilidad de importación](CASE_IMPORT_COMPATIBILITY.md)
+- [Treseko Flow: grabar y transferir recorridos desde el navegador](TRESEKO_FLOW_GUIDE.md): complemento opcional que se instala por separado.
 
 ## Automatización e IA
 
@@ -38,6 +42,9 @@ usarla y qué revisar si algo no sale como esperás.
 - [Superficie API pública](API_SURFACE.md)
 - [API externa de reporte de automatización](API_SPEC.md)
 - [Worker de automatización](AUTOMATION_WORKER_V1.md)
+- [Actualización de Workers remotos](AUTOMATION_WORKER_REMOTE_UPDATES.md)
+- [Actualización del Engine remoto](ENGINE_REMOTE_UPDATES.md)
+- [Programación IA y evidencia de video](AI_SCHEDULING_AND_VIDEO.md): explica la programación de una misión IA única y cómo se conserva su evidencia.
 - [Operación del Motor IA](AI_ENGINE_GUIDE.md)
 - [Configuración del Motor IA](AI_ENGINE_CONFIG.md)
 - [MCP gobernado](MCP_GUIDE.md): catálogo consultable, mutaciones confirmadas e importación con preview/commit/rollback.
@@ -51,6 +58,12 @@ usarla y qué revisar si algo no sale como esperás.
 - [Reportes y métricas](REPORTING_GUIDE.md)
 - [Historial de runs](RUN_HISTORY_GUIDE.md)
 - [Trazabilidad](TRACEABILITY.md)
+
+## Configuración y operación diaria
+
+- [Notificaciones y correo](NOTIFICATIONS_EMAIL.md): configurar SMTP, reglas y revisar entregas.
+- [Configuración](SETTINGS_GUIDE.md): cuenta, usuarios, permisos y opciones de la instancia.
+- [Estado del proyecto y builds](PROJECT_STATUS_RESTRICTIONS.md): entender restricciones por estado antes de editar o ejecutar.
 
 ## Administración y referencia
 

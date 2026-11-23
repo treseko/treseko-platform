@@ -57,10 +57,10 @@ from .system_updates import (
     check_system_community_update,
     check_system_premium_update,
     check_system_update_manifest,
-    prepare_system_update_download_grant_request,
     read_system_update_channels,
     updates_router,
 )
+from .system_update_downloads import prepare_system_update_download_grant_request
 from .system_update_tasks import (
     read_system_update_history,
     read_system_update_status,

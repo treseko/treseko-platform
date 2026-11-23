@@ -1,0 +1,15 @@
+[Unit]
+Description=Treseko coordinated update spool consumer for this installation
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_CONFIG@
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_WRAPPER@
+ConditionPathExists=@TRESEKO_UPDATE_BRIDGE_HELPER@
+
+[Service]
+Type=oneshot
+ExecStart=@TRESEKO_UPDATE_BRIDGE_WRAPPER@
+TimeoutStartSec=3600
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

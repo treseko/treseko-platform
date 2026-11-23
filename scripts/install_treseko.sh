@@ -186,6 +186,9 @@ rsync -a --delete "${BUILD_WORK_DIR}/engine/" "${INSTALL_DIR}/engine/"
 copy_node_project_for_build "${REPO_ROOT}/automation-worker" "${BUILD_WORK_DIR}/automation-worker"
 PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" npm --prefix "${BUILD_WORK_DIR}/automation-worker" ci
 rsync -a --delete "${BUILD_WORK_DIR}/automation-worker/" "${INSTALL_DIR}/worker/"
+chmod +x "${INSTALL_DIR}/worker/hash_component_tree.sh"
+"${INSTALL_DIR}/worker/hash_component_tree.sh" "${INSTALL_DIR}/worker" \
+  > "${INSTALL_DIR}/worker/.treseko-content-digest"
 
 cat > /etc/systemd/system/treseko-backend.service <<SYSTEMD
 [Unit]
@@ -230,7 +233,7 @@ RestartSec=5
 WantedBy=multi-user.target
 SYSTEMD
 
-NPM_BIN="$(command -v npm)"
+NODE_BIN="$(command -v node)"
 cat > /etc/systemd/system/treseko-engine.service <<SYSTEMD
 [Unit]
 Description=Treseko Engine
@@ -246,8 +249,8 @@ Environment=ENGINE_PORT=${ENGINE_PORT}
 Environment=BACKEND_WS_URL=ws://127.0.0.1:${BACKEND_PORT}/ws/engine-sync
 Environment=AI_ENGINE_INTERNAL_TOKEN_FILE=${SECRETS_DIR}/ai-engine-internal-token
 Environment=PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
-ExecStart=${NPM_BIN} start
-Restart=on-failure
+ExecStart=${NODE_BIN} ${INSTALL_DIR}/engine/engine-launcher.mjs
+Restart=always
 RestartSec=5
 
 [Install]
@@ -271,7 +274,9 @@ Environment=QA_POLL_INTERVAL_MS=${QA_POLL_INTERVAL_MS}
 Environment=PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
 Environment=PATH=${INSTALL_DIR}/worker/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${NPM_BIN} start
-Restart=on-failure
+# Worker consume la marca de OTA con exit 0 al quedar sin trabajos. Debe
+# volver a arrancar con el runtime recien instalado, igual que Engine.
+Restart=always
 RestartSec=5
 
 [Install]

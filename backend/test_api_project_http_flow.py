@@ -31,6 +31,7 @@ from app.repositories import project_write_policy
 from app.main import app  # noqa: E402
 from app.repositories import ai_execution_callbacks  # noqa: E402
 from app.services.edition import entitlement_service  # noqa: E402
+from app.services.edition import user_limits  # noqa: E402
 
 
 def _assert_report_pdf(response, pdf_available: bool) -> None:
@@ -96,6 +97,7 @@ def test_admin_can_create_and_execute_a_complete_manual_qa_chain(monkeypatch):
     pdf_available = any(shutil.which(binary) for binary in ("google-chrome", "chromium", "chromium-browser"))
     monkeypatch.setattr(organizations_router, "enforce_limit", _allow_controlled_tenant_limit)
     monkeypatch.setattr(project_write_policy, "enforce_limit", _allow_controlled_tenant_limit)
+    monkeypatch.setattr(user_limits, "enforce_active_user_limit", _allow_controlled_tenant_limit)
     suffix = uuid4().hex
     email = f"project-flow-{suffix}@example.test"
     password = "ProjectFlowPassword-2026!"

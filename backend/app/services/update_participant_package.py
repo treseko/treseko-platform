@@ -53,12 +53,12 @@ def _validate_component_contract(payload: Path, manifest: dict) -> None:
         source_versions = [previous_version] if previous_version else None
     embedded_sources = embedded.get("from_versions")
     plan_sources = plan.get("previous_versions")
-    if any(value is not None for value in (source_versions, embedded_sources, plan_sources)):
-        normalized_sources = [
-            sorted({str(item).strip() for item in value if str(item).strip()})
-            if isinstance(value, list) else None
-            for value in (source_versions, embedded_sources, plan_sources)
-        ]
+    normalized_sources = [
+        (sorted({str(item).strip() for item in value if str(item).strip()}) or None)
+        if isinstance(value, list) else None
+        for value in (source_versions, embedded_sources, plan_sources)
+    ]
+    if any(value is not None for value in normalized_sources):
         if any(value is None for value in normalized_sources) or not (
             normalized_sources[0] == normalized_sources[1] == normalized_sources[2]
         ):

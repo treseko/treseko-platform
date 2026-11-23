@@ -81,7 +81,7 @@ keys=("cache","manifest","bin_dir","state_dir")
 if any(not isinstance(cfg.get(k),str) for k in keys): raise SystemExit(11)
 legacy={"participant","ingress","runtime_preparation"}
 config_names=set(cfg["configs"]) if isinstance(cfg.get("configs"),dict) else set()
-if config_names not in (legacy, legacy|{"host_bridge"}): raise SystemExit(12)
+if config_names not in (legacy, legacy|{"host_bridge"}, {"host_bridge"}): raise SystemExit(12)
 for key in keys: print("CORE|%s|%s"%(key,mapped(cfg[key])))
 for key in sorted(config_names): print("CORE|config:%s|%s"%(key,mapped(cfg["configs"][key])))
 launch=cfg.get("launcher")

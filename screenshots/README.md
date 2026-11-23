@@ -1,5 +1,7 @@
 # Capturas de Treseko Community
 
+English: [Screenshot gallery in English](README.en.md)
+
 Estas capturas muestran flujos de referencia de Treseko Community 1.0.4 con
 datos sintéticos. No contienen credenciales ni datos operativos; los nombres,
 UUID, correos de prueba y direcciones loopback visibles pertenecen al entorno

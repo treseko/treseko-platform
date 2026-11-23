@@ -25,12 +25,16 @@ check when something does not behave as expected.
 
 ## Using Treseko
 
+- [Dashboard](DASHBOARD_GUIDE.md): understand project health, results and priorities.
+- [Projects, components and builds](PROJECTS_GUIDE.md): organize the QA workspace and its traceability.
+- [Inventory](INVENTORY_GUIDE.md): record assets and endpoints without confusing them with environments or datasets.
 - [Create and maintain test cases](TEST_CASES_GUIDE.md)
 - [Run tests](TEST_EXECUTION_GUIDE.md)
 - [Test formats and modalities](TEST_TYPES_AND_EXECUTION.md)
 - [API testing](API_TESTING_GUIDE.md)
 - [Conversational testing](CONVERSATIONAL_TESTING_GUIDE.md)
 - [Import compatibility](CASE_IMPORT_COMPATIBILITY.md)
+- [Treseko Flow: record and transfer browser journeys](TRESEKO_FLOW_GUIDE.md): optional extension installed separately.
 
 ## Automation and AI
 
@@ -40,6 +44,9 @@ check when something does not behave as expected.
 - [Public API surface](API_SURFACE.md)
 - [External automation reporting API](API_SPEC.md)
 - [Automation Worker](AUTOMATION_WORKER_V1.md)
+- [Updating remote Automation Workers](AUTOMATION_WORKER_REMOTE_UPDATES.md)
+- [Updating a remote Engine](ENGINE_REMOTE_UPDATES.md)
+- [AI scheduling and video evidence](AI_SCHEDULING_AND_VIDEO.md): explains one-time AI mission scheduling and its evidence.
 - [AI Engine operation](AI_ENGINE_GUIDE.md)
 - [AI Engine configuration](AI_ENGINE_CONFIG.md)
 - [Governed MCP](MCP_GUIDE.md): query catalog, confirmed mutations and preview/commit/rollback imports.
@@ -53,6 +60,12 @@ check when something does not behave as expected.
 - [Reports and metrics](REPORTING_GUIDE.md)
 - [Run history](RUN_HISTORY_GUIDE.md)
 - [Traceability](TRACEABILITY.md)
+
+## Settings and daily operations
+
+- [Notifications and email](NOTIFICATIONS_EMAIL.md): configure SMTP and rules, and review delivery status.
+- [Settings](SETTINGS_GUIDE.md): account, users, permissions and instance options.
+- [Project and build status](PROJECT_STATUS_RESTRICTIONS.md): understand status restrictions before editing or running tests.
 
 ## Administration and reference
 

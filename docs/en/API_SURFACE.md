@@ -25,8 +25,10 @@ authentication, capability, scope, feature gates and resource state.
   execution and evidence lookup.
 - `/api-tests/executions/{id}/manual-evaluation`: human evaluation of an API
   result.
-- `/external/executions/report`: reporting from an external runner; it does not
-  start internal jobs.
+- `/external/executions/report`: Community accepts basic reports under the
+  shared weekly quota; Premium can increase the limit according to the license.
+  It receives results from an external runner and does not start internal jobs.
+  See the [usage guide](API_USAGE_GUIDE.md) and [contract](EXTERNAL_AUTOMATION_API.md).
 
 ## Workers and automation
 
@@ -43,7 +45,10 @@ authentication, capability, scope, feature gates and resource state.
 - `/generaciones-historias/` and `/generaciones-casos/`: generate, reanalyze,
   assumptions, planning and transactional application of AI proposals.
 - `/wiki/`: project documentation, editing, history and audited deletion.
-- `/schedules/`: scheduled executions when the capability is enabled.
+- `/schedules/`: suite execution scheduling when the Premium capability and
+  execution permissions are enabled. In the current UI, **Schedule** in AI
+  Engine uses `/ai-schedules/` for a one-time AI mission; it is not the general
+  scheduler or a CRON task. See [AI scheduling](AI_SCHEDULING_AND_VIDEO.md).
 
 ## Configuration and operations
 

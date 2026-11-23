@@ -297,6 +297,15 @@ def test_declared_release_components_match_package_plan_and_runtime_builds(tmp_p
     assert (staged / "runtime-builds.json").is_file()
 
 
+def test_empty_source_chain_is_consistent_across_single_file_bootstrap_metadata(tmp_path, monkeypatch):
+    archive, manifest = release(
+        tmp_path, monkeypatch, component_contract=True, complete_source=True,
+        contract_sources=[], contract_plan_sources=[],
+    )
+    staged = stage_verified_package(archive, manifest, tmp_path / "ready")
+    assert (staged / "source-release" / "VERSION").read_text().strip() == manifest["version"]
+
+
 def test_release_component_omission_is_rejected_before_staging(tmp_path, monkeypatch):
     archive, manifest = release(
         tmp_path, monkeypatch, component_contract=True,

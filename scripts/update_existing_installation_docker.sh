@@ -65,6 +65,11 @@ image_id=$(<"$tmp_root/image-id")
 
 preflight=(run --rm --network none --read-only --entrypoint /usr/local/bin/python)
 preflight+=(--mount "type=bind,src=$launcher_config,dst=$launcher_config,readonly")
+preflight+=(--mount "type=bind,src=$controller_config,dst=$controller_config,readonly")
+[[ -z "$manifest" ]] || preflight+=(--mount "type=bind,src=$manifest,dst=$manifest,readonly")
+if [[ "$action" == prepare ]]; then
+    preflight+=(--mount "type=bind,src=$package,dst=$package,readonly")
+fi
 preflight+=("$image_id" -m app.services.update_existing_installation_docker_preflight)
 preflight+=(--launcher-config "$launcher_config" --image "$image" --docker "$docker"
             --socket "$socket" --network "$network" --action "$action"

@@ -20,7 +20,9 @@ def _four_config(root: Path):
     config_dir.mkdir()
     project = root / "project"
     project.mkdir()
-    (project / "compose.production.env").write_text("LOCAL_SETTING=1\n")
+    env_file = root / "compose.production.env"
+    env_file.write_text("LOCAL_SETTING=1\n")
+    env_file.chmod(0o600)
     for name in ("spool-inbox", "spool-state", "bridge-inbox", "bridge-state",
                  "bridge-reports", "controller-state"):
         (root / name).mkdir(mode=0o700)
@@ -28,7 +30,8 @@ def _four_config(root: Path):
     controller.write_text(json.dumps({
         "schema": 1, "directory": "/controller-state",
         "atomic_compose": {"schema": 1, "project": "treseko-test",
-                           "project_root": "/project", "env_file": "/project/compose.production.env"},
+                           "project_root": "/project", "env_file": "/compose.production.env",
+                           "owner_uid": os.getuid()},
     }))
     controller.chmod(0o600)
     bridge = config_dir / "host_bridge_config.json"
@@ -48,12 +51,13 @@ def _four_config(root: Path):
         configs[name] = f"/etc/{name}.json"
     host_mounts = [
         {"source": str(path), "target": str(path), "mode": "ro"}
-        for path in (bridge, controller, project)
+        for path in (bridge, controller, root / "compose.production.env")
     ] + [
         {"source": str(root / name), "target": str(root / name), "mode": "rw"}
         for name in ("spool-inbox", "spool-state", "bridge-inbox", "bridge-state",
                      "bridge-reports", "controller-state")
     ]
+    host_mounts.append({"source": str(project), "target": str(project), "mode": "rw"})
     cache = root / "cache"
     cache.mkdir(mode=0o700)
     return {
@@ -75,6 +79,25 @@ def test_fourth_config_is_explicit_and_legacy_shape_remains_three(tmp_path, monk
     legacy = dict(config, configs={key: value for key, value in config["configs"].items()
                                    if key != "host_bridge"})
     assert installer_module._config(legacy, root)[-1] == set(installer_module.HELPERS)
+
+
+def test_host_bridge_can_be_installed_as_the_legacy_bootstrap_stage(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    root.mkdir(mode=0o700)
+    config, _ = _four_config(root)
+    config["configs"] = {"host_bridge": config["configs"]["host_bridge"]}
+    config["launcher"]["mounts"] = {
+        "host_bridge": config["launcher"]["mounts"]["host_bridge"]
+    }
+    monkeypatch.setattr(installer_module.launcher, "validate", lambda value, *_args: value)
+
+    parsed = installer_module._config(config, root)
+
+    assert parsed[-1] == {"host_bridge"}
+    assert installer_module.launcher._maps({"host_bridge"}) == (
+        installer_module.OPTIONAL_HELPERS, installer_module.OPTIONAL_MODULES
+    )
+    assert installer_module.launcher._maps({"host_bridge"})[0]["host_bridge"] == "treseko-update-host-bridge"
 
 
 def test_docker_host_bridge_wrapper_uses_image_entrypoint_without_module_or_argv(tmp_path):
@@ -110,7 +133,7 @@ def test_docker_host_bridge_wrapper_uses_image_entrypoint_without_module_or_argv
         sock.unlink(missing_ok=True)
 
 
-def test_complete_source_requires_readonly_project_and_writable_transaction_state(tmp_path):
+def test_complete_source_requires_writable_project_and_writable_transaction_state(tmp_path):
     root = tmp_path / "root"
     root.mkdir(mode=0o700)
     (root / "etc").mkdir()
@@ -119,14 +142,15 @@ def test_complete_source_requires_readonly_project_and_writable_transaction_stat
              "bridge-reports", "controller-state"]
     for name in paths:
         (root / name).mkdir(mode=0o700)
-    env_file = root / "project" / "compose.production.env"
+    env_file = root / "compose.production.env"
     env_file.write_text("LOCAL_SETTING=1\n")
     env_file.chmod(0o600)
     controller = root / "etc" / "controller.json"
     controller.write_text(json.dumps({
         "schema": 1, "directory": "/controller-state",
         "atomic_compose": {"schema": 1, "project": "treseko-test",
-                           "project_root": "/project", "env_file": "/project/compose.production.env"},
+                           "project_root": "/project", "env_file": "/compose.production.env",
+                           "owner_uid": os.getuid()},
     }))
     controller.chmod(0o600)
     bridge = root / "etc" / "host_bridge.json"
@@ -140,14 +164,24 @@ def test_complete_source_requires_readonly_project_and_writable_transaction_stat
                                  "request_inbox": "/spool-inbox", "spool_dir": "/spool-state"}))
     spool.chmod(0o600)
     readonly = [bridge, controller]
-    readonly.extend([root / "project"])
+    readonly.append(env_file)
     writable = [root / name for name in paths]
     mounts = [{"source": str(path), "target": str(path), "mode": mode}
               for path, mode in [(path, "ro") for path in readonly]
               + [(path, "rw") for path in writable]]
+    mounts.append({"source": str(root / "project"), "target": str(root / "project"), "mode": "rw"})
 
     complete_source_module.validate_complete_source_mounts(
         spool, root, {"mounts": {"host_bridge": mounts}})
+
+    mounts[-1]["mode"] = "ro"
+    try:
+        complete_source_module.validate_complete_source_mounts(
+            spool, root, {"mounts": {"host_bridge": mounts}})
+    except ValueError as exc:
+        assert "project writable" in str(exc)
+    else:
+        raise AssertionError("read-only Compose project cannot store the active release")
 
     with_spool_duplicate = mounts + [{"source": str(spool), "target": str(spool), "mode": "ro"}]
     try:

@@ -14,16 +14,20 @@ Límites de referencia:
 - 1024 MB de almacenamiento.
 
 Incluye gestión QA, ejecución manual, automatización local, API declarativa por
-el worker unificado, IA dentro de cuotas, Bug Tracker, reportes básicos e
-importación/exportación.
+el worker unificado, reporte de resultados desde runners externos, IA dentro de
+cuotas, Bug Tracker, reportes básicos e importación/exportación. El reporte
+externo consume el mismo límite de **50 ejecuciones automatizadas por ventana
+móvil de siete días** que los workers.
 
 ## Premium
 
 El runtime público reconoce la edición `premium` y habilita capacidades o
 límites según los entitlements firmados en la licencia. El catálogo contempla,
 entre otras, RBAC granular, multi-worker, scheduler, automatización avanzada,
-API externa, reportes avanzados, snapshots, integraciones, notificaciones,
-auditoría, métricas históricas, branding y updates Premium.
+una cuota ampliada para ejecuciones automatizadas y reportes externos, reportes
+avanzados, snapshots, integraciones, notificaciones, auditoría, métricas
+históricas y branding. La cantidad de ejecuciones disponible es la establecida
+por los límites firmados en la licencia; Premium no implica una cuota ilimitada.
 
 Los nombres y paquetes comerciales específicos se definen fuera de este
 repositorio y no deben inferirse solo por la presencia de una función en el

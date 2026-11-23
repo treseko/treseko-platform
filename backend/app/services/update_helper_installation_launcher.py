@@ -78,7 +78,9 @@ def _maps(helper_names=None):
         return HELPERS, MODULES
     if names == set(HELPERS) | set(OPTIONAL_HELPERS):
         return HELPERS | OPTIONAL_HELPERS, MODULES | OPTIONAL_MODULES
-    raise ValueError("Helper configuration must contain exactly three legacy helpers or four coordinated helpers")
+    if names == set(OPTIONAL_HELPERS):
+        return OPTIONAL_HELPERS, OPTIONAL_MODULES
+    raise ValueError("Helper configuration must contain three legacy helpers, four coordinated helpers, or the host bridge bootstrap helper")
 
 
 def _mounts(value: Any, root: Path, helper_names=None) -> dict[str, list[dict[str, Any]]]:

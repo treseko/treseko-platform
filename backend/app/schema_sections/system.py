@@ -241,6 +241,11 @@ class SystemFirstRunCompleteRequest(BaseModel):
 
 
 class SystemUpdateManifest(BaseModel):
+    # Premium manifests are signed over their complete JSON object. Preserve
+    # release-specific signed fields (deployment/bootstrap/component metadata)
+    # when the API round-trips them to the update manager.
+    model_config = ConfigDict(extra="allow")
+
     edition: Literal["community", "premium"]
     key_id: Optional[str] = Field(default=None, min_length=1, max_length=120)
     channel: str = Field(min_length=1, max_length=80)
@@ -375,6 +380,15 @@ class SystemUpdateDownloadGrantPrepareResponse(BaseModel):
     manifest: Dict[str, Any]
     artifact: Optional[str] = None
     artifact_type: Optional[str] = None
+    package_size_bytes: Optional[int] = None
+    checksum_sha256: str
+
+
+class SystemUpdatePackageDownloadResponse(BaseModel):
+    download_url: str
+    expires_at: Optional[str] = None
+    version: str
+    artifact: Optional[str] = None
     package_size_bytes: Optional[int] = None
     checksum_sha256: str
 

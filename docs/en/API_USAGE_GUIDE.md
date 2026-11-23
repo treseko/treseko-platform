@@ -2,7 +2,7 @@
 
 <!-- Language: en -->
 
-This guide covers one flow: sending Treseko automated execution results from Playwright, Selenium, Cypress, Pytest or another CI/CD pipeline. Before integrating it, confirm that your license includes the Premium external API.
+This guide covers one flow: sending Treseko automated execution results from Playwright, Selenium, Cypress, Pytest or another CI/CD pipeline. Community allows result reporting under a weekly quota shared with other automated executions. Premium can increase that quota according to the installed license limits.
 
 ## 1. Generate the API key from the platform
 
@@ -32,6 +32,8 @@ Content-Type: application/json
 ```
 
 The payload includes the build context and one or more cases with status `PASO`, `FALLO` or `BLOQUEADO`. For safe retries, send a stable `external_run_id` and use `overwrite` according to whether you want to update or reject an already reported result.
+
+The API records results; it does not execute the script or start a job. The external pipeline continues to run the tests, and Treseko adds the results to the build history. The quota counts new case results reported within a rolling seven-day window and is shared with Automation Worker executions. Community's default limit is **50 executions per week**; Premium uses the limit in its license. Retrying an update to an existing result does not consume another execution. Each request accepts up to 500 cases, even when the weekly quota is lower.
 
 See the [external automation API](EXTERNAL_AUTOMATION_API.md) for the full contract, payloads, responses and a Python example.
 

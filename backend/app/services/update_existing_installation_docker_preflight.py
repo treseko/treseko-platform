@@ -16,7 +16,7 @@ def _fail(message: str) -> None:
     raise SystemExit(message)
 
 
-def _validate_mount(entry: Any, strict: bool) -> tuple[str, str, str, str]:
+def _validate_mount(entry: Any, strict: bool, *, allowed_readonly_owner: int | None = None) -> tuple[str, str, str, str]:
     if not isinstance(entry, dict) or set(entry) != {"source", "target", "mode", "purpose"}:
         _fail("invalid mount fields")
     source = _path(entry["source"], "mount source")
@@ -32,7 +32,10 @@ def _validate_mount(entry: Any, strict: bool) -> tuple[str, str, str, str]:
             _fail("mount source unavailable")
         if _has_symlink_component(source) or stat.S_ISLNK(info.st_mode):
             _fail("mount source is a symlink")
-        if info.st_uid != os.geteuid() and info.st_uid != 0:
+        allowed_owners = {os.geteuid(), 0}
+        if type(allowed_readonly_owner) is int:
+            allowed_owners.add(allowed_readonly_owner)
+        if info.st_uid not in allowed_owners:
             _fail("mount source owner is invalid")
         if mode == "ro" and stat.S_IMODE(info.st_mode) & 0o022:
             _fail("readonly mount is writable by group/other")
@@ -51,7 +54,39 @@ def validate(args: list[str]) -> list[tuple[str, str, str, str]]:
         _fail("invalid launcher identity")
     if network in {"host", "none"}:
         _fail("dedicated Docker network required")
-    mounts = [_validate_mount(entry, strict == "1") for entry in payload["mounts"]]
+    controller_config = load_private_json(Path(config))
+    manifest_value = {}
+    if action != "status":
+        try:
+            raw_manifest = Path(manifest).read_bytes()
+            if len(raw_manifest) > 1024 * 1024:
+                _fail("manifest exceeds limit")
+            manifest_value = json.loads(raw_manifest)
+        except (OSError, ValueError, UnicodeError):
+            _fail("invalid manifest")
+    expected = {"mode": "complete-source", "path": "source-release",
+                "compose_file": "docker-compose.prod.yml", "activation": "atomic-compose"}
+    deployment = manifest_value.get("deployment") if isinstance(manifest_value, dict) else None
+    atomic = controller_config.get("atomic_compose")
+    authorized_project = authorized_env = None
+    if (deployment == expected and isinstance(atomic, dict)
+            and type(atomic.get("owner_uid")) is int and atomic["owner_uid"] >= 0
+            and isinstance(atomic.get("project_root"), str)
+            and isinstance(atomic.get("env_file"), str)):
+        authorized_project = str(_path(atomic["project_root"], "atomic Compose project root"))
+        authorized_env = str(_path(atomic["env_file"], "atomic Compose environment file"))
+    mounts = []
+    for entry in payload["mounts"]:
+        allowed_owner = None
+        if (authorized_project is not None and isinstance(entry, dict) and entry.get("mode") == "rw"
+                and entry.get("purpose") == "atomic-project"
+                and entry.get("source") == authorized_project):
+            allowed_owner = atomic["owner_uid"]
+        elif (authorized_env is not None and isinstance(entry, dict) and entry.get("mode") == "ro"
+              and entry.get("purpose") == "atomic-env"
+              and entry.get("source") == authorized_env):
+            allowed_owner = atomic["owner_uid"]
+        mounts.append(_validate_mount(entry, strict == "1", allowed_readonly_owner=allowed_owner))
     purposes = [item[3] for item in mounts]
     if len(set(purposes)) != len(purposes) or "launcher" not in purposes:
         _fail("launcher mount is required")
@@ -66,30 +101,18 @@ def validate(args: list[str]) -> list[tuple[str, str, str, str]]:
             _fail(f"missing {purpose} mount")
     if not {"state", "cache"}.issubset(purposes):
         _fail("state and cache mounts are required")
-    controller_config = load_private_json(Path(config))
-    manifest_value = {}
-    if action != "status":
-        try:
-            raw_manifest = Path(manifest).read_bytes()
-            if len(raw_manifest) > 1024 * 1024:
-                _fail("manifest exceeds limit")
-            manifest_value = json.loads(raw_manifest)
-        except (OSError, ValueError, UnicodeError):
-            _fail("invalid manifest")
-    deployment = manifest_value.get("deployment") if isinstance(manifest_value, dict) else None
     if deployment is not None:
-        expected = {"mode": "complete-source", "path": "source-release",
-                    "compose_file": "docker-compose.prod.yml", "activation": "atomic-compose"}
         atomic = controller_config.get("atomic_compose")
         if (deployment != expected or not isinstance(atomic, dict) or set(atomic) != {
-                "schema", "project", "project_root", "env_file"}
-                or type(atomic.get("schema")) is not int or atomic.get("schema") != 1):
+                "schema", "project", "project_root", "env_file", "owner_uid"}
+                or type(atomic.get("schema")) is not int or atomic.get("schema") != 1
+                or type(atomic.get("owner_uid")) is not int or atomic["owner_uid"] < 0):
             _fail("complete-source host configuration is required")
         project_root = _path(atomic["project_root"], "atomic Compose project root")
         env_file = _path(atomic["env_file"], "atomic Compose environment file")
-        project_mount = (str(project_root), str(project_root), "ro", "atomic-project")
+        project_mount = (str(project_root), str(project_root), "rw", "atomic-project")
         if project_mount not in mounts:
-            _fail("atomic Compose project root must be mounted readonly")
+            _fail("atomic Compose project root must be mounted writable for managed release files")
         env_mounted = any(source == str(env_file) and mode == "ro"
                           for source, _, mode, _ in mounts)
         env_in_project = env_file == project_root or project_root in env_file.parents

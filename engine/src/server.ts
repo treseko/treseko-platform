@@ -17,7 +17,7 @@ import { traceEntry, traceRequestId } from "./test-trace.ts";
 import { OpenCodeDriver } from "./ai/opencode-driver.ts";
 import { createMcpRuntimeServices } from "./ai/mcp-runtime.ts";
 import { ProviderRequestError } from "./ai/provider-adapters.ts";
-import { UpdateAdmission, registerUpdateAdmissionRoute, registerExternalAdmissionMiddleware } from "./update-admission.ts";
+import { createEngineUpdateRuntime, createEngineShutdown, startDeferredUpdateRestart } from "./engine-update-runtime.ts";
 import {
   ENGINE_LOCAL_EVIDENCE_ENABLED,
   ENGINE_NAME,
@@ -348,9 +348,15 @@ function protectedStoryEndpoint(req: express.Request, res: express.Response) {
   return true;
 }
 
-const updateAdmission = new UpdateAdmission();
-registerExternalAdmissionMiddleware(app, updateAdmission, protectedStoryEndpoint);
-registerUpdateAdmissionRoute(app, updateAdmission, protectedStoryEndpoint);
+const engineRuntimeDir = process.env.ENGINE_RUNTIME_DIR || process.env.TRESEKO_ENGINE_DIR || process.cwd();
+const { updateAdmission, engineSelfUpdater } = createEngineUpdateRuntime({
+  rootDir: engineRuntimeDir,
+  app,
+  internalToken: ENGINE_INTERNAL_TOKEN,
+  backendWsUrl: process.env.BACKEND_WS_URL || "",
+  protectedRoute: protectedStoryEndpoint,
+  shutdown: (transaction) => shutdownEngine(75, transaction),
+});
 
 app.get("/health", (req, res) => {
   res.json({
@@ -472,10 +478,7 @@ io.on("connection", (socket) => {
   });
 });
 const PORT = process.env.ENGINE_PORT || 3010;
-const shutdownEngine = async () => {
-  await OpenCodeDriver.shutdown();
-  httpServer.close(() => process.exit(0));
-};
+const shutdownEngine = createEngineShutdown({ driver: OpenCodeDriver, io, updateAdmission });
 process.once("SIGTERM", shutdownEngine);
 process.once("SIGINT", shutdownEngine);
 
@@ -501,17 +504,8 @@ httpServer.listen(PORT, () => {
   );
   void redeliverPendingTerminalResults();
   setInterval(() => { void redeliverPendingTerminalResults(); }, 15_000).unref();
-  const restartMarker = path.join(process.env.TRESEKO_ENGINE_DIR || "/engine", ".treseko-update-restart"); const rollbackMarker = path.join(process.env.TRESEKO_ENGINE_DIR || "/engine", ".treseko-update-rollback");
-  setInterval(() => {
-    if (fs.existsSync(rollbackMarker) || !fs.existsSync(restartMarker) || activeExecutionIds.size > 0) return;
-    try {
-      fs.unlinkSync(restartMarker);
-      console.info("Update de Engine preparado; reiniciando sin ejecuciones activas.");
-      void shutdownEngine();
-    } catch (error) {
-      console.error("No se pudo aplicar el reinicio diferido del Engine:", error);
-    }
-  }, 2_000).unref();
+  if (process.env.BACKEND_WS_URL && ENGINE_INTERNAL_TOKEN) void engineSelfUpdater.runLoop();
+  startDeferredUpdateRestart({ rootDir: engineRuntimeDir, isBusy: () => activeExecutionIds.size > 0, shutdown: shutdownEngine });
 });
 
 export { io };

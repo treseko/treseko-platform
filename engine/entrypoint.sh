@@ -30,7 +30,10 @@ payload_runtime_version() {
   [ -r "$runtime_dir/VERSION" ] || return 1
   manifest_source="$(sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
   manifest_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
-  [ "$manifest_source" = "legacy-payload" ] || return 1
+  case "$manifest_source" in
+    legacy-payload|ota-remote-bootstrap) ;;
+    *) return 1 ;;
+  esac
   [ -n "$manifest_version" ] || return 1
   [ "$manifest_version" = "$(tr -d '[:space:]' < "$runtime_dir/VERSION")" ] || return 1
   printf '%s\n' "$manifest_version"
@@ -78,6 +81,8 @@ if [ -d /opt/treseko/engine-source ] && [ -w /engine ]; then
       rsync -a --delete \
         --exclude='/node_modules/' --exclude='/logs/' --exclude='/reports/' \
         --exclude='/pending-deliveries/' --exclude='/.cache/' \
+        --exclude='/update-control/' --exclude='/.engine-releases/' \
+        --exclude='/.treseko-active-engine-release.json' \
         --exclude='/.env' --exclude='/.env.*' \
         --exclude='/.treseko-content-digest' --exclude='/.treseko-update-*' \
         /opt/treseko/engine-source/ /engine/
@@ -99,6 +104,14 @@ if [ -d /opt/treseko/engine-source ] && [ -w /engine ]; then
     && ! cmp -s /opt/treseko/engine-source/package-lock.json /engine/package-lock.json; then
     engine_runtime_updated=true
   fi
+
+# A versioned remote OTA release has its own isolated node_modules. Avoid
+# mutating the legacy root runtime after the signed release pointer is active.
+active_release="$(node -e 'try { const p=require("/engine/.treseko-active-engine-release.json"); if (typeof p.release === "string" && p.release === require("path").basename(p.release)) process.stdout.write(p.release) } catch {}' 2>/dev/null || true)"
+if [ -n "$active_release" ] \
+  && [ -f "/engine/.engine-releases/${active_release}/node_modules/tsx/dist/cli.mjs" ]; then
+  engine_runtime_updated=false
+fi
 fi
 
 # El runtime de Engine es persistente. Si una actualizacion reemplazo
@@ -134,6 +147,10 @@ fi
 if [ "$(id -u)" -eq 0 ] && [ "${TRESEKO_ENGINE_DROPPED:-0}" != "1" ]; then
   export TRESEKO_ENGINE_DROPPED=1
   exec setpriv --reuid=10001 --regid=10001 --init-groups "$@"
+fi
+
+if [ -s /engine/engine-launcher.mjs ]; then
+  exec node /engine/engine-launcher.mjs
 fi
 
 exec "$@"

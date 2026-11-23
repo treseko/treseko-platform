@@ -2,7 +2,9 @@
 
 Never executes the application entrypoint or changes the original volume.
 The enclosing transaction drains all consumers and verifies vendor provenance.
-Retained helper/volume identities allow recovery after a lost Docker response.
+Explicit mutable data is copied from the old volume, while code comes only
+from the prepared image. Retained helper/volume identities allow recovery
+after a lost Docker response.
 """
 import hashlib
 import json
@@ -17,7 +19,12 @@ from .update_transaction import TransactionFailure
 SEED_SCRIPT = r"""
 set -eu
 root="$1"
-expected="$2"
+component="$2"
+expected="$3"
+case "$component" in
+    engine|worker|frontend) ;;
+    *) echo "Unsupported runtime component root" >&2; exit 32 ;;
+esac
 test -d "$root"
 test ! -L "$root/VERSION"
 test "$(cat "$root/VERSION")" = "$expected"
@@ -27,7 +34,7 @@ done
 test -z "$(ls -A /prepared)"
 cp -a "$root/." /prepared/
 preserved_items=".env"
-if test "$root" = /worker; then
+if test "$component" = worker; then
     preserved_items=".runner-token .runner-token.pairing .worker-instance-id .env"
 fi
 for item in $preserved_items; do
@@ -37,7 +44,34 @@ for item in $preserved_items; do
         cp -p "/previous/$item" "/prepared/$item"
     fi
 done
-if test "$root" = /usr/share/nginx/html; then
+copy_mutable_directory() {
+    name="$1"
+    source="/previous/$name"
+    target="/prepared/$name"
+    test ! -L "$source"
+    if test -e "$source"; then
+        test -d "$source"
+        # Runtime data is copied as data, never as links or special files.
+        # This also prevents a persisted link from escaping the prepared root.
+        if find "$source" -xdev ! -type d ! -type f -print -quit | grep -q .; then
+            echo "Unsupported entry in mutable runtime directory: $name" >&2
+            exit 31
+        fi
+        test ! -L "$target"
+        if test -e "$target"; then test -d "$target"; rm -rf "$target"; fi
+        mkdir -p "$(dirname "$target")"
+        cp -a "$source" "$target"
+    fi
+}
+if test "$component" = engine; then
+    copy_mutable_directory videos
+    copy_mutable_directory reports
+    copy_mutable_directory logs
+elif test "$component" = worker; then
+    copy_mutable_directory .state
+    copy_mutable_directory logs
+fi
+if test "$component" = frontend; then
     for item in .treseko-update-fence .maintenance; do
         test ! -L "/previous/$item"
         if test -e "/previous/$item"; then
@@ -57,9 +91,9 @@ class DockerRuntimeVolume:
             raise ValueError("An absolute Docker executable is required")
         self.docker = docker
 
-    def _run(self, arguments):
+    def _run(self, arguments, *, timeout=120):
         try:
-            result = subprocess.run([self.docker, *arguments], capture_output=True, timeout=120)
+            result = subprocess.run([self.docker, *arguments], capture_output=True, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise TransactionFailure("Runtime preparation outcome uncertain; retain helper and maintenance") from exc
         if result.returncode:
@@ -113,7 +147,9 @@ class DockerRuntimeVolume:
                            "--network=none", "--read-only", "--user", "0:0",
                            "--mount", "type=volume,source=" + source_volume + ",target=/previous,readonly,volume-nocopy",
                            "--mount", "type=volume,source=" + state["volume"] + ",target=/prepared,volume-nocopy",
-                           "--entrypoint", "/bin/sh", image, "-c", SEED_SCRIPT, "seed", root, version])
+                           "--entrypoint", "/bin/sh", image, "-c", SEED_SCRIPT, "seed",
+                           root, {"/engine": "engine", "/worker": "worker",
+                                  "/usr/share/nginx/html": "frontend"}[root], version])
             helper = json.loads(self._run(["inspect", "--type", "container", state["helper"]]))[0]
             if (helper["Config"].get("Labels") or {}).get("io.treseko.runtime-preparation") != identity or helper["Image"] != image:
                 raise TransactionFailure("Runtime helper belongs to another operation")
@@ -121,7 +157,10 @@ class DockerRuntimeVolume:
                 if self._run(["ps", "--quiet", "--filter", "volume=" + source_volume]).strip():
                     raise TransactionFailure("All source runtime consumers must remain stopped")
                 self._run(["volume", "inspect", source_volume])
-                self._run(["start", "--attach", state["helper"]])
+                # Video recordings and worker result spools can be large. Keep
+                # the source volume untouched and allow a bounded, resumable
+                # copy window instead of timing out after a short CLI default.
+                self._run(["start", "--attach", state["helper"]], timeout=3600)
                 helper = json.loads(self._run(["inspect", "--type", "container", state["helper"]]))[0]
             if helper["State"]["Status"] != "exited" or helper["State"]["ExitCode"] != 0:
                 raise TransactionFailure("Runtime helper is unfinished or failed; do not reuse partial output")

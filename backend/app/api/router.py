@@ -15,6 +15,8 @@ from .routers import (
     attachments,
     automation_functions,
     automation,
+    automation_worker_updates,
+    engine_updates,
     automation_recordings,
     bugs,
     builds,
@@ -40,6 +42,7 @@ from .routers import (
     scheduler,
     script_validation,
     system,
+    system_update_downloads,
     system_monitor,
     suites,
     test_runs,
@@ -65,6 +68,8 @@ api_router.include_router(auth_ad.router)
 api_router.include_router(attachments.router)
 api_router.include_router(automation_functions.router)
 api_router.include_router(automation.router)
+api_router.include_router(automation_worker_updates.router)
+api_router.include_router(engine_updates.router)
 api_router.include_router(automation_recordings.router)
 api_router.include_router(bugs.router)
 api_router.include_router(builds.router)
@@ -87,6 +92,7 @@ api_router.include_router(roles.router)
 api_router.include_router(scheduler.router)
 api_router.include_router(script_validation.router)
 api_router.include_router(system.router)
+api_router.include_router(system_update_downloads.router)
 api_router.include_router(notifications.router)
 api_router.include_router(mcp.router)
 api_router.include_router(system_monitor.router)

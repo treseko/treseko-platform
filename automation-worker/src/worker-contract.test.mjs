@@ -36,6 +36,19 @@ const jobStatuses = new Map([
   ["ERROR", "ERROR"], ["TIMEOUT", "TIMEOUT"], ["CANCELLED", "CANCELLED"],
 ]);
 
+test("worker publishes its running version before checking for another update", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  const loop = source.slice(source.indexOf("async function loop()"));
+  const heartbeat = loop.indexOf('await heartbeat(activeJobs > 0 ? "BUSY" : "ONLINE")');
+  const updateCheck = loop.indexOf("selfUpdater.deferIfRequired()");
+  assert.ok(heartbeat >= 0 && updateCheck > heartbeat);
+});
+
+test("release runtime resolves mutable worker state from the persistent launcher root", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  assert.match(source, /process\.env\.QA_WORKER_RUNTIME_DIR \|\| path\.resolve/);
+});
+
 test("QA_API_BASE no admite credenciales ni parámetros sensibles", () => {
   assert.equal(normalizeApiBase("https://treseko.example.test/api/"), "https://treseko.example.test/api");
   assert.throws(() => normalizeApiBase("https://user:secret@treseko.example.test"), /no puede incluir credenciales/i);
@@ -149,6 +162,18 @@ test("el token de pairing puede persistirse fuera del árbol de código", () => 
   const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
   assert.match(source, /process\.env\.QA_RUNNER_TOKEN_FILE \|\| path\.join\(ROOT_DIR, "\.runner-token"\)/);
   assert.match(source, /fs\.writeFileSync\(tokenPath, token, \{ encoding: "utf8", mode: 0o600 \}\)/);
+  assert.match(source, /readRunnerToken\(fs, tokenPath, process\.env\.QA_RUNNER_TOKEN\)/,
+    "el token rotado en disco debe prevalecer sobre el token inicial del entorno tras reiniciar");
+});
+
+test("la version activa del Worker se resuelve antes que las variables heredadas", () => {
+  const source = fs.readFileSync(new URL("./worker.mjs", import.meta.url), "utf8");
+  const versionStart = source.indexOf("const WORKER_VERSION = readWorkerVersion({");
+  const versionEnd = source.indexOf("});", versionStart);
+  assert.ok(versionStart >= 0 && versionEnd > versionStart);
+  const versionSource = source.slice(versionStart, versionEnd);
+  assert.ok(versionSource.indexOf('path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "VERSION")')
+    < versionSource.indexOf("process.env.npm_package_version"));
 });
 
 test("la marca se revisa en cada vuelta aunque el heartbeat no responda", () => {

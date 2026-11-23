@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from ...database import get_db
 from ... import access_control, auth, crud, models, schemas
-from ...services.update_installation_mode import InstallationModeError, require_atomic_update_coordinator, update_installation_status
+from ...services.update_installation_mode import InstallationModeError, require_update_runtime, update_installation_status
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...content_type_validation import content_matches_declared_type
@@ -42,7 +42,6 @@ from ...services.edition.update_manager import (
     PREMIUM_UPDATE_CHANNELS,
     UpdateManifestError,
     update_keyring_status,
-    prepare_update_download_grant_request,
     request_premium_download_grant,
     validate_update_manifest,
 )
@@ -64,7 +63,7 @@ updates_router = APIRouter(tags=["system"])
 UPDATE_MANIFEST_CACHE_SETTING_KEY = "treseko_update_manifest_cache"
 _SYSTEM_DEPENDENCY_DEFAULTS = {name: globals()[name] for name in (
     "get_entitlement_provider", "get_update_service", "validate_update_manifest",
-    "prepare_update_download_grant_request", "fetch_latest_premium_update_manifest",
+    "fetch_latest_premium_update_manifest",
     "request_premium_download_grant", "get_installed_license",
 )}
 
@@ -329,21 +328,6 @@ async def check_system_update_manifest(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
-@updates_router.post("/system/updates/download-grant-request", response_model=schemas.SystemUpdateDownloadGrantPrepareResponse)
-async def prepare_system_update_download_grant_request(
-    payload: schemas.SystemUpdateDownloadGrantPrepareRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.Usuario = Depends(auth.check_capability("configuracion.actualizaciones", "read")),
-):
-    state = await _system_dependency("get_entitlement_provider", get_entitlement_provider)().get_state(db)
-    try:
-        return _system_dependency("prepare_update_download_grant_request", prepare_update_download_grant_request)(
-            payload.manifest.model_dump(), state
-        )
-    except UpdateManifestError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-
 @updates_router.get("/system/updates/check-community", response_model=schemas.SystemCommunityUpdateCheckResponse)
 async def check_system_community_update(
     force: bool = Query(default=False, description="Ignora la cache para consultar el canal remoto."),
@@ -416,11 +400,11 @@ async def apply_system_update(
         raise HTTPException(status_code=400, detail="Confirma la actualizacion con APPLY_UPDATE.")
     if channel not in COMMUNITY_UPDATE_CHANNELS | PREMIUM_UPDATE_CHANNELS:
         raise HTTPException(status_code=400, detail="Canal de actualizacion no soportado.")
-    # Both editions apply the same signed release transaction. The component-only
-    # legacy lane cannot replace the installed Compose tree and would leave a
-    # mixed release after a complete-source package was selected.
+    # Compose applies the signed source tree through its host coordinator.
+    # Native systemd applies the component payload from the same archive and
+    # leaves the unused source-release tree untouched.
     try:
-        require_atomic_update_coordinator()
+        require_update_runtime()
     except InstallationModeError as exc:
         raise HTTPException(status_code=409, detail=exc.code) from exc
     if channel in COMMUNITY_UPDATE_CHANNELS and manifest is None:

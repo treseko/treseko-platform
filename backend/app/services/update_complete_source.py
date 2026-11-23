@@ -26,47 +26,60 @@ _COMPOSE_PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 def _complete_source_settings(config: Mapping[str, Any]) -> dict[str, Any]:
     settings = config.get("atomic_compose")
     if (not isinstance(settings, Mapping)
-            or set(settings) != {"schema", "project", "project_root", "env_file"}
+            or set(settings) != {"schema", "project", "project_root", "env_file", "owner_uid"}
             or type(settings.get("schema")) is not int or settings["schema"] != 1
             or not isinstance(settings.get("project"), str)
-            or not _COMPOSE_PROJECT.fullmatch(settings["project"])):
+            or not _COMPOSE_PROJECT.fullmatch(settings["project"])
+            or type(settings.get("owner_uid")) is not int or settings["owner_uid"] < 0):
         raise ExistingInstallationError("Complete-source host Compose configuration is required")
     project_root = Path(settings.get("project_root") or "")
     env_file = Path(settings.get("env_file") or "")
+    controller_root = Path(config.get("directory") or "")
     if (not project_root.is_absolute() or ".." in project_root.parts
-            or not env_file.is_absolute() or ".." in env_file.parts):
+            or not env_file.is_absolute() or ".." in env_file.parts
+            or not controller_root.is_absolute() or ".." in controller_root.parts):
         raise ExistingInstallationError("Invalid host Compose source path")
-    current = Path(project_root.anchor)
-    for part in project_root.parts[1:]:
-        current /= part
-        try:
-            info = current.lstat()
-        except OSError as exc:
-            raise ExistingInstallationError("Host Compose source directory is unavailable") from exc
-        if stat.S_ISLNK(info.st_mode):
-            raise ExistingInstallationError("Host Compose source directory cannot be a symlink")
-    info = project_root.lstat()
-    if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+    for path, label in ((project_root, "Host Compose source directory"),
+                        (env_file, "Host Compose environment file"),
+                        (controller_root, "Atomic update controller state directory")):
+        current = Path(path.anchor)
+        for part in path.parts[1:]:
+            current /= part
+            try:
+                info = current.lstat()
+            except OSError as exc:
+                raise ExistingInstallationError(f"{label} is unavailable") from exc
+            if stat.S_ISLNK(info.st_mode):
+                raise ExistingInstallationError(f"{label} cannot contain symlinks")
+    try:
+        info = project_root.lstat()
+    except OSError as exc:
+        raise ExistingInstallationError("Host Compose source directory is unavailable") from exc
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, settings["owner_uid"]}
             or info.st_mode & 0o022):
         raise ExistingInstallationError("Host Compose source directory is unsafe")
-    if env_file != project_root and project_root not in env_file.parents:
-        raise ExistingInstallationError("Host Compose environment file must be inside its bound source root")
-    current = Path(env_file.anchor)
-    for part in env_file.parts[1:]:
-        current /= part
-        try:
-            info = current.lstat()
-        except OSError as exc:
-            raise ExistingInstallationError("Host Compose environment file is unavailable") from exc
-        if stat.S_ISLNK(info.st_mode):
-            raise ExistingInstallationError("Host Compose environment file cannot be a symlink")
-    info = env_file.lstat()
-    if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.geteuid()}
-            or info.st_mode & 0o022 or info.st_size > 1024 * 1024
+    try:
+        info = controller_root.lstat()
+    except OSError as exc:
+        raise ExistingInstallationError("Atomic update controller state directory is unavailable") from exc
+    if (not stat.S_ISDIR(info.st_mode)
+            or info.st_uid not in {0, settings["owner_uid"], os.geteuid()}
+            or info.st_mode & 0o022):
+        raise ExistingInstallationError("Atomic update controller state directory is unsafe")
+    try:
+        info = env_file.lstat()
+    except OSError as exc:
+        raise ExistingInstallationError("Host Compose environment file is unavailable") from exc
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, settings["owner_uid"]}
+            or info.st_mode & 0o077 or info.st_size > 1024 * 1024
             or not os.access(env_file, os.R_OK)):
         raise ExistingInstallationError("Host Compose environment file is unsafe")
     return {"schema": 1, "project": settings["project"],
             "project_root": str(project_root), "env_file": str(env_file),
+            # The active-release pointer and immutable release tree belong to
+            # the existing Compose installation. The controller's separate
+            # durable state directory continues to hold orchestration journals.
+            "install_root": str(project_root),
             "docker": "/usr/bin/docker"}
 
 
@@ -120,7 +133,7 @@ def _run_atomic_source(candidate: Path, settings: Mapping[str, Any], transaction
     script = candidate / "scripts" / "atomic_local_update.py"
     if script.is_symlink() or not script.is_file():
         raise ExistingInstallationError("Signed atomic Compose updater is missing")
-    install_root = candidate.parent.parent / "atomic-compose-state"
+    install_root = Path(settings["install_root"])
     command = [sys.executable, str(script), "--docker", settings["docker"],
                "--project", settings["project"], "--candidate-root", str(candidate),
                "--install-root", str(install_root), "--env-file", settings["env_file"],

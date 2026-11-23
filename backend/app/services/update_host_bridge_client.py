@@ -17,7 +17,8 @@ from .update_journal import exclusive_lock
 
 MAX_REPORT_BYTES = 64 * 1024
 REPORT_STATUSES = {"plan_validated", "prepared", "prepare_pending", "apply_pending",
-                   "apply_uncertain", "complete", "rolled_back", "not_found", "blocked"}
+                   "prepare_stale", "apply_uncertain", "complete", "rolled_back",
+                   "not_found", "blocked"}
 REPORT_ACTIONS = {"plan", "prepare", "apply", "resume", "status"}
 
 
@@ -30,16 +31,20 @@ class CoordinatedBridgeSettings:
 
     def __init__(self, request_inbox: Path, package_inbox: Path, report_dir: Path,
                  request_uid: int, request_gid: int, *, report_timeout: float = 30.0):
-        self.request_inbox = _directory(request_inbox, "request_inbox")
-        self.package_inbox = _directory(package_inbox, "package_inbox")
-        self.report_dir = _directory(report_dir, "report_dir", forbidden=0o027)
-        self.manifest_dir = package_inbox / ".coordinated-manifests"
-        self.manifest_dir.mkdir(mode=0o700, exist_ok=True)
-        _private_directory(self.manifest_dir, "manifest_dir")
         if (not isinstance(request_uid, int) or isinstance(request_uid, bool) or request_uid < 0
                 or not isinstance(request_gid, int) or isinstance(request_gid, bool) or request_gid < 0):
             raise CoordinatedBridgeError("invalid_coordinated_uid_gid")
+        allowed_owner_uids = {0, os.geteuid(), request_uid}
+        self.request_inbox = _directory(request_inbox, "request_inbox", allowed_owner_uids=allowed_owner_uids)
+        self.package_inbox = _directory(package_inbox, "package_inbox", allowed_owner_uids=allowed_owner_uids)
+        self.report_dir = _directory(
+            report_dir, "report_dir", forbidden=0o027, allowed_owner_uids=allowed_owner_uids
+        )
+        self.manifest_dir = package_inbox / ".coordinated-manifests"
+        self.manifest_dir.mkdir(mode=0o700, exist_ok=True)
+        _private_directory(self.manifest_dir, "manifest_dir", allowed_owner_uids=allowed_owner_uids)
         self.request_uid, self.request_gid = request_uid, request_gid
+        self.allowed_owner_uids = allowed_owner_uids
         if not isinstance(report_timeout, (int, float)) or report_timeout <= 0 or report_timeout > 3600:
             raise CoordinatedBridgeError("invalid_coordinated_timeout")
         self.report_timeout = float(report_timeout)
@@ -86,6 +91,7 @@ class CoordinatedBridgeClient:
             digest = hashlib.sha256()
             fd, temporary = tempfile.mkstemp(prefix=f".{checksum}-", suffix=".tmp", dir=self.settings.package_inbox)
             try:
+                self._set_host_package_owner(fd)
                 with os.fdopen(fd, "wb") as output:
                     copied = 0
                     while chunk := os.read(source_fd, min(1024 * 1024, expected_size + 1 - copied)):
@@ -104,13 +110,21 @@ class CoordinatedBridgeClient:
                 if target.exists():
                     target_fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
                     target_info = os.fstat(target_fd)
+                    if target_info.st_uid != self.settings.request_uid:
+                        if os.geteuid() != 0 or target_info.st_uid not in {0, os.geteuid()}:
+                            os.close(target_fd)
+                            raise CoordinatedBridgeError("package_staging_conflict")
+                        os.fchown(target_fd, self.settings.request_uid, -1)
+                        target_info = os.fstat(target_fd)
                     os.close(target_fd)
-                    if not _file_matches(target, checksum, expected_size):
+                    if (target_info.st_uid != self.settings.request_uid
+                            or not _file_matches(target, checksum, expected_size)):
                         raise CoordinatedBridgeError("package_staging_conflict")
                     return target
-                with exclusive_lock(self.settings.package_inbox / ".coordinated-package.lock"):
+                with exclusive_lock(self.settings.package_inbox / ".coordinated-package.lock",
+                                    allowed_owner_uids=self.settings.allowed_owner_uids):
                     if target.exists() or target.is_symlink():
-                        if target.is_symlink() or not _file_matches(target, checksum, expected_size):
+                        if target.is_symlink() or not self._host_package_file_matches(target, checksum, expected_size):
                             raise CoordinatedBridgeError("package_staging_conflict")
                         return target
                     try:
@@ -135,6 +149,34 @@ class CoordinatedBridgeClient:
         finally:
             if "source_fd" in locals():
                 os.close(source_fd)
+
+    def _set_host_package_owner(self, descriptor: int) -> None:
+        info = os.fstat(descriptor)
+        if info.st_uid == self.settings.request_uid:
+            return
+        if os.geteuid() != 0 or info.st_uid not in {0, os.geteuid()}:
+            raise CoordinatedBridgeError("package_staging_owner_invalid")
+        try:
+            os.fchown(descriptor, self.settings.request_uid, -1)
+        except OSError as exc:
+            raise CoordinatedBridgeError("package_staging_owner_invalid") from exc
+        if os.fstat(descriptor).st_uid != self.settings.request_uid:
+            raise CoordinatedBridgeError("package_staging_owner_invalid")
+
+    def _host_package_file_matches(self, path: Path, checksum: str, expected_size: int) -> bool:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                if info.st_uid != self.settings.request_uid:
+                    if os.geteuid() != 0 or info.st_uid not in {0, os.geteuid()}:
+                        return False
+                    os.fchown(stream.fileno(), self.settings.request_uid, -1)
+                    info = os.fstat(stream.fileno())
+                return (info.st_uid == self.settings.request_uid
+                        and _file_matches(path, checksum, expected_size))
+        except OSError:
+            return False
 
     def submit_prepare(self, transaction: str, manifest: Mapping[str, Any], package: Path) -> dict[str, Any]:
         transaction = _transaction(transaction)
@@ -173,7 +215,7 @@ class CoordinatedBridgeClient:
             descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(descriptor, "rb") as stream:
                 info = os.fstat(stream.fileno())
-                if (not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.geteuid()}
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid not in self.settings.allowed_owner_uids
                         or info.st_mode & 0o022 or info.st_size > MAX_REPORT_BYTES):
                     raise CoordinatedBridgeError("invalid_coordinated_report")
                 value = json.loads(stream.read(MAX_REPORT_BYTES + 1))
@@ -208,7 +250,8 @@ class CoordinatedBridgeClient:
             raise CoordinatedBridgeError("invalid_action")
         path = self.settings.manifest_dir / f".{transaction}-{action}.nonce"
         try:
-            with exclusive_lock(self.settings.manifest_dir / ".coordinated-client.lock"):
+            with exclusive_lock(self.settings.manifest_dir / ".coordinated-client.lock",
+                                allowed_owner_uids=self.settings.allowed_owner_uids):
                 if path.exists() or path.is_symlink():
                     return _read_nonce(path)
                 return self._create_nonce(path)
@@ -236,7 +279,8 @@ class CoordinatedBridgeClient:
     def persist_manifest(self, transaction: str, manifest: Mapping[str, Any]) -> None:
         transaction = _transaction(transaction)
         path = self.settings.manifest_dir / f"{transaction}.json"
-        with exclusive_lock(self.settings.manifest_dir / ".coordinated-client.lock"):
+        with exclusive_lock(self.settings.manifest_dir / ".coordinated-client.lock",
+                            allowed_owner_uids=self.settings.allowed_owner_uids):
             if path.exists() or path.is_symlink():
                 if path.is_symlink() or _read_json_file(path) != dict(manifest):
                     raise CoordinatedBridgeError("manifest_binding_changed")
@@ -278,10 +322,11 @@ def _transaction(value: Any) -> str:
     return value
 
 
-def _private_directory(path: Path, label: str) -> None:
+def _private_directory(path: Path, label: str, *, allowed_owner_uids: set[int] | None = None) -> None:
     """Validate the manifest directory and every existing ancestor."""
     if not path.is_absolute() or ".." in path.parts:
         raise CoordinatedBridgeError(f"unsafe_{label}")
+    allowed_owners = {0, os.geteuid(), *(allowed_owner_uids or set())}
     cursor = path
     while True:
         try:
@@ -289,7 +334,7 @@ def _private_directory(path: Path, label: str) -> None:
         except OSError as exc:
             raise CoordinatedBridgeError(f"unsafe_{label}") from exc
         if (stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode)
-                or info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o022):
+                or info.st_uid not in allowed_owners or info.st_mode & 0o022):
             raise CoordinatedBridgeError(f"unsafe_{label}")
         if cursor.parent == cursor:
             return
@@ -344,13 +389,15 @@ def _read_nonce(path: Path) -> str:
     return nonce
 
 
-def _directory(path: Path, label: str, *, forbidden: int = 0o002) -> Path:
+def _directory(path: Path, label: str, *, forbidden: int = 0o002,
+               allowed_owner_uids: set[int] | None = None) -> Path:
     if (not isinstance(path, Path) or not path.is_absolute() or ".." in path.parts
             or path.is_symlink() or not path.is_dir()):
         raise CoordinatedBridgeError(f"invalid_{label}")
     try:
         info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, os.geteuid()} or info.st_mode & forbidden:
+        allowed_owners = {0, os.geteuid(), *(allowed_owner_uids or set())}
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid not in allowed_owners or info.st_mode & forbidden:
             raise CoordinatedBridgeError(f"unsafe_{label}")
     except OSError as exc:
         raise CoordinatedBridgeError(f"invalid_{label}") from exc

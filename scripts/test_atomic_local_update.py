@@ -8,10 +8,87 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.atomic_local_update import AtomicComposeUpdate, UpdateError, _safe_failure_summary
+from scripts.atomic_local_update import (AtomicComposeUpdate, UpdateError,
+                                         _existing_compose_sources, _normalize_compose_host_path,
+                                         _safe_failure_summary)
 
 
 class AtomicLocalUpdateTests(unittest.TestCase):
+    def test_tags_running_container_when_docker_pruned_its_source_image(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            candidate = root / "candidate"
+            candidate.mkdir()
+            (candidate / "VERSION").write_text("1.0.8\n", encoding="utf-8")
+            (candidate / "docker-compose.prod.yml").write_text("services: {}\n", encoding="utf-8")
+            env = root / "compose.production.env"
+            env.write_text("TRESEKO_COMPOSE_PROJECT_NAME=treseko-test\n", encoding="utf-8")
+            updater = AtomicComposeUpdate(docker="/usr/bin/docker", project="treseko-test",
+                                          candidate_root=candidate, install_root=root,
+                                          env_file=env, expected_version="1.0.8",
+                                          transaction_id="qa-pruned-image")
+            calls = []
+
+            def docker(*args, **kwargs):
+                calls.append(args)
+                if args[:2] == ("image", "tag"):
+                    raise UpdateError("No such image")
+                return "sha256:preserved-container-image"
+
+            updater._docker = docker
+            record = {"Id": "container-id", "Image": "sha256:missing-image",
+                      "Config": {"Labels": {"com.docker.compose.service": "backend"}}}
+            images = updater._tag_old_images([record], {"services": {"backend": {}}})
+            tag = "treseko-rollback:qa-pruned-image-backend"
+            self.assertEqual(images, {"backend": tag})
+            self.assertEqual(calls, [("image", "tag", "sha256:missing-image", tag),
+                                     ("commit", "container-id", tag)])
+
+    def test_existing_compose_sources_unions_service_specific_host_overrides(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "release"
+            state = root / ".treseko-local" / "update-transactions"
+            base = project / "docker-compose.prod.yml"
+            candidate = state / "20261118123456-abcdef12-atomic-candidate.compose.yml"
+            rolled_back = state / "qa-current-single-file-ota-20261120-rollback.compose.yml"
+            coordinated = root / ".config" / "treseko" / "coordinated.override.yaml"
+            labels = lambda *paths: {
+                "com.docker.compose.project.working_dir": str(project),
+                "com.docker.compose.project.config_files": ",".join(map(str, paths)),
+            }
+            records = [
+                {"Config": {"Labels": labels(base, candidate, rolled_back, coordinated)}},
+                {"Config": {"Labels": labels(base, candidate, rolled_back)}},
+            ]
+            workdir, files = _existing_compose_sources(records, state)
+            self.assertEqual(workdir, project)
+            self.assertEqual(files, [str(base), str(coordinated)])
+
+    def test_existing_compose_sources_rejects_different_base_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            records = [
+                {"Config": {"Labels": {"com.docker.compose.project.working_dir": str(root),
+                                         "com.docker.compose.project.config_files": str(root / "a.yml")}}},
+                {"Config": {"Labels": {"com.docker.compose.project.working_dir": str(root),
+                                         "com.docker.compose.project.config_files": str(root / "b.yml")}}},
+            ]
+            with self.assertRaisesRegex(UpdateError, "base file identity is ambiguous"):
+                _existing_compose_sources(records, root / ".treseko-local" / "update-transactions")
+
+    def test_wsl_normalizes_windows_compose_source_paths(self):
+        with patch("scripts.atomic_local_update._is_wsl_host", return_value=True):
+            self.assertEqual(_normalize_compose_host_path(r"C:\Treseko\docker-compose.prod.yml"),
+                             "/mnt/c/Treseko/docker-compose.prod.yml")
+            self.assertEqual(_normalize_compose_host_path(r"D:\Data\custom.yaml"),
+                             "/mnt/d/Data/custom.yaml")
+
+    def test_non_wsl_keeps_compose_source_paths_unchanged(self):
+        with patch("scripts.atomic_local_update._is_wsl_host", return_value=False):
+            source = r"C:\Treseko\docker-compose.prod.yml"
+            self.assertEqual(_normalize_compose_host_path(source), source)
+
     def test_release_snapshot_excludes_worker_identity_and_pairing_credentials(self):
         runner = self._runner()
         worker_identity = runner.candidate_root / "automation-worker" / ".worker-instance-id"
@@ -28,6 +105,23 @@ class AtomicLocalUpdateTests(unittest.TestCase):
         self.assertNotIn("automation-worker/.worker-instance-id", release_files)
         self.assertNotIn("automation-worker/.runner-token.pairing", release_files)
         self.assertEqual(ignored, {".worker-instance-id", ".runner-token.pairing"})
+
+    def test_release_snapshot_keeps_vendored_worker_dist_and_ignores_generated_dist(self):
+        runner = self._runner()
+        candidate = runner.candidate_root
+        vendored = candidate / "automation-worker" / "vendor" / "node-forge" / "dist"
+        generated = candidate / "frontend" / "dist"
+        vendored.mkdir(parents=True, exist_ok=True)
+        generated.mkdir(parents=True, exist_ok=True)
+        (vendored / "forge.min.js").write_text("vendored dependency", encoding="utf-8")
+        (generated / "index.html").write_text("generated frontend", encoding="utf-8")
+
+        release_files = {path.relative_to(candidate).as_posix()
+                         for path in runner._release_files(candidate)}
+        self.assertIn("automation-worker/vendor/node-forge/dist/forge.min.js", release_files)
+        self.assertNotIn("frontend/dist/index.html", release_files)
+        self.assertNotIn("dist", runner._release_ignored(str(vendored.parent), ["dist"]))
+        self.assertIn("dist", runner._release_ignored(str(generated.parent), ["dist"]))
 
     def test_failure_summary_keeps_actionable_error_and_redacts_credentials(self):
         summary = _safe_failure_summary(
@@ -188,6 +282,70 @@ class AtomicLocalUpdateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(UpdateError, "differs from its private host binding"):
             runner.run_mode(validate_only=True)
+
+        self.assertEqual(self.commands, [])
+
+    def test_legacy_coordinator_state_keeps_journal_separate_from_active_install(self):
+        state_root = self.root / "controller-state"
+        state_root.mkdir(mode=0o700)
+        project_root = self.root / "installed-project"
+        local_state = project_root / ".treseko-local"
+        local_state.mkdir(parents=True, mode=0o700)
+        (local_state / "active-release.json").write_text('{"schema":1}\n', encoding="utf-8")
+
+        runner = AtomicComposeUpdate(docker="docker", project="treseko-test",
+                                     candidate_root=self.candidate, install_root=state_root,
+                                     env_file=self.env, expected_version="1.0.4",
+                                     expected_project_root=project_root)
+
+        self.assertEqual(runner.install_root, project_root.resolve())
+        self.assertEqual(runner.state_root, state_root.resolve())
+        self.assertEqual(runner.active_release_path,
+                         project_root.resolve() / ".treseko-local" / "active-release.json")
+        self.assertEqual(runner.journal_root,
+                         state_root.resolve() / ".treseko-local" / "update-transactions")
+
+    def test_preflight_accepts_compose_root_from_verified_active_release(self):
+        runner = self._runner()
+        legacy = self.root / "project"
+        runner.expected_project_root = legacy
+        active = runner.release_root / "1.0.3-verified"
+        active.parent.mkdir(parents=True)
+        shutil.copytree(runner.candidate_root, active)
+        (active / "VERSION").write_text("1.0.3\n", encoding="utf-8")
+        manifest = runner._release_manifest(active, "1.0.3")
+        runner._write_atomic_json(active / ".treseko-release.json", manifest)
+        runner._write_atomic_json(runner.active_release_path, {
+            "schema": 1, "version": "1.0.3", "release": active.name,
+            "tree_sha256": manifest["tree_sha256"],
+        })
+        runner._running_inventory = lambda: (
+            self.records, [], active, [str(active / "docker-compose.prod.yml")],
+            {"services": {name: {} for name in
+             ("db", "redis", "migrator", "backend", "engine", "frontend")}},
+        )
+
+        result = runner._validate_candidate()
+
+        self.assertEqual(result["old_workdir"], active)
+        self.assertEqual(self.commands, [])
+
+    def test_preflight_rejects_workdir_that_is_neither_initial_nor_active_release(self):
+        runner = self._runner()
+        runner.expected_project_root = self.root / "initial-project"
+        active = runner.release_root / "1.0.3-verified"
+        active.parent.mkdir(parents=True)
+        shutil.copytree(runner.candidate_root, active)
+        (active / "VERSION").write_text("1.0.3\n", encoding="utf-8")
+        manifest = runner._release_manifest(active, "1.0.3")
+        runner._write_atomic_json(active / ".treseko-release.json", manifest)
+        runner._write_atomic_json(runner.active_release_path, {
+            "schema": 1, "version": "1.0.3", "release": active.name,
+            "tree_sha256": manifest["tree_sha256"],
+        })
+
+        with self.assertRaisesRegex(UpdateError, "differs from its private host binding"):
+            runner._validate_candidate()
 
         self.assertEqual(self.commands, [])
 
@@ -549,6 +707,18 @@ class AtomicLocalUpdateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(UpdateError, "redis has no configured healthcheck"):
             runner._wait_candidate_services_healthy(["redis"], timeout=1)
+
+    def test_automation_worker_candidate_without_healthcheck_is_rejected(self):
+        runner = self._runner()
+        del runner._wait_candidate_services_healthy
+        record = {
+            "Config": {"Labels": {"com.docker.compose.service": "automation-worker"}},
+            "State": {"Running": True, "Status": "running"},
+        }
+        runner._docker = lambda *args, **kwargs: "container-id" if args[0] == "ps" else json.dumps([record])
+
+        with self.assertRaisesRegex(UpdateError, "automation-worker has no configured healthcheck"):
+            runner._wait_candidate_services_healthy(["automation-worker"], timeout=1)
 
     def test_candidate_plugin_runner_without_docker_healthcheck_uses_http_probe(self):
         runner = self._runner()

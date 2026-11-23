@@ -1,7 +1,7 @@
 from .updater import *
 from .updater import _pg_dump_url, _utc_iso
 from .update_host_bridge_client import CoordinatedBridgeClient, CoordinatedBridgeError, CoordinatedBridgeSettings
-from .update_installation_mode import require as require_installation_mode, require_atomic_update_coordinator
+from .update_installation_mode import require as require_installation_mode, require_update_runtime
 
 async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
                      *, download_manifest: dict[str, Any] | None = None) -> None:
@@ -15,7 +15,7 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
         state.version = normalized_manifest["version"]
         checksum = normalized_manifest["checksum_sha256"]
 
-        mode = require_installation_mode("request")
+        mode = require_update_runtime()
         if mode == "coordinated":
             await self._run_coordinated_apply(
                 task_id, state, normalized_manifest, force,
@@ -24,11 +24,11 @@ async def _run_apply(self, task_id: str, manifest: dict[str, Any], force: bool,
             return
 
         deployment = normalized_manifest.get("deployment")
-        if isinstance(deployment, dict) and deployment.get("mode") == "complete-source":
-            # The legacy entrypoint can replace runtime components, but it
-            # cannot atomically activate the signed Compose/source tree. Stop
-            # before download, backup, or update-ready so callers that bypass
-            # the API admission gate still cannot create a mixed release.
+        if (mode != "systemd-native" and isinstance(deployment, dict)
+                and deployment.get("mode") == "complete-source"):
+            # Native systemd consumes the signed component payload from the
+            # same archive; source-release is ignored because no Compose tree
+            # is activated. Compose still requires the host transaction journal.
             raise CoordinatedBridgeError("atomic_update_coordinator_required")
 
         self._update_state(state, "preflight", 8, "Validando preflight de espacio, version origen y backups.")
@@ -184,6 +184,11 @@ def _normalize_manifest(self, manifest: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("El checksum SHA-256 del manifest no es valido.")
     previous_version = str(manifest.get("previous_version") or "").strip()
     from_versions = manifest.get("from_versions")
+    deployment = manifest.get("deployment")
+    if (isinstance(deployment, dict) and deployment.get("mode") == "complete-source"
+            and (not isinstance(from_versions, list)
+                 or not any(str(item).strip() for item in from_versions))):
+        raise ValueError("Un paquete complete-source debe declarar versiones de origen en from_versions.")
     if previous_version and previous_version != PRODUCT_VERSION:
         raise ValueError(f"El paquete requiere actualizar desde {previous_version}; esta instalacion tiene {PRODUCT_VERSION}.")
     if isinstance(from_versions, list) and from_versions:

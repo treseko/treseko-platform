@@ -12,6 +12,9 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app import models, schemas
+# Import the application before router modules so their compatibility
+# repository exports are initialized in the same order as the real service.
+from app.main import app  # noqa: F401
 from app.api.routers import automation as automation_router
 from app.repositories import api_automation_jobs, automation_job_results
 from app.repositories.automation_preparation import _runner_supports_job
@@ -100,6 +103,7 @@ def test_api_job_envelope_encrypts_full_payload_and_normal_serializer_redacts_ci
 
 def test_api_worker_capability_is_opt_in_and_legacy_worker_does_not_match():
     job = SimpleNamespace(
+        job_type="API_EXECUTION",
         required_framework="treseko-api",
         required_language="declarative",
         required_runtime=None,

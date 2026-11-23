@@ -2,8 +2,9 @@
 
 Esta guía cubre un único flujo: enviar a Treseko los resultados de una
 ejecución automatizada desde Playwright, Selenium, Cypress, Pytest u otro
-pipeline CI/CD. Antes de integrarlo, confirmá que tu licencia incluya la API
-externa Premium.
+pipeline CI/CD. Community permite reportar resultados con una cuota semanal
+compartida con las demás ejecuciones automatizadas. Premium puede ampliar esa
+cuota según los límites de la licencia instalada.
 
 ## 1. Generar la API key desde la plataforma
 
@@ -40,6 +41,15 @@ El payload incluye el contexto de la build y uno o más casos con estado
 `PASO`, `FALLO` o `BLOQUEADO`. Para reintentos seguros, enviá un
 `external_run_id` estable y usá `overwrite` según quieras actualizar o rechazar
 un resultado ya informado.
+
+La API registra resultados: no ejecuta el script ni inicia un job. El pipeline
+externo sigue ejecutando las pruebas y Treseko incorpora los resultados al
+historial de la build. La cuota cuenta casos nuevos reportados dentro de una
+ventana móvil de siete días y se comparte con las ejecuciones del Automation
+Worker. En Community el límite predeterminado es **50 ejecuciones por semana**;
+Premium usa el límite definido en su licencia. Un reintento que actualiza un
+resultado ya existente no consume otra ejecución. Cada solicitud admite hasta
+500 casos, aunque la cuota semanal puede ser menor.
 
 Consultá la [API externa de automatización](EXTERNAL_AUTOMATION_API.md) para
 ver el contrato completo, payloads, respuestas y un ejemplo en Python.

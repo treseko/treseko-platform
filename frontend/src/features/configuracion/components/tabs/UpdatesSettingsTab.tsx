@@ -4,6 +4,7 @@ import { Bot, Cpu, Database, DownloadCloud, Monitor, RefreshCw, Server, UploadCl
 import {
   applySystemUpdate,
   checkCommunityUpdate,
+  downloadPremiumSystemUpdateMigrationBundle,
   fetchLatestSystemUpdate,
   fetchSystemMonitorSummary,
   fetchSystemUpdateChannels,
@@ -11,6 +12,7 @@ import {
   fetchSystemUpdateStatus,
   fetchSystemVersion,
   reportSystemUpdateFailure,
+  requestPremiumSystemUpdatePackage,
   restartPreparedSystemUpdate,
   rollbackSystemUpdate,
   syncPremiumSystemUpdate,
@@ -43,6 +45,8 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
   const [restartingPrepared, setRestartingPrepared] = useState(false)
   const [reportingFailure, setReportingFailure] = useState(false)
   const [applyConfirmation, setApplyConfirmation] = useState(false)
+  const [requestingPackageDownload, setRequestingPackageDownload] = useState(false)
+  const [packageDownload, setPackageDownload] = useState<any>(null)
   const statusPollingRef = useRef(false)
   const updateErrorMessage = (error: any, fallback: string) => error?.message === 'atomic_update_coordinator_required'
     ? t('configuracion.atomicUpdateRequiresInstaller')
@@ -88,6 +92,39 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
       showFeedback(t('configuracion.premiumUpdatesTitle'), error?.message || t('configuracion.premiumUpdatesError'), 'danger')
     } finally {
       setCheckingPremium(false)
+    }
+  }
+
+  const preparePackageDownload = async () => {
+    if (!latestUpdate?.available || latestUpdate?.edition !== 'premium' || !latestUpdate?.manifest) return
+    setRequestingPackageDownload(true)
+    setPackageDownload(null)
+    try {
+      const payload = await requestPremiumSystemUpdatePackage(fetchWithAuth, latestUpdate.manifest)
+      setPackageDownload(payload)
+    } catch (error: any) {
+      showFeedback(t('configuracion.updatesTitle'), updateErrorMessage(error, t('configuracion.updatePackageDownloadError')), 'danger')
+    } finally {
+      setRequestingPackageDownload(false)
+    }
+  }
+
+  const downloadMigrationBundle = async () => {
+    if (!latestUpdate?.available || latestUpdate?.edition !== 'premium' || !latestUpdate?.manifest) return
+    setRequestingPackageDownload(true)
+    try {
+      const bundle = await downloadPremiumSystemUpdateMigrationBundle(fetchWithAuth, latestUpdate.manifest)
+      const url = URL.createObjectURL(bundle.blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = bundle.artifact
+      anchor.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      showFeedback(t('configuracion.updateMigrationBundleReady'), bundle.artifact, 'success')
+    } catch (error: any) {
+      showFeedback(t('configuracion.updatesTitle'), error?.message || t('configuracion.updateMigrationBundleError'), 'danger')
+    } finally {
+      setRequestingPackageDownload(false)
     }
   }
 
@@ -323,6 +360,10 @@ export function UpdatesSettingsTab({ fetchWithAuth, showFeedback, canApplyUpdate
     latestUpdate,
     isPremiumUpdateMode,
     applyLatestUpdate,
+    preparePackageDownload,
+    downloadMigrationBundle,
+    requestingPackageDownload,
+    packageDownload,
     applyConfirmation,
     setApplyConfirmation,
     confirmApplyUpdate,

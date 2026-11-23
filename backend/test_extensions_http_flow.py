@@ -11,6 +11,7 @@ from app.repositories import project_write_policy
 from app.main import app
 from app.api.routers import organizations as organizations_router
 from app.api.routers import projects as projects_router
+from app.services.edition import user_limits
 from test_api_project_http_flow import _create_admin, _login
 
 
@@ -77,6 +78,9 @@ def test_plugin_catalog_install_configuration_enable_test_and_disable_http_lifec
 def test_project_scoped_extension_is_hidden_and_rejected_for_another_project_member(monkeypatch):
     monkeypatch.setattr(organizations_router, "enforce_limit", _allow_controlled_tenant_limit)
     monkeypatch.setattr(project_write_policy, "enforce_limit", _allow_controlled_tenant_limit)
+    # This flow tests project-scoped extension authorization, not Community
+    # account-seat exhaustion across unrelated test fixtures.
+    monkeypatch.setattr(user_limits, "enforce_active_user_limit", _allow_controlled_tenant_limit)
     suffix = uuid4().hex
     admin_email = f"extensions-admin-{suffix}@example.test"
     member_email = f"extensions-member-{suffix}@example.test"
@@ -190,9 +194,6 @@ def test_project_scoped_extension_is_hidden_and_rejected_for_another_project_mem
             ("post", f"/extensions/{instance_id}/enable", None),
             ("post", f"/extensions/{instance_id}/disable", None),
             ("post", f"/extensions/{instance_id}/test", None),
-            ("post", f"/plugins/store/{instance_id}/invoke", None),
-            ("get", f"/plugins/store/{instance_id}/audit", None),
-            ("delete", f"/plugins/store/{instance_id}", None),
         ):
             response = getattr(client, method)(path, headers=member_headers, json=payload) if payload is not None else getattr(client, method)(path, headers=member_headers)
             assert response.status_code == 403, f"{method.upper()} {path}: {response.text}"

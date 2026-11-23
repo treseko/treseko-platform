@@ -15,7 +15,8 @@ EXCLUDED_DIRS = {
     "coverage", "test-results", "playwright-report",
 }
 EXCLUDED_FILES = {".gitignore", ".runner-token", ".worker-instance-id",
-                  ".runner-token.pairing", ".maintenance", ".DS_Store"}
+                  ".runner-token.pairing", ".maintenance", ".DS_Store",
+                  "dump.rdb"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".log", ".jsonl"}
 ALLOWED_ENV_EXAMPLES = {
     ".env.production.example",
@@ -27,7 +28,23 @@ ALLOWED_ENV_EXAMPLES = {
 }
 REQUIRED_PATHS = (
     "VERSION", "docker-compose.prod.yml", "scripts/atomic_local_update.py",
-    "scripts/install_local_treseko.sh", "backend/Dockerfile", "frontend/Dockerfile",
+    # A complete-source OTA must retain the documented installation entry
+    # points. The Bash local installer is used on Linux/macOS, PowerShell is
+    # used for Windows clients, and the remote variants provision Linux hosts.
+    "scripts/install_local_treseko.sh", "scripts/install_local_treseko.ps1",
+    "scripts/install_remote_treseko.sh", "scripts/install_remote_treseko.ps1",
+    "scripts/install_treseko.sh",
+    "scripts/bootstrap_host_update_coordinator.sh",
+    "scripts/bootstrap_host_update_coordinator_macos.sh",
+    "scripts/bootstrap_host_update_coordinator.ps1",
+    "scripts/bootstrap_legacy_native_update.sh",
+    "scripts/bootstrap_remote_component_from_ota.sh",
+    "scripts/bootstrap_native_worker_restart.sh",
+    "scripts/check_host_bootstrap_adapters.py",
+    "scripts/prepare_host_bootstrap_python.sh",
+    "scripts/host-bootstrap-requirements.txt",
+    "backend/app/services/update_legacy_host_migration.py",
+    "backend/Dockerfile", "frontend/Dockerfile",
     "engine/Dockerfile", "automation-worker/Dockerfile", "plugin-runner/Dockerfile",
 )
 
@@ -41,7 +58,12 @@ def iter_release_files(source: Path):
         is_backend_app = relative.as_posix() == "backend/app"
         kept_dirs = []
         for name in sorted(directories):
-            if name in EXCLUDED_DIRS or name.startswith(".env"):
+            # Vendored packages can ship checked-in dist files required by
+            # offline/npm file dependencies (for example node-forge). Keep
+            # those source artifacts in the single-file OTA while continuing
+            # to omit generated application build output elsewhere.
+            vendored_dist = name == "dist" and relative.parts[:2] == ("automation-worker", "vendor")
+            if (name in EXCLUDED_DIRS and not vendored_dist) or name.startswith(".env"):
                 continue
             if relative == Path(".") and name == "public-release":
                 continue

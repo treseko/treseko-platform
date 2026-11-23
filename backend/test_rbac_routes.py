@@ -4,13 +4,25 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app import auth, models  # noqa: E402
-from scripts.audit_rbac_routes import audit_file, audit_routes  # noqa: E402
+try:  # The AST route auditor is internal tooling and is not part of the public tree.
+    from scripts.audit_rbac_routes import audit_file, audit_routes  # noqa: E402
+except ModuleNotFoundError as exc:  # Keep the public role matrix runnable.
+    if exc.name != "scripts.audit_rbac_routes":
+        raise
+    audit_file = audit_routes = None
+
+
+def require_route_auditor():
+    if audit_routes is None or audit_file is None:
+        pytest.skip("Internal route-audit helper is intentionally omitted from the public release")
 
 
 def make_user(role, permisos=None, modulos=None):
@@ -38,6 +50,7 @@ def test_role_permissions_matrix():
 
 
 def test_route_audit_detects_core_rbac_contracts():
+    require_route_auditor()
     rows = audit_routes()
     by_route = {(row.method, row.path): row for row in rows}
 
@@ -80,11 +93,17 @@ def test_route_audit_detects_core_rbac_contracts():
         ("POST", "/automation-jobs/{job_id}/result-uploads/{event_id}/complete"),
         ("GET", "/mcp/tools"),
         ("POST", "/mcp/internal/runtime-credential"),
+        ("POST", "/automation-runners/me/update-lock"),
+        ("DELETE", "/automation-runners/me/update-lock"),
+        ("GET", "/automation-runners/me/update-status"),
+        ("GET", "/automation-runners/me/update-package"),
+        ("GET", "/automation-recordings/{job_id}/control"),
     }
     assert {(row.method, row.path) for row in rows if row.status == "REVIEW"} == expected_review
 
 
 def test_route_audit_normalizes_mcp_root_and_marks_technical_authentication():
+    require_route_auditor()
     rows = {(row.method, row.path): row for row in audit_routes()}
 
     assert rows[("POST", "/mcp")].auth == "USER"
@@ -97,6 +116,7 @@ def test_route_audit_normalizes_mcp_root_and_marks_technical_authentication():
 
 
 def test_route_audit_does_not_accept_capability_names_in_strings_or_comments(tmp_path):
+    require_route_auditor()
     module = tmp_path / "unsafe_router.py"
     module.write_text(
         """
@@ -117,6 +137,7 @@ async def unsafe(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_does_not_treat_resource_scope_as_functional_permission(tmp_path):
+    require_route_auditor()
     module = tmp_path / "scope_only_router.py"
     module.write_text(
         """
@@ -138,6 +159,7 @@ async def scope_only(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_rejects_lookalike_auth_receiver(tmp_path):
+    require_route_auditor()
     module = tmp_path / "lookalike_auth_router.py"
     module.write_text(
         """
@@ -158,6 +180,7 @@ async def unsafe(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_rejects_statically_unreachable_auth_check(tmp_path):
+    require_route_auditor()
     module = tmp_path / "dead_auth_router.py"
     module.write_text(
         """
@@ -179,6 +202,7 @@ async def unsafe(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_rejects_conditional_auth_check(tmp_path):
+    require_route_auditor()
     module = tmp_path / "conditional_auth_router.py"
     module.write_text(
         """
@@ -199,6 +223,7 @@ async def unsafe(payload, current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_rejects_auth_check_after_return(tmp_path):
+    require_route_auditor()
     module = tmp_path / "post_return_auth_router.py"
     module.write_text(
         """
@@ -218,6 +243,7 @@ async def unsafe(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_accepts_fail_closed_permission_guard(tmp_path):
+    require_route_auditor()
     module = tmp_path / "guarded_router.py"
     module.write_text(
         """
@@ -239,6 +265,7 @@ async def guarded(current_user=Depends(get_current_active_user)):
 
 
 def test_route_audit_rejects_wrong_delegated_capability(tmp_path):
+    require_route_auditor()
     module = tmp_path / "extensions.py"
     module.write_text(
         """

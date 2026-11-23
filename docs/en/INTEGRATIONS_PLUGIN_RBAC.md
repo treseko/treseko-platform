@@ -5,26 +5,33 @@
 They depend on provider, capability, scope and entitlement. Their appearance
 in the catalog does not mean they are enabled.
 
-## Integrations
+## Integrations and catalog features
 
-The catalog includes Redmine, Jira, GitHub Issues, GitLab, Azure DevOps, Slack,
-Teams and CI/CD, with availability Community, Premium, legacy or planned
-depending on the provider. Review the installation status.
+The catalog shows items registered and accessible in the installation; a
+mention, historical row or planned provider does not mean a connector is ready
+to configure. In this version, Email/SMTP is the native integration; its
+management requires Premium. Bug Tracker, AI Engine, Case Portability and AI case generation are native features
+that appear as catalog add-ons, not third-party connectors. The external
+reporting API is a separate flow described in its [usage guide](API_USAGE_GUIDE.md).
 
-Bug links are explicit: Treseko does not publish external issues automatically.
-Review the summary and save the link or identifier. Use least-privilege
-technical accounts and never paste tokens into cases or evidence.
+Do not assume Jira, GitHub Issues, GitLab, Azure DevOps, Slack, Teams or Redmine
+are connected just because the app contains fields or historical references for
+them. Confirm availability in **Add-ons**; it depends on the registered
+provider, edition and permissions. Bug links are explicit: Treseko does not
+publish external issues automatically. Review the summary before saving a link
+or identifier. Use least-privilege technical accounts and never paste tokens
+into cases or evidence.
 
 ## plugin-runner
 
-The `plugins` profile adds the isolated Plugin Runner. In Community 1.0.8 it accepts only
-the declarative `junit_xml.import_results` invocation; it does not execute
+The `plugins` profile adds the isolated Plugin Runner. In Community 1.0.8 it
+accepts the declarative `junit_xml.import_results` import; it does not execute
 arbitrary code, WASM or third-party plugins. It has a dedicated network with no
 DB, Redis, secrets or Docker socket access.
 
 When enabling the profile manually, pass `TRESEKO_RELEASE_VERSION` with the
 value from `VERSION` to `docker compose` so the image records the correct
-release. The atomic updater sets this value when rebuilding active services.
+version.
 
 ## Portability
 

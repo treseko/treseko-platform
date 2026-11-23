@@ -23,6 +23,7 @@ ENTRYPOINT_UPDATE_DIR=""
 ENTRYPOINT_UPDATE_TASK_ID=""
 ENTRYPOINT_UPDATE_VERSION=""
 ENTRYPOINT_UPDATE_WORKER_STAGED="false"
+ENTRYPOINT_WORKER_MAINPID_BEFORE_UPDATE=""
 AUTO_DB_ROLLBACK_ON_FAILURE="${TRESEKO_AUTO_DB_ROLLBACK_ON_MIGRATION_FAILURE:-false}"
 # Backend lanzado en segundo plano mientras se confirma la convergencia.
 BACKEND_PID=""
@@ -323,6 +324,29 @@ wait_for_worker_restart_convergence() {
     echo "El Worker reinicio con una VERSION distinta de ${expected_version}." >&2
     return 1
   fi
+  if [ "${TRESEKO_DEPLOY_MODE:-docker}" = "systemd" ]; then
+    worker_unit="${TRESEKO_WORKER_SYSTEMD_UNIT:-treseko-worker.service}"
+    if ! command -v systemctl >/dev/null 2>&1; then
+      echo "No se puede confirmar el reinicio del Worker: systemctl no esta disponible." >&2
+      return 1
+    fi
+    if ! systemctl is-active --quiet "$worker_unit"; then
+      echo "El Worker consumio la marca, pero ${worker_unit} quedo detenido." >&2
+      return 1
+    fi
+    worker_mainpid="$(systemctl show "$worker_unit" --property=MainPID --value 2>/dev/null || true)"
+    case "$worker_mainpid" in
+      ''|0|*[!0-9]*)
+        echo "systemd no reporta un proceso activo para ${worker_unit}." >&2
+        return 1
+        ;;
+    esac
+    if [ -z "$ENTRYPOINT_WORKER_MAINPID_BEFORE_UPDATE" ] \
+      || [ "$worker_mainpid" = "$ENTRYPOINT_WORKER_MAINPID_BEFORE_UPDATE" ]; then
+      echo "No se confirmo un proceso Worker nuevo despues del OTA (antes=${ENTRYPOINT_WORKER_MAINPID_BEFORE_UPDATE:-desconocido}, ahora=${worker_mainpid})." >&2
+      return 1
+    fi
+  fi
   echo "Automation Worker convergio en ${expected_version}."
 }
 
@@ -404,11 +428,43 @@ else:
 PY
 }
 
+prepare_native_component_dependencies() {
+  update_dir="$1"
+  [ "${TRESEKO_DEPLOY_MODE:-docker}" = "systemd" ] || return 0
+
+  npm_bin="$(command -v npm || true)"
+  if [ -z "$npm_bin" ]; then
+    echo "No se puede aplicar el OTA bare-metal: npm no esta disponible." >&2
+    return 1
+  fi
+  if [ -f "$update_dir/engine/package-lock.json" ]; then
+    echo "  Preparando dependencias nativas del Engine desde el OTA..."
+    engine_browser_path="${PLAYWRIGHT_BROWSERS_PATH:-$(dirname -- "$ENGINE_DIR")/data/ms-playwright}"
+    PLAYWRIGHT_BROWSERS_PATH="$engine_browser_path" "$npm_bin" --prefix "$update_dir/engine" ci
+  fi
+  if [ -f "$update_dir/automation-worker/package-lock.json" ]; then
+    echo "  Preparando dependencias nativas del Worker desde el OTA..."
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+      CYPRESS_INSTALL_BINARY=0 \
+      PUPPETEER_SKIP_DOWNLOAD=1 \
+      "$npm_bin" --prefix "$update_dir/automation-worker" ci
+  fi
+}
+
 apply_pending_update() {
   flag_file="$UPDATES_DIR/update-ready"
   failed_file="$UPDATES_DIR/update-failed"
   if [ "$CHECK_PENDING_UPDATE" != "true" ] || [ ! -f "$flag_file" ]; then
     return 0
+  fi
+
+  # Capture the running systemd Worker PID before replacing files. A 1.0.7
+  # Worker can remove the restart marker and exit cleanly while Restart=on-failure
+  # leaves its service stopped; VERSION plus a consumed marker is insufficient.
+  if [ "${TRESEKO_DEPLOY_MODE:-docker}" = "systemd" ] \
+    && command -v systemctl >/dev/null 2>&1; then
+    worker_unit="${TRESEKO_WORKER_SYSTEMD_UNIT:-treseko-worker.service}"
+    ENTRYPOINT_WORKER_MAINPID_BEFORE_UPDATE="$(systemctl show "$worker_unit" --property=MainPID --value 2>/dev/null || true)"
   fi
 
   update_payload="$(cat "$flag_file" 2>/dev/null || true)"
@@ -469,6 +525,11 @@ PY
   expected_payload_version="${ENTRYPOINT_UPDATE_VERSION:-$(cat "$update_dir/VERSION" 2>/dev/null || true)}"
   write_convergence_pending
   echo "Aplicando update pendiente desde: $update_dir"
+
+  # Bare-metal systemd starts Engine and Worker directly from their runtime
+  # directories. Prepare dependencies from the signed payload before changing
+  # either live runtime; failure exits before DB migration.
+  prepare_native_component_dependencies "$update_dir"
 
   if [ -d "$update_dir/backend/app" ]; then
     echo "  Reemplazando backend..."
@@ -533,11 +594,14 @@ PY
     # El Engine detecta esta marca y se reinicia despues de que el backend
     # termine de reemplazar sus fuentes. No se corta una ejecucion en curso.
     : > "$ENGINE_DIR/.treseko-update-restart"
-    # Engine corre con UID dedicado 10001. El backend aplica el update como
-    # root, por lo que debe devolverle propiedad para que pueda consumir la
-    # marca y reiniciarse.
+    # Las imagenes Docker ejecutan Engine con UID dedicado 10001. En la
+    # instalacion nativa systemd, Backend, Engine y Worker comparten el usuario
+    # del servicio; cambiarlo a un UID de contenedor impide que Engine lea su
+    # runtime.
     write_runtime_manifest "$ENGINE_DIR" "$expected_payload_version"
-    chown -R 10001:10001 "$ENGINE_DIR"
+    if [ "${TRESEKO_DEPLOY_MODE:-docker}" = "docker" ]; then
+      chown -R 10001:10001 "$ENGINE_DIR"
+    fi
   fi
 
   if [ -d "$update_dir/automation-worker" ]; then
@@ -817,14 +881,13 @@ if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ]; then
   wait_for_component_convergence "$ENTRYPOINT_UPDATE_VERSION"
 fi
 
-# El Automation Worker emparejado solo consume su marca de reinicio cuando un
-# heartbeat contra la API termina bien, y la API no puede responder antes de
-# aqui. Esperar esa marca antes de arrancar el backend nunca termina: por eso
-# el backend sube primero, todavia con el mantenimiento activo, y la tarea se
-# finaliza recien confirmado el reinicio del Worker.
+# Un Worker actualizado puede consumir la marca desde su loop incluso si esta
+# desvinculado; en releases anteriores, la adopta al completar un heartbeat.
+# El backend sube primero con mantenimiento activo para permitir ambos flujos,
+# y solo finaliza la tarea tras confirmar el reinicio del servicio nativo.
 if [ "$ENTRYPOINT_UPDATE_IN_PROGRESS" = "true" ] \
   && [ -f "$WORKER_DIR/.treseko-update-restart" ] \
-  && [ -f "$WORKER_DIR/.runner-token" ] \
+  && { [ -f "$WORKER_DIR/.runner-token" ] || [ "${TRESEKO_DEPLOY_MODE:-docker}" = "systemd" ]; } \
   && [ "${1:-}" != "seed-admin" ]; then
   start_backend_background
   if ! wait_for_worker_restart_convergence "$ENTRYPOINT_UPDATE_VERSION"; then

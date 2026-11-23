@@ -1,3 +1,16 @@
+import {fileURLToPath} from 'node:url';
+
+export function readWorkerBuildId(fs, path, moduleUrl) {
+  try {
+    const modulePath = fileURLToPath(moduleUrl);
+    const root = path.resolve(path.dirname(modulePath), "..");
+    const value = fs.readFileSync(path.join(root, ".treseko-content-digest"), "utf8").trim();
+    return /^[a-f0-9]{64}$/.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function createWorkerCapabilities({
   os,
   process,
@@ -16,6 +29,7 @@ export function createWorkerCapabilities({
   getPythonCommand,
   getSeleniumVersion,
   workerInstanceId,
+  getWorkerBuildId,
   getRuntimeAvailability,
   getActiveJobs,
   getActiveJobId,
@@ -61,6 +75,7 @@ export function createWorkerCapabilities({
       selenium: getSeleniumVersion(),
     };
     const availability = getRuntimeAvailability?.();
+    const workerBuildId = getWorkerBuildId?.();
     const interactivePlaywrightRecorder = recorderDesktopOptIn
       && (!availability || availability.playwright_recorder_available === true);
     if (availability) for (const name of Object.keys(frameworkLanguages)) if (!availability.frameworks.includes(name)) delete frameworkLanguages[name];
@@ -106,6 +121,9 @@ export function createWorkerCapabilities({
       interactive_playwright_recorder: interactivePlaywrightRecorder === true,
       uptime_seconds: Math.round((Date.now() - startedAt) / 1000),
     };
+    if (typeof workerBuildId === "string" && /^[a-f0-9]{64}$/.test(workerBuildId)) {
+      payload.worker_build_id = workerBuildId;
+    }
     if (availability) for (const name of Object.keys(payload.language_status)) if (!availability.frameworks.includes(name)) delete payload.language_status[name];
     if (workerInstanceId) payload.worker_instance_id = workerInstanceId;
     return payload;

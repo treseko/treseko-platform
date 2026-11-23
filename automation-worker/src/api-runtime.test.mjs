@@ -30,6 +30,62 @@ function registrationRuntime(t, fetchImpl) {
   return { runtime, state, saved };
 }
 
+test("pairing without a solution id does not call the API or spam errors", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousRegistrationToken = process.env.QA_REGISTRATION_TOKEN;
+  delete process.env.QA_REGISTRATION_TOKEN;
+  globalThis.fetch = async () => { throw new Error("The API must not be called"); };
+  const previousConsoleError = console.error;
+  const errors = [];
+  console.error = (message) => errors.push(message);
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    console.error = previousConsoleError;
+    if (previousRegistrationToken === undefined) delete process.env.QA_REGISTRATION_TOKEN;
+    else process.env.QA_REGISTRATION_TOKEN = previousRegistrationToken;
+  });
+
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api", REQUEST_TIMEOUT_MS: 20,
+    RUNNER_NAME: "Worker QA", ORGANIZACION_ID: "", state: { runnerToken: "", runnerId: "", activeCorrelationId: "" },
+    capabilities: () => ({}), traceEntry() {}, traceRequestId: () => "request-id",
+    errorFromResponse: () => new Error("Unexpected API request"), performance,
+  });
+
+  await runtime.registerIfNeeded();
+  await runtime.registerIfNeeded();
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /QA_ORGANIZACION_ID/);
+});
+
+test("worker update download reads the authenticated package build id", async (t) => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.headers["X-Runner-Token"], "runner-token");
+    return new Response(Buffer.from("worker-package"), {
+      status: 200,
+      headers: {
+        "X-Worker-Update-Version": "1.0.8",
+        "X-Worker-Update-SHA256": "a".repeat(64),
+        "X-Worker-Update-Build-ID": "b".repeat(64),
+      },
+    });
+  };
+  t.after(() => { globalThis.fetch = previousFetch; });
+
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api", REQUEST_TIMEOUT_MS: 1000,
+    state: { runnerToken: "runner-token", activeCorrelationId: "" },
+    traceRequestId: () => "update-request",
+    errorFromResponse: (_data, _text, status) => Object.assign(new Error("HTTP failure"), { status }),
+  });
+  const downloaded = await runtime.downloadWorkerUpdate();
+  assert.equal(downloaded.version, "1.0.8");
+  assert.equal(downloaded.checksum, "a".repeat(64));
+  assert.equal(downloaded.buildId, "b".repeat(64));
+  assert.equal(downloaded.bytes.toString(), "worker-package");
+});
+
 test("registration aborts a stalled server and can retry successfully", async (t) => {
   let calls = 0;
   const { runtime, state, saved } = registrationRuntime(t, async (_url, options) => {
@@ -55,6 +111,99 @@ test("registration rejects malformed responses without saving credentials", asyn
   await assert.rejects(runtime.registerIfNeeded(), { error_code: "UPSTREAM_INVALID_RESPONSE", retryable: true });
   assert.equal(state.runnerToken, "");
   assert.deepEqual(saved, []);
+});
+
+test("clears a revoked runner token so the next poll can pair again", async (t) => {
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ detail: "Runner token invalido" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+  t.after(() => { globalThis.fetch = previousFetch; });
+
+  const state = { runnerToken: "revoked-token", runnerId: "old-runner", activeCorrelationId: "" };
+  let credentialsCleared = 0;
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api", REQUEST_TIMEOUT_MS: 1000,
+    RUNNER_NAME: "Worker QA", state, tokenPath: "controlled-token-path",
+    capabilities: () => ({ frameworks: ["treseko-api"] }),
+    traceEntry() {}, traceRequestId: () => "request-id",
+    errorFromResponse: (data, _text, status) => Object.assign(new Error(data?.detail || "HTTP failure"), {
+      error_code: status === 401 ? "HTTP_401" : `HTTP_${status}`,
+    }),
+    safeJsonParse: (value) => { try { return JSON.parse(value); } catch { return null; } },
+    isInvalidRunnerTokenError: (error) => error.error_code === "HTTP_401",
+    clearRunnerCredentials: () => {
+      credentialsCleared += 1;
+      state.runnerToken = "";
+      state.runnerId = "";
+    },
+    saveTokenFile() {}, performance,
+  });
+
+  await assert.rejects(runtime.api("/automation-runners/me"), { error_code: "HTTP_401" });
+  assert.equal(credentialsCleared, 1);
+  assert.equal(state.runnerToken, "");
+  assert.equal(state.runnerId, "");
+});
+
+test("a rejected runner token proceeds through pairing and saves the replacement", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousRegistrationToken = process.env.QA_REGISTRATION_TOKEN;
+  delete process.env.QA_REGISTRATION_TOKEN;
+  let calls = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    calls += 1;
+    if (url.endsWith("/automation-runners/me")) {
+      return Response.json({ detail: "Runner token invalido" }, { status: 401 });
+    }
+    if (url.endsWith("/automation-runners/pairing-requests")) {
+      return Response.json({
+        code: "WK-654321", pairing_token: "pairing-secret",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+      }, { status: 201 });
+    }
+    assert.match(url, /\/automation-runners\/pairing-requests\/WK-654321$/);
+    assert.equal(options.headers["X-Pairing-Token"], "pairing-secret");
+    return Response.json({
+      estado: "APPROVED", runner_token: "replacement-token",
+      runner: { id: "replacement-runner", nombre: "Worker QA" },
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = previousFetch;
+    if (previousRegistrationToken === undefined) delete process.env.QA_REGISTRATION_TOKEN;
+    else process.env.QA_REGISTRATION_TOKEN = previousRegistrationToken;
+  });
+
+  const state = { runnerToken: "revoked-token", runnerId: "old-runner", activeCorrelationId: "" };
+  let credentialsCleared = 0;
+  const saved = [];
+  const runtime = createApiRuntime({
+    API_BASE: "https://treseko.example.test/api", REQUEST_TIMEOUT_MS: 1000,
+    RUNNER_NAME: "Worker QA", ORGANIZACION_ID: "qa-solution-id", tokenPath: "controlled-token-path", state,
+    capabilities: () => ({ frameworks: ["treseko-api"] }),
+    traceEntry() {}, traceRequestId: () => "request-id",
+    errorFromResponse: (data, _text, status) => Object.assign(new Error(data?.detail || "HTTP failure"), {
+      error_code: status === 401 ? "HTTP_401" : `HTTP_${status}`,
+    }),
+    safeJsonParse: (value) => { try { return JSON.parse(value); } catch { return null; } },
+    isInvalidRunnerTokenError: (error) => error.error_code === "HTTP_401",
+    clearRunnerCredentials: () => {
+      credentialsCleared += 1;
+      state.runnerToken = "";
+      state.runnerId = "";
+    },
+    saveTokenFile: (token) => saved.push(token),
+    sleep: async () => {}, performance,
+  });
+
+  await runtime.registerIfNeeded();
+  assert.equal(calls, 3);
+  assert.equal(credentialsCleared, 1);
+  assert.equal(state.runnerToken, "replacement-token");
+  assert.equal(state.runnerId, "replacement-runner");
+  assert.deepEqual(saved, ["replacement-token"]);
 });
 
 test("persiste el pairing pendiente antes de esperar la aprobacion", async (t) => {

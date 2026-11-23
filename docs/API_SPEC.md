@@ -1,10 +1,11 @@
 # API externa de reporte de automatización
 
 Esta guía documenta exclusivamente la API externa con la que un runner o
-pipeline CI/CD informe el resultado de pruebas automatizadas. Requiere la
-capacidad Premium de API externa; no se usa para iniciar sesión, administrar
-usuarios ni operar el resto de la plataforma. La ejecución API declarativa
-interna usa el Automation Worker y se documenta en [Pruebas API](API_TESTING_GUIDE.md).
+pipeline CI/CD informa resultados de pruebas automatizadas. Community permite
+el reporte básico dentro de la cuota semanal compartida; Premium puede ampliar
+el límite según la licencia instalada. Esta API no inicia sesión, administra
+usuarios ni ejecuta pruebas. La ejecución API declarativa interna usa el
+Automation Worker y se documenta en [Pruebas API](API_TESTING_GUIDE.md).
 
 ## Antes de integrar el runner
 

@@ -35,7 +35,10 @@ export function createUpdateMarker({
       );
       return false;
     }
-    exit(0);
+    // A clean exit would not be restarted by the existing systemd unit on
+    // 1.0.7 installations (Restart=on-failure). EX_TEMPFAIL is deliberate:
+    // Docker restart policies also relaunch this process, and systemd does.
+    exit(75);
     return true;
   }
 

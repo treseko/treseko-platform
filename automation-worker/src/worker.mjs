@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createJobExecutor } from "./job-executor.mjs";
 import { createScriptRuntime } from "./script-runtime.mjs";
@@ -25,11 +25,13 @@ import { loadEnv, localIps, normalizeApiBase, readWorkerVersion } from "./worker
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { createWorkerCapabilities } from "./worker-capabilities.mjs";
+import { createWorkerCapabilities, readWorkerBuildId } from "./worker-capabilities.mjs";
 import { resultSpoolDirectory } from "./runtime-paths.mjs";
 import { createPlaywrightRecorder } from "./playwright-recorder.mjs";
-const require = createRequire(import.meta.url);
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+import { createWorkerSelfUpdater } from "./worker-self-update.mjs";
+import { readRunnerToken } from "./runner-token-store.mjs";
+import { readOrCreateWorkerInstanceId } from "./worker-instance-id.mjs";
+const require = createRequire(import.meta.url), ROOT_DIR = path.resolve(process.env.QA_WORKER_RUNTIME_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const envPath = path.join(ROOT_DIR, ".env");
 const RUN_ONCE = process.argv.includes("--once");
@@ -50,14 +52,20 @@ const HEADLESS = String(process.env.QA_HEADLESS || "true").toLowerCase() !== "fa
 const ARTIFACT_MAX_BYTES = 10 * 1024 * 1024;
 const ARTIFACT_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".json", ".csv", ".xml", ".pdf", ".zip", ".xls", ".xlsx", ".doc", ".docx", ".ppt", ".pptx", ".mp4", ".webm"]);
 const RUNNER_NAME = process.env.QA_RUNNER_NAME || os.hostname() || "Local Playwright Worker";
-const workerInstanceId = readOrCreateWorkerInstanceId();
+const workerInstanceId = readOrCreateWorkerInstanceId({ fs, path, file: workerInstanceIdPath });
 const MAX_PARALLEL_JOBS = 1; // This coordinator owns one durable lease at a time.
 const TAGS = String(process.env.QA_RUNNER_TAGS || "local,v1,playwright")
   .split(",")
   .map((item) => item.trim())
   .filter(Boolean);
 const WORKER_VERSION = readWorkerVersion({
-  candidates: [process.env.TRESEKO_WORKER_VERSION, process.env.TRESEKO_VERSION, path.join(ROOT_DIR, "VERSION"), process.env.npm_package_version].filter(Boolean),
+  candidates: [
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "VERSION"),
+    path.join(ROOT_DIR, "VERSION"),
+    process.env.TRESEKO_WORKER_VERSION,
+    process.env.TRESEKO_VERSION,
+    process.env.npm_package_version,
+  ].filter(Boolean),
   fs,
   require,
   packagePath: path.join(ROOT_DIR, "package.json"),
@@ -73,7 +81,9 @@ const updateAdmission = createUpdateAdmission({
   directory: process.env.QA_UPDATE_CONTROL_DIR || path.join(path.dirname(RESULT_SPOOL_DIR), "update-control"),
   version: WORKER_VERSION,
 });
-let runnerToken = process.env.QA_RUNNER_TOKEN || readTokenFile();
+// The rotated token must survive a launcher restart even when the original
+// bootstrap token is still present in the service environment.
+let runnerToken = readRunnerToken(fs, tokenPath, process.env.QA_RUNNER_TOKEN);
 let runnerId = "";
 let activeJobId = "";
 let activeJobLeaseToken = "";
@@ -86,11 +96,6 @@ const { redactTraceText, safeTraceValue, traceEntry, formatLogArg } = createTrac
   repoRoot: REPO_ROOT,
   enabled: /^(1|true|yes|on)$/i.test(String(process.env.QA_TEST_TRACE_ENABLED || "")),
 });
-
-function readTokenFile() {
-  if (!fs.existsSync(tokenPath)) return "";
-  return fs.readFileSync(tokenPath, "utf8").trim();
-}
 
 function saveTokenFile(token) {
   fs.writeFileSync(tokenPath, token, { encoding: "utf8", mode: 0o600 });
@@ -136,7 +141,7 @@ const apiState = {
   set activeCorrelationId(value) { activeCorrelationId = value; },
 };
 
-const { fetchJson, api, registerIfNeeded, pairWithPlatform, createPairingRequest } = createApiRuntime({
+const { fetchJson, api, downloadWorkerUpdate, registerIfNeeded, pairWithPlatform, createPairingRequest } = createApiRuntime({
   API_BASE, REQUEST_TIMEOUT_MS, RUNNER_NAME, ORGANIZACION_ID, tokenPath, pairingStatePath, workerInstanceId, state: apiState,
   capabilities: () => capabilities(), isInvalidRunnerTokenError, clearRunnerCredentials,
   saveTokenFile, traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
@@ -147,17 +152,6 @@ function getPlaywrightVersion() {
     return require("playwright/package.json").version;
   } catch {
     return "unknown";
-  }
-}
-
-function readOrCreateWorkerInstanceId() {
-  try {
-    if (fs.existsSync(workerInstanceIdPath)) return fs.readFileSync(workerInstanceIdPath, "utf8").trim();
-    const id = randomUUID();
-    fs.writeFileSync(workerInstanceIdPath, `${id}\n`, { mode: 0o600 });
-    return id;
-  } catch (_error) {
-    return randomUUID();
   }
 }
 
@@ -178,6 +172,7 @@ const { capabilities, resources } = createWorkerCapabilities({
   localIps, getPlaywrightVersion, getPackageVersion, getPythonCommand,
   getSeleniumVersion: () => process.env.QA_SELENIUM_VERSION || "python",
   getRuntimeAvailability,
+  getWorkerBuildId: () => readWorkerBuildId(fs, path, import.meta.url),
   workerInstanceId,
   getActiveJobs: () => activeJobs, getActiveJobId: () => activeJobId,
 });
@@ -205,9 +200,8 @@ const leaseHeartbeat = createLeaseHeartbeat({
   onLeaseLost: () => activeAbortController?.abort(),
   log: (_event, message) => console.warn(message),
 });
-
 const updateMarker = createUpdateMarker({ directory: ROOT_DIR, getActiveJobs: () => activeJobs });
-
+const selfUpdater = createWorkerSelfUpdater({fs, path, spawnSync, process, rootDir: ROOT_DIR, api, downloadWorkerUpdate, getActivity: () => ({activeJobs, pendingResults: resultDelivery.pendingFiles().length, unresolvedClaims: claimIntent.pending() ? 1 : 0}), sleep, pollIntervalMs: POLL_INTERVAL_MS});
 const {
   getValue, replacePlaceholders, normalizeDataset, compileScript, detectScriptFormat,
   playwrightBrowserForJob, frameworkKey, languageKey, localWorkerSupports,
@@ -347,6 +341,7 @@ async function loop() {
         await heartbeat(activeJobs > 0 ? "BUSY" : "ONLINE");
         lastHeartbeat = Date.now();
       }
+      if (await selfUpdater.deferIfRequired()) continue;
 
       if (activeJobs >= MAX_PARALLEL_JOBS) {
         await sleep(POLL_INTERVAL_MS);

@@ -12,8 +12,9 @@ fi
   find . \
     -type d \( -name .git -o -name node_modules -o -name .cache -o -name .pytest_cache \
       -o -name coverage -o -name logs -o -name reports -o -name pending-deliveries \
-      -o -name update-control -o -name test-results \) -prune -o \
+      -o -name update-control -o -name .engine-releases -o -name test-results \) -prune -o \
     -type f \( -name .treseko-content-digest -o -name .maintenance \
+      -o -name .treseko-active-engine-release.json \
       -o -name .treseko-update-fence -o -name .treseko-update-draining \
       -o -name .treseko-update-restart -o -name .treseko-runtime-manifest.json \
       -o -name maintenance.html -o -name .runner-token -o -name .worker-instance-id \

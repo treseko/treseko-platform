@@ -108,9 +108,7 @@ async def _run(tmp_path: Path, manifest: dict, download_manifest: dict | None, m
     service = _service(tmp_path)
     captured: dict[str, str] = {}
     _stub_pipeline(service, captured)
-    monkeypatch.setattr(
-        updater_lifecycle, "require_installation_mode", lambda command="request": "legacy"
-    )
+    monkeypatch.setattr(updater_lifecycle, "require_update_runtime", lambda: "systemd-native")
     task_id = "task-legacy"
     service._tasks[task_id] = UpdateTaskState(
         task_id=task_id,
@@ -138,6 +136,24 @@ async def test_legacy_premium_apply_downloads_from_grant_manifest(tmp_path, monk
     assert captured["package_url"] == GRANT_URL
     assert captured["package_url"] != SIGNED_MANIFEST["package_url"]
     assert captured["checksum"] == SIGNED_MANIFEST["checksum_sha256"]
+    assert state.status == "done"
+    assert state.stage == "prepared"
+
+
+async def test_systemd_native_accepts_complete_source_archive_component_payload(tmp_path, monkeypatch):
+    """The single archive carries source-release and native installs consume its component payload."""
+    manifest = {
+        **SIGNED_MANIFEST,
+        "version": "1.0.9",
+        "previous_version": "1.0.8",
+        "from_versions": ["1.0.8"],
+        "deployment": {
+            "mode": "complete-source", "path": "source-release",
+            "compose_file": "docker-compose.prod.yml", "activation": "atomic-compose",
+        },
+    }
+    _service, state, captured = await _run(tmp_path, manifest, None, monkeypatch)
+    assert captured["package_url"] == OPAQUE_URL
     assert state.status == "done"
     assert state.stage == "prepared"
 

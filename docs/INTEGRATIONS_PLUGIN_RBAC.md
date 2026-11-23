@@ -1,16 +1,25 @@
 # Integraciones, complementos y RBAC
 
-Dependen de provider, capability, scope y entitlement. Que aparezcan en catálogo
-no significa que estén habilitados.
+El acceso depende del proveedor, los permisos, el alcance y la licencia. Que un
+elemento aparezca en el catálogo no significa que esté habilitado.
 
-## Integraciones
+## Integraciones y funciones del catálogo
 
-El catálogo contempla Redmine, Jira, GitHub Issues, GitLab, Azure DevOps, Slack,
-Teams y CI/CD, con disponibilidad Community, Premium, legacy o planificada
-según provider. Revisá el estado de la instalación.
+El catálogo muestra lo registrado y accesible en esa instalación; una mención,
+una fila histórica o un provider planificado no garantizan que exista un
+conector listo para configurar. En esta versión, Email/SMTP es la integración
+nativa; su gestión está sujeta a Premium. Bug Tracker, Motor LLM, Portabilidad
+de Casos y Generación de casos con IA son funciones nativas que aparecen como
+complementos del catálogo, no
+conectores de terceros. La API externa de reporte es otro flujo distinto y
+está descrita en [su guía](API_USAGE_GUIDE.md).
 
-Las vinculaciones de bugs son explícitas: Treseko no publica issues externos
-automáticamente. Revisá el resumen y guardá vínculo/identificador. Usá cuentas
+No asumas que Jira, GitHub Issues, GitLab, Azure DevOps, Slack, Teams o Redmine
+están conectados por el hecho de que la aplicación tenga campos o referencias
+históricas para ellos. La disponibilidad real se confirma en **Complementos**
+y depende del provider registrado, la edición y los permisos. Las vinculaciones
+de bugs son explícitas: Treseko no publica issues externos automáticamente.
+Revisá el resumen antes de guardar un vínculo o identificador. Usá cuentas
 técnicas de menor alcance y nunca pegues tokens en casos o evidencia.
 
 ## plugin-runner
@@ -22,8 +31,7 @@ secretos ni socket Docker.
 
 Al habilitar el perfil manualmente, pasa `TRESEKO_RELEASE_VERSION` con la
 versión de `VERSION` al comando `docker compose` para que la imagen registre
-la release correcta. El actualizador atómico establece ese valor al reconstruir
-servicios activos.
+la versión correcta.
 
 ## Portabilidad
 

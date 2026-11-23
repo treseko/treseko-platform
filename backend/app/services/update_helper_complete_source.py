@@ -47,12 +47,13 @@ def validate_complete_source_mounts(bridge_config_path, root, launcher_config):
     if atomic is None:
         raise ValueError("Complete-source controller configuration is required")
     if (not isinstance(atomic, dict) or set(atomic) != {
-            "schema", "project", "project_root", "env_file"}
-            or type(atomic.get("schema")) is not int or atomic["schema"] != 1):
+            "schema", "project", "project_root", "env_file", "owner_uid"}
+            or type(atomic.get("schema")) is not int or atomic["schema"] != 1
+            or type(atomic.get("owner_uid")) is not int or atomic["owner_uid"] < 0):
         raise ValueError("Invalid private complete-source Compose configuration")
     project_root = _under(root, _absolute(atomic["project_root"], "Compose project root"))
     env_file = _under(root, _absolute(atomic["env_file"], "Compose environment file"))
-    project_ro = any(item["source"] == str(project_root) and item["mode"] == "ro"
+    project_rw = any(item["source"] == str(project_root) and item["mode"] == "rw"
                      for item in mounts)
     env_ro = any(item["source"] == str(env_file) and item["mode"] == "ro"
                  for item in mounts)
@@ -69,7 +70,7 @@ def validate_complete_source_mounts(bridge_config_path, root, launcher_config):
     for label, path in bridge_paths.items():
         _reject_symlink_components(root, path)
         require_mount(path, "rw", label)
-    if not project_ro or (not env_ro and not env_covered):
-        raise ValueError("Complete-source paths must mount the project/environment readonly and state writable")
+    if not project_rw or (not env_ro and not env_covered):
+        raise ValueError("Complete-source paths must mount the project writable, external environment readonly, and state writable")
     if not project_root.is_dir() or not env_file.is_file():
         raise ValueError("Complete-source Compose project or environment file is unavailable")

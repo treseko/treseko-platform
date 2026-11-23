@@ -11,7 +11,7 @@ def api_result(latencies):
     return {'steps':[{'response':{'status':200,'timings':{'total_ms':v}},'assertions':[]} for v in latencies]}
 @pytest.mark.skipif(os.getenv('TRESEKO_TEST_ISOLATE_HTTP_DATA') != '1', reason='Requires controlled report metrics PostgreSQL')
 async def test_report_metrics_with_versions_latencies_retries_and_active_execution():
-    assert engine.url.database == 'treseko_tests' and engine.url.host in {'127.0.0.1', 'localhost'}
+    assert engine.url.database.startswith(('treseko_tests', 'treseko_qa')) and engine.url.host in {'127.0.0.1', 'localhost'}
     async with AsyncSessionLocal() as db:
         user=models.Usuario(email='reports-check@example.invalid',rol=models.Rol.ADMIN,activo=True)
         org=models.Organizacion(nombre='Reportes QA aislado');db.add_all([user,org]);await db.flush()

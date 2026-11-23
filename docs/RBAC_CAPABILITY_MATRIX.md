@@ -17,9 +17,10 @@ como texto técnico.
 | Plugins | Catálogo, instalar, habilitar, configurar, portabilidad | Runner y entitlement. |
 | Configuración | Usuarios, roles, licencia, updates, API keys | Administración restringida. |
 
-Premium puede habilitar RBAC granular, SSO, multi-worker, scheduler, API externa
-avanzada, reportes/snapshots avanzados, bugs enterprise, integraciones,
-auditoría, métricas históricas, branding y updates.
+Premium puede habilitar RBAC granular, SSO, multi-worker, scheduler, una cuota
+mayor de ejecuciones automatizadas (incluidos reportes externos),
+reportes/snapshots avanzados, bugs enterprise, integraciones, auditoría,
+métricas históricas y branding.
 
 ## MCP
 

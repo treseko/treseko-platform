@@ -24,8 +24,10 @@ estado del recurso.
   declarativa y consulta de evidencia.
 - `/api-tests/executions/{id}/manual-evaluation`: evaluación humana de un
   resultado API.
-- `/external/executions/report`: reporte desde un runner externo; no inicia
-  jobs internos.
+- `/external/executions/report`: Community acepta reportes básicos con la
+  cuota semanal compartida; Premium puede ampliar el límite según la licencia.
+  Recibe resultados de un runner externo y no inicia jobs internos. Ver
+  [guía de uso](API_USAGE_GUIDE.md) y [contrato](EXTERNAL_AUTOMATION_API.md).
 
 ## Workers y automatización
 
@@ -42,7 +44,8 @@ estado del recurso.
 - `/generaciones-historias/` y `/generaciones-casos/`: generar, reanalizar,
   supuestos, planificación y aplicación transaccional de propuestas IA.
 - `/wiki/`: documentación del proyecto, edición, historial y borrado auditado.
-- `/schedules/`: programación de ejecuciones cuando la capacidad está activa.
+- `/schedules/`: programación de ejecuciones de suites cuando la capacidad
+  Premium está activa y el usuario tiene permisos de ejecución.
 
 ## Configuración y operación
 
@@ -75,3 +78,12 @@ contenido anterior.
 [Motor IA](AI_ENGINE_CONFIG.md), [MCP](MCP_GUIDE.md),
 [Reportes](REPORTING_GUIDE.md), [Trazabilidad](TRACEABILITY.md),
 [Configuración](SETTINGS_GUIDE.md) y [RBAC](RBAC_CAPABILITY_MATRIX.md).
+
+## Programación de ejecuciones
+
+La API también expone `/schedules/` para programar ejecuciones de suites; está
+sujeta a Premium y permisos de ejecución. En la interfaz actual, **Programar**
+en Motor IA usa `/ai-schedules/` y agenda una misión IA única. No es el
+scheduler general ni una tarea CRON. Consultá
+[Programación IA](AI_SCHEDULING_AND_VIDEO.md) para el flujo disponible en la
+interfaz.

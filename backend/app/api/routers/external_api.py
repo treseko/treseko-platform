@@ -42,7 +42,6 @@ async def get_external_api_user(
 @router.post(
     "/external/executions/report",
     response_model=schemas.ExternalExecutionReportResponse,
-    dependencies=[Depends(require_feature("external_api.advanced"))],
 )
 async def report_external_execution(
     payload: schemas.ExternalExecutionReport,

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import io
 import sys
+import tarfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,11 +19,15 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app import auth  # noqa: E402
 from app.api.routers import automation as automation_router  # noqa: E402
+from app.api.routers import automation_worker_updates as worker_updates_router  # noqa: E402
+from app.api.routers import organizations as organizations_router  # noqa: E402
 from app.api.routers import projects as projects_router  # noqa: E402
 from app.database import DATABASE_URL, engine  # noqa: E402
 from app.repositories import project_write_policy
 from app.main import app  # noqa: E402
 from app.repositories import test_runs_automation_runners as runner_repository  # noqa: E402
+from app.version import PRODUCT_VERSION  # noqa: E402
+from app.services.automation_worker_updates import worker_source_build_id  # noqa: E402
 
 
 def _seed_admin(email: str, password: str) -> None:
@@ -48,8 +54,9 @@ async def _allow_controlled_worker_limit(*_args, **_kwargs) -> None:
     """Exercise token registration beside pairing without altering production limits."""
 
 
-def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
+def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(automation_router, "enforce_limit", _allow_controlled_worker_limit)
+    monkeypatch.setattr(organizations_router, "enforce_limit", _allow_controlled_worker_limit)
     monkeypatch.setattr(project_write_policy, "enforce_limit", _allow_controlled_worker_limit)
     monkeypatch.setattr(
         automation_router.crud,
@@ -58,6 +65,11 @@ def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
     )
     monkeypatch.setattr(runner_repository, "enforce_limit", _allow_controlled_worker_limit)
     suffix = uuid4().hex
+    worker_instance_id = f"worker-{suffix}"
+    worker_source = BACKEND_DIR.parent / "automation-worker"
+    monkeypatch.setenv("TRESEKO_WORKER_UPDATE_SOURCE_DIR", str(worker_source))
+    monkeypatch.setattr(worker_updates_router, "worker_source_directory", lambda: worker_source)
+    target_build_id = worker_source_build_id(worker_source)
     email = f"runner-flow-{suffix}@example.test"
     password = "RunnerFlowPassword-2026!"
     _seed_admin(email, password)
@@ -67,21 +79,15 @@ def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
         assert login.status_code == 200, login.text
         admin_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-        # Community intentionally allows one organization.  The complete
-        # integration suite may already have created it, so this flow must not
-        # depend on test ordering merely to obtain a valid pairing scope.
-        organizations = client.get("/organizaciones/", headers=admin_headers)
-        assert organizations.status_code == 200, organizations.text
-        if organizations.json():
-            organization_id = organizations.json()[0]["id"]
-        else:
-            organization = client.post(
-                "/organizaciones/",
-                headers=admin_headers,
-                json={"nombre": f"Runner organization {suffix}", "tipo": "Interna"},
-            )
-            assert organization.status_code == 200, organization.text
-            organization_id = organization.json()["id"]
+        # Each integration run gets an isolated scope so old pending jobs or
+        # another test's workers cannot affect its /next assertion.
+        organization = client.post(
+            "/organizaciones/",
+            headers=admin_headers,
+            json={"nombre": f"Runner organization {suffix}", "tipo": "Interna"},
+        )
+        assert organization.status_code == 200, organization.text
+        organization_id = organization.json()["id"]
 
         pairing = client.post(
             "/automation-runners/pairing-requests",
@@ -89,7 +95,13 @@ def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
                 "nombre": "CI local worker",
                 "tipo": "LOCAL",
                 "organizacion_id": organization_id,
-                "capabilities": {"frameworks": ["playwright"], "platform": "linux"},
+                "capabilities": {
+                    "frameworks": ["playwright"], "platform": "linux",
+                    "component_version": PRODUCT_VERSION,
+                    "worker_version": PRODUCT_VERSION,
+                    "worker_build_id": target_build_id,
+                    "worker_instance_id": worker_instance_id,
+                },
             },
         )
         assert pairing.status_code == 200, pairing.text
@@ -149,6 +161,10 @@ def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
         profile = client.get("/automation-runners/me", headers=runner_headers)
         assert profile.status_code == 200, profile.text
         assert profile.json()["id"] == runner_id
+        update_status = client.get("/automation-runners/me/update-status", headers=runner_headers)
+        assert update_status.status_code == 200, update_status.text
+        assert update_status.json()["status"] == "current"
+        assert update_status.json()["desired_build_id"] == target_build_id
 
         wrong_heartbeat = client.post(
             f"/automation-runners/{uuid4()}/heartbeat",
@@ -231,6 +247,127 @@ def test_local_worker_pairing_approval_poll_and_heartbeat_flow(monkeypatch):
         visible_after_revoke = client.get("/automation-runners/", headers=admin_headers)
         assert visible_after_revoke.status_code == 200, visible_after_revoke.text
         assert runner_id not in {item["id"] for item in visible_after_revoke.json()}
+
+        next_dry_run = client.post(
+            "/automation-jobs/dry-run",
+            headers=admin_headers,
+            json={
+                "proyecto_id": project_id,
+                "titulo": "Controlled worker update gate",
+                "codigo": f"DRY-RUN-UPDATE-{suffix[:8]}",
+                "framework": "playwright",
+                "lenguaje": "javascript",
+                "script_automatizado": "import { test } from '@playwright/test'; test('update gate', async () => {});",
+                "pasos": [{"numero": 1, "accion": "Wait for an updated worker"}],
+            },
+        )
+        assert next_dry_run.status_code == 200, next_dry_run.text
+        next_job_id = next_dry_run.json()["id"]
+
+        stale_pairing = client.post(
+            "/automation-runners/pairing-requests",
+            json={
+                "nombre": "CI local worker relinked",
+                "tipo": "LOCAL",
+                "organizacion_id": organization_id,
+                "capabilities": {
+                    "frameworks": ["playwright"], "platform": "linux",
+                    "component_version": "1.0.8", "worker_version": "1.0.8",
+                    "worker_instance_id": worker_instance_id,
+                },
+            },
+        )
+        assert stale_pairing.status_code == 200, stale_pairing.text
+        stale_code = stale_pairing.json()["code"]
+        stale_pairing_token = stale_pairing.json()["pairing_token"]
+        stale_approved = client.post(
+            f"/automation-runners/pairing-requests/{stale_code}/approve", headers=admin_headers,
+        )
+        assert stale_approved.status_code == 200, stale_approved.text
+        stale_polled = client.get(
+            f"/automation-runners/pairing-requests/{stale_code}",
+            headers={"X-Pairing-Token": stale_pairing_token},
+        )
+        assert stale_polled.status_code == 200, stale_polled.text
+        assert stale_polled.json()["runner"]["id"] == runner_id
+        replacement_token = stale_polled.json()["runner_token"]
+        assert replacement_token and replacement_token != runner_token
+        stale_headers = {"X-Runner-Token": replacement_token}
+
+        stale_update_status = client.get("/automation-runners/me/update-status", headers=stale_headers)
+        assert stale_update_status.status_code == 200, stale_update_status.text
+        assert stale_update_status.json()["status"] == "update_required"
+        assert stale_update_status.json()["observed_version"] == "1.0.8"
+        stale_next = client.get("/automation-jobs/next", headers=stale_headers)
+        assert stale_next.status_code == 409
+
+        update_source = tmp_path / "worker-update-source"
+        (update_source / "src").mkdir(parents=True)
+        (update_source / "src" / "worker.mjs").write_text("export {};\n", encoding="utf-8")
+        (update_source / "package.json").write_text(json.dumps({"version": PRODUCT_VERSION}), encoding="utf-8")
+        (update_source / "package-lock.json").write_text("{}", encoding="utf-8")
+        (update_source / "VERSION").write_text(f"{PRODUCT_VERSION}\n", encoding="utf-8")
+        monkeypatch.setattr(worker_updates_router, "worker_source_directory", lambda: update_source)
+        monkeypatch.setenv("TRESEKO_WORKER_UPDATE_SOURCE_DIR", str(update_source))
+        update_build_id = worker_source_build_id(update_source)
+        update_package = client.get("/automation-runners/me/update-package", headers=stale_headers)
+        assert update_package.status_code == 200, update_package.text
+        assert update_package.headers["x-worker-update-version"] == PRODUCT_VERSION
+        assert len(update_package.headers["x-worker-update-sha256"]) == 64
+        assert update_package.headers["x-worker-update-build-id"] == update_build_id
+        with tarfile.open(fileobj=io.BytesIO(update_package.content), mode="r:gz") as archive:
+            assert "src/worker.mjs" in archive.getnames()
+
+        current_pairing = client.post(
+            "/automation-runners/pairing-requests",
+            json={
+                "nombre": "CI current worker on another host",
+                "tipo": "LOCAL",
+                "organizacion_id": organization_id,
+                "capabilities": {
+                    "frameworks": ["playwright"], "platform": "linux",
+                    "component_version": PRODUCT_VERSION,
+                    "worker_version": PRODUCT_VERSION,
+                    "worker_build_id": update_build_id,
+                    "worker_instance_id": f"{worker_instance_id}-second-host",
+                },
+            },
+        )
+        assert current_pairing.status_code == 200, current_pairing.text
+        current_code = current_pairing.json()["code"]
+        current_pairing_token = current_pairing.json()["pairing_token"]
+        current_approved = client.post(
+            f"/automation-runners/pairing-requests/{current_code}/approve", headers=admin_headers,
+        )
+        assert current_approved.status_code == 200, current_approved.text
+        current_polled = client.get(
+            f"/automation-runners/pairing-requests/{current_code}",
+            headers={"X-Pairing-Token": current_pairing_token},
+        )
+        assert current_polled.status_code == 200, current_polled.text
+        current_headers = {"X-Runner-Token": current_polled.json()["runner_token"]}
+        assert current_polled.json()["runner"]["id"] != runner_id
+        assert client.get("/automation-runners/me/update-status", headers=current_headers).json()["status"] == "current"
+        current_package = client.get("/automation-runners/me/update-package", headers=current_headers)
+        assert current_package.status_code == 409
+        assert current_package.json()["error"]["error_code"] == "WORKER_UPDATE_NOT_AVAILABLE"
+
+        updated_heartbeat = client.post(
+            f"/automation-runners/{runner_id}/heartbeat",
+            headers=stale_headers,
+            json={"estado": "ONLINE", "active_jobs": 0, "capabilities": {
+                "component_version": PRODUCT_VERSION,
+                "worker_version": PRODUCT_VERSION,
+                "worker_build_id": update_build_id,
+                "worker_instance_id": worker_instance_id,
+            }},
+        )
+        assert updated_heartbeat.status_code == 200, updated_heartbeat.text
+        assert updated_heartbeat.json()["capabilities"]["worker_instance_id"] == worker_instance_id
+        assert client.get("/automation-runners/me/update-status", headers=stale_headers).json()["status"] == "current"
+        resumed_job = client.get("/automation-jobs/next", headers=stale_headers)
+        assert resumed_job.status_code == 200, resumed_job.text
+        assert resumed_job.json()["id"] == next_job_id
 
         registration_token = client.post(
             "/automation-runners/registration-tokens",

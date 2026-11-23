@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { createWorkerCapabilities } from "./worker-capabilities.mjs";
+import { pathToFileURL } from "node:url";
+import { createWorkerCapabilities, readWorkerBuildId } from "./worker-capabilities.mjs";
 
-function fixture(active = { jobs: 0, id: "" }, { platform = "test-platform", env = { QA_SELENIUM_VERSION: "selenium-test" }, availability } = {}) {
+function fixture(active = { jobs: 0, id: "" }, {
+  platform = "test-platform", env = { QA_SELENIUM_VERSION: "selenium-test" }, availability, workerBuildId,
+} = {}) {
   const os = {
     totalmem: () => 8 * 1024 * 1024 * 1024,
     freemem: () => 6 * 1024 * 1024 * 1024,
@@ -38,6 +44,7 @@ function fixture(active = { jobs: 0, id: "" }, { platform = "test-platform", env
       getPackageVersion: (name) => { calls.push(name); return versions[name] || "unknown"; },
       getPythonCommand: () => "python-test",
       getSeleniumVersion: () => process.env.QA_SELENIUM_VERSION || "python",
+      getWorkerBuildId: () => workerBuildId,
       getActiveJobs: () => active.jobs,
       getActiveJobId: () => active.id,
       getRuntimeAvailability: () => availability,
@@ -76,6 +83,32 @@ test("capabilities conserva payload y consulta las versiones mediante getters", 
     max_parallel_jobs: 2, active_jobs: 0, current_job_id: null,
     interactive_playwright_recorder: false,
   });
+});
+
+test("capabilities publica la huella del codigo del Worker cuando esta disponible", () => {
+  const buildId = "c".repeat(64);
+  assert.equal(fixture(undefined, { workerBuildId: buildId }).capabilities().worker_build_id, buildId);
+  assert.equal(fixture(undefined, { workerBuildId: "invalid" }).capabilities().worker_build_id, undefined);
+});
+
+test("lee la huella desde file URLs en runtime base y release activa", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "treseko-worker-build-id-"));
+  try {
+    const buildId = "d".repeat(64);
+    const baseEntry = path.join(root, "src", "worker.mjs");
+    fs.mkdirSync(path.dirname(baseEntry), { recursive: true });
+    fs.writeFileSync(baseEntry, "");
+    fs.writeFileSync(path.join(root, ".treseko-content-digest"), `${buildId}\n`);
+    assert.equal(readWorkerBuildId(fs, path, pathToFileURL(baseEntry).href), buildId);
+
+    const releaseEntry = path.join(root, ".worker-releases", "1.0.8-aaaaaaaaaaaa", "src", "worker.mjs");
+    fs.mkdirSync(path.dirname(releaseEntry), { recursive: true });
+    fs.writeFileSync(releaseEntry, "");
+    fs.writeFileSync(path.join(root, ".worker-releases", "1.0.8-aaaaaaaaaaaa", ".treseko-content-digest"), `${"e".repeat(64)}\n`);
+    assert.equal(readWorkerBuildId(fs, path, pathToFileURL(releaseEntry).href), "e".repeat(64));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("capabilities refleja activeJobs y activeJobId actuales, no un snapshot", () => {

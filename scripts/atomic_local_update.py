@@ -34,7 +34,9 @@ _TRANSACTION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SERVICE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 _INFRASTRUCTURE_SERVICES = {"db", "redis", "migrator"}
 _VERSION_PROBES = {"backend", "frontend", "engine", "automation-worker", "plugin-runner"}
-_CANDIDATE_HEALTHCHECK_SERVICES = {"db", "redis", "backend", "engine", "frontend", "plugin-runner"}
+_CANDIDATE_HEALTHCHECK_SERVICES = {
+    "db", "redis", "backend", "engine", "frontend", "automation-worker", "plugin-runner"
+}
 _PLUGIN_RUNNER_HEALTHCHECK_MARKER = "Treseko managed Plugin Runner healthcheck"
 _RELEASE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 _RELEASE_CACHE_DIRS = {".venv", "venv", "node_modules", "dist", "__pycache__",
@@ -53,6 +55,86 @@ _SAFE_FAILURE_LINES = (
     re.compile(r"\b(?:error|failed|failure|unhealthy|unable|cannot|no such|not found|denied|"
                r"exit code|timed out|failed to solve)\b", re.IGNORECASE),
 )
+
+
+def _is_wsl_host() -> bool:
+    try:
+        return "microsoft" in Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8").lower()
+    except OSError:
+        return False
+
+
+def _normalize_compose_host_path(value: str) -> str:
+    """Map Windows Compose labels to the WSL mount path used by this CLI."""
+    if not _is_wsl_host():
+        return value
+    raw = value.removeprefix("\\\\?\\")
+    match = re.fullmatch(r"([A-Za-z]):[\\/](.*)", raw)
+    if not match:
+        return value
+    drive, tail = match.groups()
+    parts = [part for part in re.split(r"[\\/]+", tail) if part]
+    return str(Path("/mnt") / drive.lower() / Path(*parts))
+
+
+def _is_transaction_compose_override(path: Path, transaction_root: Path) -> bool:
+    """Recognize updater-owned Compose overrides for any valid transaction ID."""
+    suffix = next((item for item in ("-rollback.compose.yml", "-atomic-candidate.compose.yml")
+                   if path.name.endswith(item)), None)
+    if suffix is None or path.is_symlink():
+        return False
+    transaction = path.name[:-len(suffix)]
+    if not transaction or not _TRANSACTION.fullmatch(transaction):
+        return False
+    try:
+        return path.parent.resolve() == transaction_root.resolve()
+    except OSError:
+        return False
+
+
+def _existing_compose_sources(records: list[dict[str, Any]], journal_root: Path) -> tuple[Path, list[str]]:
+    """Resolve a shared Compose base plus service-specific host overrides.
+
+    Coordinated installs add their host-owned OTA override to the backend
+    service only. Docker therefore records different config-file labels for
+    that service while the project root and release Compose base remain the
+    same across the installation.
+    """
+    working_dirs = {
+        (record.get("Config", {}).get("Labels") or {}).get("com.docker.compose.project.working_dir")
+        for record in records
+    }
+    if len(working_dirs) != 1:
+        raise UpdateError("Existing Compose project root is ambiguous")
+    workdir = Path(_normalize_compose_host_path(next(iter(working_dirs)) or ""))
+    if not workdir.is_absolute():
+        raise UpdateError("Existing Compose project root is unavailable")
+
+    lists: list[list[str]] = []
+    for record in records:
+        labels = record.get("Config", {}).get("Labels") or {}
+        raw = labels.get("com.docker.compose.project.config_files") or ""
+        files = [_normalize_compose_host_path(value) for value in raw.split(",") if value]
+        if not files or not all(Path(value).is_absolute() for value in files):
+            raise UpdateError("Existing Compose file paths are unavailable for rollback")
+        lists.append(files)
+    base_files = {files[0] for files in lists}
+    if len(base_files) != 1:
+        raise UpdateError("Existing Compose base file identity is ambiguous")
+
+    base = next(iter(base_files))
+    transaction_root = journal_root.resolve()
+    files = [base]
+    seen = {base}
+    for configured in lists:
+        for value in configured[1:]:
+            path = Path(value)
+            if _is_transaction_compose_override(path, transaction_root):
+                continue
+            if value not in seen:
+                seen.add(value)
+                files.append(value)
+    return workdir, files
 
 
 def _safe_failure_summary(output: str) -> str:
@@ -89,10 +171,32 @@ class AtomicComposeUpdate:
         self.docker = str(Path(docker).resolve())
         self.project = project
         self.candidate_root = candidate_root.resolve()
-        self.install_root = install_root.resolve()
+        requested_install_root = install_root.resolve()
         self.env_file = env_file.resolve()
         self.expected_project_root = (expected_project_root.resolve()
                                       if expected_project_root is not None else None)
+        # Older coordinated backends pass their private controller directory
+        # as --install-root. When the signed candidate runs on an installation
+        # that already has an active-release pointer under the bound Compose
+        # root, keep recovery journals/temporary Compose files in that private
+        # directory while storing releases and the pointer in the real install.
+        self.state_root = requested_install_root
+        self.install_root = requested_install_root
+        if self.expected_project_root is not None and requested_install_root != self.expected_project_root:
+            active_pointer = self.expected_project_root / ".treseko-local" / "active-release.json"
+            try:
+                pointer_info = active_pointer.lstat()
+                project_info = self.expected_project_root.lstat()
+                state_info = requested_install_root.lstat()
+            except OSError:
+                pass
+            else:
+                if (stat.S_ISREG(pointer_info.st_mode) and not stat.S_ISLNK(pointer_info.st_mode)
+                        and stat.S_ISDIR(project_info.st_mode) and not stat.S_ISLNK(project_info.st_mode)
+                        and stat.S_ISDIR(state_info.st_mode) and not stat.S_ISLNK(state_info.st_mode)
+                        and not (project_info.st_mode & 0o022)
+                        and not (state_info.st_mode & 0o022)):
+                    self.install_root = self.expected_project_root
         self.expected_version = expected_version
         if not _RELEASE_VERSION.fullmatch(expected_version):
             raise UpdateError("Invalid release version for immutable project deployment")
@@ -105,7 +209,7 @@ class AtomicComposeUpdate:
             raise UpdateError("Invalid local update target")
         if (self.candidate_root / "VERSION").read_text(encoding="utf-8").strip() != expected_version:
             raise UpdateError("Candidate release version does not match its VERSION file")
-        self.journal_root = self.install_root / ".treseko-local" / "update-transactions"
+        self.journal_root = self.state_root / ".treseko-local" / "update-transactions"
         self.journal_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.release_root = self.install_root / ".treseko-local" / "releases"
         self.active_release_path = self.install_root / ".treseko-local" / "active-release.json"
@@ -214,7 +318,10 @@ class AtomicComposeUpdate:
                 relative = path.relative_to(candidate).as_posix()
             except ValueError:
                 relative = ""
-            if (name in _RELEASE_LOCAL_DIRS or name in _RELEASE_CACHE_DIRS
+            vendored_dist = (name == "dist" and relative.split("/")[:2]
+                             == ["automation-worker", "vendor"])
+            if (name in _RELEASE_LOCAL_DIRS
+                    or (name in _RELEASE_CACHE_DIRS and not vendored_dist)
                     or name in {".treseko-release.json", ".gitignore", ".runner-token",
                                 ".worker-instance-id", ".runner-token.pairing",
                                 ".maintenance", ".DS_Store"}
@@ -236,7 +343,11 @@ class AtomicComposeUpdate:
         for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
             current_path = Path(current)
             ignored_dirs = {name for name in dirs if name in _RELEASE_LOCAL_DIRS
-                            or name in _RELEASE_CACHE_DIRS or name.startswith(".env")
+                            or (name in _RELEASE_CACHE_DIRS and not (
+                                name == "dist"
+                                and (current_path / name).relative_to(root).parts[:2]
+                                == ("automation-worker", "vendor")))
+                            or name.startswith(".env")
                             or (current_path == root and name == "public-release")
                             or (current_path == root / "backend" / "app" and name == "static")}
             dirs[:] = [name for name in dirs if name not in ignored_dirs]
@@ -300,7 +411,7 @@ class AtomicComposeUpdate:
             )
         return core, 0 if prerelease else 1, identifiers
 
-    def _active_release_version(self) -> str | None:
+    def _active_release(self) -> tuple[str, Path] | None:
         """Read and verify the immutable release selected for this installation."""
         pointer_path = self.active_release_path
         if pointer_path.is_symlink():
@@ -337,7 +448,11 @@ class AtomicComposeUpdate:
                 or stored.get("tree_sha256") != pointer["tree_sha256"]
                 or not self._stored_release_manifest_matches(active_root, stored, version)):
             raise UpdateError("Active immutable release failed its file-integrity check")
-        return version
+        return version, active_root
+
+    def _active_release_version(self) -> str | None:
+        active = self._active_release()
+        return active[0] if active else None
 
     @classmethod
     def _stored_release_manifest_matches(
@@ -713,20 +828,7 @@ class AtomicComposeUpdate:
                 raise UpdateError(f"Existing service {service} has no confirmed healthy baseline")
             if service == "plugin-runner":
                 self._verify_plugin_runner_baseline(record, health)
-        working_dirs = {r["Config"]["Labels"].get("com.docker.compose.project.working_dir") for r in records}
-        config_files = {r["Config"]["Labels"].get("com.docker.compose.project.config_files") for r in records}
-        if len(working_dirs) != 1 or len(config_files) != 1:
-            raise UpdateError("Existing Compose source identity is ambiguous")
-        workdir = Path(next(iter(working_dirs)) or "")
-        raw_files = next(iter(config_files)) or ""
-        files = [value for value in raw_files.split(",") if value]
-        transaction_root = self.journal_root.resolve()
-        files = [value for value in files
-                 if not (Path(value).parent.resolve() == transaction_root
-                         and re.fullmatch(r"\d{14}-[a-f0-9]{8}-(?:rollback|atomic-candidate)\.compose\.yml",
-                                          Path(value).name))]
-        if not workdir.is_absolute() or not files or not all(Path(value).is_absolute() for value in files):
-            raise UpdateError("Existing Compose file paths are unavailable for rollback")
+        workdir, files = _existing_compose_sources(records, self.journal_root)
         # Compose service profiles are preserved only when they were active
         # before the update. New candidate services in those profiles follow.
         active = {r["Config"]["Labels"].get("com.docker.compose.service") for r in records}
@@ -778,7 +880,20 @@ class AtomicComposeUpdate:
         for record in records:
             service = record["Config"]["Labels"]["com.docker.compose.service"]
             tag = f"treseko-rollback:{self.transaction[:20]}-{service}"
-            self._docker("image", "tag", record["Image"], tag)
+            try:
+                self._docker("image", "tag", record["Image"], tag)
+            except UpdateError as tag_error:
+                # Docker can retain a running container after its source image
+                # was pruned. Preserve the live container filesystem as the
+                # rollback image; mounted volumes are excluded by `docker
+                # commit` and are snapshotted separately by this transaction.
+                try:
+                    self._docker("commit", record["Id"], tag)
+                except UpdateError as commit_error:
+                    raise UpdateError(
+                        f"Old service {service} image is unavailable and its running container "
+                        "could not be preserved for rollback"
+                    ) from commit_error
             images[service] = tag
         for service in sorted(required - set(images)):
             if not _SERVICE.fullmatch(service) or service not in services:
@@ -997,12 +1112,12 @@ class AtomicComposeUpdate:
                    f"runtime=$(/usr/local/bin/treseko-hash-component-tree '{runtime_source}'); "
                    "test -n \"$expected\" && test \"$expected\" = \"$image\" "
                    "&& test \"$image\" = \"$runtime\" "
-                   "|| { echo component-content-digest-mismatch >&2; exit 1; }"]
+                   "|| { echo \"component-content-digest-mismatch expected=$expected image=$image runtime=$runtime\" >&2; exit 1; }"]
         try:
             self._compose(self.candidate_root, [str(self.candidate_root / "docker-compose.prod.yml")],
                           self.state["profiles"], "exec", "-T", service, *command)
         except UpdateError as exc:
-            raise UpdateError(f"{service} runtime content differs from its candidate image") from exc
+            raise UpdateError(f"{service} runtime content differs from its candidate image: {exc}") from exc
 
     def _candidate_start_snapshot(self) -> list[dict[str, str]]:
         """Capture only Docker state (never app logs) before startup rollback."""
@@ -1201,8 +1316,11 @@ class AtomicComposeUpdate:
     def _validate_candidate(self) -> dict[str, Any]:
         """Check the current project and candidate Compose without changing services."""
         records, profiles, old_workdir, old_files, old_model = self._running_inventory()
-        if self.expected_project_root is not None and old_workdir.resolve() != self.expected_project_root:
-            raise UpdateError("Existing Compose project root differs from its private host binding")
+        if self.expected_project_root is not None:
+            active_release = self._active_release()
+            expected_workdir = (active_release[1] if active_release else self.expected_project_root)
+            if old_workdir.resolve() != expected_workdir.resolve():
+                raise UpdateError("Existing Compose project root differs from its private host binding")
         self.preserved_compose_overrides = self._host_compose_overrides(old_workdir, old_files)
         active_services = sorted(
             record["Config"]["Labels"]["com.docker.compose.service"] for record in records)

@@ -191,6 +191,13 @@ def validate_update_manifest(manifest: dict[str, Any], entitlement_state: dict[s
     expected_edition = "premium" if channel in PREMIUM_UPDATE_CHANNELS else "community"
     if edition != expected_edition:
         raise UpdateManifestError("La edicion del manifest no coincide con su canal")
+    deployment = manifest.get("deployment")
+    if (isinstance(deployment, dict) and deployment.get("mode") == "complete-source"
+            and (not isinstance(from_versions, list)
+                 or not any(str(item).strip() for item in from_versions))):
+        raise UpdateManifestError(
+            "Un manifest complete-source debe declarar al menos una version de origen en from_versions"
+        )
     for field_name, field_value in {
         "version": version,
         "package_url": package_url,

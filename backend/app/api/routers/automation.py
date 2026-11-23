@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from sqlalchemy import func
 from ...services.automation_payloads import worker_payload
 from ...services.automation_result_ingress import apply_worker_result_metadata, ensure_job_runner_access, persist_worker_result_evidence, prepare_worker_result_evidence
@@ -6,7 +6,7 @@ from ...services.automation_result_ingress import apply_worker_result_metadata, 
 from ...main_context import *
 from ...services.edition.entitlement_service import enforce_limit
 from ...services.error_sanitizer import sanitize_external_error
-from .automation_helpers import (_accessible_project_ids, _automation_job_context, _normalize_automation_header_token, _normalize_pairing_code, _publish_automation_job_event, _publish_worker_status_for_runner, _request_ip, _require_automation_job_access, _runner_audit_details, _safe_automation_event_text)
+from .automation_helpers import (_accessible_project_ids, _automation_job_context, _normalize_automation_header_token, _normalize_pairing_code, _publish_automation_job_event, _publish_worker_status_for_runner, _request_ip, _require_automation_job_access, _runner_audit_details, _safe_automation_event_text, worker_version_dependency)
 
 router = APIRouter(tags=["Automatizacion"])
 
@@ -26,6 +26,9 @@ async def get_current_automation_runner(
     if not organization or organization.activo is not True:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Runner token invalido")
     return runner
+
+
+_require_current_worker_version = worker_version_dependency(get_current_automation_runner)
 
 
 @router.post("/automation-runners/registration-tokens", response_model=schemas.AutomationRunnerRegistrationTokenCreated)
@@ -314,14 +317,14 @@ async def automation_runner_heartbeat(
         )
     return updated
 
-@router.get("/automation-jobs/next", response_model=Optional[schemas.AutomationJob])
+@router.get("/automation-jobs/next", response_model=Optional[schemas.AutomationJob], dependencies=[Depends(_require_current_worker_version)])
 async def get_next_automation_job(
     db: AsyncSession = Depends(get_db),
     runner: models.AutomationRunner = Depends(get_current_automation_runner),
 ):
     return await crud.get_next_automation_job(db, runner)
 
-@router.post("/automation-jobs/{job_id}/claim", response_model=schemas.AutomationWorkerJobClaim)
+@router.post("/automation-jobs/{job_id}/claim", response_model=schemas.AutomationWorkerJobClaim, dependencies=[Depends(_require_current_worker_version)])
 async def claim_automation_job(
     job_id: UUID,
     db: AsyncSession = Depends(get_db),

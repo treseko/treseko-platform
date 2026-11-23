@@ -4,6 +4,7 @@ websockets
 sqlalchemy[asyncio]
 aiosqlite
 psycopg2-binary
+psycopg[binary]
 asyncpg
 alembic
 pydantic

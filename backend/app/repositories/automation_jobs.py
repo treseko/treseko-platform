@@ -5,7 +5,6 @@ from ..services.automation_payloads import freeze_worker_payload
 from ..services.automation_dispatch_scope import validate_worker_job_scope
 from .playwright_recordings import expire_stale_playwright_recordings
 
-
 async def create_automation_job_for_execution(
     db: AsyncSession,
     ejecucion_id: UUID,
@@ -149,7 +148,6 @@ async def create_automation_job_for_execution(
         await db.flush()
     return job
 
-
 async def create_automation_dry_run_job(
     db: AsyncSession,
     payload: schemas.AutomationDryRunRequest,
@@ -237,7 +235,6 @@ async def create_automation_dry_run_job(
 async def get_automation_job(db: AsyncSession, job_id: UUID):
     result = await db.execute(select(models.AutomationJob).filter(models.AutomationJob.id == job_id))
     return result.scalar_one_or_none()
-
 
 async def list_automation_jobs(
     db: AsyncSession,
@@ -346,7 +343,6 @@ async def _mark_expired_job_entities(db: AsyncSession, job: models.AutomationJob
                 run.estado_run = models.EstadoRun.CERRADO
                 run.fecha_cierre = now
 
-
 async def recover_stale_automation_jobs(
     db: AsyncSession,
     *,
@@ -412,6 +408,8 @@ async def recover_stale_automation_jobs(
     return recovered
 
 async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRunner):
+    if runner.update_lock_token_hash:
+        return None
     await recover_stale_automation_jobs(db)
     await expire_stale_playwright_recordings(db)
     result = await db.execute(
@@ -447,11 +445,19 @@ async def get_next_automation_job(db: AsyncSession, runner: models.AutomationRun
 
 async def claim_automation_job(db: AsyncSession, job: models.AutomationJob, runner: models.AutomationRunner):
     job_id = job.id
-    runner_organization_id = runner.organizacion_id
     await recover_stale_automation_jobs(db)
-    if job.organizacion_id != runner.organizacion_id:
+    runner_result = await db.execute(
+        select(models.AutomationRunner).filter(models.AutomationRunner.id == runner.id).with_for_update()
+    )
+    locked_runner = runner_result.scalar_one_or_none()
+    if not locked_runner or locked_runner.activo is not True:
+        raise ValueError("El worker no está activo y no puede reclamar jobs")
+    if locked_runner.update_lock_token_hash:
+        raise ValueError("El worker está pausado para actualizarse")
+    runner_organization_id = locked_runner.organizacion_id
+    if job.organizacion_id != locked_runner.organizacion_id:
         raise ValueError("El runner no tiene acceso a la solucion de este job")
-    if not _runner_supports_job(runner, job):
+    if not _runner_supports_job(locked_runner, job):
         raise ValueError("El runner no es compatible con este job")
     await validate_worker_job_scope(db, job)
     now = utc_now()
@@ -486,8 +492,8 @@ async def claim_automation_job(db: AsyncSession, job: models.AutomationJob, runn
         if current and current.estado == models.AutomationJobStatus.CLAIMED:
             raise ValueError("El job ya fue reclamado y no puede reclamarse nuevamente")
         raise ValueError("El job ya no esta pendiente y no puede reclamarse")
-    runner.estado = "BUSY"
-    runner.ultimo_heartbeat = now
+    locked_runner.estado = "BUSY"
+    locked_runner.ultimo_heartbeat = now
     await db.commit()
     await db.refresh(job)
     return job

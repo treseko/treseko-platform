@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(os.getenv('TRESEKO_TEST_ISOLATE_HTTP_DATA') != '
 
 
 async def test_case_save_archive_clone_and_reference_recovery(monkeypatch):
-    assert engine.url.database == 'treseko_tests' and engine.url.host in {'127.0.0.1', 'localhost'}
+    assert engine.url.database.startswith(('treseko_tests', 'treseko_qa')) and engine.url.host in {'127.0.0.1', 'localhost'}
     async with AsyncSessionLocal() as db:
         user = models.Usuario(email=f'case-save-{uuid4()}@example.invalid', rol=models.Rol.ADMIN, activo=True)
         org = models.Organizacion(nombre='Cases regression')

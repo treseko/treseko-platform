@@ -239,20 +239,60 @@ async def approve_automation_runner_pairing_request(db: AsyncSession, code: str,
         request.estado = "EXPIRED"
         await db.commit()
         raise ValueError("La solicitud de vinculacion expiro")
-    await _enforce_worker_limit_for_solution(db, request.organizacion_id)
-
     raw_token = f"qar_{secrets.token_urlsafe(32)}"
     now = utc_now()
-    runner = models.AutomationRunner(
-        nombre=request.nombre,
-        organizacion_id=request.organizacion_id,
-        tipo=request.tipo or "LOCAL",
-        token_hash=_hash_token(raw_token),
-        capabilities=schemas.redact_automation_capabilities(request.capabilities or {}),
-        estado="ONLINE",
-        ultimo_heartbeat=now,
-    )
-    db.add(runner)
+    capabilities = schemas.redact_automation_capabilities(request.capabilities or {})
+    worker_instance_id = str(capabilities.get("worker_instance_id") or "").strip()
+
+    # A revoked Worker returns through pairing with the same persistent
+    # worker_instance_id. Reuse its row so update status, job ownership and
+    # operational history remain attached to that installation; only rotate
+    # the credential. Legacy Workers without a stable id still get a new row.
+    runner = None
+    if worker_instance_id:
+        existing_result = await db.execute(
+            select(models.AutomationRunner)
+            .filter(models.AutomationRunner.organizacion_id == request.organizacion_id)
+            .order_by(models.AutomationRunner.fecha_creacion.desc())
+            .with_for_update()
+        )
+        matches = [
+            candidate for candidate in existing_result.scalars().all()
+            if str((candidate.capabilities or {}).get("worker_instance_id") or "").strip() == worker_instance_id
+        ]
+        if len(matches) > 1:
+            raise ValueError("Hay varias identidades revocadas para este Worker; requiere resolucion administrativa")
+        if matches:
+            runner = matches[0]
+            if runner.activo:
+                raise ValueError(
+                    "La identidad de este Worker ya esta vinculada a un runner activo; "
+                    "revoca el registro anterior o usa un almacenamiento persistente distinto"
+                )
+
+    if runner is None:
+        await _enforce_worker_limit_for_solution(db, request.organizacion_id)
+        runner = models.AutomationRunner(
+            nombre=request.nombre,
+            organizacion_id=request.organizacion_id,
+            tipo=request.tipo or "LOCAL",
+            token_hash=_hash_token(raw_token),
+            capabilities=capabilities,
+            estado="ONLINE",
+            ultimo_heartbeat=now,
+        )
+        db.add(runner)
+    else:
+        runner.nombre = request.nombre
+        runner.tipo = request.tipo or "LOCAL"
+        runner.token_hash = _hash_token(raw_token)
+        runner.capabilities = capabilities
+        runner.estado = "ONLINE"
+        runner.activo = True
+        runner.ultimo_heartbeat = now
+        # Count after reactivation so the returning installation consumes a
+        # slot just like a newly paired Worker.
+        await _enforce_worker_limit_for_solution(db, request.organizacion_id)
     await db.flush()
     request.estado = "APPROVED"
     request.approved_at = now
@@ -369,6 +409,70 @@ async def update_runner_heartbeat(db: AsyncSession, runner: models.AutomationRun
     await db.commit()
     await db.refresh(runner)
     return runner
+
+async def acquire_automation_runner_update_lock(db: AsyncSession, runner_id: UUID, lock_token: str):
+    """Fence new claims for one runner and refuse a lock while a job is active.
+
+    The row lock is shared with the claim path, so either an in-flight claim
+    commits first and is observed here, or this lock commits first and the
+    claim is rejected. The token makes acquisition resumable after a host
+    process restart without allowing another runner identity to release it.
+    """
+    if not isinstance(lock_token, str) or len(lock_token) < 32 or len(lock_token) > 256:
+        raise ValueError("worker_update_lock_token_invalid")
+    result = await db.execute(
+        select(models.AutomationRunner).filter(models.AutomationRunner.id == runner_id).with_for_update()
+    )
+    runner = result.scalar_one_or_none()
+    if runner is None or runner.activo is not True:
+        await db.rollback()
+        raise ValueError("worker_unavailable")
+    token_hash = hashlib.sha256(lock_token.encode("utf-8")).hexdigest()
+    current_hash = runner.update_lock_token_hash
+    if current_hash:
+        if secrets.compare_digest(current_hash, token_hash):
+            return runner, False
+        await db.rollback()
+        raise ValueError("worker_update_already_locked")
+    active = await db.execute(
+        select(models.AutomationJob.id).filter(
+            models.AutomationJob.runner_id == runner.id,
+            models.AutomationJob.estado.in_([
+                models.AutomationJobStatus.CLAIMED,
+                models.AutomationJobStatus.RUNNING,
+            ]),
+        ).limit(1)
+    )
+    if active.scalar_one_or_none() is not None:
+        await db.rollback()
+        raise ValueError("worker_update_busy")
+    runner.update_lock_token_hash = token_hash
+    runner.update_lock_acquired_at = utc_now()
+    await db.commit()
+    await db.refresh(runner)
+    return runner, True
+
+async def release_automation_runner_update_lock(db: AsyncSession, runner_id: UUID, lock_token: str):
+    if not isinstance(lock_token, str) or len(lock_token) < 32 or len(lock_token) > 256:
+        raise ValueError("worker_update_lock_token_invalid")
+    result = await db.execute(
+        select(models.AutomationRunner).filter(models.AutomationRunner.id == runner_id).with_for_update()
+    )
+    runner = result.scalar_one_or_none()
+    if runner is None:
+        await db.rollback()
+        raise ValueError("worker_unavailable")
+    token_hash = hashlib.sha256(lock_token.encode("utf-8")).hexdigest()
+    if not runner.update_lock_token_hash:
+        return runner, False
+    if not secrets.compare_digest(runner.update_lock_token_hash, token_hash):
+        await db.rollback()
+        raise ValueError("worker_update_lock_token_mismatch")
+    runner.update_lock_token_hash = None
+    runner.update_lock_acquired_at = None
+    await db.commit()
+    await db.refresh(runner)
+    return runner, True
 
 async def update_automation_runner(db: AsyncSession, runner_id: UUID, payload: schemas.AutomationRunnerUpdate):
     result = await db.execute(select(models.AutomationRunner).filter(models.AutomationRunner.id == runner_id))

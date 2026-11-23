@@ -49,7 +49,7 @@ def test_bug_serializer_excludes_sensitive_fields():
 @pytest.mark.asyncio
 async def test_case_list_is_project_filtered_and_bounded():
     class R:
-        def all(self): return [(uuid4(), "C1", "title", "MEDIA", "ACTIVO", "MANUAL", "CLASICA", True)] * 101
+        def all(self): return [(uuid4(), "C1", "title", "MEDIA", "ACTIVO", "MANUAL", "CLASICA", True, None, None)] * 101
     class DB:
         async def execute(self, statement): self.statement = statement; return R()
     out = await mcp_tools.list_project_cases(DB(), None, SimpleNamespace(id=uuid4()), {"limit": 100, "offset": 0})

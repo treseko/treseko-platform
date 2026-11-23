@@ -10,12 +10,14 @@ fi
 (
   cd "$root"
   find . \
-    -type d \( -name .git -o -name node_modules -o -name .cache -o -name .state -o -name .pytest_cache \
+    -type d \( -name .git -o -name node_modules -o -name .worker-releases -o -name .cache -o -name .state -o -name .pytest_cache \
       -o -name coverage -o -name logs -o -name reports -o -name pending-deliveries \
       -o -name test-results \) -prune -o \
     -type f \( -name .treseko-content-digest -o -name .maintenance \
       -o -name .treseko-update-fence -o -name .treseko-update-draining \
       -o -name .treseko-update-restart -o -name .treseko-runtime-manifest.json \
+      -o -name .treseko-active-worker-release.json -o -name VERSION \
+      -o -name package.json -o -name package-lock.json -o -name worker-launcher.mjs -o -name entrypoint.sh \
       -o -name maintenance.html -o -name .runner-token -o -name .runner-token.pairing -o -name .worker-instance-id \
       -o -name .env -o -name '.env.*' \) -prune -o \
     -type f -print | LC_ALL=C sort | while IFS= read -r file; do

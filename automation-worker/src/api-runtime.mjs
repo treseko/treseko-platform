@@ -6,6 +6,7 @@ export function createApiRuntime(deps) {
     capabilities, isInvalidRunnerTokenError, clearRunnerCredentials, saveTokenFile,
     traceEntry, traceRequestId, errorFromResponse, safeJsonParse, sleep, performance,
   } = deps;
+let missingOrganizationWarningLogged = false;
 
 async function fetchJson(url, options = {}) {
   const requestId = options.requestId || traceRequestId();
@@ -86,7 +87,67 @@ async function api(pathname, options = {}) {
     ...(state.runnerToken ? { "X-Runner-Token": state.runnerToken } : {}),
     ...(options.headers || {}),
   };
-  return fetchJson(`${API_BASE}${pathname}`, { ...options, correlationId: options.correlationId || state.activeCorrelationId, headers });
+  try {
+    return await fetchJson(`${API_BASE}${pathname}`, {
+      ...options,
+      correlationId: options.correlationId || state.activeCorrelationId,
+      headers,
+    });
+  } catch (error) {
+    // Revocation can happen while this process is running. Clear the stale
+    // identity immediately so the next poll enters the normal pairing flow.
+    if (state.runnerToken && isInvalidRunnerTokenError?.(error)) {
+      console.warn("Runner token rechazado; se limpia la credencial local y se inicia recuperación.");
+      clearRunnerCredentials?.();
+    }
+    throw error;
+  }
+}
+
+async function downloadWorkerUpdate() {
+  const requestId = traceRequestId();
+  const correlationId = state.activeCorrelationId || requestId;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(REQUEST_TIMEOUT_MS, 120_000));
+  const url = `${API_BASE}/automation-runners/me/update-package`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "X-Correlation-ID": correlationId,
+        ...(state.runnerToken ? { "X-Runner-Token": state.runnerToken } : {}),
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let payload = null;
+      let text = "";
+      try {
+        text = await response.text();
+        payload = text ? JSON.parse(text) : null;
+      } catch { /* preserve the sanitized generic error path */ }
+      const error = errorFromResponse(payload, text, response.status,
+        response.headers.get("x-correlation-id") || correlationId);
+      throw error;
+    }
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (declaredLength > 256 * 1024 * 1024) throw new Error("El paquete de actualizacion supera el limite permitido.");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 256 * 1024 * 1024) throw new Error("El paquete de actualizacion esta vacio o supera el limite permitido.");
+    return {
+      bytes,
+      version: response.headers.get("x-worker-update-version") || "",
+      checksum: response.headers.get("x-worker-update-sha256") || "",
+      buildId: response.headers.get("x-worker-update-build-id") || "",
+    };
+  } catch (error) {
+    if (state.runnerToken && isInvalidRunnerTokenError?.(error)) {
+      clearRunnerCredentials?.();
+    }
+    if (error?.name === "AbortError") throw new Error("Tiempo de espera agotado al descargar la actualizacion del Worker.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function registerIfNeeded() {
@@ -97,8 +158,8 @@ async function registerIfNeeded() {
       return;
     } catch (error) {
       if (!isInvalidRunnerTokenError(error)) throw error;
-      console.warn("Runner token rechazado; se limpia la credencial local y se inicia recuperación.");
-      clearRunnerCredentials();
+      // api() already discarded the rejected credential. Continue into the
+      // ordinary pairing flow without clearing it twice.
     }
   }
 
@@ -131,6 +192,13 @@ async function registerIfNeeded() {
 }
 
 async function pairWithPlatform() {
+  if (!ORGANIZACION_ID) {
+    if (!missingOrganizationWarningLogged) {
+      console.error("No se puede vincular el Worker: configura QA_ORGANIZACION_ID con el UUID de la solucion en el entorno persistente del Worker.");
+      missingOrganizationWarningLogged = true;
+    }
+    return;
+  }
   while (!state.runnerToken) {
     let request = readPairingState();
     if (request && new Date(request.expires_at).getTime() <= Date.now()) {
@@ -220,5 +288,5 @@ function clearPairingState() {
   }
 }
 
-  return { fetchJson, api, registerIfNeeded, pairWithPlatform, createPairingRequest };
+  return { fetchJson, api, downloadWorkerUpdate, registerIfNeeded, pairWithPlatform, createPairingRequest };
 }

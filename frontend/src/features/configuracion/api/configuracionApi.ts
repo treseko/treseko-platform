@@ -298,6 +298,33 @@ export async function syncPremiumSystemUpdate(fetchWithAuth: FetchWithAuth) {
   return readJsonOrThrow(response, `Backend respondio ${response.status}`)
 }
 
+export async function requestPremiumSystemUpdatePackage(fetchWithAuth: FetchWithAuth, manifest: any) {
+  const response = await fetchWithAuth(`${API_BASE}/system/updates/download-package`, {
+    method: 'POST',
+    body: JSON.stringify({ manifest }),
+  })
+  return readJsonOrThrow(response, `Backend respondio ${response.status}`)
+}
+
+export async function downloadPremiumSystemUpdateMigrationBundle(fetchWithAuth: FetchWithAuth, manifest: any) {
+  const response = await fetchWithAuth(`${API_BASE}/system/updates/download-migration-bundle`, {
+    method: 'POST',
+    body: JSON.stringify({ manifest }),
+  })
+  if (!response.ok) throw new Error(await readBackendError(response, `Backend respondio ${response.status}`))
+  const version = response.headers.get('X-Treseko-OTA-Version') || manifest?.version || 'unknown'
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const filename = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i)
+  let artifact = filename?.[1] || filename?.[2] || `treseko-update-v${version}-single-file.tar`
+  try { artifact = decodeURIComponent(artifact) } catch { /* Keep the server-provided filename. */ }
+  return {
+    blob: await response.blob(),
+    artifact,
+    version,
+    checksum_sha256: response.headers.get('X-Treseko-OTA-SHA256') || '',
+  }
+}
+
 export async function fetchSystemUpdateStatus(fetchWithAuth: FetchWithAuth, taskId?: string) {
   const suffix = taskId ? `/${encodeURIComponent(taskId)}` : ''
   const response = await fetchWithAuth(`${API_BASE}/system/updates/status${suffix}`)

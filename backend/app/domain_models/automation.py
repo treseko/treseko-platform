@@ -42,6 +42,8 @@ class AutomationRunner(Base):
     estado = Column(String(30), default="ONLINE", nullable=False, index=True)
     capabilities = Column(JSON, default=dict, nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
+    update_lock_token_hash = Column(String(64), nullable=True)
+    update_lock_acquired_at = Column(UTCDateTime(), nullable=True)
     ultimo_heartbeat = Column(UTCDateTime(), server_default=func.now())
     fecha_creacion = Column(UTCDateTime(), server_default=func.now())
 

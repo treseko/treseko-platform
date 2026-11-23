@@ -2,7 +2,7 @@ import re
 
 from .updater import *
 from .updater import _utc_iso, _pg_dump_url
-from .update_installation_mode import require as require_installation_mode, require_atomic_update_coordinator
+from .update_installation_mode import require as require_installation_mode, require_update_runtime
 from .error_sanitizer import sanitize_external_error
 
 
@@ -185,9 +185,10 @@ async def apply_update(
     download_manifest: dict[str, Any] | None = None,
 ) -> str:
     manifest = manifest or {}
-    require_atomic_update_coordinator()
-    from .update_host_bridge_client import CoordinatedBridgeSettings
-    CoordinatedBridgeSettings.from_environment()
+    runtime = require_update_runtime()
+    if runtime == "coordinated":
+        from .update_host_bridge_client import CoordinatedBridgeSettings
+        CoordinatedBridgeSettings.from_environment()
     self.validate_update_request(channel=channel, manifest=manifest)
     async with self._lock:
         requested_version = str(manifest.get("version") or manifest.get("latest_version") or "").strip()
@@ -291,6 +292,7 @@ async def get_update_history(self, limit: int = 20) -> list[dict[str, Any]]:
     return [task.as_dict() for task in tasks[:limit]]
 
 async def restart_prepared_update(self, task_id: str) -> dict[str, Any]:
+    runtime = require_update_runtime()
     state = self._tasks.get(task_id)
     if (state and require_installation_mode("request") == "coordinated"
             and state.stage != "prepared"):
@@ -316,7 +318,7 @@ async def restart_prepared_update(self, task_id: str) -> dict[str, Any]:
         state.message = "Aplicacion coordinada enviada al host."
         self._persist_history()
         return state.as_dict()
-    if not ENABLE_SELF_UPDATE_APPLY:
+    if not ENABLE_SELF_UPDATE_APPLY and runtime != "systemd-native":
         raise ValueError("La aplicacion automatica esta deshabilitada por configuracion.")
     state.status = "restarting"
     state.stage = "restarting"

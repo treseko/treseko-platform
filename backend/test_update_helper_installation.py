@@ -26,6 +26,7 @@ HELPER_MODULES = {
     "backend/app/services/update_participant_cli.py": "def main(): return 0\n",
     "backend/app/services/update_ingress_cli.py": "def main(): return 0\n",
     "backend/app/services/update_runtime_preparation_cli.py": "def main(argv=None): return 0\n",
+    "backend/app/services/update_host_bridge_cli.py": "def main(argv=None): return 0\n",
 }
 
 

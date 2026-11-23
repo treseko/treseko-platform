@@ -86,7 +86,9 @@ el Automation Worker existente con la capacidad `treseko-api/declarative`.
 ## API externa y Automation Worker
 
 `POST /external/executions/report` registra resultados producidos por un runner
-externo. No inicia jobs y no reemplaza al Automation Worker.
+externo. Community permite esta ruta dentro de la cuota automatizada semanal;
+Premium puede ampliar el límite según la licencia. La API no inicia jobs ni
+reemplaza al Automation Worker.
 
 Para configurar cada formato consultá:
 

@@ -80,7 +80,7 @@ A conversational case is not automatically an AI execution. Likewise, an API cas
 
 ## External API and Automation Worker
 
-`POST /external/executions/report` records results produced by an external runner. It does not start jobs and does not replace the Automation Worker.
+`POST /external/executions/report` records results produced by an external runner. Community allows this path under the weekly automated execution quota; Premium can increase the limit according to the license. The API does not start jobs or replace the Automation Worker.
 
 For format-specific configuration, see:
 

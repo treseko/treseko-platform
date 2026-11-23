@@ -104,7 +104,8 @@ def _config(config, root):
     if not isinstance(config["configs"], dict):
         raise ValueError("All fixed helper config paths are required")
     helper_names = set(config["configs"])
-    if helper_names not in (set(HELPERS), set(HELPERS) | set(OPTIONAL_HELPERS)):
+    if helper_names not in (set(HELPERS), set(HELPERS) | set(OPTIONAL_HELPERS),
+                            set(OPTIONAL_HELPERS)):
         raise ValueError("All fixed helper config paths are required")
     launcher_config = launcher.validate(config.get("launcher"), root, helper_names)
     if "host_bridge" in helper_names and launcher_config is None:
@@ -118,11 +119,11 @@ def _config(config, root):
     for path in paths.values(): _reject_symlink_components(root, path)
     configs = {name: _under(root, _absolute(value, f"{name} config")) for name, value in config["configs"].items()}
     for path in configs.values(): _reject_symlink_components(root, path)
-    if launcher_config is not None:
+    if launcher_config is not None and "participant" in configs:
         launcher.validate_active_compose_state(configs["participant"], root, launcher_config)
-        if "host_bridge" in configs:
-            from .update_helper_complete_source import validate_complete_source_mounts
-            validate_complete_source_mounts(configs["host_bridge"], root, launcher_config)
+    if "host_bridge" in configs:
+        from .update_helper_complete_source import validate_complete_source_mounts
+        validate_complete_source_mounts(configs["host_bridge"], root, launcher_config)
     dependencies = config.get("dependencies", ["cryptography"])
     if (not isinstance(dependencies, list) or len(set(dependencies)) != len(dependencies)
             or not all(isinstance(v, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", v) for v in dependencies)):
@@ -185,8 +186,10 @@ class HelperInstallation:
         self.root = Path(root_prefix).resolve()
         if not self.root.is_absolute(): raise ValueError("A dedicated absolute root prefix is required")
         self.python, self.paths, self.configs, self.dependencies, self.launcher, helper_names = _config(config, self.root)
-        self.helpers = {**HELPERS, **OPTIONAL_HELPERS} if helper_names == set(HELPERS) | set(OPTIONAL_HELPERS) else dict(HELPERS)
-        self.modules = {**MODULES, **OPTIONAL_MODULES} if helper_names == set(HELPERS) | set(OPTIONAL_HELPERS) else dict(MODULES)
+        self.helpers = {**HELPERS, **OPTIONAL_HELPERS} if helper_names == set(HELPERS) | set(OPTIONAL_HELPERS) else (
+            dict(OPTIONAL_HELPERS) if helper_names == set(OPTIONAL_HELPERS) else dict(HELPERS))
+        self.modules = {**MODULES, **OPTIONAL_MODULES} if helper_names == set(HELPERS) | set(OPTIONAL_HELPERS) else (
+            dict(OPTIONAL_MODULES) if helper_names == set(OPTIONAL_HELPERS) else dict(MODULES))
         self.config = config
         self.journal = self.paths["state_dir"] / ".helper-installation.json"
 

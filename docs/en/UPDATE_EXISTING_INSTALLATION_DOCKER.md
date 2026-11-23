@@ -60,7 +60,9 @@ replaced and bindings/permissions have been validated.
 
 ## Complete Compose replacement and 1.0.6 compatibility
 
-Signed `deployment.mode=complete-source` packages are staged and validated by the trusted host updater, then applied through the atomic Compose installer. The configuration requires a private `atomic_compose` binding with a local project name, the existing `project_root`, and an `env_file` inside that root. The project root is mounted read-only for inventory and rollback; controller state is writable; the Docker socket is available only to the trusted helper. Persistent volumes and environment configuration stay outside the code replacement. Only single-host Docker installations are supported by this adapter.
+Signed `deployment.mode=complete-source` packages are staged and validated by the trusted host updater, then applied through the atomic Compose installer. The private `atomic_compose` binding includes a local project name, the existing `project_root`, an `env_file`, and the operator's `owner_uid`. The project root may be owned by that UID or by root, but group and other users must not be able to write it. The environment file may live outside the project root if it is a private regular file, readable by the helper, and mounted read-only as `atomic-env`. The helper's effective UID is not used to infer the installation owner because the helper normally runs as root.
+
+The controller's `directory` is also the stable state root for the atomic updater. It must be a dedicated private directory mounted read-write. The updater stores its active-release pointer, transaction journal, and recovery state there; it must never derive this root from a temporary staging directory. The project root remains mounted read-only for inventory and rollback, the external environment file is mounted read-only when needed, and the Docker socket is available only to the trusted helper. Persistent volumes and environment configuration stay outside the code replacement. Only single-host Docker installations are supported by this adapter.
 
 The private binding uses this shape:
 
@@ -69,7 +71,8 @@ The private binding uses this shape:
   "schema": 1,
   "project": "treseko",
   "project_root": "/opt/treseko",
-  "env_file": "<project-root>/.env"
+  "env_file": "/opt/treseko/compose.production.env",
+  "owner_uid": 1000
 }
 ```
 
@@ -84,3 +87,82 @@ Linux bootstrap QA uses the real helper-installation code with a temporary
 prefix; it does not install host wrappers or simulate a UI session. Publication
 validation also requires checking Settings -> Updates on an isolated
 installation.
+
+## Migrating a legacy installation to 1.0.8
+
+The complete package includes a host-side migration tool and an adapter that
+prepares its private Python environment. Linux and macOS require Python 3.11+,
+`venv`, local Docker Compose, and PyPI access to install the pinned dependencies.
+The script does not modify global Python. Windows support is limited to WSL 2
+with Docker Desktop and WSL integration enabled; the adapter registers a
+scheduled task to start the coordinator. Native Windows Docker and the
+VMM/Hyper-V backend are not covered.
+
+The selected WSL user must access `/var/run/docker.sock`, have a working
+`systemctl --user` bus, and have linger enabled. On minimal Ubuntu WSL images,
+install `dbus-user-session` once and restart the distro if the bus is missing;
+the adapter reports this prerequisite but does not install OS packages or
+change linger automatically.
+
+Migration accepts only the signed 1.0.7 -> 1.0.8 upgrade and a single-host local
+Compose installation. Before changing services, it verifies the signature,
+checksum, internal manifest, and project identity. It then uses the
+transactional Compose updater and installs the coordinator after confirming
+the new version. Persistent volumes and private configuration are preserved.
+If the application update committed but only coordinator installation failed,
+the command can be run again with the same files.
+
+The package builder produces `treseko-update-v1.0.8-single-file.tar` beside
+the OTA `.tar.gz`. The bundle contains the OTA archive and its signed manifest.
+Download only the bundle, extract its two layers into a temporary directory,
+and run the included adapter with the bundle path; you no longer need a
+separate manifest download or argument.
+
+Linux/macOS:
+
+```bash
+bundle=/path/to/treseko-update-v1.0.8-single-file.tar
+work="$(mktemp -d)"
+tar -xf "$bundle" -C "$work"
+mkdir "$work/release"
+tar -xzf "$work/treseko-update-v1.0.8.tar.gz" -C "$work/release"
+bash "$work/release/source-release/scripts/bootstrap_host_update_coordinator.sh" migrate \
+  --install-root /path/to/treseko \
+  --env-file /path/to/compose.production.env \
+  --docker "$(command -v docker)" \
+  --package "$bundle"
+```
+
+On macOS, use `bootstrap_host_update_coordinator_macos.sh` instead. On Windows,
+extract both layers with `tar.exe` and run the included PowerShell adapter:
+
+```powershell
+$Bundle = 'C:\path\to\treseko-update-v1.0.8-single-file.tar'
+$Work = Join-Path $env:TEMP 'treseko-update-1.0.8'
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
+tar.exe -xf $Bundle -C $Work
+$Release = Join-Path $Work 'release'
+New-Item -ItemType Directory -Force -Path $Release | Out-Null
+tar.exe -xzf (Join-Path $Work 'treseko-update-v1.0.8.tar.gz') -C $Release
+& (Join-Path $Release 'source-release/scripts/bootstrap_host_update_coordinator.ps1') migrate `
+  -InstallRoot 'C:\path\to\treseko' `
+  -EnvFile 'C:\path\to\compose.production.env' `
+  -Package $Bundle
+```
+
+The adapter validates the embedded manifest signature and OTA checksum before
+applying changes. The optional `--manifest` / `-Manifest` argument remains
+available for installations that already have both files. Download and
+extract the bundle only from an official Treseko channel. A legacy 1.0.7
+installation still needs this host-side adapter; its old in-app update button
+cannot start the migration by itself.
+
+If Treseko is installed inside the WSL Linux filesystem, pass Linux paths
+directly to `-InstallRoot` and `-EnvFile` (for example, `/home/jose/treseko`
+and `/home/jose/treseko/compose.production.env`). The adapter resolves them
+inside the distribution and does not need access through `\\wsl.localhost`.
+The downloaded bundle can remain at a Windows path.
+
+Package inclusion is necessary, but 1.0.7 support should only be enabled after
+testing a real installation and recovery on every declared platform. Unit and
+static checks are not end-to-end evidence.

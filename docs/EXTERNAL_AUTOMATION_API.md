@@ -1,8 +1,10 @@
 # API externa para reportar ejecuciones automatizadas
 
-Este documento define el contrato Premium para que runners externos, como
-Playwright, Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados al
-sistema. Confirmá que la licencia incluya la API externa antes de integrarla.
+Este documento define el contrato para que runners externos, como Playwright,
+Selenium, Cypress, Pytest o pipelines CI/CD, reporten resultados a Treseko.
+Community habilita el reporte básico con una cuota semanal compartida;
+Premium puede ampliar esa cuota según los límites de la licencia instalada.
+La API recibe resultados: no inicia ni ejecuta pruebas.
 
 El objetivo es cubrir el flujo equivalente a `reportTCResult` de TestLink,
 adaptado a la jerarquía y los formatos que soporta la API externa de Treseko:

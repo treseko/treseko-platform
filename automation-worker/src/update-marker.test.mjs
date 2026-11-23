@@ -14,7 +14,7 @@ function quietLog() {
   return { info() {}, warn() {}, error() {} };
 }
 
-test("la marca de update se consume y termina el proceso sin heartbeat", () => {
+test("la marca de update se consume y solicita reinicio sin heartbeat", () => {
   const directory = fixture();
   fs.writeFileSync(path.join(directory, ".treseko-update-restart"), "");
   const exits = [];
@@ -25,7 +25,7 @@ test("la marca de update se consume y termina el proceso sin heartbeat", () => {
   });
 
   assert.equal(marker.consumeIfReady(), true);
-  assert.deepEqual(exits, [0]);
+  assert.deepEqual(exits, [75]);
   assert.equal(fs.existsSync(marker.restartPath), false);
 });
 

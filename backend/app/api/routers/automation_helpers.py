@@ -2,9 +2,18 @@ import re
 
 from ...main_context import *
 from ...services.error_sanitizer import sanitize_external_error
+from ...services.automation_worker_updates import worker_execution_blocker
 
 MAX_AUTOMATION_HEADER_TOKEN_LENGTH = 160
 PAIRING_CODE_RE = re.compile(r"^WK-\d{6}$", re.IGNORECASE)
+
+
+def worker_version_dependency(runner_dependency):
+    async def require_current_worker(runner=Depends(runner_dependency)):
+        blocker = worker_execution_blocker(runner.capabilities)
+        if blocker:
+            raise HTTPException(status_code=409, detail=blocker)
+    return require_current_worker
 
 def _request_ip(request: Request | None) -> str:
     return request.client.host if request and request.client else "unknown"

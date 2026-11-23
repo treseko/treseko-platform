@@ -59,6 +59,8 @@ for (const mode of ['idle', 'next', 'claim', 'ambiguous-claim']) {
             if (resultPayloads.length === 1) res.writeHead(503).end('{}');
             else resultResponse = res;
           });
+        } else if (req.url.endsWith('/update-status')) {
+          res.end('{"status":"current","desired_version":"1.0.3"}');
         } else res.end('{"id":"fixture-runner"}');
       });
       let child;

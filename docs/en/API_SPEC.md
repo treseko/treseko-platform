@@ -2,7 +2,7 @@
 
 <!-- Language: en -->
 
-This guide documents only the external API used by a runner or CI/CD pipeline to report automated test results. It requires the Premium external API capability; it is not used to log in, administer users or operate the rest of the platform. Internal declarative API execution uses the Automation Worker and is documented in [API testing](API_TESTING_GUIDE.md).
+This guide documents only the external API used by a runner or CI/CD pipeline to report automated test results. Community allows basic reporting under the shared weekly quota; Premium can increase the limit according to the installed license. This API does not log in, administer users or execute tests. Internal declarative API execution uses the Automation Worker and is documented in [API testing](API_TESTING_GUIDE.md).
 
 ## Before integrating the runner
 

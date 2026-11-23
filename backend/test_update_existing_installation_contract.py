@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 
@@ -19,12 +20,13 @@ def _host_config(root: Path):
     state.mkdir(mode=0o700)
     project = root / "project"
     project.mkdir(mode=0o700)
-    env_file = project / "compose.production.env"
+    env_file = root / "compose.production.env"
     env_file.write_text("LOCAL_SETTING=kept\n", encoding="utf-8")
     env_file.chmod(0o600)
     return {"schema": 1, "directory": str(state),
             "atomic_compose": {"schema": 1, "project": "treseko-test",
-                               "project_root": str(project), "env_file": str(env_file)}}
+                               "project_root": str(project), "env_file": str(env_file),
+                               "owner_uid": os.geteuid()}}
 
 
 def _manifest(package: Path):
@@ -54,6 +56,7 @@ def test_complete_source_plan_requires_and_binds_private_host_settings(tmp_path)
 
     assert result == {"status": "plan_validated", "deployment_mode": "complete-source",
                       "atomic_compose": True, "project": "treseko-test"}
+    assert complete_source._complete_source_settings(config)["install_root"] == config["atomic_compose"]["project_root"]
 
 
 def test_complete_source_rejects_unknown_deployment_contract():
@@ -91,6 +94,8 @@ def test_prepare_stages_signed_source_and_apply_commits_full_compose(tmp_path, m
     assert applied["status"] == "complete"
     assert applied["apply"]["version"] == "1.0.7"
     assert calls[-1][-1] == "apply"
+    assert calls[-1][1]["install_root"] == config["atomic_compose"]["project_root"]
+    assert calls[-1][0].parent.parent != Path(calls[-1][1]["install_root"])
     journal = Path(config["directory"]) / "existing-installation" / "tx-107.json"
     assert json.loads(journal.read_text())["candidate_tree_sha256"]
 
@@ -120,7 +125,7 @@ def test_resume_reconciles_same_atomic_transaction(tmp_path, monkeypatch):
     assert calls[-1] == ("tx-resume", "resume")
 
 
-def test_docker_preflight_requires_readonly_project_mount_for_complete_source(tmp_path, monkeypatch):
+def test_docker_preflight_requires_writable_project_mount_for_complete_source(tmp_path, monkeypatch):
     config = _host_config(tmp_path)
     config_path = tmp_path / "controller.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -142,7 +147,9 @@ def test_docker_preflight_requires_readonly_project_mount_for_complete_source(tm
         {"source": str(cache), "target": str(cache), "mode": "rw", "purpose": "cache"},
         {"source": str(manifest), "target": str(manifest), "mode": "ro", "purpose": "manifest"},
         {"source": config["atomic_compose"]["project_root"],
-         "target": config["atomic_compose"]["project_root"], "mode": "ro", "purpose": "atomic-project"},
+         "target": config["atomic_compose"]["project_root"], "mode": "rw", "purpose": "atomic-project"},
+        {"source": str(tmp_path / "compose.production.env"),
+         "target": str(tmp_path / "compose.production.env"), "mode": "ro", "purpose": "atomic-env"},
     ]
     launcher = {"schema": 1, "type": "docker", "docker": "/usr/bin/docker",
                 "image": "sha256:" + "a" * 64, "socket": str(socket),
@@ -164,6 +171,64 @@ def test_docker_preflight_requires_readonly_project_mount_for_complete_source(tm
     try:
         preflight.validate(args)
     except SystemExit as exc:
-        assert "project root must be mounted readonly" in str(exc)
+        assert "project root must be mounted writable" in str(exc)
     else:
         raise AssertionError("complete-source plan accepted an unmounted project root")
+
+
+def test_complete_source_accepts_external_env_file_but_rejects_other_owner(tmp_path):
+    config = _host_config(tmp_path)
+    settings = complete_source._complete_source_settings(config)
+    assert Path(settings["env_file"]).parent == tmp_path
+    assert Path(settings["env_file"]) not in Path(settings["project_root"]).parents
+
+    config["atomic_compose"]["owner_uid"] = os.geteuid() + 1
+    try:
+        complete_source._complete_source_settings(config)
+    except orchestration.ExistingInstallationError as exc:
+        assert "source directory is unsafe" in str(exc)
+    else:
+        raise AssertionError("Compose directory with an unexpected owner was accepted")
+
+
+def test_complete_source_allows_private_state_owned_by_declared_operator(tmp_path, monkeypatch):
+    config = _host_config(tmp_path)
+    operator_uid = Path(config["directory"]).stat().st_uid
+    config["atomic_compose"]["owner_uid"] = operator_uid
+    monkeypatch.setattr(complete_source.os, "geteuid", lambda: 0)
+
+    settings = complete_source._complete_source_settings(config)
+
+    assert settings["install_root"] == config["atomic_compose"]["project_root"]
+
+
+def test_complete_source_rejects_group_writable_operator_state(tmp_path):
+    config = _host_config(tmp_path)
+    Path(config["directory"]).chmod(0o770)
+
+    try:
+        complete_source._complete_source_settings(config)
+    except orchestration.ExistingInstallationError as exc:
+        assert "Atomic update controller state directory is unsafe" in str(exc)
+    else:
+        raise AssertionError("group-writable atomic update state directory was accepted")
+
+
+def test_docker_preflight_allows_declared_operator_owner_for_managed_project_mount(tmp_path, monkeypatch):
+    source = tmp_path / "operator-owned-compose"
+    source.mkdir(mode=0o700)
+    owner_uid = source.stat().st_uid
+    monkeypatch.setattr(preflight.os, "geteuid", lambda: owner_uid + 1)
+    readonly = {"source": str(source), "target": str(source), "mode": "rw",
+                "purpose": "atomic-project"}
+
+    accepted = preflight._validate_mount(readonly, True, allowed_readonly_owner=owner_uid)
+    assert accepted == (str(source), str(source), "rw", "atomic-project")
+
+    untrusted = {**readonly, "mode": "rw"}
+    try:
+        preflight._validate_mount(untrusted, True)
+    except SystemExit as exc:
+        assert "mount source owner is invalid" in str(exc)
+    else:
+        raise AssertionError("Operator-owned writable Compose mount was accepted")

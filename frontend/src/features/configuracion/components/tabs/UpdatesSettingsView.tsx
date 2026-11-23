@@ -1,30 +1,17 @@
 import { Alert, Badge, Button, Card, Modal, ProgressBar, Spinner } from 'react-bootstrap'
 import { Bot, Cpu, Database, DownloadCloud, Monitor, RefreshCw, Server, UploadCloud } from 'lucide-react'
-import { parseLatestReleaseNotes, type ReleaseNoteGroup } from './releaseNotes'
+import { parseLatestReleaseNotes } from './releaseNotes'
 import { systemMonitorDetailLabel, systemStatusLabel, updateStageLabel, updateStatusLabel } from '../../updatePresentation'
-
-function ReleaseNotes({ groups, fallback }: { groups: ReleaseNoteGroup[]; fallback: string }) {
-  if (!groups.length) return <div className="small text-muted text-break">{fallback}</div>
-
-  return (
-    <div className="small text-muted d-grid gap-2 text-break">
-      {groups.map(group => (
-        <div key={group.title}>
-          <div className="fw-bold text-dark mb-1">{group.title}</div>
-          <ul className="mb-0 ps-3">
-            {group.items.map((item, index) => <li key={`${group.title}-${index}`}>{item}</li>)}
-          </ul>
-        </div>
-      ))}
-    </div>
-  )
-}
+import { NativeWorkerBootstrapDownloadNotice } from './NativeWorkerBootstrapDownloadNotice'
+import { LegacyMigrationBundleDownloadNotice } from './LegacyMigrationBundleDownloadNotice'
+import { ReleaseNotesView } from './ReleaseNotesView'
 
 export function UpdatesSettingsView({ options }: { options: any }) {
-  const { t, loading, load, checkingCommunity, syncCommunity, checkingPremium, syncPremium, canApplyUpdates, latestUpdate, isPremiumUpdateMode, applyLatestUpdate, applyConfirmation, setApplyConfirmation, confirmApplyUpdate, status, activeTask, updateEvents, isPrepared, restartingPrepared, restartPreparedUpdate, rollingBack, rollbackPendingUpdate, reportingFailure, reportFailure, componentRows, findComponent, workers, primaryWorker, onlineWorkers, systemVersion, frontendVersion, history, statusVariant, channels, premiumUpdatesAllowed, applyingPremium, confirmationChannel, confirmationVersion } = options
+  const { t, loading, load, checkingCommunity, syncCommunity, checkingPremium, syncPremium, canApplyUpdates, latestUpdate, isPremiumUpdateMode, applyLatestUpdate, preparePackageDownload, downloadMigrationBundle, requestingPackageDownload, packageDownload, applyConfirmation, setApplyConfirmation, confirmApplyUpdate, status, activeTask, updateEvents, isPrepared, restartingPrepared, restartPreparedUpdate, rollingBack, rollbackPendingUpdate, reportingFailure, reportFailure, componentRows, findComponent, workers, primaryWorker, onlineWorkers, systemVersion, frontendVersion, history, statusVariant, channels, premiumUpdatesAllowed, applyingPremium, confirmationChannel, confirmationVersion } = options
   const workerVersion = (worker: any) => worker?.version || worker?.capabilities?.component_version || worker?.capabilities?.worker_version || t('configuracion.updateWorkerNotActive')
   const availableVersion = latestUpdate?.latest_version || latestUpdate?.version
   const updateBlocked = latestUpdate?.available && latestUpdate?.apply_supported === false
+  const updateBlockMessage = (latestUpdate?.update_block_reason || status?.update_block_reason) === 'native_worker_restart_bootstrap_required' ? t('configuracion.nativeWorkerRestartBootstrapRequired') : t('configuracion.atomicUpdateRequiresInstaller')
   const releaseNotes = parseLatestReleaseNotes(latestUpdate?.changelog, availableVersion)
   return (
     <div className="animate__animated animate__fadeIn">
@@ -167,7 +154,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       </div>
                       <div className="small text-muted">
                         {latestUpdate?.available
-                          ? <ReleaseNotes groups={releaseNotes} fallback={t('configuracion.communityReleaseDetected')} />
+                          ? <ReleaseNotesView groups={releaseNotes} fallback={t('configuracion.communityReleaseDetected')} />
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
@@ -175,7 +162,12 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       {updateBlocked ? t('configuracion.updateRequiresInstaller') : latestUpdate?.available ? t('configuracion.available') : latestUpdate?.error ? t('configuracion.review') : t('configuracion.current')}
                     </Badge>
                   </div>
-                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">{t('configuracion.atomicUpdateRequiresInstaller')}</Alert>}
+                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">
+                    <div>{updateBlockMessage}</div>
+                    {(latestUpdate?.update_block_reason || status?.update_block_reason) === 'native_worker_restart_bootstrap_required' && latestUpdate?.edition === 'premium' && (
+                      <NativeWorkerBootstrapDownloadNotice t={t} latestUpdate={latestUpdate} availableVersion={availableVersion} preparePackageDownload={preparePackageDownload} requestingPackageDownload={requestingPackageDownload} packageDownload={packageDownload} />
+                    )}
+                  </Alert>}
                 </div>
 
                 {latestUpdate?.available && (
@@ -340,7 +332,7 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       </div>
                       <div className="small text-muted">
                         {latestUpdate?.available
-                          ? <ReleaseNotes groups={releaseNotes} fallback={t('configuracion.premiumManifestValidated')} />
+                          ? <ReleaseNotesView groups={releaseNotes} fallback={t('configuracion.premiumManifestValidated')} />
                           : latestUpdate?.reason || t('configuracion.installedVersion', { version: latestUpdate?.current_version || systemVersion?.version || t('configuracion.versionNotReported') })}
                       </div>
                     </div>
@@ -348,7 +340,12 @@ export function UpdatesSettingsView({ options }: { options: any }) {
                       {updateBlocked ? t('configuracion.updateRequiresInstaller') : latestUpdate?.available ? t('configuracion.available') : t('configuracion.current')}
                     </Badge>
                   </div>
-                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">{t('configuracion.atomicUpdateRequiresInstaller')}</Alert>}
+                  {updateBlocked && <Alert variant="warning" className="small mt-3 mb-0">
+                    <div>{updateBlockMessage}</div>
+                    {(latestUpdate?.update_block_reason || status?.update_block_reason) === 'atomic_update_coordinator_required' && latestUpdate?.edition === 'premium' && (
+                      <LegacyMigrationBundleDownloadNotice t={t} downloadMigrationBundle={downloadMigrationBundle} requestingPackageDownload={requestingPackageDownload} />
+                    )}
+                  </Alert>}
                 </div>
 
                 {latestUpdate?.available && (

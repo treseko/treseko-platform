@@ -113,18 +113,38 @@ def _config(config: Mapping[str, Any]) -> dict[str, Any]:
                   "package_inbox", "report_dir", "control_dir", "host_bridge_wrapper",
                   "host_bridge_config", "bridge_uid", "bridge_gid"}
     fixed = config["fixed_settings"]
-    if not isinstance(fixed, Mapping) or set(fixed) != fixed_keys:
+    if not isinstance(fixed, Mapping) or set(fixed) not in {frozenset(fixed_keys), frozenset(fixed_keys | {"service_manager"})}:
         raise CutoverPreparationError("fixed_settings_invalid")
+    service_manager = fixed.get("service_manager", "systemd-system")
+    if service_manager not in {"systemd-system", "systemd-user"}:
+        raise CutoverPreparationError("service_manager_invalid")
     binding_path = _absolute(fixed["binding_path"], "binding_path")
-    if not any(binding_path == root / "installation-binding.json" for root in PERSISTENT_BINDING_ROOTS):
-        raise CutoverPreparationError("binding_path_not_persistent")
-    binding_root = binding_path.parent
-    expected_targets = {
-        "compose_override_path": binding_root / "coordinated.override.yaml",
-        "systemd_service_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.service",
-        "systemd_timer_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.timer",
-        "systemd_wrapper_path": SYSTEMD_HELPER_ROOT / "treseko-update-spool-wrapper",
-    }
+    if service_manager == "systemd-user":
+        home = Path.home().resolve()
+        user_config_root = home / ".config" / "treseko" / "update" / topology["project"]
+        user_systemd_root = home / ".config" / "systemd" / "user"
+        user_helper_root = home / ".local" / "libexec"
+        expected_binding = user_config_root / "installation-binding.json"
+        if binding_path != expected_binding:
+            raise CutoverPreparationError("binding_path_not_persistent")
+        binding_root = user_config_root
+        service_stem = f"treseko-update-spool-{topology['project']}"
+        expected_targets = {
+            "compose_override_path": binding_root / "coordinated.override.yaml",
+            "systemd_service_path": user_systemd_root / f"{service_stem}.service",
+            "systemd_timer_path": user_systemd_root / f"{service_stem}.timer",
+            "systemd_wrapper_path": user_helper_root / f"{service_stem}-wrapper",
+        }
+    else:
+        if not any(binding_path == root / "installation-binding.json" for root in PERSISTENT_BINDING_ROOTS):
+            raise CutoverPreparationError("binding_path_not_persistent")
+        binding_root = binding_path.parent
+        expected_targets = {
+            "compose_override_path": binding_root / "coordinated.override.yaml",
+            "systemd_service_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.service",
+            "systemd_timer_path": SYSTEMD_UNIT_ROOT / "treseko-update-spool.timer",
+            "systemd_wrapper_path": SYSTEMD_HELPER_ROOT / "treseko-update-spool-wrapper",
+        }
     for key, expected_path in expected_targets.items():
         if _absolute(fixed[key], key) != expected_path:
             raise CutoverPreparationError(f"{key}_not_allowlisted")
@@ -151,6 +171,7 @@ def _config(config: Mapping[str, Any]) -> dict[str, Any]:
         raise CutoverPreparationError("legacy_state_invalid")
     markers = {key: _absolute(legacy[key], key) for key in legacy}
     return {"installation_id": installation_id, "topology": dict(topology), "services": services,
+            "service_manager": service_manager,
             "fixed": dict(fixed), "paths": paths, "markers": markers}
 
 
@@ -205,13 +226,24 @@ def _render(value: Mapping[str, Any]) -> dict[str, str]:
     binding = json.dumps({"schema": 1, "installation_id": value["installation_id"],
                           "mode": "coordinated", "owner": "host-update-coordinator",
                           "generation": 1}, sort_keys=True, indent=2) + "\n"
-    templates = {
-        "treseko-update-spool.service": ("treseko-update-spool.service.in", {
+    user_service = value["service_manager"] == "systemd-user"
+    project = value["topology"]["project"]
+    service_stem = f"treseko-update-spool-{project}" if user_service else "treseko-update-spool"
+    service_name = f"{service_stem}.service"
+    timer_name = f"{service_stem}.timer"
+    wrapper_name = f"{service_stem}-wrapper.sh" if user_service else "treseko-update-spool-wrapper.sh"
+    service_template = "user/treseko-update-spool.service.in" if user_service else "treseko-update-spool.service.in"
+    timer_template = "user/treseko-update-spool.timer.in" if user_service else "treseko-update-spool.timer.in"
+    replacements = {
             "@TRESEKO_UPDATE_BRIDGE_CONFIG@": str(fixed["host_bridge_config"]),
             "@TRESEKO_UPDATE_BRIDGE_WRAPPER@": str(fixed["systemd_wrapper_path"]),
-            "@TRESEKO_UPDATE_BRIDGE_HELPER@": str(fixed["host_bridge_wrapper"])}),
-        "treseko-update-spool.timer": ("treseko-update-spool.timer.in", {}),
-        "treseko-update-spool-wrapper.sh": ("treseko-update-spool-wrapper.sh.in", {
+            "@TRESEKO_UPDATE_BRIDGE_HELPER@": str(fixed["host_bridge_wrapper"]),
+            "@TRESEKO_UPDATE_BRIDGE_SERVICE@": service_name,
+        }
+    templates = {
+        service_name: (service_template, replacements),
+        timer_name: (timer_template, {"@TRESEKO_UPDATE_BRIDGE_SERVICE@": service_name}),
+        wrapper_name: ("treseko-update-spool-wrapper.sh.in", {
             "@TRESEKO_UPDATE_BRIDGE_HELPER@": str(fixed["host_bridge_wrapper"])})}
     result = {"installation-binding.json": binding, "compose.override.yaml": override}
     for output, (template, replacements) in templates.items():
@@ -233,15 +265,21 @@ def _render(value: Mapping[str, Any]) -> dict[str, str]:
 
 def _install_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     fixed = value["fixed"]
+    service_manager = value["service_manager"]
+    user_service = service_manager == "systemd-user"
+    project = value["topology"]["project"]
+    service_stem = f"treseko-update-spool-{project}" if user_service else "treseko-update-spool"
+    owner = "current-user" if user_service else "root"
     entries = {
         "installation-binding.json": (fixed["binding_path"], "0600"),
         "compose.override.yaml": (fixed["compose_override_path"], "0640"),
-        "treseko-update-spool.service": (fixed["systemd_service_path"], "0644"),
-        "treseko-update-spool.timer": (fixed["systemd_timer_path"], "0644"),
-        "treseko-update-spool-wrapper.sh": (fixed["systemd_wrapper_path"], "0755"),
+        f"{service_stem}.service": (fixed["systemd_service_path"], "0644"),
+        f"{service_stem}.timer": (fixed["systemd_timer_path"], "0644"),
+        (f"{service_stem}-wrapper.sh" if user_service else "treseko-update-spool-wrapper.sh"):
+            (fixed["systemd_wrapper_path"], "0755"),
     }
-    return {"schema": 1, "owner": "root",
-            "files": {name: {"target": target, "mode": mode, "owner": "root"}
+    return {"schema": 1, "owner": owner,
+            "files": {name: {"target": target, "mode": mode, "owner": owner}
                       for name, (target, mode) in entries.items()}}
 
 

@@ -16,6 +16,7 @@ test_api_execution_http_flow.py
 test_api_roles_http_flow.py
 test_api_users_admin_http_flow.py
 test_automation_runner_pairing_http_flow.py
+test_automation_worker_updates.py
 test_notifications_http_flow.py
 test_jwt_token_type_security.py
 test_auth_ad_oidc_url_security.py
@@ -24,6 +25,7 @@ test_system_http_flow.py
 test_system_updates_http_flow.py
 test_installation_telemetry.py
 test_update_legacy_premium_download.py
+test_system_update_package_download.py
 test_update_installation_status.py
 test_update_installation_mode.py
 test_update_existing_installation_contract.py
@@ -31,6 +33,7 @@ test_update_participant_package.py
 test_update_helper_installation_host_bridge.py
 test_update_transaction.py
 test_updater_history.py
+test_update_systemd_native_restart.py
 test_story_generation_http_flow.py
 test_case_generation_http_flow.py
 test_script_validation_http_flow.py

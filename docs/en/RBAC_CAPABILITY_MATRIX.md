@@ -19,9 +19,10 @@ are not edited manually as technical text.
 | Plugins | Catalog, install, enable, configure, portability | Runner and entitlement. |
 | Configuration | Users, roles, license, updates, API keys | Restricted administration. |
 
-Premium may enable granular RBAC, SSO, multiple workers, scheduler, advanced
-external API, advanced reports/snapshots, enterprise bugs, integrations, audit,
-historical metrics, branding and Premium updates.
+Premium may enable granular RBAC, SSO, multiple workers, scheduler, a higher
+automated execution quota (including external reports), advanced
+reports/snapshots, enterprise bugs, integrations, audit, historical metrics and
+branding.
 
 ## MCP
 

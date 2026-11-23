@@ -141,10 +141,17 @@ async def migrate_automation_schema(conn, get_columns, get_column_info, backend_
         "estado VARCHAR(30) DEFAULT 'ONLINE' NOT NULL, "
         "capabilities JSON DEFAULT '{}', "
         "activo BOOLEAN DEFAULT 1 NOT NULL, "
+        "update_lock_token_hash VARCHAR(64), "
+        "update_lock_acquired_at DATETIME, "
         "ultimo_heartbeat DATETIME DEFAULT CURRENT_TIMESTAMP, "
         "fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP"
         ")"
     ))
+    runner_columns = await conn.run_sync(get_columns, "automation_runners")
+    if "update_lock_token_hash" not in runner_columns:
+        await conn.execute(text("ALTER TABLE automation_runners ADD COLUMN update_lock_token_hash VARCHAR(64)"))
+    if "update_lock_acquired_at" not in runner_columns:
+        await conn.execute(text("ALTER TABLE automation_runners ADD COLUMN update_lock_acquired_at DATETIME"))
     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_automation_runners_token_hash ON automation_runners (token_hash)"))
     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_automation_runners_estado ON automation_runners (estado)"))
     await conn.execute(text(

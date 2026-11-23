@@ -15,7 +15,8 @@ ROLES = {"backend": "api_actual", "frontend": "web_actual", "engine": "engine_ac
          "automation_worker": "worker_actual", "db": "postgres_actual"}
 
 
-def _config(tmp_path: Path, *, plugin_runner: bool = False) -> dict:
+def _config(tmp_path: Path, *, plugin_runner: bool = False,
+            user_systemd_home: Path | None = None) -> dict:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
     compose = private / "compose.yml"
@@ -38,21 +39,32 @@ def _config(tmp_path: Path, *, plugin_runner: bool = False) -> dict:
     services = dict(ROLES)
     if plugin_runner:
         services["plugin_runner"] = "plugins_actual"
+    fixed = {
+        "binding_path": "/etc/treseko/update/installation-binding.json",
+        "compose_override_path": "/etc/treseko/update/coordinated.override.yaml",
+        "systemd_service_path": "/etc/systemd/system/treseko-update-spool.service",
+        "systemd_timer_path": "/etc/systemd/system/treseko-update-spool.timer",
+        "systemd_wrapper_path": "/usr/local/libexec/treseko-update-spool-wrapper",
+        "request_inbox": str(private / "requests"), "package_inbox": str(private / "packages"),
+        "report_dir": str(private / "reports"), "control_dir": "/run/treseko/update/control",
+        "host_bridge_wrapper": str(wrapper), "host_bridge_config": str(bridge),
+        "bridge_uid": os.getuid(), "bridge_gid": os.getgid(),
+    }
+    if user_systemd_home is not None:
+        service_stem = "treseko-update-spool-fixture_project"
+        fixed.update({
+            "service_manager": "systemd-user",
+            "binding_path": str(user_systemd_home / ".config/treseko/update/fixture_project/installation-binding.json"),
+            "compose_override_path": str(user_systemd_home / ".config/treseko/update/fixture_project/coordinated.override.yaml"),
+            "systemd_service_path": str(user_systemd_home / f".config/systemd/user/{service_stem}.service"),
+            "systemd_timer_path": str(user_systemd_home / f".config/systemd/user/{service_stem}.timer"),
+            "systemd_wrapper_path": str(user_systemd_home / f".local/libexec/{service_stem}-wrapper"),
+        })
     return {
         "schema": 1, "installation_id": "fixture-installation",
         "topology_binding_existing": {"scope": "fixture", "compose_file": str(compose),
                                        "project": "fixture_project", "services": services},
-        "fixed_settings": {
-            "binding_path": "/etc/treseko/update/installation-binding.json",
-            "compose_override_path": "/etc/treseko/update/coordinated.override.yaml",
-            "systemd_service_path": "/etc/systemd/system/treseko-update-spool.service",
-            "systemd_timer_path": "/etc/systemd/system/treseko-update-spool.timer",
-            "systemd_wrapper_path": "/usr/local/libexec/treseko-update-spool-wrapper",
-            "request_inbox": str(private / "requests"), "package_inbox": str(private / "packages"),
-            "report_dir": str(private / "reports"), "control_dir": "/run/treseko/update/control",
-            "host_bridge_wrapper": str(wrapper), "host_bridge_config": str(bridge),
-            "bridge_uid": os.getuid(), "bridge_gid": os.getgid(),
-        },
+        "fixed_settings": fixed,
         "legacy_state": {"update_ready": str(private / "update-ready"),
                           "pending_journal": str(private / "pending.json")},
     }
@@ -101,6 +113,31 @@ def test_prepare_cutover_records_active_plugin_runner_service(tmp_path):
 def test_prepare_cutover_keeps_plugin_runner_optional_for_older_topologies(tmp_path):
     result = prepare_cutover(_config(tmp_path), tmp_path / "bundle")
     assert "plugin_runner" not in result["services"]
+
+
+def test_prepare_cutover_renders_per_installation_user_systemd_units(tmp_path, monkeypatch):
+    home = tmp_path / "operator-home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    config = _config(tmp_path, user_systemd_home=home)
+    output = tmp_path / "user-bundle"
+
+    result = prepare_cutover(config, output)
+
+    assert result["operational"] is False
+    stem = "treseko-update-spool-fixture_project"
+    unit = (output / f"{stem}.service").read_text()
+    timer = (output / f"{stem}.timer").read_text()
+    assert "User=root" not in unit
+    assert f'ExecStart="{home}/.local/libexec/{stem}-wrapper"' in unit
+    assert f"Unit={stem}.service" in timer
+    assert (output / f"{stem}-wrapper.sh").stat().st_mode & 0o777 == 0o755
+
+    bundle = json.loads((output / "bundle.json").read_text())
+    assert bundle["install_plan"]["owner"] == "current-user"
+    assert bundle["install_plan"]["files"][f"{stem}.service"] == {
+        "target": f"{home}/.config/systemd/user/{stem}.service",
+        "mode": "0644", "owner": "current-user"}
 
 
 def test_rendered_public_env_reconstructs_real_client_settings(tmp_path, monkeypatch):

@@ -7,10 +7,16 @@ set -eu
 # imagen delega en la del volumen, de modo que toda correccion futura de este
 # componente viaja dentro de la actualizacion. La condicion sobre $0 corta la
 # recursion cuando la copia delegada vuelve a ejecutar este mismo archivo.
-if [ "$0" != "/worker/entrypoint.sh" ] && [ -s /worker/entrypoint.sh ] \
+if [ "$0" != "/worker/entrypoint.sh" ] \
+  && [ "${TRESEKO_ATOMIC_RUNTIME_SYNC:-0}" != "1" ] \
+  && [ -s /worker/entrypoint.sh ] \
   && [ "$(head -c 2 /worker/entrypoint.sh)" = "#!" ]; then
   exec /bin/sh /worker/entrypoint.sh "$@"
 fi
+
+# La marca vive en la capa efimera del contenedor. Compose espera hasta que la
+# sincronizacion del codigo y la instalacion de dependencias hayan terminado.
+rm -f /tmp/treseko-worker-startup-ready
 
 # Do not run npm ci while the backend is restoring this persistent runtime.
 while [ -f /worker/.treseko-update-rollback ]; do
@@ -29,7 +35,10 @@ payload_runtime_version() {
   [ -r "$runtime_dir/VERSION" ] || return 1
   manifest_source="$(sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
   manifest_version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
-  [ "$manifest_source" = "legacy-payload" ] || return 1
+  case "$manifest_source" in
+    legacy-payload|ota-remote-bootstrap) ;;
+    *) return 1 ;;
+  esac
   [ -n "$manifest_version" ] || return 1
   [ "$manifest_version" = "$(tr -d '[:space:]' < "$runtime_dir/VERSION")" ] || return 1
   printf '%s\n' "$manifest_version"
@@ -100,9 +109,12 @@ if [ -d /opt/treseko/worker-source ]; then
   fi
 fi
 
-if [ -f /worker/package-lock.json ] && { [ "$worker_runtime_updated" = true ] || [ ! -d /worker/node_modules ] || [ ! -d /worker/node_modules/playwright ]; }; then
+if [ -f /worker/.treseko-active-worker-release.json ] && [ -d /worker/.worker-releases ]; then
+  echo "Worker con release aislada activa; las dependencias se verifican dentro de esa release."
+elif [ -f /worker/package-lock.json ] && { [ "$worker_runtime_updated" = true ] || [ ! -d /worker/node_modules ] || [ ! -d /worker/node_modules/playwright ]; }; then
   echo "Instalando dependencias del Worker actualizadas..."
   (cd /worker && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 CYPRESS_INSTALL_BINARY=0 PUPPETEER_SKIP_DOWNLOAD=1 npm ci)
 fi
 
+: > /tmp/treseko-worker-startup-ready
 exec "$@"

@@ -1,21 +1,43 @@
 # Treseko 1.0.8
 
-## Improvements
+## Engine and remote updates
 
-- Automated run monitoring shows the result and lets users inspect failure details and the script location.
-- Playwright runs can retain a trace for reviewing actions and error context.
-- For supported formats, errors map back to the authored script instead of only showing a generated temporary file.
-- Updates: the settings screen detects installations without the atomic coordinator and blocks unsafe in-app application; it directs users to run the in-place update installer on the host.
+- The signed update package includes the Engine update agent and backend delivery API. It also includes initial setup tools for compatible Engine and Worker installations on Linux with systemd or local Docker; each remote host requires its own initial application.
+- Fixes the route the Engine uses to check for and download updates from the backend.
+- Includes the trace module required to start the new Engine version in the package.
 
-## New features
 
-- The run monitor can open the Playwright trace when the execution includes that artifact.
-- The editor can receive journeys recorded with the Treseko Flow extension for review and saving as test cases.
+## Automation Workers
 
-## Fixes
+- Reconnecting or relinking an outdated Worker now triggers a verified update before it can receive new jobs.
+- The update preserves Worker identity, rotated credentials, and pending results, and waits while work is active.
+- On Linux, self-updated browser Workers can traverse their private release directory under the isolated script user, so installed Playwright runtimes remain executable without exposing the release store for listing or writes.
 
-- Worker errors and available evidence are presented more clearly when diagnosing a failed run.
-- Installation: the frontend binds to all interfaces (`0.0.0.0`) by default; configure the bind address as `127.0.0.1` to restrict access to the host.
+
+## Automation and evidence
+
+- Run monitoring shows execution results, failure details, and the location in the script.
+- Playwright can retain traces; supported script runners expose diagnostics and evidence available from each runner.
+- Recorded journeys from Treseko Flow can be reviewed and saved as test cases.
+
+## Updates
+
+- Improves updates for compatible installations starting from version 1.0.7, with validation, backups, activation, and recovery.
+- Bundles the required components into a single downloadable package and supports retrying migration after a safe rollback.
+- If Docker has pruned the original image of a running container, preserves that container as the rollback image before proceeding.
+- Fixes PostgreSQL migrations during updates.
+- Settings identifies unsupported installation paths and guides users to the appropriate installer.
+- On Windows/WSL2, accepts installation paths inside the Linux filesystem and checks Docker and the user's systemd service before installing the coordinator.
+- Settings can temporarily provide the complete package when a native installation needs to prepare its Worker.
+- The Linux installer verifies static resources and service startup.
+- Fixes the existing-installation Docker preflight by mounting the controller configuration, manifest, and, during prepare, the package before validation.
+
+## Other improvements
+
+- The external API accepts Community result reports within the shared weekly quota; Premium supports higher license-based limits.
+- The Worker keeps its rotated token and reports the active version after a relink or self-update restart.
+- Worker relinking reuses its persistent identity; if the identity store cannot be read or written, startup reports the error instead of silently creating another registration.
+- Worker, reporting, privacy, permissions, and installation compatibility improvements are included in this cumulative release.
 
 # Treseko 1.0.7
 

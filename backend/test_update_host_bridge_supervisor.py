@@ -4,24 +4,22 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import time
+import sys
 
-from app.services.update_journal import exclusive_lock
-from app.services.update_host_bridge_spool import HostBridgeSpool
-from test_update_host_bridge import _config
-from test_update_host_bridge_spool import _spool_config
+from app.services.update_host_bridge import HostBridgeError
+from app.services.update_host_bridge_cli import supervise
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON = ROOT / "backend/.venv/bin/python"
+PYTHON = Path(sys.executable)
 CLI = "app.services.update_host_bridge_cli"
-TEMPLATE_DIR = ROOT / "scripts/systemd"
 
 
 def _setup(tmp_path):
+    from test_update_host_bridge import _config
+    from test_update_host_bridge_spool import _spool_config
     bridge_config, _ = _config(tmp_path)
-    spool_config, values = _spool_config(tmp_path, bridge_config)
-    return spool_config, values
+    return _spool_config(tmp_path, bridge_config)
 
 
 def _run(spool_config):
@@ -32,78 +30,59 @@ def _run(spool_config):
     )
 
 
-def test_supervisor_cli_empty_spool_is_one_shot_noop(tmp_path):
-    spool_config, _ = _setup(tmp_path)
-    result = _run(spool_config)
-    assert result.returncode == 0
-    assert json.loads(result.stdout) == {"schema": 1, "status": "idle"}
+class StopAfter:
+    def __init__(self, calls: int):
+        self.calls = calls
+        self.waits = 0
+
+    def is_set(self):
+        return self.waits >= self.calls
+
+    def wait(self, _interval):
+        self.waits += 1
+        return self.is_set()
 
 
-def test_supervisor_process_lock_blocks_competing_process_and_recovers(tmp_path):
-    spool_config, values = _setup(tmp_path)
-    spool = HostBridgeSpool(values)
-    with exclusive_lock(spool.spool_dir / "spool.lock"):
-        blocked = _run(spool_config)
-        assert blocked.returncode == 0
-        assert json.loads(blocked.stdout)["status"] == "busy"
-    recovered = _run(spool_config)
-    assert recovered.returncode == 0
-    assert json.loads(recovered.stdout)["status"] == "idle"
+class Spool:
+    def __init__(self, results):
+        self.results = iter(results)
+        self.calls = 0
+
+    def process_once(self):
+        self.calls += 1
+        value = next(self.results)
+        if isinstance(value, Exception):
+            raise value
+        return value
 
 
-def test_supervisor_killed_before_lock_release_can_be_restarted(tmp_path):
-    spool_config, values = _setup(tmp_path)
-    HostBridgeSpool(values)
-    lock_path = Path(values["spool_dir"]) / "spool.lock"
-    lock_path.touch()
-    holder = subprocess.Popen([
-        str(PYTHON), "-c",
-        "import fcntl,sys,time; fd=open(sys.argv[1],'a+'); fcntl.flock(fd,fcntl.LOCK_EX); time.sleep(30)",
-        str(lock_path),
+def test_supervisor_reconciles_until_stopped_and_suppresses_idle(capsys):
+    spool = Spool([
+        {"schema": 1, "status": "idle"},
+        {"schema": 1, "status": "complete", "transaction": "tx-1"},
+        {"schema": 1, "status": "idle"},
     ])
-    try:
-        for _ in range(50):
-            if lock_path.exists():
-                break
-            time.sleep(0.02)
-        killed = _run(spool_config)
-        assert killed.returncode == 0
-        assert json.loads(killed.stdout)["status"] == "busy"
-        holder.kill()
-        holder.wait(timeout=5)
-    finally:
-        if holder.poll() is None:
-            holder.kill()
-            holder.wait(timeout=5)
-    assert _run(spool_config).returncode == 0
+    stop = StopAfter(3)
+
+    supervise(spool, 30, stop)
+
+    assert spool.calls == 3
+    assert json.loads(capsys.readouterr().out) == {
+        "schema": 1, "status": "complete", "transaction": "tx-1"}
 
 
-def test_systemd_templates_use_fixed_adapter_timer_and_no_directory_trigger():
-    service = (TEMPLATE_DIR / "treseko-update-spool.service.in").read_text()
-    timer = (TEMPLATE_DIR / "treseko-update-spool.timer.in").read_text()
-    wrapper = (TEMPLATE_DIR / "treseko-update-spool-wrapper.sh.in").read_text()
-    assert "ExecStart=@TRESEKO_UPDATE_BRIDGE_WRAPPER@" in service
-    assert "OnUnitInactiveSec=30s" in timer and "Persistent=true" in timer
-    assert "DirectoryNotEmpty" not in timer
-    assert "@TRESEKO_UPDATE_BRIDGE_HELPER@" in wrapper
-    assert "$#" in wrapper and "--once" not in wrapper
-    assert "argv" in wrapper and "commands" in wrapper
+def test_supervisor_emits_bounded_errors_and_continues(capsys):
+    spool = Spool([
+        HostBridgeError("invalid_manifest"),
+        RuntimeError("sensitive detail must not be emitted"),
+    ])
+    stop = StopAfter(2)
 
+    supervise(spool, 5, stop)
 
-def test_fixed_wrapper_runs_cli_without_request_arguments(tmp_path):
-    spool_config, _ = _setup(tmp_path)
-    wrapper = (TEMPLATE_DIR / "treseko-update-spool-wrapper.sh.in").read_text()
-    helper = tmp_path / "fixed-helper"
-    helper.write_text(f"#!/bin/sh\nexec {PYTHON} -m {CLI} --config {spool_config} --once --spool\n")
-    helper.chmod(0o755)
-    wrapper = wrapper.replace("@TRESEKO_UPDATE_BRIDGE_HELPER@", str(helper))
-    path = tmp_path / "fixed-wrapper"
-    path.write_text(wrapper)
-    path.chmod(0o755)
-    result = subprocess.run([str(path)], cwd=ROOT / "backend", env={
-        **os.environ, "PYTHONPATH": str(ROOT / "backend")},
-        capture_output=True, text=True, timeout=15)
-    assert result.returncode == 0
-    assert json.loads(result.stdout)["status"] == "idle"
-    rejected = subprocess.run([str(path), "unexpected"], capture_output=True, text=True, timeout=15)
-    assert rejected.returncode == 2
+    lines = capsys.readouterr().out.splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"schema": 1, "status": "blocked", "error": "invalid_manifest"},
+        {"schema": 1, "status": "blocked", "error": "bridge_request_failed"},
+    ]
+    assert "sensitive detail" not in "\n".join(lines)

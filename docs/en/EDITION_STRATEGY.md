@@ -16,16 +16,19 @@ Reference limits:
 - 1024 MB of storage.
 
 Includes QA management, manual execution, local automation, declarative API
-through the unified worker, AI within quotas, Bug Tracker, basic reports and
-import/export.
+through the unified worker, external runner result reporting, AI within quotas,
+Bug Tracker, basic reports and import/export. External reporting consumes the
+same **50 executions per rolling seven-day window** as workers.
 
 ## Premium
 
 The public runtime recognizes the `premium` edition and enables capabilities or
 limits according to the signed entitlements in the license. The catalog
 includes, among others, granular RBAC, multiple workers, scheduling, advanced
-automation, the external API, advanced reports, snapshots, integrations,
-notifications, audit, historical metrics, branding and Premium updates.
+automation, a higher quota for automated executions and external reports,
+advanced reports, snapshots, integrations, notifications, audit, historical
+metrics and branding. The available execution count is set by the limits in the
+signed license; Premium does not mean unlimited usage.
 
 Specific commercial package names are defined outside this repository and must
 not be inferred solely from a feature appearing in the catalog.

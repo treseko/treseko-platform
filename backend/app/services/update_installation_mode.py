@@ -1,8 +1,8 @@
 """Fail-closed admission gate for the current coordinated installation.
 
-The binding is host-owned evidence mounted read-only into the backend.  Its
-JSON is an identity/configuration record, not a self-authenticating signature;
-ownership, permissions and the host journal provide the trust boundary.
+The binding is host-owned evidence mounted read-only into the backend. Its
+JSON is not self-authenticating; strict permissions and an explicitly
+configured installation-owner UID provide the trust boundary.
 """
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
+import subprocess
 from typing import Any, Mapping
 
 
@@ -45,6 +47,13 @@ def _env_signals() -> tuple[str, bool]:
 
 
 def _validate_binding(path: Path) -> dict[str, Any]:
+    raw_owner = os.getenv("TRESEKO_INSTALLATION_BINDING_OWNER_UID", "").strip()
+    if raw_owner and not re.fullmatch(r"[0-9]{1,10}", raw_owner):
+        raise InstallationModeError("installation_binding_owner_invalid")
+    expected_owner = int(raw_owner) if raw_owner else None
+    allowed_owners = {0}
+    if expected_owner is not None:
+        allowed_owners.add(expected_owner)
     current = path.parent
     while True:
         try:
@@ -54,7 +63,7 @@ def _validate_binding(path: Path) -> dict[str, Any]:
         except OSError as exc:
             raise InstallationModeError("installation_binding_unreadable") from exc
         if (stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode)
-                or info.st_uid != 0 or info.st_mode & 0o022):
+                or info.st_uid not in allowed_owners or info.st_mode & 0o022):
             raise InstallationModeError("installation_binding_unsafe_parent")
         if current.parent == current:
             break
@@ -63,7 +72,7 @@ def _validate_binding(path: Path) -> dict[str, Any]:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(descriptor, "rb") as stream:
             before = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid not in allowed_owners
                     or before.st_mode & 0o022 or before.st_size > 4096):
                 raise InstallationModeError("installation_binding_unsafe")
             raw = stream.read(4097)
@@ -135,12 +144,77 @@ def require_atomic_update_coordinator() -> str:
     return mode
 
 
+def _native_worker_restart_ready() -> bool:
+    """Check that a paired native Worker will be restarted after self-update.
+
+    The 1.0.7 Worker exits successfully after consuming its update marker.
+    A systemd unit with Restart=on-failure therefore leaves it stopped. The
+    same-file OTA contains a root bootstrap that changes this policy; until it
+    has run, do not advertise or accept an in-app update for this topology.
+    """
+    raw_dir = os.getenv("TRESEKO_WORKER_UPDATE_SOURCE_DIR") or os.getenv("TRESEKO_WORKER_DIR")
+    if not raw_dir:
+        return True  # This Backend has no separately managed local Worker.
+    worker_dir = Path(raw_dir)
+    try:
+        if (not worker_dir.is_absolute() or ".." in worker_dir.parts
+                or not worker_dir.is_dir() or worker_dir.is_symlink()):
+            return False
+    except OSError:
+        return False
+
+    unit = os.getenv("TRESEKO_WORKER_SYSTEMD_UNIT", "treseko-worker.service").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", unit):
+        return False
+    systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
+    try:
+        state = subprocess.run(
+            [systemctl, "show", unit, "--property=LoadState", "--property=Restart"],
+            check=False, capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if state.returncode != 0:
+        return False
+    properties = dict(
+        line.split("=", 1) for line in state.stdout.splitlines() if "=" in line
+    )
+    return properties.get("LoadState") == "loaded" and properties.get("Restart") == "always"
+
+
+def require_update_runtime() -> str:
+    """Return the updater that can safely apply this installation's package.
+
+    Native systemd installs use the entrypoint update journal and rollback
+    path. A paired Worker must also have the restart policy installed by the
+    bootstrap included in the same OTA. Compose installations require the
+    host coordinator.
+    """
+    mode = resolve("request")
+    if mode == "coordinated":
+        return mode
+    if mode == "legacy" and os.getenv("TRESEKO_DEPLOY_MODE", "").strip().lower() == "systemd":
+        if not _native_worker_restart_ready():
+            raise InstallationModeError("native_worker_restart_bootstrap_required")
+        return "systemd-native"
+    raise InstallationModeError("atomic_update_coordinator_required")
+
+
 def update_installation_status() -> dict[str, Any]:
     """Describe whether this installation can safely apply an in-app update."""
     try:
         mode = resolve("status")
-        supported = mode == "coordinated"
+        native_systemd = (
+            mode == "legacy"
+            and os.getenv("TRESEKO_DEPLOY_MODE", "").strip().lower() == "systemd"
+        )
+        supported = mode == "coordinated" or native_systemd
+        reported_mode = "systemd-native" if native_systemd else mode
         reason = None if supported else "atomic_update_coordinator_required"
+        if native_systemd and not _native_worker_restart_ready():
+            supported = False
+            reason = "native_worker_restart_bootstrap_required"
     except InstallationModeError as exc:
-        mode, supported, reason = "invalid", False, exc.code
-    return {"apply_supported": supported, "installation_mode": mode, "update_block_reason": reason}
+        reported_mode, supported, reason = "invalid", False, exc.code
+    return {"apply_supported": supported, "installation_mode": reported_mode,
+            "update_block_reason": reason}

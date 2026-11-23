@@ -8,6 +8,7 @@ the dataset, or persists the API evidence.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg
@@ -23,6 +24,8 @@ from app.api.routers import automation as automation_router
 from app.api.routers import projects as projects_router
 from app.database import DATABASE_URL
 from app.repositories import project_write_policy
+from app.services.automation_worker_updates import worker_source_build_id
+from app.version import PRODUCT_VERSION
 from app.main import app
 
 
@@ -155,6 +158,9 @@ def test_api_suite_execution_creates_evidence_and_keeps_classic_runs_separate(mo
     monkeypatch.setattr(automation_router, "enforce_limit", _allow_controlled_tenant_limit)
     monkeypatch.setattr(organizations_router, "enforce_limit", _allow_controlled_tenant_limit)
     monkeypatch.setattr(project_write_policy, "enforce_limit", _allow_controlled_tenant_limit)
+    worker_source = Path(__file__).resolve().parents[1] / "automation-worker"
+    monkeypatch.setenv("TRESEKO_WORKER_UPDATE_SOURCE_DIR", str(worker_source))
+    worker_build_id = worker_source_build_id(worker_source)
 
     with TestClient(app, raise_server_exceptions=False) as client:
         headers = _login(client, email, password)
@@ -306,6 +312,8 @@ def test_api_suite_execution_creates_evidence_and_keeps_classic_runs_separate(mo
                 "capabilities": {
                     "frameworks": ["treseko-api", "playwright"],
                     "framework_languages": {"treseko-api": ["declarative"]},
+                    "component_version": PRODUCT_VERSION,
+                    "worker_build_id": worker_build_id,
                 },
             },
         )
